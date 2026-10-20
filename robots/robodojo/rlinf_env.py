@@ -69,17 +69,23 @@ class RoboDojoAgentEnv(RoboDojoEnv):
 
     diagnostic_case: dict | None = None
 
-    def __init__(self, cfg, *, meta: dict, video_dir: str = "") -> None:
+    def __init__(
+        self,
+        cfg,
+        *,
+        meta: dict,
+        video_dir: str = "",
+        diagnostic_case: str | None = None,
+        save_dir: str = ".",
+    ) -> None:
         self.meta = meta
         self.eval_fair = meta.get("mode", "dev") == "eval-fair"
         # A diagnostic case replaces the native instruction and success with a
         # sub-goal: member predicates plus a release predicate (bench only).
         self.diagnostic_case = (
-            json.loads(Path(meta["diagnostic_case"]).read_text())
-            if meta.get("diagnostic_case")
-            else None
+            json.loads(Path(diagnostic_case).read_text()) if diagnostic_case else None
         )
-        self.diagnostic_path = Path(meta.get("save_dir", ".")) / "diagnostic_score.json"
+        self.diagnostic_path = Path(save_dir) / "diagnostic_score.json"
         self.recorder = _VideoRecorder(video_dir)
         self.bottle_mon = _SafetyMonitor(self.meta.get("task", ""))
         super().__init__(cfg, 1, 0, 1, None, record_metrics=False)
@@ -105,7 +111,10 @@ class RoboDojoAgentEnv(RoboDojoEnv):
 
     def get_native_obs(self) -> dict:
         """Record native RGB frames while preserving calibration and state."""
-        return _obs_dict(self.env, self.recorder)
+        obs = _obs_dict(self.env, self.recorder)
+        if self.diagnostic_case is not None:
+            obs["instruction"] = self.diagnostic_case["instruction"]
+        return obs
 
     def reset(self, env_idx=None, env_seeds=None):
         """Reset through RLinf and reinitialize agent episode diagnostics."""

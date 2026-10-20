@@ -104,6 +104,8 @@ def main() -> None:
     env = RoboDojoAgentEnv(
         cfg,
         video_dir=args.video_dir or "",
+        diagnostic_case=args.diagnostic_case,
+        save_dir=args.save_dir,
         meta={
             "task": args.task,
             "layout": args.layout,
@@ -112,8 +114,6 @@ def main() -> None:
             "num_envs": args.num_envs,
             "max_episode_steps": args.max_episode_steps,
             "random": args.random,
-            "save_dir": args.save_dir,
-            "diagnostic_case": args.diagnostic_case,
             **({"mode": "eval-fair"} if args.mode == "eval-fair" else {}),
         },
     )

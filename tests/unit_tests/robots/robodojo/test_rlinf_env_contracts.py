@@ -140,6 +140,12 @@ def test_diagnostic_case_replaces_instruction_and_success(make_agent, tmp_path):
         check_once=lambda predicate, env_idx: predicate,
     )
     env = SimpleNamespace(
+        get_obs=lambda env_idx: {"vision": {}, "state": {}},
+        obs_manager=SimpleNamespace(
+            desc_manager=SimpleNamespace(
+                get_one_description=lambda: ["Native full-task instruction."],
+            )
+        ),
         reward_manager=reward_manager,
         is_success=lambda env_idx: False,
         take_action_cnt=[42],
@@ -163,7 +169,11 @@ def test_diagnostic_case_replaces_instruction_and_success(make_agent, tmp_path):
     }
     agent.diagnostic_path = tmp_path / "diagnostic_score.json"
 
-    assert agent.get_task_language() == "Put one of the eggs into the holder."
+    assert (
+        agent.get_task_language()
+        == agent.get_native_obs()["instruction"]
+        == "Put one of the eggs into the holder."
+    )
     assert agent.is_success() is True
     status = agent.get_status()
     assert status["success"] is True and status["native_success"] is False

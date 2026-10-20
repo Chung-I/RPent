@@ -212,6 +212,9 @@ class Pi05VLAFacade(BaseVLAFacade):
             os.environ.setdefault("ROBOT_PLATFORM", platform)
 
         cfg = build_model_cfg(model_path=model_path, emb_cfg=emb_cfg)
+        if os.environ.get("RPENT_PI05_PRECISION"):
+            # Bench: run a bf16 checkpoint in its own precision to halve VRAM.
+            cfg.precision = os.environ["RPENT_PI05_PRECISION"]
         if repo_id is not None or norm_stats_path is not None:
             cfg.openpi_data = {}
             if repo_id is not None:
@@ -224,7 +227,15 @@ class Pi05VLAFacade(BaseVLAFacade):
             embodiment,
             cfg["model_path"],
         )
-        self._model = get_model(cfg, torch_dtype=None).cuda().eval()
+        if os.environ.get("RPENT_PI05_BUILD_ON_GPU") == "1":
+            # Bench: allocate parameters on the GPU so host RAM holds only the
+            # checkpoint tensors, not a second full CPU copy of the model.
+            with torch.device("cuda"):
+                self._model = get_model(cfg, torch_dtype=None).eval()
+            # Release float32 blocks freed by the dtype cast during construction.
+            torch.cuda.empty_cache()
+        else:
+            self._model = get_model(cfg, torch_dtype=None).cuda().eval()
         self._action_chunk = int(cfg.openpi.get("action_chunk", cfg.num_action_chunks))
         logger.info("model ready in %.1fs", time.time() - t0)
 
