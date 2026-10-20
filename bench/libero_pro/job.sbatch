@@ -22,7 +22,10 @@ mkdir -p "$SVC"
 export HOME=$W/jobhome XDG_CACHE_HOME=$W/jobhome/.cache TRITON_CACHE_DIR=$W/jobhome/.triton
 export HF_HOME=$W/hf HF_HUB_OFFLINE=1
 read -r GPU_LLM GPU_SIM <<<"${CUDA_VISIBLE_DEVICES//,/ }"
-echo "node=$(hostname) gpus=$CUDA_VISIBLE_DEVICES llm=$GPU_LLM sim=$GPU_SIM commit=$(git -C $REPO rev-parse HEAD)"
+# Localhost ports are shared by every job on a node; derive them from the job id.
+PORT_BASE=$((20000 + (SLURM_JOB_ID % 4000) * 10))
+LLM_PORT=$PORT_BASE VLA_PORT=$((PORT_BASE + 1)) SAM3_PORT=$((PORT_BASE + 2))
+echo "node=$(hostname) gpus=$CUDA_VISIBLE_DEVICES llm=$GPU_LLM sim=$GPU_SIM ports=$LLM_PORT/$VLA_PORT/$SAM3_PORT commit=$(git -C $REPO rev-parse HEAD)"
 
 pids=()
 cleanup() { kill "${pids[@]}" 2>/dev/null || true; wait 2>/dev/null || true; }
@@ -30,7 +33,7 @@ trap cleanup EXIT
 
 VLLM_USE_FLASHINFER_SAMPLER=0 VLLM_API_KEY="$(cat $W/rpent-serve/api_key)" CUDA_VISIBLE_DEVICES=$GPU_LLM \
   $W/.venv-vllm-minicpm/bin/vllm serve $W/hf/hub/models--Qwen--Qwen3.8-27B-FP8/snapshots/017b9c7af6b5689d5dd426a76e0bc077eb5ca20a \
-  --served-model-name Qwen/Qwen3.8-27B-FP8 --host 127.0.0.1 --port 8001 \
+  --served-model-name Qwen/Qwen3.8-27B-FP8 --host 127.0.0.1 --port $LLM_PORT \
   --max-model-len 262144 --max-num-seqs 12 --gpu-memory-utilization 0.9 --dtype bfloat16 \
   --limit-mm-per-prompt '{"image":4096}' --mm-processor-cache-gb 64 \
   --enable-auto-tool-choice --tool-call-parser qwen3_coder --reasoning-parser qwen3 \
@@ -38,11 +41,11 @@ VLLM_USE_FLASHINFER_SAMPLER=0 VLLM_API_KEY="$(cat $W/rpent-serve/api_key)" CUDA_
 pids+=($!)
 PI05_CHECKPOINT_PATH=$W/checkpoints/RLinf-Pi05-LIBERO-130-fullshot-SFT \
   $V/bin/python -u -m rpent.robots.components.pi05_vla_server --embodiment libero \
-  --cuda-device "$GPU_SIM" --transport http --host 127.0.0.1 --port 18220 > "$SVC/vla.log" 2>&1 &
+  --cuda-device "$GPU_SIM" --transport http --host 127.0.0.1 --port $VLA_PORT > "$SVC/vla.log" 2>&1 &
 pids+=($!)
 SAM3_CHECKPOINT_PATH=$W/checkpoints/sam3/sam3.pt \
   $V/bin/python -u -m rpent.robots.components.sam3_server \
-  --cuda-device "$GPU_SIM" --transport http --host 127.0.0.1 --port 18114 > "$SVC/sam3.log" 2>&1 &
+  --cuda-device "$GPU_SIM" --transport http --host 127.0.0.1 --port $SAM3_PORT > "$SVC/sam3.log" 2>&1 &
 pids+=($!)
 
 for i in $(seq 1 120); do
@@ -57,6 +60,6 @@ echo "services ready at $(date -Is)"
 cd "$REPO"
 $V/bin/python -u bench/libero_pro/worker.py \
   --out-root "$OUT_ROOT" --slots "$SLOTS" --repo "$REPO" --rpent "$V/bin/rpent" \
-  --llm-url http://127.0.0.1:8001/v1 --vla-url http://127.0.0.1:18220 --sam3-url http://127.0.0.1:18114 \
+  --llm-url http://127.0.0.1:$LLM_PORT/v1 --vla-url http://127.0.0.1:$VLA_PORT --sam3-url http://127.0.0.1:$SAM3_PORT \
   --env-cuda-device "$GPU_SIM" --api-key-file $W/rpent-serve/api_key \
   --wandb-project rpent-libero-pro $WORKER_ARGS
