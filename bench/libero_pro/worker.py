@@ -93,14 +93,15 @@ def reclaim_dead_claims(root: Path) -> list[str]:
 def classify(out: Path) -> dict:
     """Return the outcome of one finished rpent process from its artifacts."""
     transcripts = list(out.glob("transcript_*.json"))
-    states = out / "states.json"
-    if not transcripts or not states.exists():
+    # Exploration records each planner session under sessions/session_NNN/.
+    states = sorted([*out.glob("states.json"), *out.glob("sessions/*/states.json")])
+    if not transcripts or not states:
         return {
             "outcome": "infra_failure",
             "error": "missing transcript or states.json",
         }
     transcript = json.loads(transcripts[0].read_text())
-    steps = json.loads(states.read_text()).get("steps") or []
+    steps = json.loads(states[-1].read_text()).get("steps") or []
     env_terminated = bool(steps and steps[-1].get("terminated"))
     error = transcript.get("error")
     record = {
@@ -108,6 +109,7 @@ def classify(out: Path) -> dict:
         "finish_status": (transcript.get("finish") or {}).get("status"),
         "elapsed_s": transcript.get("elapsed_s"),
         "env_steps_recorded": len(steps),
+        "sessions": len(states),
     }
     if transcript.get("environment_success") or env_terminated:
         record["outcome"] = "success"
@@ -126,7 +128,10 @@ def prune_world_maps(out: Path) -> None:
     They are about 70% of an episode's disk use and are not needed for
     scoring; the low-resolution maps, depth, and images stay.
     """
-    for path in out.glob("*_world_high.npz"):
+    for path in [
+        *out.glob("*_world_high.npz"),
+        *out.glob("sessions/*/*_world_high.npz"),
+    ]:
         if path.is_dir():
             shutil.rmtree(path)
         else:
@@ -172,7 +177,7 @@ class Worker:
                 project=args.wandb_project,
                 name=f"{args.tag}-job{self.job_id}",
                 group=args.tag,
-                job_type="eval-worker",
+                job_type=f"{args.mode}-worker",
                 config={k: v for k, v in vars(args).items() if k != "api_key_file"},
             )
 
@@ -180,9 +185,19 @@ class Worker:
         cells = [
             c
             for c in all_cells()
-            if not self.args.suites or c.split(":")[0] in self.args.suites
+            if (not self.args.suites or c.split(":")[0] in self.args.suites)
+            # Exploration bootstraps memory on the reference seed only.
+            and (self.args.mode != "explore" or c.endswith(":0"))
         ]
         return cells[: self.args.limit] if self.args.limit else cells
+
+    def memory_args(self) -> list[str]:
+        """Select published HF memory, a local corpus, or exploration into one."""
+        if self.args.mode == "explore":
+            return ["--explore", "--memory-dir", self.args.memory_dir]
+        if self.args.memory_dir:
+            return ["--memory-profile", "local", "--memory-dir", self.args.memory_dir]
+        return ["--memory-version", self.args.memory_version]
 
     def claim(self) -> str | None:
         for cell in self.cells():
@@ -252,8 +267,9 @@ class Worker:
             "5000",
             "--max-episode-steps",
             "10000",
-            "--memory-version",
-            self.args.memory_version,
+            "--max-tokens",
+            str(self.args.max_tokens),
+            *self.memory_args(),
             "--vla-endpoint",
             self.args.vla_url,
             "--sam3-endpoint",
@@ -354,6 +370,18 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--model", default="openai-chat:Qwen/Qwen3.8-27B-FP8")
     p.add_argument("--reasoning-effort", default="xhigh")
     p.add_argument("--memory-version", default="GPT_5.5_xhigh")
+    p.add_argument(
+        "--mode",
+        choices=["eval", "explore"],
+        default="eval",
+        help="explore runs seed 0 of each task with --explore into --memory-dir",
+    )
+    p.add_argument(
+        "--memory-dir",
+        default=None,
+        help="local memory corpus: written by explore, read by eval",
+    )
+    p.add_argument("--max-tokens", type=int, default=32768)
     p.add_argument("--llm-url", required=True)
     p.add_argument("--vla-url", required=True)
     p.add_argument("--sam3-url", required=True)
@@ -363,7 +391,10 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--tag", default="qwen38-xhigh")
     p.add_argument("--suites", nargs="*", default=None, help="only these suites")
     p.add_argument("--limit", type=int, default=None, help="only the first N cells")
-    return p.parse_args()
+    args = p.parse_args()
+    if args.mode == "explore" and not args.memory_dir:
+        p.error("--mode explore requires --memory-dir")
+    return args
 
 
 if __name__ == "__main__":

@@ -33,11 +33,13 @@ def main() -> None:
     p.add_argument("out_root")
     p.add_argument("--wandb-project", default=None)
     p.add_argument("--tag", default="qwen38-xhigh")
+    p.add_argument("--mode", choices=["eval", "explore"], default="eval")
     args = p.parse_args()
     root = Path(args.out_root)
 
     rows, missing = [], []
-    for cell in all_cells():
+    expected = [c for c in all_cells() if args.mode == "eval" or c.endswith(":0")]
+    for cell in expected:
         path = cell_dir(root, cell) / "result.json"
         if path.exists():
             rows.append(json.loads(path.read_text()))
@@ -53,11 +55,12 @@ def main() -> None:
         counts = by_suite[suite]
         success = counts["success"]
         total_success += success
+        per_suite = len(expected) // len(SUITES)
         print(
-            f"{suite:22} {success:8} {sum(counts.values()):5} {success:6.1f}  {dict(counts)}"
+            f"{suite:22} {success:8} {sum(counts.values()):5} {100 * success / per_suite:6.1f}  {dict(counts)}"
         )
     print(
-        f"{'overall (of 800)':22} {total_success:8} {len(rows):5} {total_success / 8:6.2f}"
+        f"{f'overall (of {len(expected)})':22} {total_success:8} {len(rows):5} {100 * total_success / len(expected):6.2f}"
     )
     retried = sorted((root / "_infra").glob("*/result.json"))
     print(f"missing={len(missing)} retried_infra_attempts={len(retried)}")
@@ -70,7 +73,7 @@ def main() -> None:
 
         run = wandb.init(
             project=args.wandb_project,
-            name=f"{args.tag}-summary",
+            name=f"{args.tag}-{args.mode}-summary",
             group=args.tag,
             job_type="summary",
         )
@@ -79,8 +82,16 @@ def main() -> None:
             table.add_data(*[row.get(c) for c in table.columns])
         run.log({"episodes": table})
         run.summary.update(
-            {f"success_rate/{s}": by_suite[s]["success"] for s in SUITES}
-            | {"success_rate/overall": total_success / 8, "episodes_done": len(rows)}
+            {
+                f"success_rate/{s}": 100
+                * by_suite[s]["success"]
+                / (len(expected) // len(SUITES))
+                for s in SUITES
+            }
+            | {
+                "success_rate/overall": 100 * total_success / len(expected),
+                "episodes_done": len(rows),
+            }
         )
         run.finish()
 
