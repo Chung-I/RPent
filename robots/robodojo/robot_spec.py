@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import subprocess
 import sys
@@ -165,6 +166,9 @@ def finalize_run(context: RunFinalizationContext) -> Path:
         },
         "planner_timeout_s": context.planner_timeout_s,
     }
+    diagnostic = context.output_dir / "diagnostic_score.json"
+    if diagnostic.exists():
+        record["diagnostic"] = json.loads(diagnostic.read_text())
     return write_json_atomic(context.output_dir / "result.json", record)
 
 
@@ -243,6 +247,11 @@ def _add_cli_args(parser: argparse.ArgumentParser, use_dashboard: bool) -> None:
         help="Policy action representation for VLA primitives",
     )
     parser.add_argument("--max-episode-steps", type=int, default=700)
+    parser.add_argument(
+        "--diagnostic-case",
+        default=None,
+        help="JSON case: replaces the instruction and success with a sub-goal",
+    )
     parser.add_argument(
         "--cuda-device",
         type=int,
@@ -370,7 +379,12 @@ def _spawn_env_server(
         ]
         + _cuda_args(args)
         + (["--mode", "eval-fair"] if getattr(args, "planner", None) == "flash" else [])
-        + (["--random"] if getattr(args, "random", False) else []),
+        + (["--random"] if getattr(args, "random", False) else [])
+        + (
+            ["--diagnostic-case", str(Path(args.diagnostic_case).resolve())]
+            if getattr(args, "diagnostic_case", None)
+            else []
+        ),
         env_overrides=_runtime_overrides(args),
         log_path=str(Path(output_dir) / "robodojo_env_server.log"),
     )

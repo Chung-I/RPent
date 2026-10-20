@@ -16,7 +16,9 @@
 
 from __future__ import annotations
 
+import json
 import threading
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -65,9 +67,19 @@ def _policy_action(action: Any) -> dict:
 class RoboDojoAgentEnv(RoboDojoEnv):
     """Single-scene agent adapter with native RPC observations and diagnostics."""
 
+    diagnostic_case: dict | None = None
+
     def __init__(self, cfg, *, meta: dict, video_dir: str = "") -> None:
         self.meta = meta
         self.eval_fair = meta.get("mode", "dev") == "eval-fair"
+        # A diagnostic case replaces the native instruction and success with a
+        # sub-goal: member predicates plus a release predicate (bench only).
+        self.diagnostic_case = (
+            json.loads(Path(meta["diagnostic_case"]).read_text())
+            if meta.get("diagnostic_case")
+            else None
+        )
+        self.diagnostic_path = Path(meta.get("save_dir", ".")) / "diagnostic_score.json"
         self.recorder = _VideoRecorder(video_dir)
         self.bottle_mon = _SafetyMonitor(self.meta.get("task", ""))
         super().__init__(cfg, 1, 0, 1, None, record_metrics=False)
@@ -115,9 +127,52 @@ class RoboDojoAgentEnv(RoboDojoEnv):
         return dict(self.meta)
 
     def get_task_language(self) -> str:
+        if self.diagnostic_case is not None:
+            return self.diagnostic_case["instruction"]
         from robots.robodojo.tasks import resolve_instruction
 
         return resolve_instruction(self.env)
+
+    def diagnostic_score(self) -> dict[str, Any]:
+        """Score the diagnostic case on native state and record the result."""
+        reward_manager = self.env.reward_manager
+
+        def check(spec: dict) -> bool:
+            predicate = getattr(reward_manager, spec["method"])(**spec["kwargs"])
+            return bool(reward_manager.check_once(predicate, 0))
+
+        case = self.diagnostic_case
+        members = [[check(spec) for spec in member] for member in case["members"]]
+        combine = all if case["quantifier"] == "all" else any
+        geometric_goal = combine(all(values) for values in members)
+        grippers_open = check(case["release"])
+        score = {
+            "case_id": case["id"],
+            "geometric_goal": geometric_goal,
+            "grippers_open": grippers_open,
+            "member_checks": members,
+            "goal": geometric_goal and grippers_open,
+            "native_success": bool(self.env.is_success(env_idx=0)),
+            "step": int(self.env.take_action_cnt[0]),
+        }
+        self.diagnostic_path.write_text(json.dumps(score, indent=1))
+        return score
+
+    def _success(self) -> bool:
+        if self.diagnostic_case is not None:
+            return self.diagnostic_score()["goal"]
+        return bool(self.env.is_success(env_idx=0))
+
+    def _with_diagnostic(self, status: dict[str, Any]) -> dict[str, Any]:
+        """Report the diagnostic goal as ``success`` and keep the native verdict."""
+        if self.diagnostic_case is not None:
+            score = self.diagnostic_score()
+            status["native_success"] = status.get("success")
+            status["success"] = score["goal"]
+            status["diagnostic"] = {
+                k: score[k] for k in ("geometric_goal", "grippers_open")
+            }
+        return status
 
     def get_camera_meta(
         self,
@@ -189,9 +244,10 @@ class RoboDojoAgentEnv(RoboDojoEnv):
         obs = self.get_native_obs()
         reward_details = _reward_details(self.env, self.bottle_mon)
         reward = float(reward_details.get("reward", 0.0) or 0.0)
-        done = bool(self.env.is_success(env_idx=0))
+        status = self._with_diagnostic(_status(self.env, self.bottle_mon))
+        done = bool(status["success"])
         info: dict[str, Any] = {
-            "status": _status(self.env, self.bottle_mon),
+            "status": status,
             "step_limit": int(self.env.step_lim),
             "safety": alarms,
         }
@@ -207,10 +263,10 @@ class RoboDojoAgentEnv(RoboDojoEnv):
                 "step": int(self.env.take_action_cnt[0]),
                 "step_limit": int(self.env.step_lim),
             }
-        return _status(self.env, self.bottle_mon)
+        return self._with_diagnostic(_status(self.env, self.bottle_mon))
 
     def get_reward_details(self) -> dict[str, Any]:
-        return _reward_details(self.env, self.bottle_mon)
+        return self._with_diagnostic(_reward_details(self.env, self.bottle_mon))
 
     def solve_ik_position(self, arm: str, xyz: list) -> dict[str, Any]:
         return _solve_ik_position(self.env, arm, xyz)
@@ -219,7 +275,7 @@ class RoboDojoAgentEnv(RoboDojoEnv):
         return self.bottle_mon.status()
 
     def is_success(self) -> bool:
-        return bool(self.env.is_success(env_idx=0))
+        return self._success()
 
     def close(self, clear_cache: bool = True) -> None:
         """Flush video before the bridge releases cameras and the Isaac app."""

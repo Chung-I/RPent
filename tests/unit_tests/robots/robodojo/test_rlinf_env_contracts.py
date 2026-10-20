@@ -14,6 +14,7 @@
 
 """Agent-only observation, policy shape and CLI configuration contracts."""
 
+import json
 from types import SimpleNamespace
 
 import numpy as np
@@ -129,3 +130,47 @@ def test_camera_and_language_preserve_rpc_contract(make_agent):
         agent._sub_env(1)
     with pytest.raises(ValueError, match="unknown camera"):
         facade.get_camera_meta("missing")
+
+
+def test_diagnostic_case_replaces_instruction_and_success(make_agent, tmp_path):
+    # Predicates return their own truth value; check_once reports it unchanged.
+    reward_manager = SimpleNamespace(
+        is_A_in_B=lambda label_A, label_B: label_A == "egg1",
+        is_all_gripper_open=lambda open_threshold: open_threshold <= 0.8,
+        check_once=lambda predicate, env_idx: predicate,
+    )
+    env = SimpleNamespace(
+        reward_manager=reward_manager,
+        is_success=lambda env_idx: False,
+        take_action_cnt=[42],
+        step_lim=700,
+    )
+    agent = make_agent(env)
+    agent.diagnostic_case = {
+        "id": "egg_case",
+        "instruction": "Put one of the eggs into the holder.",
+        "quantifier": "any",
+        "members": [
+            [
+                {
+                    "method": "is_A_in_B",
+                    "kwargs": {"label_A": f"egg{i}", "label_B": "holder"},
+                }
+            ]
+            for i in range(3)
+        ],
+        "release": {"method": "is_all_gripper_open", "kwargs": {"open_threshold": 0.8}},
+    }
+    agent.diagnostic_path = tmp_path / "diagnostic_score.json"
+
+    assert agent.get_task_language() == "Put one of the eggs into the holder."
+    assert agent.is_success() is True
+    status = agent.get_status()
+    assert status["success"] is True and status["native_success"] is False
+    score = json.loads(agent.diagnostic_path.read_text())
+    assert score["member_checks"] == [[False], [True], [False]]
+    assert (score["geometric_goal"], score["grippers_open"], score["step"]) == (
+        True,
+        True,
+        42,
+    )

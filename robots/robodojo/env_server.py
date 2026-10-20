@@ -52,6 +52,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--transport", choices=["http", "socket"], default="http")
     parser.add_argument("--parent-watch", action="store_true")
     parser.add_argument("--mode", choices=["dev", "eval-fair"], default="dev")
+    parser.add_argument(
+        "--diagnostic-case",
+        default=None,
+        help="JSON case whose instruction and predicates replace the native task goal",
+    )
 
     parser.add_argument("--source-root", default=None)
     parser.add_argument("--headless", action="store_true")
@@ -107,6 +112,8 @@ def main() -> None:
             "num_envs": args.num_envs,
             "max_episode_steps": args.max_episode_steps,
             "random": args.random,
+            "save_dir": args.save_dir,
+            "diagnostic_case": args.diagnostic_case,
             **({"mode": "eval-fair"} if args.mode == "eval-fair" else {}),
         },
     )
