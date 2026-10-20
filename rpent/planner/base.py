@@ -212,6 +212,13 @@ def build_api_model(model: str | None, base_url: str | None = None) -> "Model":
         kwargs = {}
         if "base_url" in params:
             kwargs["base_url"] = base_url
+        if (
+            provider_name == "openai"
+            and os.environ.get("RPENT_VLLM_MEDIA_UUIDS") == "1"
+        ):
+            from rpent.planner.vllm_media_uuid import build_http_client
+
+            kwargs["http_client"] = build_http_client()
         return provider_cls(**kwargs)
 
     return infer_model(model, provider_factory=_provider_factory)
