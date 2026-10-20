@@ -213,7 +213,7 @@ def build_api_model(model: str | None, base_url: str | None = None) -> "Model":
         if "base_url" in params:
             kwargs["base_url"] = base_url
         if (
-            provider_name == "openai"
+            provider_name in ("openai", "openai-chat")
             and os.environ.get("RPENT_VLLM_MEDIA_UUIDS") == "1"
         ):
             from rpent.planner.vllm_media_uuid import build_http_client

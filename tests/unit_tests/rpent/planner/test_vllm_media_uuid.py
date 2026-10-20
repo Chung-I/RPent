@@ -148,3 +148,13 @@ def test_log_records_image_counts_and_token_usage(tmp_path):
     assert responses[1].json()["usage"]["prompt_tokens"] == 2100
     assert [(r["images"], r["referenced"]) for r in records] == [(1, 0), (2, 1)]
     assert records[1]["cached_tokens"] == 1664 and records[1]["status"] == 200
+
+
+def test_openai_chat_model_uses_the_transport_when_enabled(monkeypatch):
+    from rpent.planner.base import build_api_model
+
+    monkeypatch.setenv("OPENAI_API_KEY", "test")
+    monkeypatch.setenv("RPENT_VLLM_MEDIA_UUIDS", "1")
+    model = build_api_model("openai-chat:Qwen/Qwen3.8-27B-FP8", "http://vllm.test/v1")
+
+    assert isinstance(model.client._client._transport, VllmMediaUuidTransport)
