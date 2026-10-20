@@ -158,3 +158,34 @@ def test_openai_chat_model_uses_the_transport_when_enabled(monkeypatch):
     model = build_api_model("openai-chat:Qwen/Qwen3.8-27B-FP8", "http://vllm.test/v1")
 
     assert isinstance(model.client._client._transport, VllmMediaUuidTransport)
+
+
+def test_log_reads_usage_from_the_final_stream_chunk(tmp_path):
+    log_path = tmp_path / "media.jsonl"
+    usage = {
+        "prompt_tokens": 900,
+        "completion_tokens": 3,
+        "prompt_tokens_details": {"cached_tokens": 832},
+    }
+    events = [
+        b'data: {"choices": [{"delta": {"content": "ok"}}], "usage": null}\n\n',
+        b"data: " + json.dumps({"choices": [], "usage": usage}).encode() + b"\n\n",
+        b"data: [DONE]\n\n",
+    ]
+
+    def reply(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200, headers={"content-type": "text/event-stream"}, content=b"".join(events)
+        )
+
+    async def run() -> bytes:
+        transport = VllmMediaUuidTransport(httpx.MockTransport(reply), str(log_path))
+        async with httpx.AsyncClient(transport=transport) as client:
+            async with client.stream("POST", URL, json=_chat(IMAGE_A)) as response:
+                return b"".join([chunk async for chunk in response.aiter_bytes()])
+
+    body = asyncio.run(run())
+    (record,) = [json.loads(line) for line in log_path.read_text().splitlines()]
+
+    assert body == b"".join(events)
+    assert (record["prompt_tokens"], record["cached_tokens"]) == (900, 832)

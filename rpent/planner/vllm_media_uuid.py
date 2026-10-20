@@ -114,29 +114,78 @@ class VllmMediaUuidTransport(httpx.AsyncBaseTransport):
         record: dict[str, Any],
         started: float,
     ) -> httpx.Response:
-        """Append one JSONL telemetry record; read JSON bodies for token usage."""
-        if "application/json" in response.headers.get("content-type", ""):
-            content = await response.aread()
-            await response.aclose()
-            response = _rebuild(response, content, request)
-            usage = json.loads(content).get("usage") or {}
-            details = usage.get("prompt_tokens_details") or {}
+        """Append one JSONL telemetry record once the response body ends.
+
+        Token usage comes from a JSON body, or from the final ``usage`` chunk
+        of a server-sent event stream.
+        """
+        record["status"] = response.status_code
+
+        def write(usage: dict[str, Any] | None) -> None:
+            details = (usage or {}).get("prompt_tokens_details") or {}
             record.update(
-                prompt_tokens=usage.get("prompt_tokens"),
+                prompt_tokens=(usage or {}).get("prompt_tokens"),
                 cached_tokens=details.get("cached_tokens"),
-                completion_tokens=usage.get("completion_tokens"),
+                completion_tokens=(usage or {}).get("completion_tokens"),
+                ts=time.time(),
+                elapsed_s=round(time.monotonic() - started, 3),
             )
-        record.update(
-            ts=time.time(),
-            status=response.status_code,
-            elapsed_s=round(time.monotonic() - started, 3),
-        )
-        with open(self._log_path, "a", encoding="utf-8") as handle:
-            handle.write(json.dumps(record) + "\n")
-        return response
+            with open(self._log_path, "a", encoding="utf-8") as handle:
+                handle.write(json.dumps(record) + "\n")
+
+        if "text/event-stream" in response.headers.get("content-type", ""):
+            return httpx.Response(
+                response.status_code,
+                headers=response.headers,
+                stream=_UsageStream(response.stream, write),
+                request=request,
+                extensions=response.extensions,
+            )
+        content = await response.aread()
+        await response.aclose()
+        try:
+            usage = json.loads(content).get("usage")
+        except (ValueError, AttributeError):
+            usage = None
+        write(usage)
+        return _rebuild(response, content, request)
 
     async def aclose(self) -> None:
         await self._inner.aclose()
+
+
+class _UsageStream(httpx.AsyncByteStream):
+    """Pass a server-sent event stream through and report its last ``usage``."""
+
+    def __init__(self, inner: Any, on_done: Any) -> None:
+        self._inner = inner
+        self._on_done = on_done
+        self._usage: dict[str, Any] | None = None
+        self._pending = b""
+        self._done = False
+
+    async def __aiter__(self):
+        async for chunk in self._inner:
+            self._scan(chunk)
+            yield chunk
+        self._finish()
+
+    async def aclose(self) -> None:
+        await self._inner.aclose()
+        self._finish()
+
+    def _scan(self, chunk: bytes) -> None:
+        *lines, self._pending = (self._pending + chunk).split(b"\n")
+        for line in lines:
+            if line.startswith(b"data: {") and b'"usage"' in line:
+                usage = json.loads(line[len(b"data: ") :]).get("usage")
+                if usage:
+                    self._usage = usage
+
+    def _finish(self) -> None:
+        if not self._done:
+            self._done = True
+            self._on_done(self._usage)
 
 
 def _image_parts(body: dict[str, Any]):
