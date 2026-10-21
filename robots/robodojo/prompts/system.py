@@ -96,7 +96,9 @@ REWARD = """Scoring:
   unavailable; report it as unknown rather than inferring a score from images."""
 
 OUTPUT_DISCIPLINE = """When the task is complete or unrecoverable:
-1. Write the audit JSON into {{output_dir}} (task, layout, strategy notes,
+1. Finish with both grippers open and holding nothing: `set_gripper` -1 on any
+   arm whose gripper status is not `open`.
+2. Write the audit JSON into {{output_dir}} (task, layout, strategy notes,
    observed final state and any uncertainty).
-2. Call `finish` with status and a short summary.
+3. Call `finish` with status and a short summary.
 Do not call `finish` before writing the audit."""
