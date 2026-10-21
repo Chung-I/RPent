@@ -85,6 +85,18 @@ def test_tool_declarations_match_pre_refactor_contracts(group: str) -> None:
             "gripper holds something\n(`closed_on_object`) or closed on nothing "
             "(`closed_empty`)."
         )
+        # pi0_pick replans every 16 actions and continues across consecutive calls.
+        pick = expected["pi0_pick"]
+        pick["description"] = (
+            "Closed-loop Pi_05 pick: run the Pi_05 policy for `max_chunks` chunks, "
+            "executing the first 16 actions of each before replanning, and detect "
+            "grasp success by eef lift + gripper closure.\n\nConsecutive calls with "
+            "the same prompt continue one rollout, so a grasp that\nspans several "
+            "calls is still detected; any other motion in between starts anew."
+        )
+        pick["input_schema"]["properties"]["max_chunks"]["description"] = (
+            "Policy chunks to run, 16 env steps each"
+        )
     declarations = TOOL_DECLARATIONS[group]
     actual = {
         item.name: {

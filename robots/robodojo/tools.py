@@ -490,6 +490,20 @@ def set_gripper(
     return ToolResult(data=payload)
 
 
+PI0_EXECUTE_ACTIONS = 16  # receding horizon: replan after this many chunk actions
+
+
+def _arm_state(state: dict) -> list[float]:
+    """Both arms' end-effector poses and grippers, rounded for equality checks."""
+    import numpy as np
+
+    values = []
+    for a in ("left", "right"):
+        values += list(np.asarray(state[f"{a}_ee_pose"], dtype=float).reshape(-1)[:7])
+        values.append(float(np.asarray(state[f"{a}_ee_joint_state"]).reshape(-1)[0]))
+    return [round(float(v), 5) for v in values]
+
+
 @tool(
     readonly=False,
     exclude=("primitives", "state", "lift_thresh", "gripper_closed_thresh"),
@@ -500,15 +514,18 @@ def pi0_pick(
     state: Any,
     prompt: str | SkipJsonSchema[None] = None,
     arm: Literal["left", "right"] = "right",
-    max_chunks: int = 8,
+    max_chunks: int = 1,
     lift_thresh: Any = 0.04,
     gripper_closed_thresh: Any = 0.55,
 ) -> ToolResult:
-    """Closed-loop Pi_05 pick: feed the observation to the Pi_05 policy, apply its action chunk, and detect grasp success by eef lift + gripper closure.
+    """Closed-loop Pi_05 pick: run the Pi_05 policy for `max_chunks` chunks, executing the first 16 actions of each before replanning, and detect grasp success by eef lift + gripper closure.
+
+    Consecutive calls with the same prompt continue one rollout, so a grasp that
+    spans several calls is still detected; any other motion in between starts anew.
 
     Args:
         prompt: Optional specific target instruction; omit to use resolved official task language
-        max_chunks: Max policy chunks"""
+        max_chunks: Policy chunks to run, 16 env steps each"""
     import numpy as np
 
     from robots.robodojo.tasks import validate_instruction
@@ -521,12 +538,12 @@ def pi0_pick(
     if vla is None:
         payload = {"error": "vla_client not configured"}
         return ToolResult(data=payload)
-    # History-conditioned policies (VPP2) start a fresh history per call and
+    # History-conditioned policies (VPP2) start a fresh history per rollout and
     # record every executed step; other backends ignore both hooks.
     streaming = getattr(vla, "stream_observations", False)
-    if streaming:
-        vla.reset()
     arms = ("left", "right")
+    previous = getattr(primitives, "_pi0_rollout", None)
+    continued = False
     track = {
         a: {
             "start_z": None,
@@ -537,6 +554,7 @@ def pi0_pick(
         }
         for a in arms
     }
+    last_state = None
     chunks_used = 0
     success = False
     terminated = False
@@ -549,6 +567,18 @@ def pi0_pick(
         primitives._check_cancelled()
         obs = _refresh_obs(primitives)
         obs["instruction"] = prompt
+        if c == 0:
+            # A grasp spans several short calls: continue the previous rollout's
+            # descent/lift tracking unless the prompt changed or the arms moved since.
+            continued = (
+                previous is not None
+                and previous["prompt"] == prompt
+                and previous["arm_state"] == _arm_state(obs["state"])
+            )
+            if continued:
+                track = previous["track"]
+            elif streaming:
+                vla.reset()
         for a in arms:
             t = track[a]
             if t["start_z"] is None:
@@ -562,12 +592,12 @@ def pi0_pick(
                 t["last_grip"] = t["start_grip"]
         actions = vla.predict(obs)
         chunks_used = c + 1
-        for action in actions:
+        for action in actions[:PI0_EXECUTE_ACTIONS]:
             obs_step, _reward, _done, info = primitives.env.step(action)
             env_steps += 1
             if streaming:
                 vla.observe(obs_step)
-            st = obs_step["state"]
+            st = last_state = obs_step["state"]
             for a in arms:
                 t = track[a]
                 z = float(np.asarray(st[f"{a}_ee_pose"], dtype=np.float64)[2])
@@ -611,6 +641,11 @@ def pi0_pick(
                 break
         if success or terminated:
             break
+    primitives._pi0_rollout = (
+        {"prompt": prompt, "track": track, "arm_state": _arm_state(last_state)}
+        if last_state is not None and not (success or terminated)
+        else None
+    )
     per_arm = {}
     for a in arms:
         t = track[a]
@@ -627,6 +662,8 @@ def pi0_pick(
         "instruction": prompt,
         "success": success,
         "chunks_used": chunks_used,
+        # When continued, the per-arm z and gripper values span the whole rollout.
+        "continued": continued,
         "arms": per_arm,
         "terminated": terminated,
         "events": events,

@@ -53,8 +53,10 @@ TOOLS = """Motion and manipulation:
 - `move_to` is scripted motion (CuRobo IK). It iterates internally but deep or
   lateral targets can sit at the workspace edge; prefer targets near the
   current eef height and check `dist_to_target_m` / `reached` in the result.
-- `pi0_pick` runs the Pi_05 policy closed-loop and monitors BOTH arms. Its
-  `success` heuristic is provisional; confirm holds from the wrist camera.
+- `pi0_pick` runs the Pi_05 policy closed-loop and monitors BOTH arms. One
+  chunk is 16 env steps (default 1); call it again with the same prompt to
+  continue the rollout. Its `success` heuristic is provisional; confirm holds
+  from the wrist camera.
 - Omit `pi0_pick.prompt` to use resolved official task language. An explicit
   override must identify the intended object, not just say "pick the bottle".
   Never pass template markers such as `<target>`. A broad official task may

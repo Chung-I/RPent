@@ -329,6 +329,88 @@ def test_pi0_pick_stops_the_chunk_when_the_grasp_is_held():
     assert len(executed) == 2
 
 
+def _pick_observation(z, grip=1.0):
+    state = {}
+    for arm in ("left", "right"):
+        state[f"{arm}_ee_pose"] = [0, 0, z if arm == "right" else 1.0, 1, 0, 0, 0]
+        state[f"{arm}_ee_joint_state"] = [grip if arm == "right" else 1.0]
+    return {
+        "state": state,
+        "vision": {
+            name: {"color": np.zeros((2, 2, 3), dtype=np.uint8)}
+            for name in ("cam_head", "cam_left_wrist", "cam_right_wrist")
+        },
+    }
+
+
+class _PickEnv:
+    """Plays a scripted right-arm trajectory, one frame per env step."""
+
+    def __init__(self, frames):
+        self.frames = list(frames)
+        self.obs = self.frames.pop(0)
+        self.executed = []
+
+    def get_obs(self):
+        return self.obs
+
+    def step(self, action):
+        self.executed.append(action)
+        if self.frames:
+            self.obs = self.frames.pop(0)
+        status = {"step": len(self.executed), "step_limit": 999}
+        return self.obs, 0, False, {"status": status}
+
+
+def _pick_primitives(env, chunks):
+    return SimpleNamespace(
+        env=env,
+        vla_client=SimpleNamespace(predict=lambda _: next(chunks)),
+        _check_cancelled=lambda: None,
+        _last_obs=None,
+    )
+
+
+def test_pi0_pick_runs_one_chunk_and_executes_its_first_16_actions():
+    env = _PickEnv([_pick_observation(1.0)])
+    chunk = np.arange(50 * 14, dtype=float).reshape(50, 14)
+
+    result = tools.pi0_pick(_pick_primitives(env, iter([chunk])), None, "pick").data
+
+    assert result["chunks_used"] == 1
+    np.testing.assert_array_equal(env.executed, chunk[:16])
+
+
+def test_pi0_pick_tracks_a_grasp_across_consecutive_calls():
+    # Descend 8 cm and close in the first call, lift 8 cm in the second:
+    # neither call alone sees the whole grasp.
+    descend = [
+        _pick_observation(1.0 - 0.005 * i, grip=0.3 if i > 12 else 1.0)
+        for i in range(17)
+    ]
+    lift = [_pick_observation(0.92 + 0.005 * i, grip=0.3) for i in range(1, 17)]
+    env = _PickEnv(descend + lift)
+    primitives = _pick_primitives(env, iter([np.zeros((50, 14))] * 2))
+
+    first = tools.pi0_pick(primitives, None, "pick bottle").data
+    second = tools.pi0_pick(primitives, None, "pick bottle").data
+
+    assert first["success"] is False and first["continued"] is False
+    assert second["continued"] is True and second["success"] is True
+
+
+def test_pi0_pick_restarts_tracking_after_another_motion():
+    env = _PickEnv([_pick_observation(1.0 - 0.005 * i, grip=0.3) for i in range(17)])
+    primitives = _pick_primitives(env, iter([np.zeros((50, 14))] * 2))
+    tools.pi0_pick(primitives, None, "pick bottle")
+    env.obs = _pick_observation(1.2)  # another tool raised the arm
+
+    result = tools.pi0_pick(primitives, None, "pick bottle").data
+
+    assert result["continued"] is False
+    assert result["arms"]["right"]["start_eef_z"] == 1.2
+
+
 def test_gripper_result_does_not_expose_environment_feedback():
     # Neither the episode score nor its step budget reaches the planner; the
     # result reports only the gripper itself.
