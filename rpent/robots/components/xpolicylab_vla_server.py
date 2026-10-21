@@ -147,6 +147,25 @@ def _spawn_policy_server(args: argparse.Namespace) -> ProcessDaemon:
     return daemon
 
 
+def decode_stream_obs(frame: dict[str, Any]) -> dict[str, Any]:
+    """Restore the native RGB arrays of one ``encode_stream_obs`` frame."""
+    import cv2
+    import numpy as np
+
+    vision = {}
+    for camera, view in frame["vision"].items():
+        png = np.asarray(view["color_png"], dtype=np.uint8)
+        bgr = cv2.imdecode(png, cv2.IMREAD_COLOR)
+        if bgr is None:
+            raise ValueError(f"PNG decoding failed for {camera}")
+        vision[camera] = {"color": np.ascontiguousarray(bgr[..., ::-1])}
+    return {
+        "vision": vision,
+        "state": frame["state"],
+        "instruction": frame["instruction"],
+    }
+
+
 def _connect_policy(url: str, args: argparse.Namespace):
     from client_server.ws.model_client import WsModelClient
 
@@ -199,6 +218,7 @@ class XPolicyLabVLAFacade(BaseVLAFacade):
     def _register_rpc(self) -> None:
         super()._register_rpc()
         self._rpc["reset"] = self.reset
+        self._rpc["vla.predict_stream"] = self.predict_stream
 
     def reset(self) -> dict[str, Any]:
         with self._ws_lock:
@@ -209,6 +229,26 @@ class XPolicyLabVLAFacade(BaseVLAFacade):
         del options
         with self._ws_lock:
             self._model_client.call(func_name="update_obs", obs=obs)
+            result = self._model_client.call(func_name="get_action")
+        if isinstance(result, dict) and "actions" in result:
+            return result["actions"]
+        return result
+
+    def predict_stream(
+        self, frames: list[dict[str, Any]], options: dict | None = None
+    ) -> Any:
+        """Record each streamed step observation, then request one action chunk.
+
+        History-conditioned policies (VPP2) expect one ``update_obs`` per
+        executed step; frames arrive with lossless PNG views from
+        ``XPolicyLabVLAClient``.
+        """
+        del options
+        with self._ws_lock:
+            for frame in frames:
+                self._model_client.call(
+                    func_name="update_obs", obs=decode_stream_obs(frame)
+                )
             result = self._model_client.call(func_name="get_action")
         if isinstance(result, dict) and "actions" in result:
             return result["actions"]

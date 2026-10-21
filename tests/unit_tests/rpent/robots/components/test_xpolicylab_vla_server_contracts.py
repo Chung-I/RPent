@@ -385,3 +385,75 @@ def test_xpolicylab_owned_launcher_cleanup(
         "1234",
         "localhost",
     ]
+
+
+def _stream_obs(seed: int, instruction: str) -> dict:
+    rng = np.random.default_rng(seed)
+    cameras = ("cam_head", "cam_left_wrist", "cam_right_wrist")
+    return {
+        "vision": {
+            camera: {
+                "color": rng.integers(0, 256, (48, 64, 3), dtype=np.uint8),
+                "depth": np.ones((48, 64)),
+            }
+            for camera in cameras
+        },
+        "state": {
+            key: rng.normal(size=size)
+            for key, size in (
+                ("left_ee_pose", 7),
+                ("left_ee_joint_state", 1),
+                ("right_ee_pose", 7),
+                ("right_ee_joint_state", 1),
+            )
+        },
+        "instruction": instruction,
+    }
+
+
+def test_streamed_frames_reach_policy_losslessly_one_update_per_step(monkeypatch):
+    import threading
+    from types import SimpleNamespace
+
+    from rpent.robots.components import xpolicylab_vla_server as server
+    from rpent.robots.components.xpolicylab_vla_client import XPolicyLabVLAClient
+
+    policy_calls = []
+
+    def policy_call(func_name, obs=None):
+        policy_calls.append((func_name, obs))
+        return [{"left_ee_pose": np.zeros(7)}] if func_name == "get_action" else None
+
+    facade = object.__new__(server.XPolicyLabVLAFacade)
+    facade._model_client = SimpleNamespace(call=policy_call)
+    facade._ws_lock = threading.Lock()
+    rpc = SimpleNamespace(
+        call=lambda method, args=(), timeout_s=None: (
+            facade.predict_stream(*args)
+            if method == "vla.predict_stream"
+            else facade.reset()
+        )
+    )
+    monkeypatch.setenv("RPENT_VLA_STREAM_PNG", "1")
+    client = XPolicyLabVLAClient(rpc)
+    steps = [_stream_obs(i, "native task") for i in range(3)]
+
+    first = client.predict(_stream_obs(9, "pick the mouse"))
+    for obs in steps:
+        client.observe(obs)
+    second = client.predict({**steps[-1], "instruction": "pick the mouse"})
+
+    updates = [obs for name, obs in policy_calls if name == "update_obs"]
+    assert [name for name, _ in policy_calls] == [
+        "update_obs",
+        "get_action",
+        *["update_obs"] * 3,
+        "get_action",
+    ]
+    assert len(first) == len(second) == 1
+    for sent, obs in zip(updates[1:], steps):
+        for camera, view in sent["vision"].items():
+            np.testing.assert_array_equal(view["color"], obs["vision"][camera]["color"])
+            assert "depth" not in view
+    assert updates[-1]["instruction"] == "pick the mouse"
+    assert client._pending == []

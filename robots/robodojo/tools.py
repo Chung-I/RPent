@@ -387,6 +387,11 @@ def pi0_pick(
     if vla is None:
         payload = {"error": "vla_client not configured"}
         return ToolResult(data=payload)
+    # History-conditioned policies (VPP2) start a fresh history per call and
+    # record every executed step; other backends ignore both hooks.
+    streaming = getattr(vla, "stream_observations", False)
+    if streaming:
+        vla.reset()
     arms = ("left", "right")
     track = {
         a: {
@@ -420,6 +425,8 @@ def pi0_pick(
         chunks_used = c + 1
         for action in actions:
             obs_step, _reward, _done, info = primitives.env.step(action)
+            if streaming:
+                vla.observe(obs_step)
             st = obs_step["state"]
             for a in arms:
                 t = track[a]
