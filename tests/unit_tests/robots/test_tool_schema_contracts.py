@@ -71,6 +71,14 @@ def test_tool_declarations_match_pre_refactor_contracts(group: str) -> None:
             "type": "number",
             "description": "Positive finite yaw tolerance, rad (default 0.02)",
         }
+    if group == "robodojo":
+        # set_gripper now waits for the fingers and interprets the opening.
+        expected["set_gripper"]["description"] = (
+            "Open or close an arm gripper and wait until the fingers stop. "
+            "1=close, -1=open.\n\nThe result reports the opening and whether a closed "
+            "gripper holds something\n(`closed_on_object`) or closed on nothing "
+            "(`closed_empty`)."
+        )
     declarations = TOOL_DECLARATIONS[group]
     actual = {
         item.name: {

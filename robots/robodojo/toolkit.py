@@ -71,7 +71,19 @@ class RoboDojoToolkit(Toolkit):
             }
 
     def execute_tool(self, name, input_dict):
+        tool = self._tools.get(name)
+        action = tool is not None and not tool.readonly and not self.eval_fair
+        if action:
+            before = self._env_step()
         result = super().execute_tool(name, input_dict)
+        if action and isinstance(result.data, dict):
+            from robots.robodojo.tools import gripper_report
+
+            # Each action reports its own cost in env steps; the episode limit
+            # is an evaluation setting and is not shown to the planner.
+            result.data["env_steps_used"] = self._env_step() - before
+            obs = self._primitives._last_obs or self._primitives.env.get_obs()
+            result.data["grippers"] = gripper_report(obs.get("state", {}))
         if not self.eval_fair and name in {
             "segment",
             "back_project",
@@ -92,6 +104,9 @@ class RoboDojoToolkit(Toolkit):
                     )
                 )
         return result
+
+    def _env_step(self) -> int:
+        return int(self._primitives.env.get_status().get("step", 0))
 
     def flash_observation(self) -> dict:
         """Refresh the public observation used by live Flash grounding."""

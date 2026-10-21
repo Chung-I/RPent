@@ -46,7 +46,7 @@ def view_env_state(step: int = -1, *, state: Any) -> ToolResult:
     result: dict[str, Any] = {
         "step": record.step_idx,
         "truncated": record.truncated,
-        "state": record.state,
+        "state": _llm_state(record.state),
         "artifacts": sorted(record.artifacts),
         "task_language": record.extras.get("task_language"),
     }
@@ -63,6 +63,67 @@ def view_env_state(step: int = -1, *, state: Any) -> ToolResult:
             except FileNotFoundError:
                 pass
     return ToolResult(data=result, images=images)
+
+
+def _round_floats(value: Any, ndigits: int = 4) -> Any:
+    if isinstance(value, float):
+        return round(value, ndigits)
+    if isinstance(value, dict):
+        return {k: _round_floats(v, ndigits) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_round_floats(v, ndigits) for v in value]
+    return value
+
+
+def _llm_state(state: Any) -> Any:
+    """Planner view of a recorded state: camera shapes only, floats rounded.
+
+    Calibration stays in the stored record; tools such as ``back_project``
+    read it from the live observation, so repeating it costs context only.
+    """
+    if not isinstance(state, dict):
+        return state
+    slim = dict(state)
+    if isinstance(slim.get("cameras"), dict):
+        slim["cameras"] = {
+            name: {"shape": cam.get("shape"), "has_depth": cam.get("has_depth")}
+            for name, cam in slim["cameras"].items()
+        }
+    return _round_floats(slim)
+
+
+GRIPPER_OPEN = 0.8  # env convention: normalized 1.0 = open, 0.0 = closed
+GRIPPER_EMPTY = 0.03  # fully closed fingers read ~0.0; an object keeps them apart
+
+
+def gripper_report(state: dict) -> dict:
+    """Interpret each normalized gripper opening for the planner."""
+    import numpy as np
+
+    report = {}
+    for arm in ("left", "right"):
+        value = state.get(f"{arm}_ee_joint_state")
+        if value is None:
+            continue
+        v = float(np.asarray(value).reshape(-1)[0])
+        if v >= GRIPPER_OPEN:
+            status = "open"
+        elif v < GRIPPER_EMPTY:
+            status = "closed_empty"
+        else:
+            status = "closed_on_object"
+        report[arm] = {"opening": round(v, 3), "status": status}
+    return report
+
+
+def _png(rgb) -> bytes:
+    import cv2
+    import numpy as np
+
+    ok, buf = cv2.imencode(".png", np.ascontiguousarray(np.asarray(rgb)[..., ::-1]))
+    if not ok:
+        raise ValueError("PNG encoding failed")
+    return buf.tobytes()
 
 
 def _summarize_obs(obs: dict) -> dict:
@@ -245,12 +306,13 @@ def move_to(
     final_xyz = list(start)
     dist_to_target = float(np.linalg.norm(np.asarray(target) - np.asarray(final_xyz)))
     steps_used = 0
-    reached = False
     last_error = None
+    stopped = None
+    still = 0
+    final_quat = [float(v) for v in np.asarray(start_ee)[3:7]]
     for step in range(max_steps):
         primitives._check_cancelled()
         if dist_to_target <= tol:
-            reached = True
             break
         obs = _refresh_obs(primitives)
         action: dict
@@ -302,11 +364,25 @@ def move_to(
         if final is None:
             break
         final_xyz = [float(v) for v in np.asarray(final)[:3]]
+        final_quat = [float(v) for v in np.asarray(final)[3:7]]
+        previous = dist_to_target
         dist_to_target = float(
             np.linalg.norm(np.asarray(target) - np.asarray(final_xyz))
         )
-        if info["status"].get("step", 0) >= info["status"].get("step_limit", 1):
+        # Blocked by contact or unmodeled geometry: no progress for 3 steps.
+        still = still + 1 if previous - dist_to_target < 0.001 else 0
+        if dist_to_target > tol and still >= 3:
+            stopped = "stalled"
             break
+        status = info["status"]
+        if status.get("episode_over") or status.get("step", 0) >= status.get(
+            "step_limit", 1
+        ):
+            stopped = "episode_over"
+            break
+    reached = dist_to_target <= tol
+    if stopped is None:
+        stopped = "reached" if reached else "step_cap"
     payload = {
         "arm": arm,
         "target_xyz": target,
@@ -315,43 +391,63 @@ def move_to(
         "dist_to_target_m": round(dist_to_target, 4),
         "steps_used": steps_used,
         "reached": reached,
+        "stopped_because": stopped,
+        "final_quat_wxyz": [round(v, 4) for v in final_quat],
         "ik_error": last_error,
     }
     return ToolResult(data=payload)
 
 
-@tool(readonly=False, exclude=("primitives", "state"))
+@tool(readonly=False, exclude=("primitives", "state", "max_steps"))
 def set_gripper(
-    primitives: Any, state: Any, arm: Literal["left", "right"], gripper: float
+    primitives: Any,
+    state: Any,
+    arm: Literal["left", "right"],
+    gripper: float,
+    max_steps: Any = 15,
 ) -> ToolResult:
-    """Open or close an arm gripper. 1=close, -1=open.
+    """Open or close an arm gripper and wait until the fingers stop. 1=close, -1=open.
+
+    The result reports the opening and whether a closed gripper holds something
+    (`closed_on_object`) or closed on nothing (`closed_empty`).
 
     Args:
         gripper: 1=close, -1=open"""
     import numpy as np
 
     obs = _refresh_obs(primitives)
-    action: dict = {}
-    for a in ("left", "right"):
-        pose = obs.get("state", {}).get(_arm_ee_pose_key(a))
-        joint = obs.get("state", {}).get(_arm_ee_joint_key(a))
-        if pose is not None:
-            action[_arm_ee_pose_key(a)] = list(np.asarray(pose, dtype=np.float64))
-        if joint is not None:
-            # Env convention: 1.0 = OPEN, 0.0 = CLOSED. Tool arg: 1=close, -1=open.
-            val = 0.0 if (a == arm and gripper > 0) else 1.0
-            if a != arm:
-                val = float(np.asarray(joint).reshape(-1)[0])
-            action[_arm_ee_joint_key(a)] = [val]
-    _obs_step, _reward, _done, info = primitives.env.step(action)
+    target = 0.0 if gripper > 0 else 1.0  # env: 1.0 = OPEN, 0.0 = CLOSED
+    key = _arm_ee_joint_key(arm)
+    steps = 0
+    still = 0
+    prev = None
+    for _ in range(int(max_steps)):
+        action: dict = {}
+        for a in ("left", "right"):
+            pose = obs.get("state", {}).get(_arm_ee_pose_key(a))
+            joint = obs.get("state", {}).get(_arm_ee_joint_key(a))
+            if pose is not None:
+                action[_arm_ee_pose_key(a)] = list(np.asarray(pose, dtype=np.float64))
+            if joint is not None:
+                val = target if a == arm else float(np.asarray(joint).reshape(-1)[0])
+                action[_arm_ee_joint_key(a)] = [val]
+        obs, _reward, _done, info = primitives.env.step(action)
+        primitives._last_obs = obs
+        steps += 1
+        now = float(np.asarray(obs["state"][key]).reshape(-1)[0])
+        still = still + 1 if prev is not None and abs(now - prev) < 0.005 else 0
+        prev = now
+        status = info["status"]
+        if (
+            still >= 2
+            or status.get("episode_over")
+            or status.get("step", 0) >= status.get("step_limit", 1)
+        ):
+            break
     payload = {
         "arm": arm,
-        "gripper": "closed" if gripper > 0 else "open",
-        "status": {
-            key: info["status"][key]
-            for key in ("step", "step_limit")
-            if key in info["status"]
-        },
+        "commanded": "close" if gripper > 0 else "open",
+        "gripper": gripper_report(obs.get("state", {})).get(arm),
     }
     return ToolResult(data=payload)
 
@@ -406,6 +502,11 @@ def pi0_pick(
     chunks_used = 0
     success = False
     terminated = False
+    # Gripper transitions inside the policy rollout; each of the first few gets a
+    # keyframe (wrist camera when closing, head camera when opening).
+    events: list[dict] = []
+    keyframes: list[bytes] = []
+    env_steps = 0
     for c in range(max_chunks):
         primitives._check_cancelled()
         obs = _refresh_obs(primitives)
@@ -425,6 +526,7 @@ def pi0_pick(
         chunks_used = c + 1
         for action in actions:
             obs_step, _reward, _done, info = primitives.env.step(action)
+            env_steps += 1
             if streaming:
                 vla.observe(obs_step)
             st = obs_step["state"]
@@ -432,6 +534,22 @@ def pi0_pick(
                 t = track[a]
                 z = float(np.asarray(st[f"{a}_ee_pose"], dtype=np.float64)[2])
                 grip = float(np.asarray(st[f"{a}_ee_joint_state"]).reshape(-1)[0])
+                kind = None
+                if t["last_grip"] >= gripper_closed_thresh > grip:
+                    kind, camera = "closed", f"cam_{a}_wrist"
+                elif t["last_grip"] < GRIPPER_OPEN <= grip:
+                    kind, camera = "opened", "cam_head"
+                if kind is not None and len(events) < 12:
+                    event = {
+                        "event": f"{a}_gripper_{kind}",
+                        "env_step_in_call": env_steps,
+                        "ee_xyz": [round(float(v), 3) for v in st[f"{a}_ee_pose"][:3]],
+                    }
+                    color = (obs_step.get("vision", {}).get(camera) or {}).get("color")
+                    if color is not None and len(keyframes) < 3:
+                        keyframes.append(_png(color))
+                        event["keyframe"] = {"index": len(keyframes), "camera": camera}
+                    events.append(event)
                 t["last_grip"] = grip
                 if z < t["min_z"]:
                     t["min_z"] = z
@@ -473,8 +591,15 @@ def pi0_pick(
         "chunks_used": chunks_used,
         "arms": per_arm,
         "terminated": terminated,
+        "events": events,
+        "keyframes_note": (
+            f"The first {len(keyframes)} images are keyframes in event order; "
+            "the last 3 show the scene after the call."
+            if keyframes
+            else "No gripper transition during the call."
+        ),
     }
-    return ToolResult(data=payload)
+    return ToolResult(data=payload, images=keyframes)
 
 
 def get_reward_details(primitives, state) -> dict:
@@ -562,7 +687,7 @@ def place_in_bin(
             return ToolResult(data=payload)
     # release
     g = set_gripper(primitives, state, arm, -1)
-    results["release"] = {"gripper": "open", "status": g.data.get("status")}
+    results["release"] = {"gripper": g.data.get("gripper")}
     payload = {
         "arm": arm,
         "bin_center_xyz": [cx, cy],

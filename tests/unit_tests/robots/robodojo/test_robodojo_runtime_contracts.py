@@ -330,11 +330,15 @@ def test_pi0_pick_stops_the_chunk_when_the_grasp_is_held():
 
 
 def test_gripper_result_does_not_expose_environment_feedback():
+    # Neither the episode score nor its step budget reaches the planner; the
+    # result reports only the gripper itself.
+    state = {"left_ee_joint_state": [0.4], "right_ee_joint_state": [1.0]}
     primitives = SimpleNamespace(
+        _last_obs=None,
         env=SimpleNamespace(
-            get_obs=lambda: {"state": {}},
+            get_obs=lambda: {"state": state},
             step=lambda action: (
-                {},
+                {"state": state},
                 100,
                 True,
                 {
@@ -350,7 +354,10 @@ def test_gripper_result_does_not_expose_environment_feedback():
         ),
     )
     result = tools.set_gripper(primitives, None, "left", 1).data
-    assert result["status"] == {"step": 1, "step_limit": 10}
+    text = json.dumps(result)
+    for leaked in ("step_limit", "success", "score", "safety"):
+        assert leaked not in text
+    assert result["gripper"] == {"opening": 0.4, "status": "closed_on_object"}
 
 
 def test_readers_are_readonly_and_do_not_act():
@@ -503,7 +510,7 @@ def test_place_in_bin_keeps_backend_phase_sequence(monkeypatch):
     monkeypatch.setattr(
         tools,
         "set_gripper",
-        lambda *args: ToolResult(data={"status": {"success": True}}),
+        lambda *args: ToolResult(data={"gripper": {"status": "open"}}),
     )
     result = tools.place_in_bin(None, None, "left", [0.2, 0.3, 0.4]).data
     assert calls == [
@@ -512,4 +519,4 @@ def test_place_in_bin_keeps_backend_phase_sequence(monkeypatch):
         ([0.2, 0.3, 0.95], -1),
     ]
     assert result["released"] is True
-    assert result["phases"]["release"]["status"]["success"] is True
+    assert result["phases"]["release"]["gripper"] == {"status": "open"}

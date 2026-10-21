@@ -21,6 +21,7 @@ RPent's runner saves the returned transcript through its existing output flow.
 
 import asyncio
 import json
+import os
 import threading
 from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
@@ -174,9 +175,7 @@ class ApiAgentLoop(Planner):
                 self.model, self.max_tokens, self.reasoning_effort
             ),
             capabilities=[
-                SlidingWindowCompaction(
-                    max_messages=80, max_fraction=0.8, keep_messages=40
-                ),
+                SlidingWindowCompaction(**_compaction_settings()),
                 Thinking(
                     False if self.reasoning_effort == "none" else self.reasoning_effort
                 ),
@@ -226,6 +225,20 @@ class ApiAgentLoop(Planner):
             },
             error=session.error,
         )
+
+
+def _compaction_settings() -> dict[str, Any]:
+    """History trimming; environment overrides suit long self-hosted contexts."""
+    settings: dict[str, Any] = {
+        "max_messages": int(os.environ.get("RPENT_COMPACTION_MAX_MESSAGES", 80)),
+        "max_fraction": float(os.environ.get("RPENT_COMPACTION_MAX_FRACTION", 0.8)),
+        "keep_messages": int(os.environ.get("RPENT_COMPACTION_KEEP_MESSAGES", 40)),
+    }
+    if os.environ.get("RPENT_CONTEXT_WINDOW"):
+        settings["context_window"] = int(os.environ["RPENT_CONTEXT_WINDOW"])
+    if os.environ.get("RPENT_COMPACTION_KEEP_TOKENS"):
+        settings["keep_tokens"] = int(os.environ["RPENT_COMPACTION_KEEP_TOKENS"])
+    return settings
 
 
 def _build_model_settings(

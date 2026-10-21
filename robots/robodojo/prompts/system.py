@@ -61,7 +61,10 @@ TOOLS = """Motion and manipulation:
   permit several objects; it does not promise a particular grasp order.
 - Gripper semantics: 1 = close/hold, -1 = open. Keep the gripper closed while
   carrying an object.
-- Do not confuse the policy's grasp heuristic with environment task success."""
+- Do not confuse the policy's grasp heuristic with environment task success.
+- Every action reports `env_steps_used` and each gripper's `status` (`open`,
+  `closed_empty`, `closed_on_object`). `pi0_pick` also lists gripper events
+  inside the rollout, each with a keyframe image taken at that moment."""
 
 STEERABLE_TOOLS = """Steerable motion and grasp planning:
 - `move_pose` moves the end-effector link to a full pose (xyz + quat_wxyz), so
