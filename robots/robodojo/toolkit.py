@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 from functools import partial
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from rpent.dashboard.events import DashboardEventSink
@@ -57,6 +58,7 @@ class RoboDojoToolkit(Toolkit):
         )
         self.init_primitives(primitives_kwargs=primitives_kwargs)
         self._register_robodojo_tools()
+        self._confine_file_tools()
         if eval_fair:
             allowed = {
                 "view_env_state",
@@ -149,6 +151,34 @@ class RoboDojoToolkit(Toolkit):
         if self.eval_fair:
             return False  # Plan completion is not an official task verdict.
         return self._primitives.env.is_success()
+
+    def _confine_file_tools(self) -> None:
+        """Limit file tools to this run's memory and output folders.
+
+        Elsewhere on disk lie evaluator files (diagnostic cases and scores),
+        simulator layouts with ground-truth poses, and other runs' outputs.
+        """
+        from rpent.utils.config import get_repo_root
+
+        allowed = (Path(self._memory.root).resolve(), Path(get_output_dir()).resolve())
+        for name in ("read_text_file", "write_text_file", "list_dir"):
+            declaration = self._tools.get(name)
+            if declaration is None:
+                continue
+
+            def guarded(*, _declaration=declaration, **kwargs):
+                path = kwargs.get("path", "")
+                resolved = (get_repo_root() / path).resolve()
+                if not any(resolved.is_relative_to(root) for root in allowed):
+                    return ToolResult(
+                        data={
+                            "error": f"path outside this run's folders: {path}",
+                            "allowed_folders": [str(root) for root in allowed],
+                        }
+                    )
+                return _declaration(**kwargs)
+
+            self.add_tool(declaration.with_handler(guarded), replace=True)
 
     def _register_robodojo_tools(self) -> None:
         from robots.robodojo import steerable

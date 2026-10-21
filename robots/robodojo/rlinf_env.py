@@ -87,7 +87,13 @@ class RoboDojoAgentEnv(RoboDojoEnv):
         self.diagnostic_case = (
             json.loads(Path(diagnostic_case).read_text()) if diagnostic_case else None
         )
-        self.diagnostic_path = Path(save_dir) / "diagnostic_score.json"
+        # The score stays beside the case file, outside the planner's output
+        # folder, so file tools cannot read the evaluator's verdict.
+        self.diagnostic_path = (
+            Path(diagnostic_case).with_suffix(".score.json")
+            if diagnostic_case
+            else Path(save_dir) / "diagnostic_score.json"
+        )
         self.recorder = _VideoRecorder(video_dir)
         self.bottle_mon = _SafetyMonitor(self.meta.get("task", ""))
         super().__init__(cfg, 1, 0, 1, None, record_metrics=False)

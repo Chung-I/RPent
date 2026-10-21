@@ -203,3 +203,37 @@ def test_segment_returns_an_outlined_frame_and_a_grounding_box():
     assert result.data["bbox_2d"] == [500, 250, 750, 500]
     assert "annotation" in result.data["image"]
     assert len(result.images) == 1 and result.images[0][:4] == b"\x89PNG"
+
+
+def test_file_tools_stay_inside_the_run_folders(monkeypatch, tmp_path):
+    from rpent.utils import logging
+
+    out = tmp_path / "run"
+    out.mkdir()
+    monkeypatch.setattr(logging, "_output_dir", out)
+    (out / "notes.txt").write_text("mine")
+    secret = tmp_path / "cases" / "case.json"
+    secret.parent.mkdir()
+    secret.write_text('{"members": []}')
+    toolkit = RoboDojoToolkit(
+        primitives_kwargs={"env": StepCountingEnv(), "task": "pick"},
+        dashboard_events=NullDashboardEventSink(),
+        memory=MemoryManager(tmp_path / "memory"),
+    )
+
+    assert (
+        toolkit.execute_tool("read_text_file", {"path": str(out / "notes.txt")}).data[
+            "content"
+        ]
+        == "mine"
+    )
+    for name, args in (
+        ("read_text_file", {"path": str(secret)}),
+        ("list_dir", {"path": str(secret.parent)}),
+        ("write_text_file", {"path": str(secret), "content": "x"}),
+    ):
+        assert (
+            "outside this run's folders"
+            in toolkit.execute_tool(name, args).data["error"]
+        )
+    assert secret.read_text() == '{"members": []}'
