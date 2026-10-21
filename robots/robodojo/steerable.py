@@ -239,7 +239,7 @@ def check_reach(
     return ToolResult(data={"xyz": list(xyz), "quat_wxyz": quat_wxyz, "arms": out})
 
 
-@tool(readonly=False, exclude=("primitives", "state", "settle_steps"))
+@tool(readonly=False, exclude=("primitives", "state", "max_settle_steps"))
 def move_pose(
     primitives: Any,
     state: Any,
@@ -247,13 +247,15 @@ def move_pose(
     quat_wxyz: Annotated[list[float], Field(min_length=4, max_length=4)],
     arm: Literal["left", "right"] = "right",
     gripper: float = 0,
-    settle_steps: Any = 6,
+    max_settle_steps: Any = 60,
 ) -> ToolResult:
     """Move an end-effector (link6) to a full world pose (position + wrist orientation) with CuRobo IK.
 
     The path is a straight line split into ~3 cm IK waypoints, so a pre-grasp -> grasp move
     approaches along the gripper axis. Use the poses returned by `plan_grasp`. The arm does
-    not move when the final pose has no IK solution.
+    not move when the final pose has no IK solution. `stopped_because` is `converged`,
+    `stalled` (blocked by contact or a collision IK does not model; re-plan rather than
+    repeat), `episode_over`, or `step_cap`.
 
     Args:
         xyz: World xyz of the end-effector link
@@ -276,6 +278,11 @@ def move_pose(
     if start_ee is None:
         return ToolResult(data={"error": f"{arm} ee_pose not in state"})
     start = np.asarray(start_ee, dtype=np.float64)[:7]
+    status = primitives.env.get_status()
+    if status.get("step", 0) >= status.get("step_limit", 1):
+        return ToolResult(
+            data={"arm": arm, "moved": False, "error": "episode step budget exhausted"}
+        )
     final_ik = primitives.env.solve_ik_pose(arm, [float(v) for v in target])
     if final_ik.get("status") != "Success":
         error = final_ik.get("error", "no IK solution for target pose")
@@ -289,11 +296,13 @@ def move_pose(
         else:
             skipped += 1
     n_waypoints = len(plan) + 1
-    plan += [final_ik["joint_value"]] * (1 + int(settle_steps))
     goal = np.asarray(final_ik["joint_value"], dtype=np.float64)
     final = start
     steps_used = 0
-    for i, joints in enumerate(plan):
+
+    def advance(joints) -> tuple[np.ndarray | None, bool]:
+        """One env step toward ``joints``; returns (arm joints, episode over)."""
+        nonlocal obs, final, steps_used
         primitives._check_cancelled()
         obs, _reward, _done, info = primitives.env.step(
             _hold_action(obs, arm, joints, gripper)
@@ -303,13 +312,48 @@ def move_pose(
         st = obs.get("state", {})
         if st.get(f"{arm}_ee_pose") is not None:
             final = np.asarray(st[f"{arm}_ee_pose"], dtype=np.float64)[:7]
-        joints_now = st.get(f"{arm}_arm_joint_state")
-        if i >= n_waypoints - 1 and joints_now is not None:
-            q = np.asarray(joints_now, dtype=np.float64).reshape(-1)[: len(goal)]
-            if float(np.max(np.abs(q - goal))) < 0.01:
-                break
-        if info["status"].get("step", 0) >= info["status"].get("step_limit", 1):
+        q = st.get(f"{arm}_arm_joint_state")
+        q = (
+            None
+            if q is None
+            else np.asarray(q, dtype=np.float64).reshape(-1)[: len(goal)]
+        )
+        status = info["status"]
+        over = bool(status.get("episode_over")) or status.get("step", 0) >= status.get(
+            "step_limit", 1
+        )
+        return q, over
+
+    # Waypoints get one step each: consecutive solutions differ by less than the
+    # ~0.2 rad/step joint velocity cap, so the end-effector tracks the line.
+    stopped = None
+    q = None
+    for joints in plan:
+        q, over = advance(joints)
+        if over:
+            stopped = "episode_over"
             break
+    # Then settle on the goal; long moves need many steps at the velocity cap.
+    stalled_joint = None
+    still = 0
+    while stopped is None:
+        if q is not None and float(np.max(np.abs(q - goal))) < 0.01:
+            stopped = "converged"
+        elif steps_used >= len(plan) + int(max_settle_steps):
+            stopped = "step_cap"
+        else:
+            prev = q
+            q, over = advance(final_ik["joint_value"])
+            moved_rad = (
+                np.inf if prev is None or q is None else float(np.max(np.abs(q - prev)))
+            )
+            still = still + 1 if moved_rad < 1e-3 else 0
+            if over:
+                stopped = "episode_over"
+            elif still >= 3 and float(np.max(np.abs(q - goal))) >= 0.01:
+                stopped = "stalled"
+                stalled_joint = int(np.argmax(np.abs(q - goal))) + 1
+    joint_error = None if q is None else round(float(np.max(np.abs(q - goal))), 4)
     w, x, y, z = target[3:]
     approach = Rotation.from_quat([x, y, z, w]).as_matrix()[:, 0]
     tcp_target = target[:3] + ARX_TCP_OFFSET * approach
@@ -331,6 +375,9 @@ def move_pose(
             "waypoints": n_waypoints,
             "waypoints_without_ik": skipped,
             "steps_used": steps_used,
+            "stopped_because": stopped,
+            "max_joint_error_rad": joint_error,
+            "stalled_joint": stalled_joint,
         }
     )
 

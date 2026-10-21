@@ -184,3 +184,39 @@ def test_diagnostic_case_replaces_instruction_and_success(make_agent, tmp_path):
         True,
         42,
     )
+
+
+def test_diagnostic_episode_ignores_actions_after_the_horizon(make_agent, tmp_path):
+    # Native evaluation skips actions once take_action_cnt reaches step_lim; the
+    # diagnostic score must describe that state, not later planner actions.
+    applied = []
+    reward_manager = SimpleNamespace(
+        is_all_gripper_open=lambda open_threshold: False,
+        check_once=lambda predicate, env_idx: predicate,
+    )
+    env = SimpleNamespace(
+        get_obs=lambda env_idx: {"vision": {}, "state": {}},
+        obs_manager=SimpleNamespace(
+            desc_manager=SimpleNamespace(get_one_description=lambda: ["Native."])
+        ),
+        reward_manager=reward_manager,
+        is_success=lambda env_idx: False,
+        take_action_cnt=[700],
+        step_lim=700,
+    )
+    slot = SimpleNamespace(env=env, apply_action=lambda *a, **k: applied.append(a))
+    agent = make_agent(env, slot=slot)
+    agent.diagnostic_case = {
+        "id": "bottle_case",
+        "instruction": "Put one bottle into the dustbin.",
+        "quantifier": "any",
+        "members": [],
+        "release": {"method": "is_all_gripper_open", "kwargs": {"open_threshold": 0.8}},
+    }
+    agent.diagnostic_path = tmp_path / "diagnostic_score.json"
+
+    _obs, _reward, _done, info = agent.step_native([0.0] * 14)
+
+    assert applied == []
+    assert info["status"]["episode_over"] is True
+    assert json.loads(agent.diagnostic_path.read_text())["step"] == 700

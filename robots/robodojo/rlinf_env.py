@@ -244,6 +244,19 @@ class RoboDojoAgentEnv(RoboDojoEnv):
             self.env.step_lim
         ):
             raise RuntimeError("Episode step budget exhausted")
+        if self.diagnostic_case is not None and int(self.env.take_action_cnt[0]) >= int(
+            self.env.step_lim
+        ):
+            # Native evaluation skips actions after the horizon, so the scored
+            # state stays the one reached within the episode budget.
+            status = self._with_diagnostic(_status(self.env, self.bottle_mon))
+            status["episode_over"] = True
+            info = {
+                "status": status,
+                "step_limit": int(self.env.step_lim),
+                "safety": {},
+            }
+            return self.get_native_obs(), 0.0, bool(status["success"]), info
         self._sub_env(0).apply_action(
             flat_action, action_type, eval_fair=self.eval_fair
         )

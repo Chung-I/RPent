@@ -33,7 +33,16 @@ def _rot(quat_wxyz):
 class FakeEnv:
     """Joint values equal the requested pose, so a reached joint goal is the pose."""
 
-    def __init__(self, unreachable=()):
+    def __init__(
+        self, unreachable=(), max_step=np.inf, lower_stop=None, step_limit=500, used=0
+    ):
+        # max_step: per-coordinate velocity cap per env step; lower_stop: hard stops.
+        self.max_step = max_step
+        self.lower_stop = (
+            None if lower_stop is None else np.asarray(lower_stop, dtype=float)
+        )
+        self.step_limit = step_limit
+        self.used = used
         self.state = {
             "right_ee_pose": list(HOME),
             "right_arm_joint_state": list(HOME),
@@ -58,18 +67,22 @@ class FakeEnv:
             "joint_displacement": 0.1,
         }
 
+    def get_status(self):
+        return {"step": self.used, "step_limit": self.step_limit}
+
     def step(self, action):
         self.actions.append(action)
-        joints = action["right_arm_joint_state"]
-        self.state["right_arm_joint_state"] = list(joints)
-        self.state["right_ee_pose"] = list(joints)
-        self.state["right_ee_joint_state"] = action["right_ee_joint_state"]
-        return (
-            self.get_obs(),
-            0.0,
-            False,
-            {"status": {"step": len(self.actions), "step_limit": 500}},
-        )
+        if self.used < self.step_limit:
+            self.used += 1
+            q = np.asarray(self.state["right_arm_joint_state"], dtype=float)
+            goal = np.asarray(action["right_arm_joint_state"], dtype=float)
+            q = q + np.clip(goal - q, -self.max_step, self.max_step)
+            if self.lower_stop is not None:
+                q = np.maximum(q, self.lower_stop)
+            self.state["right_arm_joint_state"] = list(q)
+            self.state["right_ee_pose"] = list(q)
+            self.state["right_ee_joint_state"] = action["right_ee_joint_state"]
+        return self.get_obs(), 0.0, False, {"status": self.get_status()}
 
 
 def _primitives(env, sam3=None):
@@ -204,3 +217,52 @@ def test_ik_solutions_are_wrapped_into_simulator_joint_limits():
     assert (
         wrap_into_limits(np.array([-3.1515, 0.0, 0.0]), current, lower, upper) is None
     )
+
+
+def test_move_pose_settles_long_moves_under_the_velocity_cap():
+    # 0.4 m at 0.02 per step needs 20 steps; a fixed short settle stops short.
+    env = FakeEnv(max_step=0.02)
+    target = [0.3, -0.2, 0.7]
+
+    result = steerable.move_pose(
+        primitives=_primitives(env), state=None, xyz=target, quat_wxyz=[1, 0, 0, 0]
+    ).data
+
+    assert result["reached"] and result["stopped_because"] == "converged"
+    assert result["final_xyz"] == pytest.approx(target, abs=1e-3)
+
+
+def test_move_pose_reports_a_stalled_joint_instead_of_waiting():
+    stop = [-np.inf, -np.inf, 0.9, -np.inf, -np.inf, -np.inf, -np.inf]
+    env = FakeEnv(max_step=0.05, lower_stop=stop)
+
+    result = steerable.move_pose(
+        primitives=_primitives(env),
+        state=None,
+        xyz=[0.3, -0.2, 0.7],
+        quat_wxyz=[1, 0, 0, 0],
+    ).data
+
+    assert not result["reached"] and result["stopped_because"] == "stalled"
+    assert result["stalled_joint"] == 3  # 1-based joint index
+    assert result["steps_used"] < 20
+
+
+def test_move_pose_stops_at_the_episode_horizon():
+    env = FakeEnv(max_step=0.02, step_limit=5)
+
+    result = steerable.move_pose(
+        primitives=_primitives(env),
+        state=None,
+        xyz=[0.3, -0.2, 0.7],
+        quat_wxyz=[1, 0, 0, 0],
+    ).data
+    assert result["stopped_because"] == "episode_over" and result["steps_used"] == 5
+
+    again = steerable.move_pose(
+        primitives=_primitives(env),
+        state=None,
+        xyz=[0.3, -0.2, 0.7],
+        quat_wxyz=[1, 0, 0, 0],
+    ).data
+    assert again["moved"] is False and len(env.actions) == 5
