@@ -63,6 +63,18 @@ TOOLS = """Motion and manipulation:
   carrying an object.
 - Do not confuse the policy's grasp heuristic with environment task success."""
 
+STEERABLE_TOOLS = """Steerable motion and grasp planning:
+- `move_pose` moves the end-effector link to a full pose (xyz + quat_wxyz), so
+  it controls the wrist orientation that `move_to` leaves to the solver.
+- `check_reach` tests a position or pose with IK without moving.
+- `plan_grasp` turns a SAM3 prompt into ranked 6-DoF grasps (GraspGen on the
+  depth point cloud) with IK-checked `pregrasp_xyz`, `grasp_xyz` and
+  `quat_wxyz`. To execute one: `move_pose` to the pre-grasp with the gripper
+  open (-1), `move_pose` to the grasp, `set_gripper` close, then lift with
+  `move_pose` (same orientation, higher z). Re-plan if the object moved.
+- These are alternatives to `pi0_pick`; choose per object and confirm holds
+  from the wrist camera."""
+
 SAFETY = """Safety:
 - Inspect the scene after motion and stop the current plan if an object is
   unstable or an arm is obstructed. Re-localize before attempting recovery."""

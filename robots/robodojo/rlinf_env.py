@@ -26,9 +26,11 @@ import torch
 from rlinf.envs.sim.robodojo.robodojo_env import RoboDojoEnv
 
 from robots.robodojo.agent_support import (
+    _gripper_geometry,
     _obs_dict,
     _reward_details,
     _SafetyMonitor,
+    _solve_ik_pose,
     _solve_ik_position,
     _status,
     _VideoRecorder,
@@ -282,6 +284,12 @@ class RoboDojoAgentEnv(RoboDojoEnv):
 
     def get_safety_status(self) -> dict[str, Any]:
         return self.bottle_mon.status()
+
+    def solve_ik_pose(self, arm: str, pose: list) -> dict[str, Any]:
+        return _solve_ik_pose(self.env, arm, pose)
+
+    def get_gripper_geometry(self, arm: str) -> dict[str, Any]:
+        return _gripper_geometry(self.env, arm)
 
     def is_success(self) -> bool:
         return self._success()

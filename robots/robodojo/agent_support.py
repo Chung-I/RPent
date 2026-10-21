@@ -377,3 +377,72 @@ def _solve_ik_position(env, arm: str, xyz: list) -> dict:
         "joint_value": [float(v) for v in best[1]],
         "joint_displacement": round(best[0], 4),
     }
+
+
+def _solve_ik_pose(env, arm: str, pose: list) -> dict:
+    """Full-pose IK (xyz + wxyz quaternion of the end-effector link) for one arm."""
+    robot = _find_robot(env, arm)
+    if robot is None:
+        return {"status": "Fail", "error": f"robot for arm {arm!r} not found"}
+    if len(pose) != 7:
+        return {
+            "status": "Fail",
+            "error": "pose must be xyz + wxyz quaternion (7 values)",
+        }
+    quat = np.asarray(pose[3:], dtype=np.float64)
+    norm = float(np.linalg.norm(quat))
+    if not np.isfinite(norm) or norm < 1e-6:
+        return {"status": "Fail", "error": "quaternion has zero norm"}
+    target = [float(v) for v in pose[:3]] + [float(v) for v in quat / norm]
+    current = np.asarray(
+        env.robot_manager.get_joint(robot, env_idx_list=[0])[0], dtype=np.float64
+    )
+    try:
+        res = env.robot_manager.solve_ik(target_pose=target, env_idx=0, robot=robot)
+    except Exception as exc:  # noqa: BLE001 - report solver failures to the planner
+        return {"status": "Fail", "error": f"IK solver error: {exc}"}
+    if res.get("status") != "Success":
+        return {"status": "Fail", "error": "no IK solution for this pose"}
+    joints = np.asarray(res["joint_value"], dtype=np.float64)
+    return {
+        "status": "Success",
+        "arm": arm,
+        "joint_value": [float(v) for v in joints],
+        "joint_displacement": round(float(np.abs(joints - current).sum()), 4),
+    }
+
+
+def _gripper_geometry(env, arm: str) -> dict:
+    """World poses of the end-effector link and both fingers, plus derived TCP axes."""
+    robot = _find_robot(env, arm)
+    if robot is None:
+        return {"error": f"robot for arm {arm!r} not found"}
+    rm = env.robot_manager
+
+    def pose(link):
+        return np.asarray(
+            rm.get_link_pose(robot, link_name=link, env_idx_list=[0], is_relative=True)[
+                0
+            ],
+            dtype=np.float64,
+        )
+
+    ee = pose(robot.ee_link_name)
+    fingers = [pose(name) for name in ("link7", "link8")]
+    from scipy.spatial.transform import Rotation as _R
+
+    rot = _R.from_quat([ee[4], ee[5], ee[6], ee[3]]).as_matrix()
+    mid = (fingers[0][:3] + fingers[1][:3]) / 2.0
+    return {
+        "ee_pose": [round(float(v), 5) for v in ee],
+        "finger_mid": [round(float(v), 5) for v in mid],
+        "finger_gap_m": round(
+            float(np.linalg.norm(fingers[0][:3] - fingers[1][:3])), 5
+        ),
+        "finger_mid_in_ee_frame": [round(float(v), 5) for v in rot.T @ (mid - ee[:3])],
+        "ee_axes_world": {
+            name: [round(float(v), 4) for v in rot[:, i]]
+            for i, name in enumerate("xyz")
+        },
+        "gripper_bias": float(getattr(robot, "gripper_bias", float("nan"))),
+    }

@@ -53,6 +53,12 @@ class RoboDojoEnvClient(BaseEnvClient):
             "env.solve_ik_position", kwargs={"arm": arm, "xyz": xyz}
         )
 
+    def solve_ik_pose(self, arm: str, pose: list) -> dict[str, Any]:
+        return self._client.call("env.solve_ik_pose", kwargs={"arm": arm, "pose": pose})
+
+    def get_gripper_geometry(self, arm: str) -> dict[str, Any]:
+        return self._client.call("env.get_gripper_geometry", kwargs={"arm": arm})
+
     def get_safety_status(self) -> dict[str, Any]:
         return self._client.call("env.get_safety_status")
 

@@ -136,9 +136,13 @@ class RoboDojoToolkit(Toolkit):
         return self._primitives.env.is_success()
 
     def _register_robodojo_tools(self) -> None:
+        from robots.robodojo import steerable
         from robots.robodojo import tools as robodojo_tools
 
-        for definition in iter_tools(robodojo_tools):
+        owners = [robodojo_tools]
+        if steerable.steerable_enabled():
+            owners.append(steerable)
+        for definition in iter_tools(*owners):
             resources = {"state": self._state}
             if definition.name != "view_env_state":
                 resources["primitives"] = self._primitives

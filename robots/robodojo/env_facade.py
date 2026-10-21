@@ -39,6 +39,8 @@ class RoboDojoEnvFacade(MainThreadServeMixin, BaseEnvFacade):
                 "env.get_reward_details": self.get_reward_details,
                 "env.get_safety_status": self.get_safety_status,
                 "env.solve_ik_position": self.solve_ik_position,
+                "env.solve_ik_pose": self.solve_ik_pose,
+                "env.get_gripper_geometry": self.get_gripper_geometry,
                 "env.is_success": self.is_success,
                 "env.close": self.request_close,
             }
@@ -54,6 +56,8 @@ class RoboDojoEnvFacade(MainThreadServeMixin, BaseEnvFacade):
                 "env.get_reward_details",
                 "env.get_safety_status",
                 "env.solve_ik_position",
+                "env.solve_ik_pose",
+                "env.get_gripper_geometry",
             ]
         )
         if self.eval_fair:
@@ -104,6 +108,12 @@ class RoboDojoEnvFacade(MainThreadServeMixin, BaseEnvFacade):
 
     def solve_ik_position(self, arm: str, xyz: list) -> dict:
         return self.env.solve_ik_position(arm, xyz)
+
+    def solve_ik_pose(self, arm: str, pose: list) -> dict:
+        return self.env.solve_ik_pose(arm, pose)
+
+    def get_gripper_geometry(self, arm: str) -> dict:
+        return self.env.get_gripper_geometry(arm)
 
     def is_success(self) -> bool:
         return self.env.is_success()
