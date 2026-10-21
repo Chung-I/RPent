@@ -227,6 +227,28 @@ class ApiAgentLoop(Planner):
         )
 
 
+def _estimate_tokens(text: str) -> int:
+    """Characters / 4, with each image charged a fixed count instead of its bytes.
+
+    The compaction estimator stringifies tool results, so a ``BinaryContent``
+    repr carries the raw image bytes: one camera frame would count as ~290K
+    tokens. A 640x480 frame costs ~330 tokens on Qwen3.8.
+    """
+    per_image = int(os.environ.get("RPENT_IMAGE_TOKENS", 400))
+    images = 0
+    kept: list[str] = []
+    pos = 0
+    while (start := text.find("BinaryContent(data=", pos)) != -1:
+        end = text.find("media_type=", start)
+        if end == -1:
+            break
+        kept.append(text[pos:start])
+        images += 1
+        pos = end
+    kept.append(text[pos:])
+    return sum(len(chunk) for chunk in kept) // 4 + images * per_image
+
+
 def _compaction_settings() -> dict[str, Any]:
     """History trimming; environment overrides suit long self-hosted contexts."""
     settings: dict[str, Any] = {
@@ -236,6 +258,8 @@ def _compaction_settings() -> dict[str, Any]:
     }
     if os.environ.get("RPENT_CONTEXT_WINDOW"):
         settings["context_window"] = int(os.environ["RPENT_CONTEXT_WINDOW"])
+        # The token trigger needs an estimate that does not count raw image bytes.
+        settings["tokenizer"] = _estimate_tokens
     if os.environ.get("RPENT_COMPACTION_KEEP_TOKENS"):
         settings["keep_tokens"] = int(os.environ["RPENT_COMPACTION_KEEP_TOKENS"])
     return settings

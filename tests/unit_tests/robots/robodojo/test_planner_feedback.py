@@ -237,3 +237,31 @@ def test_file_tools_stay_inside_the_run_folders(monkeypatch, tmp_path):
             in toolkit.execute_tool(name, args).data["error"]
         )
     assert secret.read_text() == '{"members": []}'
+
+
+def test_history_trimming_counts_an_image_as_hundreds_of_tokens(monkeypatch):
+    # The compaction estimator stringifies tool results, raw image bytes included;
+    # one camera frame then looks like ~290K tokens and every request is trimmed.
+    from pydantic_ai import BinaryContent
+    from pydantic_ai.messages import ModelRequest, ToolReturnPart
+    from pydantic_ai_harness.compaction._shared import estimate_token_count
+
+    from rpent.planner.api_loop import _compaction_settings
+
+    monkeypatch.setenv("RPENT_CONTEXT_WINDOW", "262144")
+    image = BinaryContent(
+        data=bytes(range(256)) * 1600, media_type="image/png"
+    )  # ~400 KB
+    message = ModelRequest(
+        parts=[
+            ToolReturnPart(
+                tool_name="view_env_state",
+                content=['{"step": 0}', image],
+                tool_call_id="x",
+            )
+        ]
+    )
+
+    tokens = estimate_token_count([message], _compaction_settings()["tokenizer"])
+
+    assert 400 <= tokens < 1000
