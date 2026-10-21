@@ -90,6 +90,10 @@ STEERABLE_TOOLS = """Steerable motion, grasp planning and skills:
   holding arm, then grasp with the other arm.
 - `push` slides an object along the table with the closed gripper, e.g. to
   bring it within reach.
+- Reach near the table with the gripper pointing down (world frame): the left
+  arm covers x from -0.70 to 0.15, the right arm x from -0.15 to 0.70, both for
+  y from -0.65 to about -0.05 (less near their x limits). Only x between -0.15
+  and 0.15 is shared; a target outside the holding arm's range needs `handoff`.
 - These are alternatives to `pi0_pick`; choose per object and confirm holds
   from the wrist camera."""
 

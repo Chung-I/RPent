@@ -281,7 +281,7 @@ def move_pose(
     has no solution the arm does not move and `failed_pose_index` names it (the target is the
     last index). `stopped_because` is `converged`, `stalled` (blocked by contact or a collision
     IK does not model; re-plan rather than repeat), `episode_over`, or `step_cap`; a via
-    segment that does not converge ends the move there.
+    pose that is not reached ends the move there.
 
     Args:
         xyz: World xyz of the end-effector link
@@ -327,7 +327,8 @@ def move_pose(
         data = _move_leg(primitives, obs, arm, pose, ik, gripper, max_settle_steps)
         obs = primitives._last_obs
         steps += data["steps_used"]
-        if index < len(poses) - 1 and data["stopped_because"] != "converged":
+        passed = data["stopped_because"] == "converged" or data["reached"]
+        if index < len(poses) - 1 and not passed:
             data["stopped_at_via_index"] = index
             break
     data["steps_used"] = steps
