@@ -113,6 +113,22 @@ def test_no_vla_runs_omit_pi0_pick_from_tools_and_prompt(monkeypatch, tmp_path):
     assert "pi0" not in prompt and "Pi_05" not in prompt
 
 
+def test_steerable_runs_offer_skills_instead_of_reach_probes(monkeypatch, tmp_path):
+    from rpent.utils import logging
+
+    monkeypatch.setattr(logging, "_output_dir", tmp_path)
+    monkeypatch.setenv("RPENT_ROBODOJO_STEERABLE", "1")
+    toolkit = RoboDojoToolkit(
+        primitives_kwargs={"env": StepCountingEnv(), "task": "pick"},
+        dashboard_events=NullDashboardEventSink(),
+        memory=MemoryManager(tmp_path / "memory"),
+    )
+    names = {spec.name for spec in toolkit.list_tools()}
+
+    assert {"place", "handoff", "push", "move_pose", "plan_place", "pi0_pick"} <= names
+    assert not names & {"check_reach", "place_in_bin"}
+
+
 def test_gripper_opening_is_interpreted():
     report = tools.gripper_report(
         {"left_ee_joint_state": [0.0], "right_ee_joint_state": [0.45]}

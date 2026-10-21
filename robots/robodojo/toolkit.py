@@ -181,14 +181,17 @@ class RoboDojoToolkit(Toolkit):
             self.add_tool(declaration.with_handler(guarded), replace=True)
 
     def _register_robodojo_tools(self) -> None:
-        from robots.robodojo import steerable
+        from robots.robodojo import skills, steerable
         from robots.robodojo import tools as robodojo_tools
 
         owners = [robodojo_tools]
+        hidden = {"pi0_pick"} if steerable.vla_disabled() else set()
         if steerable.steerable_enabled():
-            owners.append(steerable)
+            owners += [steerable, skills]
+            # The skills search reachability and release poses themselves.
+            hidden |= {"check_reach", "place_in_bin"}
         for definition in iter_tools(*owners):
-            if definition.name == "pi0_pick" and steerable.vla_disabled():
+            if definition.name in hidden:
                 continue
             resources = {"state": self._state}
             if definition.name != "view_env_state":

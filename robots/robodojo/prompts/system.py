@@ -68,11 +68,12 @@ TOOLS = """Motion and manipulation:
   `closed_empty`, `closed_on_object`). `pi0_pick` also lists gripper events
   inside the rollout, each with a keyframe image taken at that moment."""
 
-STEERABLE_TOOLS = """Steerable motion and grasp planning:
+STEERABLE_TOOLS = """Steerable motion, grasp planning and skills:
 - `move_pose` moves the end-effector link to a full pose (xyz + quat_wxyz), so
-  it controls the wrist orientation that `move_to` leaves to the solver.
-- `check_reach` tests a position or pose with IK without moving. IK ignores
-  the table: keep the TCP (0.145 m along the gripper axis from the
+  it controls the wrist orientation that `move_to` leaves to the solver. Pass
+  `via_poses` for a multi-segment path (lift, carry, lower). It checks IK for
+  every pose before moving and names the first pose without a solution. IK
+  ignores the table: keep the TCP (0.145 m along the gripper axis from the
   end-effector link) above the support surface.
 - `plan_grasp` turns a SAM3 prompt into ranked 6-DoF grasps (GraspGen on the
   depth point cloud) with IK-checked `pregrasp_xyz`, `grasp_xyz` and
@@ -80,10 +81,15 @@ STEERABLE_TOOLS = """Steerable motion and grasp planning:
   open (-1), `move_pose` to the grasp, `set_gripper` close, then retreat to
   the pre-grasp pose with the gripper closed (1) before any further move.
   Re-plan if the object moved.
-- `plan_place` returns IK-checked approach and release poses over a target
-  (bin, pad, box, basket). Pass `held_object_prompt` so it measures the held
-  object; execute with `move_pose` (gripper closed), `set_gripper` open, then
-  retreat to the approach pose.
+- `place` puts the held object on or into a target (bin, pad, box, basket): it
+  plans release poses from depth (`plan_place`), carries, releases and lifts
+  away. Use it instead of releasing at a hand-picked point. Pass
+  `held_object_prompt` so it measures the held object.
+- `handoff` sets the held object down on the table where the other arm can
+  grasp it. Use it when `place` finds no reachable release pose for the
+  holding arm, then grasp with the other arm.
+- `push` slides an object along the table with the closed gripper, e.g. to
+  bring it within reach.
 - These are alternatives to `pi0_pick`; choose per object and confirm holds
   from the wrist camera."""
 

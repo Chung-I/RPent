@@ -58,10 +58,28 @@ def mask_points(
 ) -> np.ndarray:
     """World points under a mask, using the ``back_project`` camera convention.
 
-    Isaac cameras look along -Z and ``distance_to_image_plane`` is the
-    optical-axis distance; image rows grow downward while the camera +Y is up.
     Far outliers (mask bleed onto the background) are removed by distance to
     the median point.
+    """
+    pts = pixel_points(cam, mask)
+    if len(pts) == 0:
+        return pts
+    centre = np.median(pts, axis=0)
+    dist = np.linalg.norm(pts - centre, axis=1)
+    mad = np.median(np.abs(dist - np.median(dist))) + 1e-6
+    pts = pts[dist <= np.median(dist) + 4.0 * mad]
+    if len(pts) > max_points:
+        pts = pts[
+            np.random.default_rng(seed).choice(len(pts), max_points, replace=False)
+        ]
+    return pts
+
+
+def pixel_points(cam: dict, mask: np.ndarray) -> np.ndarray:
+    """World points of every masked pixel with valid depth, unfiltered.
+
+    Isaac cameras look along -Z and ``distance_to_image_plane`` is the
+    optical-axis distance; image rows grow downward while the camera +Y is up.
     """
     depth = cam.get("distance_to_image_plane")
     if depth is None:
@@ -82,16 +100,7 @@ def mask_points(
     p_cam = np.stack(
         [(cols - cx) / fx * d, -(rows - cy) / fy * d, -d, np.ones_like(d)], axis=1
     )
-    pts = (T @ p_cam.T).T[:, :3]
-    centre = np.median(pts, axis=0)
-    dist = np.linalg.norm(pts - centre, axis=1)
-    mad = np.median(np.abs(dist - np.median(dist))) + 1e-6
-    pts = pts[dist <= np.median(dist) + 4.0 * mad]
-    if len(pts) > max_points:
-        pts = pts[
-            np.random.default_rng(seed).choice(len(pts), max_points, replace=False)
-        ]
-    return pts
+    return (T @ p_cam.T).T[:, :3]
 
 
 def _encode(a: np.ndarray) -> str:
@@ -260,55 +269,86 @@ def move_pose(
     quat_wxyz: Annotated[list[float], Field(min_length=4, max_length=4)],
     arm: Literal["left", "right"] = "right",
     gripper: float = 0,
+    via_poses: list[Annotated[list[float], Field(min_length=7, max_length=7)]]
+    | None = None,
     max_settle_steps: Any = 60,
 ) -> ToolResult:
     """Move an end-effector (link6) to a full world pose (position + wrist orientation) with CuRobo IK.
 
-    The path is a straight line split into ~3 cm IK waypoints, so a pre-grasp -> grasp move
-    approaches along the gripper axis. Use the poses returned by `plan_grasp` or `plan_place`.
-    It checks IK itself before moving and does not move when the final pose has no solution,
-    so a separate `check_reach` is not needed. `stopped_because` is `converged`,
-    `stalled` (blocked by contact or a collision IK does not model; re-plan rather than
-    repeat), `episode_over`, or `step_cap`.
+    Each segment is a straight line split into ~3 cm IK waypoints, so a pre-grasp -> grasp
+    move approaches along the gripper axis. `via_poses` are passed through in order before
+    the target (e.g. lift, carry, lower). IK is checked for every pose before moving; if one
+    has no solution the arm does not move and `failed_pose_index` names it (the target is the
+    last index). `stopped_because` is `converged`, `stalled` (blocked by contact or a collision
+    IK does not model; re-plan rather than repeat), `episode_over`, or `step_cap`; a via
+    segment that does not converge ends the move there.
 
     Args:
         xyz: World xyz of the end-effector link
         quat_wxyz: End-effector orientation (w, x, y, z)
         arm: Arm to move
-        gripper: 1=close, -1=open, 0=keep current"""
-    from scipy.spatial.transform import Rotation
-
+        gripper: 1=close, -1=open, 0=keep current
+        via_poses: Poses passed through before the target, each xyz + quat_wxyz (7 values)"""
     from robots.robodojo.tools import _refresh_obs
 
-    target = np.asarray(
-        [float(v) for v in xyz] + [float(v) for v in quat_wxyz], dtype=np.float64
-    )
-    norm = float(np.linalg.norm(target[3:]))
-    if not np.isfinite(norm) or norm < 1e-6:
-        return ToolResult(data={"error": "quat_wxyz has zero norm"})
-    target[3:] /= norm
+    poses = []
+    for pose in [*(via_poses or []), [*xyz, *quat_wxyz]]:
+        pose = np.asarray([float(v) for v in pose], dtype=np.float64)
+        norm = float(np.linalg.norm(pose[3:]))
+        if not np.isfinite(norm) or norm < 1e-6:
+            return ToolResult(data={"error": "quat_wxyz has zero norm"})
+        pose[3:] /= norm
+        poses.append(pose)
     obs = _refresh_obs(primitives)
-    start_ee = obs.get("state", {}).get(f"{arm}_ee_pose")
-    if start_ee is None:
+    if obs.get("state", {}).get(f"{arm}_ee_pose") is None:
         return ToolResult(data={"error": f"{arm} ee_pose not in state"})
-    start = np.asarray(start_ee, dtype=np.float64)[:7]
     status = primitives.env.get_status()
     if status.get("step", 0) >= status.get("step_limit", 1):
         return ToolResult(
             data={"arm": arm, "moved": False, "error": "episode step budget exhausted"}
         )
-    final_ik = primitives.env.solve_ik_pose(arm, [float(v) for v in target])
-    if final_ik.get("status") != "Success":
-        error = final_ik.get("error", "no IK solution for target pose")
-        return ToolResult(
-            data={
+    iks = []
+    for index, pose in enumerate(poses):
+        ik = primitives.env.solve_ik_pose(arm, [float(v) for v in pose])
+        if ik.get("status") != "Success":
+            data = {
                 "arm": arm,
                 "moved": False,
-                "error": error,
+                "error": ik.get("error", "no IK solution for target pose"),
                 "ik_checked": True,
                 "note": "IK was checked before motion and failed, so the arm did not move.",
             }
-        )
+            if len(poses) > 1:
+                data["failed_pose_index"] = index
+            return ToolResult(data=data)
+        iks.append(ik)
+    steps = 0
+    for index, (pose, ik) in enumerate(zip(poses, iks)):
+        data = _move_leg(primitives, obs, arm, pose, ik, gripper, max_settle_steps)
+        obs = primitives._last_obs
+        steps += data["steps_used"]
+        if index < len(poses) - 1 and data["stopped_because"] != "converged":
+            data["stopped_at_via_index"] = index
+            break
+    data["steps_used"] = steps
+    if len(poses) > 1:
+        data["via_poses"] = len(poses) - 1
+    return ToolResult(data=data)
+
+
+def _move_leg(
+    primitives: Any,
+    obs: dict,
+    arm: str,
+    target: np.ndarray,
+    final_ik: dict,
+    gripper: float,
+    max_settle_steps: Any,
+) -> dict:
+    """One straight `move_pose` segment to an IK-checked pose."""
+    from scipy.spatial.transform import Rotation
+
+    start = np.asarray(obs["state"][f"{arm}_ee_pose"], dtype=np.float64)[:7]
     plan = []
     skipped = 0
     for waypoint in slerp_waypoints(start, target)[:-1]:
@@ -381,27 +421,25 @@ def move_pose(
     tcp_target = target[:3] + ARX_TCP_OFFSET * approach
     pos_err = float(np.linalg.norm(final[:3] - target[:3]))
     rot_err = rotation_error_deg(list(final[3:]), list(target[3:]))
-    return ToolResult(
-        data={
-            "arm": arm,
-            "moved": True,
-            "target_xyz": [round(float(v), 4) for v in target[:3]],
-            # IK ignores the table: a TCP below the support surface stalls on contact.
-            "target_tcp_xyz": [round(float(v), 4) for v in tcp_target],
-            "final_xyz": [round(float(v), 4) for v in final[:3]],
-            "final_quat_wxyz": [round(float(v), 4) for v in final[3:]],
-            "pos_error_m": round(pos_err, 4),
-            "rot_error_deg": round(rot_err, 2),
-            "reached": pos_err <= 0.01 and rot_err <= 5.0,
-            "joint_displacement": final_ik.get("joint_displacement"),
-            "waypoints": n_waypoints,
-            "waypoints_without_ik": skipped,
-            "steps_used": steps_used,
-            "stopped_because": stopped,
-            "max_joint_error_rad": joint_error,
-            "stalled_joint": stalled_joint,
-        }
-    )
+    return {
+        "arm": arm,
+        "moved": True,
+        "target_xyz": [round(float(v), 4) for v in target[:3]],
+        # IK ignores the table: a TCP below the support surface stalls on contact.
+        "target_tcp_xyz": [round(float(v), 4) for v in tcp_target],
+        "final_xyz": [round(float(v), 4) for v in final[:3]],
+        "final_quat_wxyz": [round(float(v), 4) for v in final[3:]],
+        "pos_error_m": round(pos_err, 4),
+        "rot_error_deg": round(rot_err, 2),
+        "reached": pos_err <= 0.01 and rot_err <= 5.0,
+        "joint_displacement": final_ik.get("joint_displacement"),
+        "waypoints": n_waypoints,
+        "waypoints_without_ik": skipped,
+        "steps_used": steps_used,
+        "stopped_because": stopped,
+        "max_joint_error_rad": joint_error,
+        "stalled_joint": stalled_joint,
+    }
 
 
 @tool(readonly=True, exclude=("primitives", "state", "max_ik_checks"))
@@ -420,7 +458,7 @@ def plan_grasp(
     Returns up to `top_k` candidates ranked by GraspGen confidence. Each gives the arm, a
     `pregrasp_xyz` (10 cm back along the approach), a `grasp_xyz` and the shared `quat_wxyz`
     for the end-effector link, so they feed `move_pose` directly. Both poses are IK-checked
-    (`ik_checked`); do not re-check them with `check_reach`. The cloud is single-view, so confirm the approach side in the camera image.
+    (`ik_checked`). The cloud is single-view, so confirm the approach side in the camera image.
 
     Args:
         text_prompt: SAM3 prompt naming the object, e.g. 'the red bottle'
@@ -541,6 +579,30 @@ def plan_grasp(
     )
 
 
+def held_object_offsets(
+    sam3: Any, cam: dict, prompt: str | None, tcp: np.ndarray
+) -> tuple[np.ndarray, dict]:
+    """Points of a held object relative to the TCP, or a 5 cm hang when unmeasured."""
+    held: dict[str, Any] = {"measured": False}
+    offsets = np.zeros((1, 3))
+    offsets[0, 2] = -0.05  # assumed hang of an unmeasured object below the TCP
+    if prompt:
+        seg = sam3.segment(cam["color"], text_prompt=prompt, min_score=0.2)
+        pts = mask_points(cam, seg.mask) if seg.found else np.zeros((0, 3))
+        if len(pts) >= 32:
+            offsets = pts - tcp
+            held = {
+                "measured": True,
+                "bottom_below_tcp_m": round(float(-offsets[:, 2].min()), 3),
+                "xy_extent_m": [
+                    round(float(v), 3) for v in np.ptp(offsets[:, :2], axis=0)
+                ],
+            }
+        else:
+            held["note"] = f"'{prompt}' not found near the gripper; assumed 5 cm hang"
+    return offsets, held
+
+
 def _footprint(points: np.ndarray, res: float) -> tuple[np.ndarray, np.ndarray]:
     """Filled xy footprint (convex hull) of points and its origin (min corner).
 
@@ -639,28 +701,7 @@ def plan_place(
         return ToolResult(data={"error": error}, images=outline)
     top_z = float(np.percentile(target[:, 2], 95))
 
-    held = {"measured": False}
-    offsets = np.zeros((1, 3))
-    offsets[0, 2] = -0.05  # assumed hang of an unmeasured object below the TCP
-    if held_object_prompt:
-        held_seg = sam3.segment(
-            cam["color"], text_prompt=held_object_prompt, min_score=0.2
-        )
-        pts = mask_points(cam, held_seg.mask) if held_seg.found else np.zeros((0, 3))
-        if len(pts) >= 32:
-            offsets = pts - tcp_now
-            held = {
-                "measured": True,
-                "bottom_below_tcp_m": round(float(-offsets[:, 2].min()), 3),
-                "xy_extent_m": [
-                    round(float(v), 3) for v in np.ptp(offsets[:, :2], axis=0)
-                ],
-            }
-        else:
-            held["note"] = (
-                f"'{held_object_prompt}' not found near the gripper; assumed 5 cm hang"
-            )
-
+    offsets, held = held_object_offsets(sam3, cam, held_object_prompt, tcp_now)
     res = 0.01
     grid, origin = _footprint(target, res)
     import cv2
