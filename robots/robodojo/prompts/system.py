@@ -78,6 +78,10 @@ STEERABLE_TOOLS = """Steerable motion and grasp planning:
   open (-1), `move_pose` to the grasp, `set_gripper` close, then retreat to
   the pre-grasp pose with the gripper closed (1) before any further move.
   Re-plan if the object moved.
+- `plan_place` returns IK-checked approach and release poses over a target
+  (bin, pad, box, basket). Pass `held_object_prompt` so it measures the held
+  object; execute with `move_pose` (gripper closed), `set_gripper` open, then
+  retreat to the approach pose.
 - These are alternatives to `pi0_pick`; choose per object and confirm holds
   from the wrist camera."""
 

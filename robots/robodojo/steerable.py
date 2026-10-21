@@ -236,7 +236,15 @@ def check_reach(
             "joint_displacement": res.get("joint_displacement"),
             "error": res.get("error"),
         }
-    return ToolResult(data={"xyz": list(xyz), "quat_wxyz": quat_wxyz, "arms": out})
+    return ToolResult(
+        data={
+            "xyz": list(xyz),
+            "quat_wxyz": quat_wxyz,
+            "arms": out,
+            "note": "move_pose runs this IK check itself and does not move when it fails; "
+            "plan_grasp and plan_place candidates are already IK-checked.",
+        }
+    )
 
 
 @tool(readonly=False, exclude=("primitives", "state", "max_settle_steps"))
@@ -252,8 +260,9 @@ def move_pose(
     """Move an end-effector (link6) to a full world pose (position + wrist orientation) with CuRobo IK.
 
     The path is a straight line split into ~3 cm IK waypoints, so a pre-grasp -> grasp move
-    approaches along the gripper axis. Use the poses returned by `plan_grasp`. The arm does
-    not move when the final pose has no IK solution. `stopped_because` is `converged`,
+    approaches along the gripper axis. Use the poses returned by `plan_grasp` or `plan_place`.
+    It checks IK itself before moving and does not move when the final pose has no solution,
+    so a separate `check_reach` is not needed. `stopped_because` is `converged`,
     `stalled` (blocked by contact or a collision IK does not model; re-plan rather than
     repeat), `episode_over`, or `step_cap`.
 
@@ -286,7 +295,15 @@ def move_pose(
     final_ik = primitives.env.solve_ik_pose(arm, [float(v) for v in target])
     if final_ik.get("status") != "Success":
         error = final_ik.get("error", "no IK solution for target pose")
-        return ToolResult(data={"arm": arm, "moved": False, "error": error})
+        return ToolResult(
+            data={
+                "arm": arm,
+                "moved": False,
+                "error": error,
+                "ik_checked": True,
+                "note": "IK was checked before motion and failed, so the arm did not move.",
+            }
+        )
     plan = []
     skipped = 0
     for waypoint in slerp_waypoints(start, target)[:-1]:
@@ -397,8 +414,8 @@ def plan_grasp(
 
     Returns up to `top_k` candidates ranked by GraspGen confidence. Each gives the arm, a
     `pregrasp_xyz` (10 cm back along the approach), a `grasp_xyz` and the shared `quat_wxyz`
-    for the end-effector link, so they feed `move_pose` directly. Both poses passed an IK
-    check. The cloud is single-view, so confirm the approach side in the camera image.
+    for the end-effector link, so they feed `move_pose` directly. Both poses are IK-checked
+    (`ik_checked`); do not re-check them with `check_reach`. The cloud is single-view, so confirm the approach side in the camera image.
 
     Args:
         text_prompt: SAM3 prompt naming the object, e.g. 'the red bottle'
@@ -491,7 +508,12 @@ def plan_grasp(
             continue
         score = round(float(scores[idx]), 4)
         candidates.append(
-            {"rank": len(candidates) + 1, "graspgen_score": score, **best}
+            {
+                "rank": len(candidates) + 1,
+                "graspgen_score": score,
+                **best,
+                "ik_checked": True,
+            }
         )
     return ToolResult(
         data={
@@ -504,6 +526,204 @@ def plan_grasp(
             "object_bbox_min_xyz": [round(float(v), 4) for v in lo],
             "object_bbox_max_xyz": [round(float(v), 4) for v in hi],
             "n_graspgen_grasps": int(len(poses)),
+            "rejected": rejected,
+            "ik_checks": ik_checks,
+            "candidates": candidates,
+            "bbox_2d": mask_bbox_2d(seg.mask),
+            "image": OUTLINE_NOTE,
+        },
+        images=outline,
+    )
+
+
+def _footprint(points: np.ndarray, res: float) -> tuple[np.ndarray, np.ndarray]:
+    """Closed xy occupancy grid of points and its origin (min corner)."""
+    import cv2
+
+    origin = points[:, :2].min(axis=0) - 2 * res
+    ij = np.floor((points[:, :2] - origin) / res).astype(int)
+    shape = ij.max(axis=0) + 3
+    grid = np.zeros((int(shape[0]), int(shape[1])), dtype=np.uint8)
+    grid[ij[:, 0], ij[:, 1]] = 1
+    grid = cv2.morphologyEx(grid, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
+    return grid, origin
+
+
+def _rot_z(deg: float) -> np.ndarray:
+    a = np.radians(deg)
+    return np.array(
+        [[np.cos(a), -np.sin(a), 0.0], [np.sin(a), np.cos(a), 0.0], [0.0, 0.0, 1.0]]
+    )
+
+
+@tool(readonly=True, exclude=("primitives", "state", "max_ik_checks"))
+def plan_place(
+    primitives: Any,
+    state: Any,
+    target_prompt: str,
+    arm: Literal["left", "right"],
+    held_object_prompt: str | None = None,
+    camera: Literal["cam_head", "cam_left_wrist", "cam_right_wrist"] = "cam_head",
+    clearance_m: float = 0.03,
+    top_k: int = 3,
+    max_ik_checks: Any = 120,
+) -> ToolResult:
+    """Plan where to release a held object on or into a target: SAM3 + depth -> IK-checked release poses.
+
+    The target's top (rim or surface) and footprint come from its depth points. With
+    `held_object_prompt`, the held object is measured relative to the gripper, so its bottom
+    and outline after the carry are known (the carry translates the gripper and may turn it
+    about the vertical). Candidates put the object's bottom `clearance_m` above the target
+    top (higher only when IK requires it) with its outline inside the footprint, most central
+    first. Each gives `approach_xyz` (10 cm above), `release_xyz` and `quat_wxyz` for the
+    end-effector link, all IK-checked (`ik_checked`): `move_pose` to the approach and then
+    the release with the gripper closed (1), `set_gripper` open, then `move_pose` back to the
+    approach.
+
+    Args:
+        target_prompt: SAM3 prompt for the place target, e.g. 'the black dustbin' or 'the mouse pad'
+        arm: Arm holding the object
+        held_object_prompt: SAM3 prompt for the held object, e.g. 'the yellow bottle'
+        camera: Camera for the masks and depth
+        clearance_m: Gap between the object's bottom and the target top at release
+        top_k: Number of candidates to return"""
+    from robots.robodojo.tools import (
+        OUTLINE_NOTE,
+        _refresh_obs,
+        mask_bbox_2d,
+        mask_outline_png,
+    )
+
+    obs = _refresh_obs(primitives)
+    cam = obs.get("vision", {}).get(camera)
+    if cam is None or cam.get("color") is None:
+        return ToolResult(
+            data={"error": f"camera {camera!r} color image not in observation"}
+        )
+    sam3 = getattr(primitives, "sam3_client", None)
+    if sam3 is None:
+        return ToolResult(data={"error": "sam3_client not configured"})
+    ee = obs.get("state", {}).get(f"{arm}_ee_pose")
+    if ee is None:
+        return ToolResult(data={"error": f"{arm} ee_pose not in state"})
+    ee = np.asarray(ee, dtype=np.float64)[:7]
+    w, x, y, z = ee[3:7]
+    from scipy.spatial.transform import Rotation
+
+    rot_now = Rotation.from_quat([x, y, z, w]).as_matrix()
+    tcp_now = ee[:3] + ARX_TCP_OFFSET * rot_now[:, 0]
+
+    seg = sam3.segment(cam["color"], text_prompt=target_prompt, min_score=0.2)
+    if not seg.found:
+        return ToolResult(
+            data={"found": False, "target_prompt": target_prompt, "camera": camera}
+        )
+    outline = [mask_outline_png(cam["color"], seg.mask)]
+    target = mask_points(cam, seg.mask, max_points=4096)
+    if len(target) < 64:
+        error = f"only {len(target)} valid depth points under the target mask"
+        return ToolResult(data={"error": error}, images=outline)
+    top_z = float(np.percentile(target[:, 2], 95))
+
+    held = {"measured": False}
+    offsets = np.zeros((1, 3))
+    offsets[0, 2] = -0.05  # assumed hang of an unmeasured object below the TCP
+    if held_object_prompt:
+        held_seg = sam3.segment(
+            cam["color"], text_prompt=held_object_prompt, min_score=0.2
+        )
+        pts = mask_points(cam, held_seg.mask) if held_seg.found else np.zeros((0, 3))
+        if len(pts) >= 32:
+            offsets = pts - tcp_now
+            held = {
+                "measured": True,
+                "bottom_below_tcp_m": round(float(-offsets[:, 2].min()), 3),
+                "xy_extent_m": [
+                    round(float(v), 3) for v in np.ptp(offsets[:, :2], axis=0)
+                ],
+            }
+        else:
+            held["note"] = (
+                f"'{held_object_prompt}' not found near the gripper; assumed 5 cm hang"
+            )
+
+    res = 0.01
+    grid, origin = _footprint(target, res)
+    import cv2
+
+    inside = (
+        cv2.distanceTransform(grid, cv2.DIST_L2, 3) * res
+    )  # distance to footprint edge (m)
+    cells = np.argwhere(inside > 0.02)
+    order = np.argsort(-inside[cells[:, 0], cells[:, 1]])
+    centres = origin + (cells[order] + 0.5) * res
+    hang = -float(offsets[:, 2].min())
+    candidates: list[dict[str, Any]] = []
+    ik_checks = 0
+    rejected = {"outline_outside": 0, "unreachable": 0}
+    for centre in centres[:: max(1, len(centres) // 40)]:
+        if len(candidates) >= int(top_k) or ik_checks >= int(max_ik_checks):
+            break
+        for yaw in (0.0, 30.0, -30.0, 60.0, -60.0, 90.0):
+            rz = _rot_z(yaw)
+            moved = (rz @ offsets.T).T
+            xy = centre + moved[:, :2] - moved[:, :2].mean(axis=0)
+            ij = np.floor((xy - origin) / res).astype(int)
+            ok = (ij >= 0).all() and (ij < np.array(grid.shape)).all()
+            margin = float(inside[ij[:, 0], ij[:, 1]].min()) if ok else 0.0
+            if margin <= 0.0:
+                rejected["outline_outside"] += 1
+                continue
+            rot = rz @ rot_now
+            quat = _quat_wxyz(rot)
+            tcp_xy = centre - moved[:, :2].mean(axis=0)
+            found = None
+            for lift in (0.0, 0.03, 0.06, 0.10):
+                tcp = np.array(
+                    [tcp_xy[0], tcp_xy[1], top_z + clearance_m + lift + hang]
+                )
+                release = tcp - ARX_TCP_OFFSET * rot[:, 0]
+                approach = release + np.array([0.0, 0.0, 0.10])
+                ik_checks += 1
+                r = primitives.env.solve_ik_pose(
+                    arm, [float(v) for v in release] + quat
+                )
+                if r.get("status") != "Success":
+                    continue
+                ik_checks += 1
+                a = primitives.env.solve_ik_pose(
+                    arm, [float(v) for v in approach] + quat
+                )
+                if a.get("status") == "Success":
+                    found = (release, approach, lift)
+                    break
+            if found is None:
+                rejected["unreachable"] += 1
+                continue
+            release, approach, lift = found
+            candidates.append(
+                {
+                    "rank": len(candidates) + 1,
+                    "release_xyz": [round(float(v), 4) for v in release],
+                    "approach_xyz": [round(float(v), 4) for v in approach],
+                    "quat_wxyz": [round(v, 5) for v in quat],
+                    "yaw_change_deg": yaw,
+                    "drop_height_m": round(clearance_m + lift, 3),
+                    "edge_clearance_m": round(margin, 3),
+                    "ik_checked": True,
+                }
+            )
+            break
+    lo, hi = target.min(axis=0), target.max(axis=0)
+    return ToolResult(
+        data={
+            "found": True,
+            "target_prompt": target_prompt,
+            "camera": camera,
+            "target_top_z": round(top_z, 4),
+            "target_bbox_min_xyz": [round(float(v), 4) for v in lo],
+            "target_bbox_max_xyz": [round(float(v), 4) for v in hi],
+            "held_object": held,
             "rejected": rejected,
             "ik_checks": ik_checks,
             "candidates": candidates,
