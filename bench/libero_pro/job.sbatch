@@ -15,7 +15,7 @@
 set -euo pipefail
 : "${OUT_ROOT:?set OUT_ROOT}" "${SLOTS:=12}" "${WORKER_ARGS:=}"
 W=/work/roboleon1295
-REPO=$W/RPent
+REPO=${REPO:-$W/RPent}  # a separate checkout keeps live jobs' code unchanged
 V=$W/.venv-rpent-liberopro
 SVC=$OUT_ROOT/services/$SLURM_JOB_ID
 mkdir -p "$SVC"

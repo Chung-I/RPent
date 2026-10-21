@@ -74,7 +74,10 @@ def running_job_ids() -> set[str] | None:
 
 
 def reclaim_dead_claims(root: Path) -> list[str]:
-    """Release claims held by jobs that no longer run and left no result."""
+    """Release claims held by jobs that no longer run and left no result.
+
+    The interrupted cell directory moves to ``_infra/<cell>_interrupted_job<id>``.
+    """
     alive = running_job_ids()
     if alive is None:
         return []
@@ -84,7 +87,12 @@ def reclaim_dead_claims(root: Path) -> list[str]:
             (claim / "owner").read_text().strip() if (claim / "owner").exists() else ""
         )
         cell = claim.name.replace("__", ":")
-        if owner not in alive and not (cell_dir(root, cell) / "result.json").exists():
+        out = cell_dir(root, cell)
+        if owner not in alive and not (out / "result.json").exists():
+            # Keep the interrupted attempt for inspection; a rerun into the same
+            # directory would append to its request log and mix their statistics.
+            if out.exists():
+                out.rename(root / "_infra" / f"{out.name}_interrupted_job{owner or 'unknown'}")
             shutil.rmtree(claim)
             released.append(cell)
     return released
