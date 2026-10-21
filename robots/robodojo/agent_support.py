@@ -379,8 +379,39 @@ def _solve_ik_position(env, arm: str, xyz: list) -> dict:
     }
 
 
-def _solve_ik_pose(env, arm: str, pose: list) -> dict:
-    """Full-pose IK (xyz + wxyz quaternion of the end-effector link) for one arm."""
+def _arm_joint_limits(env, robot) -> tuple[np.ndarray, np.ndarray]:
+    """Simulator (soft) position limits of the arm joints."""
+    key = env.robot_manager.robot_key[env.robot_manager.robot_list.index(robot)]
+    limits = np.asarray(key.data.soft_joint_pos_limits[0].cpu(), dtype=np.float64)
+    limits = limits[robot.arm_joint_indices]
+    return limits[:, 0], limits[:, 1]
+
+
+def wrap_into_limits(
+    joints: np.ndarray, current: np.ndarray, lower: np.ndarray, upper: np.ndarray
+) -> np.ndarray | None:
+    """Shift each revolute joint by 2*pi multiples into [lower, upper], nearest ``current``.
+
+    The ARX cuRobo URDF allows +-10 rad on joints 1-5, so the solver returns
+    angles that the simulator clamps; returns None when a joint cannot fit.
+    """
+    out = np.empty_like(joints)
+    for i, (q, ref, lo, hi) in enumerate(zip(joints, current, lower, upper)):
+        options = [q + 2.0 * np.pi * k for k in range(-3, 4)]
+        options = [v for v in options if lo - 1e-4 <= v <= hi + 1e-4]
+        if not options:
+            return None
+        out[i] = min(options, key=lambda v: abs(v - ref))
+    return out
+
+
+def _solve_ik_pose(env, arm: str, pose: list, attempts: int = 8) -> dict:
+    """Full-pose IK (xyz + wxyz quaternion of the end-effector link) for one arm.
+
+    cuRobo returns one seed-dependent branch per call, often outside the
+    simulator's joint limits. Retry, wrap each solution into the limits, and
+    keep the valid one closest to the current joints.
+    """
     robot = _find_robot(env, arm)
     if robot is None:
         return {"status": "Fail", "error": f"robot for arm {arm!r} not found"}
@@ -397,18 +428,39 @@ def _solve_ik_pose(env, arm: str, pose: list) -> dict:
     current = np.asarray(
         env.robot_manager.get_joint(robot, env_idx_list=[0])[0], dtype=np.float64
     )
-    try:
-        res = env.robot_manager.solve_ik(target_pose=target, env_idx=0, robot=robot)
-    except Exception as exc:  # noqa: BLE001 - report solver failures to the planner
-        return {"status": "Fail", "error": f"IK solver error: {exc}"}
-    if res.get("status") != "Success":
-        return {"status": "Fail", "error": "no IK solution for this pose"}
-    joints = np.asarray(res["joint_value"], dtype=np.float64)
+    lower, upper = _arm_joint_limits(env, robot)
+    best = None
+    solved = 0
+    for _ in range(attempts):
+        try:
+            res = env.robot_manager.solve_ik(target_pose=target, env_idx=0, robot=robot)
+        except Exception as exc:  # noqa: BLE001 - report solver failures to the planner
+            return {"status": "Fail", "error": f"IK solver error: {exc}"}
+        if res.get("status") != "Success":
+            break  # unreachable for every seed; retries return the same verdict
+        solved += 1
+        joints = wrap_into_limits(
+            np.asarray(res["joint_value"], dtype=np.float64), current, lower, upper
+        )
+        if joints is None:
+            continue
+        disp = float(np.abs(joints - current).sum())
+        if best is None or disp < best[0]:
+            best = (disp, joints)
+        if disp < 1.0:
+            break
+    if best is None:
+        error = (
+            "IK solutions exist only outside the joint limits"
+            if solved
+            else "no IK solution for this pose"
+        )
+        return {"status": "Fail", "error": error}
     return {
         "status": "Success",
         "arm": arm,
-        "joint_value": [float(v) for v in joints],
-        "joint_displacement": round(float(np.abs(joints - current).sum()), 4),
+        "joint_value": [float(v) for v in best[1]],
+        "joint_displacement": round(best[0], 4),
     }
 
 
@@ -445,4 +497,8 @@ def _gripper_geometry(env, arm: str) -> dict:
             for i, name in enumerate("xyz")
         },
         "gripper_bias": float(getattr(robot, "gripper_bias", float("nan"))),
+        "arm_joint_limits": [
+            [round(float(lo), 4), round(float(hi), 4)]
+            for lo, hi in zip(*_arm_joint_limits(env, robot))
+        ],
     }

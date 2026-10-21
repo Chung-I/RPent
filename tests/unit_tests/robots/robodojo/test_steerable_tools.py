@@ -192,3 +192,15 @@ def test_plan_grasp_keeps_reachable_grasps_and_rejects_ones_from_below(monkeypat
     best = result["candidates"][0]
     assert best["arm"] == "right" and best["graspgen_score"] == pytest.approx(0.8)
     assert best["pregrasp_xyz"][2] > best["grasp_xyz"][2]
+
+
+def test_ik_solutions_are_wrapped_into_simulator_joint_limits():
+    from robots.robodojo.agent_support import wrap_into_limits
+
+    lower, upper = np.full(3, -2.0), np.full(3, 2.0)
+    current = np.zeros(3)
+    wrapped = wrap_into_limits(np.array([5.2931, -4.8227, 0.5]), current, lower, upper)
+    assert wrapped == pytest.approx([5.2931 - 2 * np.pi, -4.8227 + 2 * np.pi, 0.5])
+    assert (
+        wrap_into_limits(np.array([-3.1515, 0.0, 0.0]), current, lower, upper) is None
+    )

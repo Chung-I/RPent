@@ -66,12 +66,15 @@ TOOLS = """Motion and manipulation:
 STEERABLE_TOOLS = """Steerable motion and grasp planning:
 - `move_pose` moves the end-effector link to a full pose (xyz + quat_wxyz), so
   it controls the wrist orientation that `move_to` leaves to the solver.
-- `check_reach` tests a position or pose with IK without moving.
+- `check_reach` tests a position or pose with IK without moving. IK ignores
+  the table: keep the TCP (0.145 m along the gripper axis from the
+  end-effector link) above the support surface.
 - `plan_grasp` turns a SAM3 prompt into ranked 6-DoF grasps (GraspGen on the
   depth point cloud) with IK-checked `pregrasp_xyz`, `grasp_xyz` and
   `quat_wxyz`. To execute one: `move_pose` to the pre-grasp with the gripper
-  open (-1), `move_pose` to the grasp, `set_gripper` close, then lift with
-  `move_pose` (same orientation, higher z). Re-plan if the object moved.
+  open (-1), `move_pose` to the grasp, `set_gripper` close, then retreat to
+  the pre-grasp pose with the gripper closed (1) before any further move.
+  Re-plan if the object moved.
 - These are alternatives to `pi0_pick`; choose per object and confirm holds
   from the wrist camera."""
 

@@ -260,6 +260,8 @@ def move_pose(
         quat_wxyz: End-effector orientation (w, x, y, z)
         arm: Arm to move
         gripper: 1=close, -1=open, 0=keep current"""
+    from scipy.spatial.transform import Rotation
+
     from robots.robodojo.tools import _refresh_obs
 
     target = np.asarray(
@@ -308,6 +310,9 @@ def move_pose(
                 break
         if info["status"].get("step", 0) >= info["status"].get("step_limit", 1):
             break
+    w, x, y, z = target[3:]
+    approach = Rotation.from_quat([x, y, z, w]).as_matrix()[:, 0]
+    tcp_target = target[:3] + ARX_TCP_OFFSET * approach
     pos_err = float(np.linalg.norm(final[:3] - target[:3]))
     rot_err = rotation_error_deg(list(final[3:]), list(target[3:]))
     return ToolResult(
@@ -315,11 +320,14 @@ def move_pose(
             "arm": arm,
             "moved": True,
             "target_xyz": [round(float(v), 4) for v in target[:3]],
+            # IK ignores the table: a TCP below the support surface stalls on contact.
+            "target_tcp_xyz": [round(float(v), 4) for v in tcp_target],
             "final_xyz": [round(float(v), 4) for v in final[:3]],
             "final_quat_wxyz": [round(float(v), 4) for v in final[3:]],
             "pos_error_m": round(pos_err, 4),
             "rot_error_deg": round(rot_err, 2),
             "reached": pos_err <= 0.01 and rot_err <= 5.0,
+            "joint_displacement": final_ik.get("joint_displacement"),
             "waypoints": n_waypoints,
             "waypoints_without_ik": skipped,
             "steps_used": steps_used,
