@@ -116,6 +116,42 @@ def gripper_report(state: dict) -> dict:
     return report
 
 
+# A thin outline identified the segmented object as well as a filled mask did and
+# disturbed object counting least in an A/B test on logged RoboDojo frames.
+OUTLINE_NOTE = (
+    "The attached image is this camera frame with the mask outlined in magenta; "
+    "the outline is an annotation, not part of the scene."
+)
+
+
+def mask_bbox_2d(mask) -> list[int]:
+    """Mask box as [x1, y1, x2, y2] in 0-1000 image coordinates (Qwen-VL grounding)."""
+    import numpy as np
+
+    mask = np.asarray(mask, dtype=bool)
+    rows, cols = np.nonzero(mask)
+    h, w = mask.shape
+    return [
+        round(1000 * int(cols.min()) / w),
+        round(1000 * int(rows.min()) / h),
+        round(1000 * int(cols.max()) / w),
+        round(1000 * int(rows.max()) / h),
+    ]
+
+
+def mask_outline_png(rgb, mask) -> bytes:
+    """The camera frame with a 2 px magenta outline around the mask."""
+    import cv2
+    import numpy as np
+
+    out = np.ascontiguousarray(np.asarray(rgb, dtype=np.uint8).copy())
+    contours, _ = cv2.findContours(
+        np.asarray(mask, dtype=np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE
+    )
+    cv2.drawContours(out, contours, -1, (255, 0, 255), 2)
+    return _png(out)
+
+
 def _png(rgb) -> bytes:
     import cv2
     import numpy as np
@@ -226,7 +262,7 @@ def segment(
     camera: Literal["cam_head", "cam_left_wrist", "cam_right_wrist"] = "cam_head",
     min_score: float = 0.2,
 ) -> ToolResult:
-    """Segment an object in a camera image by text prompt (SAM 3.0). Returns mask bounding box and score.
+    """Segment an object in a camera image by text prompt (SAM 3.0). Returns the mask box, centroid and score, plus the camera image with the mask outlined in magenta (an annotation, not part of the scene).
 
     Args:
         text_prompt: e.g. 'the bottle'
@@ -257,9 +293,11 @@ def segment(
         "found": True,
         "score": result.score,
         "box_px": _jsonable(result.box),
+        "bbox_2d": mask_bbox_2d(result.mask),
         **mask_geometry(result.mask),
+        "image": OUTLINE_NOTE,
     }
-    return ToolResult(data=payload)
+    return ToolResult(data=payload, images=[mask_outline_png(color, result.mask)])
 
 
 def _arm_ee_pose_key(arm: str) -> str:

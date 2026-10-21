@@ -422,17 +422,24 @@ def plan_grasp(
         return ToolResult(
             data={"found": False, "text_prompt": text_prompt, "camera": camera}
         )
+    from robots.robodojo.tools import OUTLINE_NOTE, mask_bbox_2d, mask_outline_png
+
+    outline = [mask_outline_png(cam["color"], seg.mask)]
     points = mask_points(cam, seg.mask)
     if len(points) < 64:
         error = f"only {len(points)} valid depth points under the mask"
-        return ToolResult(data={"error": error, "camera": camera})
+        return ToolResult(data={"error": error, "camera": camera}, images=outline)
     try:
         poses, scores = graspgen_grasps(points)
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode(errors="replace")[:300]
-        return ToolResult(data={"error": f"GraspGen HTTP {exc.code}: {detail}"})
+        return ToolResult(
+            data={"error": f"GraspGen HTTP {exc.code}: {detail}"}, images=outline
+        )
     except (OSError, RuntimeError) as exc:
-        return ToolResult(data={"error": f"GraspGen unavailable: {exc}"})
+        return ToolResult(
+            data={"error": f"GraspGen unavailable: {exc}"}, images=outline
+        )
     lo, hi = points.min(axis=0), points.max(axis=0)
     floor_z = float(lo[2])
     arms = ("left", "right") if arm == "both" else (arm,)
@@ -500,5 +507,8 @@ def plan_grasp(
             "rejected": rejected,
             "ik_checks": ik_checks,
             "candidates": candidates,
-        }
+            "bbox_2d": mask_bbox_2d(seg.mask),
+            "image": OUTLINE_NOTE,
+        },
+        images=outline,
     )

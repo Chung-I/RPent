@@ -72,6 +72,12 @@ def test_tool_declarations_match_pre_refactor_contracts(group: str) -> None:
             "description": "Positive finite yaw tolerance, rad (default 0.02)",
         }
     if group == "robodojo":
+        # segment also returns the frame with the mask outlined (A/B-tested format).
+        expected["segment"]["description"] = (
+            "Segment an object in a camera image by text prompt (SAM 3.0). Returns the "
+            "mask box, centroid and score, plus the camera image with the mask outlined "
+            "in magenta (an annotation, not part of the scene)."
+        )
         # set_gripper now waits for the fingers and interprets the opening.
         expected["set_gripper"]["description"] = (
             "Open or close an arm gripper and wait until the fingers stop. "

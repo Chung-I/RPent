@@ -183,3 +183,23 @@ def test_compaction_settings_follow_the_environment(monkeypatch):
     settings = _compaction_settings()
     assert settings["max_messages"] == 220 and settings["context_window"] == 262144
     assert settings["max_fraction"] == 0.85 and settings["keep_tokens"] == 150000
+
+
+def test_segment_returns_an_outlined_frame_and_a_grounding_box():
+    obs = _obs()
+    mask = np.zeros((4, 4), dtype=bool)
+    mask[1:3, 2:4] = True
+    primitives = SimpleNamespace(
+        _last_obs=obs,
+        sam3_client=SimpleNamespace(
+            segment=lambda *a, **kw: SimpleNamespace(
+                found=True, score=0.9, box=[2, 1, 3, 2], mask=mask
+            )
+        ),
+    )
+
+    result = tools.segment(primitives, None, "the bottle")
+
+    assert result.data["bbox_2d"] == [500, 250, 750, 500]
+    assert "annotation" in result.data["image"]
+    assert len(result.images) == 1 and result.images[0][:4] == b"\x89PNG"
