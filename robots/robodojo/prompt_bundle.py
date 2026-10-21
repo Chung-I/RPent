@@ -20,7 +20,7 @@ from collections.abc import Mapping
 
 from robots.robodojo.prompts import system as system_parts
 from robots.robodojo.prompts import user as user_parts
-from robots.robodojo.steerable import steerable_enabled
+from robots.robodojo.steerable import steerable_enabled, vla_disabled
 from rpent.prompt.utils import PromptNode
 
 
@@ -31,14 +31,21 @@ def system_prompt(
         return {
             "EXECUTION": "Replay the frozen plan using live RGB-D and robot proprioception. No language model participates."
         }
+    no_vla = vla_disabled()
     sections = {
-        "ROLE AND RULES": system_parts.ROLE_AND_RULES,
+        "ROLE AND RULES": system_parts.ROLE_AND_RULES_NO_VLA
+        if no_vla
+        else system_parts.ROLE_AND_RULES,
         "TOOL ACCESS": system_parts.TOOL_ACCESS,
         "PERCEPTION": system_parts.PERCEPTION,
-        "TOOLS AND MANIPULATION": system_parts.TOOLS,
+        "TOOLS AND MANIPULATION": system_parts.TOOLS_NO_VLA
+        if no_vla
+        else system_parts.TOOLS,
     }
     if steerable_enabled():
-        sections["STEERABLE TOOLS"] = system_parts.STEERABLE_TOOLS
+        sections["STEERABLE TOOLS"] = (
+            system_parts.STEERABLE_TOOLS_NO_VLA if no_vla else system_parts.STEERABLE_TOOLS
+        )
     return {
         **sections,
         "SAFETY": system_parts.SAFETY,

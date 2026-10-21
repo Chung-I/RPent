@@ -48,6 +48,11 @@ def steerable_enabled() -> bool:
     return os.environ.get("RPENT_ROBODOJO_STEERABLE") == "1"
 
 
+def vla_disabled() -> bool:
+    """Whether the run omits the VLA policy tool `pi0_pick` (``RPENT_ROBODOJO_NO_VLA=1``)."""
+    return os.environ.get("RPENT_ROBODOJO_NO_VLA") == "1"
+
+
 def mask_points(
     cam: dict, mask: np.ndarray, max_points: int = 2048, seed: int = 0
 ) -> np.ndarray:
