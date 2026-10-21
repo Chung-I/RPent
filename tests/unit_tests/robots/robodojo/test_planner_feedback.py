@@ -93,6 +93,26 @@ def test_actions_report_their_step_cost_and_grippers_but_not_the_limit(
     assert "intrinsic_matrix" not in text  # calibration is not repeated per action
 
 
+def test_no_vla_runs_omit_pi0_pick_from_tools_and_prompt(monkeypatch, tmp_path):
+    from robots.robodojo.prompt_bundle import system_prompt
+    from rpent.prompt.utils import format_prompt
+    from rpent.utils import logging
+
+    monkeypatch.setattr(logging, "_output_dir", tmp_path)
+    monkeypatch.setenv("RPENT_ROBODOJO_STEERABLE", "1")
+    monkeypatch.setenv("RPENT_ROBODOJO_NO_VLA", "1")
+    toolkit = RoboDojoToolkit(
+        primitives_kwargs={"env": StepCountingEnv(), "task": "pick"},
+        dashboard_events=NullDashboardEventSink(),
+        memory=MemoryManager(tmp_path / "memory"),
+    )
+    names = {spec.name for spec in toolkit.list_tools()}
+    prompt = format_prompt(system_prompt({}), variables={"output_dir": "out"})
+
+    assert "pi0_pick" not in names and {"plan_grasp", "move_to"} <= names
+    assert "pi0" not in prompt and "Pi_05" not in prompt
+
+
 def test_gripper_opening_is_interpreted():
     report = tools.gripper_report(
         {"left_ee_joint_state": [0.0], "right_ee_joint_state": [0.45]}

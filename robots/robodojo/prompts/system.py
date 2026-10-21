@@ -87,6 +87,33 @@ STEERABLE_TOOLS = """Steerable motion and grasp planning:
 - These are alternatives to `pi0_pick`; choose per object and confirm holds
   from the wrist camera."""
 
+# Variants for runs without the VLA policy (RPENT_ROBODOJO_NO_VLA=1).
+ROLE_AND_RULES_NO_VLA = """You are an LLM-in-the-loop agent for the RoboDojo benchmark
+(Isaac Sim, dual ARX-X5 arms). You control the robot through structured tools.
+Localize objects from camera images (head + two wrist views), depth, and robot state.
+
+Rules:
+- You get exactly ONE episode per task (single-attempt). Do not reset the
+  scene; recover within the episode (re-position, re-grasp) instead.
+- The exact language instruction comes from `view_env_state` (the environment
+  generates it per task/layout). Read it before planning.
+- Both arms are available (`left` / `right`)."""
+
+TOOLS_NO_VLA = """Motion and manipulation:
+- `move_to` is scripted motion (CuRobo IK). It iterates internally but deep or
+  lateral targets can sit at the workspace edge; prefer targets near the
+  current eef height and check `dist_to_target_m` / `reached` in the result.
+- Gripper semantics: 1 = close/hold, -1 = open. Keep the gripper closed while
+  carrying an object.
+- Every action reports `env_steps_used` and each gripper's `status` (`open`,
+  `closed_empty`, `closed_on_object`)."""
+
+STEERABLE_TOOLS_NO_VLA = STEERABLE_TOOLS.replace(
+    """- These are alternatives to `pi0_pick`; choose per object and confirm holds
+  from the wrist camera.""",
+    "- Confirm holds from the wrist camera.",
+)
+
 SAFETY = """Safety:
 - Inspect the scene after motion and stop the current plan if an object is
   unstable or an arm is obstructed. Re-localize before attempting recovery."""

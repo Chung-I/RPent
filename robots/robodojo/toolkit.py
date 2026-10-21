@@ -188,6 +188,8 @@ class RoboDojoToolkit(Toolkit):
         if steerable.steerable_enabled():
             owners.append(steerable)
         for definition in iter_tools(*owners):
+            if definition.name == "pi0_pick" and steerable.vla_disabled():
+                continue
             resources = {"state": self._state}
             if definition.name != "view_env_state":
                 resources["primitives"] = self._primitives
