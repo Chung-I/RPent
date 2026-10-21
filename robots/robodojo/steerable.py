@@ -537,15 +537,24 @@ def plan_grasp(
 
 
 def _footprint(points: np.ndarray, res: float) -> tuple[np.ndarray, np.ndarray]:
-    """Closed xy occupancy grid of points and its origin (min corner)."""
+    """Filled xy footprint (convex hull) of points and its origin (min corner).
+
+    The grid keeps an empty frame: OpenCV's distance transform treats the image
+    edge as occupied, so cells touching it would look interior.
+    """
     import cv2
 
-    origin = points[:, :2].min(axis=0) - 2 * res
+    pad = 6
+    origin = points[:, :2].min(axis=0) - pad * res
     ij = np.floor((points[:, :2] - origin) / res).astype(int)
-    shape = ij.max(axis=0) + 3
+    shape = ij.max(axis=0) + pad + 1
     grid = np.zeros((int(shape[0]), int(shape[1])), dtype=np.uint8)
-    grid[ij[:, 0], ij[:, 1]] = 1
-    grid = cv2.morphologyEx(grid, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
+    # Fill the convex hull: from above, a container's rim hides parts of its inside,
+    # and the release region is the opening the rim encloses.
+    hull = cv2.convexHull(np.unique(ij, axis=0)[:, ::-1].astype(np.int32))
+    cv2.fillConvexPoly(grid, hull, 1)
+    grid[[0, -1], :] = 0
+    grid[:, [0, -1]] = 0
     return grid, origin
 
 
@@ -566,14 +575,14 @@ def plan_place(
     camera: Literal["cam_head", "cam_left_wrist", "cam_right_wrist"] = "cam_head",
     clearance_m: float = 0.03,
     top_k: int = 3,
-    max_ik_checks: Any = 120,
+    max_ik_checks: Any = 400,
 ) -> ToolResult:
     """Plan where to release a held object on or into a target: SAM3 + depth -> IK-checked release poses.
 
     The target's top (rim or surface) and footprint come from its depth points. With
     `held_object_prompt`, the held object is measured relative to the gripper, so its bottom
     and outline after the carry are known (the carry translates the gripper and may turn it
-    about the vertical). Candidates put the object's bottom `clearance_m` above the target
+    about the vertical or tilt by 25 degrees). Candidates put the object's bottom `clearance_m` above the target
     top (higher only when IK requires it) with its outline inside the footprint, most central
     first. Each gives `approach_xyz` (10 cm above), `release_xyz` and `quat_wxyz` for the
     end-effector link, all IK-checked (`ik_checked`): `move_pose` to the approach and then
@@ -651,69 +660,90 @@ def plan_place(
     grid, origin = _footprint(target, res)
     import cv2
 
-    inside = (
-        cv2.distanceTransform(grid, cv2.DIST_L2, 3) * res
-    )  # distance to footprint edge (m)
+    inside = cv2.distanceTransform(grid, cv2.DIST_L2, 3) * res  # to footprint edge (m)
     cells = np.argwhere(inside > 0.02)
-    order = np.argsort(-inside[cells[:, 0], cells[:, 1]])
-    centres = origin + (cells[order] + 0.5) * res
-    hang = -float(offsets[:, 2].min())
+    cells = cells[np.argsort(-inside[cells[:, 0], cells[:, 1]])]
+    centres = origin + (cells + 0.5) * res
+    # Orientation changes are rigid rotations about the TCP: the held object's outline
+    # and bottom follow exactly. Untilted turns about the vertical come first.
+    turns = []
+    for axis, tilt in (
+        (None, 0.0),
+        ("x", 25.0),
+        ("x", -25.0),
+        ("y", 25.0),
+        ("y", -25.0),
+    ):
+        r_tilt = (
+            np.eye(3)
+            if axis is None
+            else Rotation.from_euler(axis, tilt, degrees=True).as_matrix()
+        )
+        for yaw in (0.0, 30.0, -30.0, 60.0, -60.0, 90.0):
+            turns.append((yaw, axis, tilt, _rot_z(yaw) @ r_tilt))
     candidates: list[dict[str, Any]] = []
     ik_checks = 0
     rejected = {"outline_outside": 0, "unreachable": 0}
-    for centre in centres[:: max(1, len(centres) // 40)]:
+    for yaw, axis, tilt, turn in turns:
         if len(candidates) >= int(top_k) or ik_checks >= int(max_ik_checks):
             break
-        for yaw in (0.0, 30.0, -30.0, 60.0, -60.0, 90.0):
-            rz = _rot_z(yaw)
-            moved = (rz @ offsets.T).T
-            xy = centre + moved[:, :2] - moved[:, :2].mean(axis=0)
-            ij = np.floor((xy - origin) / res).astype(int)
-            ok = (ij >= 0).all() and (ij < np.array(grid.shape)).all()
-            margin = float(inside[ij[:, 0], ij[:, 1]].min()) if ok else 0.0
-            if margin <= 0.0:
-                rejected["outline_outside"] += 1
-                continue
-            rot = rz @ rot_now
-            quat = _quat_wxyz(rot)
+        moved = (turn @ offsets.T).T
+        hang = -float(moved[:, 2].min())
+        rot = turn @ rot_now
+        quat = _quat_wxyz(rot)
+        shape_xy = moved[:, :2] - moved[:, :2].mean(axis=0)
+        fitting = []
+        for centre in centres:
+            ij = np.floor((centre + shape_xy - origin) / res).astype(int)
+            if (ij >= 0).all() and (ij < np.array(grid.shape)).all():
+                margin = float(inside[ij[:, 0], ij[:, 1]].min())
+                if margin > 0.0:
+                    fitting.append((centre, margin))
+        if not fitting:
+            rejected["outline_outside"] += 1
+            continue
+        spread = np.unique(np.linspace(0, len(fitting) - 1, 6).astype(int))
+        found = None
+        for centre, margin in (fitting[i] for i in spread):
             tcp_xy = centre - moved[:, :2].mean(axis=0)
-            found = None
-            for lift in (0.0, 0.03, 0.06, 0.10):
-                tcp = np.array(
-                    [tcp_xy[0], tcp_xy[1], top_z + clearance_m + lift + hang]
+            for lift in (0.0, 0.04, 0.08, 0.12):
+                if ik_checks >= int(max_ik_checks):
+                    break
+                z = top_z + clearance_m + lift + hang
+                release = (
+                    np.array([tcp_xy[0], tcp_xy[1], z]) - ARX_TCP_OFFSET * rot[:, 0]
                 )
-                release = tcp - ARX_TCP_OFFSET * rot[:, 0]
                 approach = release + np.array([0.0, 0.0, 0.10])
                 ik_checks += 1
-                r = primitives.env.solve_ik_pose(
-                    arm, [float(v) for v in release] + quat
-                )
-                if r.get("status") != "Success":
+                pose = [float(v) for v in release] + quat
+                if primitives.env.solve_ik_pose(arm, pose).get("status") != "Success":
                     continue
                 ik_checks += 1
-                a = primitives.env.solve_ik_pose(
-                    arm, [float(v) for v in approach] + quat
-                )
-                if a.get("status") == "Success":
-                    found = (release, approach, lift)
+                pose = [float(v) for v in approach] + quat
+                if primitives.env.solve_ik_pose(arm, pose).get("status") == "Success":
+                    found = (release, approach, lift, margin)
                     break
-            if found is None:
-                rejected["unreachable"] += 1
-                continue
-            release, approach, lift = found
-            candidates.append(
-                {
-                    "rank": len(candidates) + 1,
-                    "release_xyz": [round(float(v), 4) for v in release],
-                    "approach_xyz": [round(float(v), 4) for v in approach],
-                    "quat_wxyz": [round(v, 5) for v in quat],
-                    "yaw_change_deg": yaw,
-                    "drop_height_m": round(clearance_m + lift, 3),
-                    "edge_clearance_m": round(margin, 3),
-                    "ik_checked": True,
-                }
-            )
-            break
+            if found is not None:
+                break
+        if found is None:
+            rejected["unreachable"] += 1
+            continue
+        release, approach, lift, margin = found
+        candidates.append(
+            {
+                "release_xyz": [round(float(v), 4) for v in release],
+                "approach_xyz": [round(float(v), 4) for v in approach],
+                "quat_wxyz": [round(v, 5) for v in quat],
+                "yaw_change_deg": yaw,
+                "tilt": {"axis": axis, "deg": tilt} if axis else None,
+                "drop_height_m": round(clearance_m + lift, 3),
+                "edge_clearance_m": round(margin, 3),
+                "ik_checked": True,
+            }
+        )
+    # Lowest drop first, then the most central release.
+    candidates.sort(key=lambda c: (c["drop_height_m"], -c["edge_clearance_m"]))
+    candidates = [{"rank": i + 1, **c} for i, c in enumerate(candidates)]
     lo, hi = target.min(axis=0), target.max(axis=0)
     return ToolResult(
         data={

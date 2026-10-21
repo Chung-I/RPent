@@ -268,18 +268,21 @@ def test_move_pose_stops_at_the_episode_horizon():
     assert again["moved"] is False and len(env.actions) == 5
 
 
-def _place_scene(reachable=True):
+def _place_scene(reachable=True, ring=False):
     # Camera at the origin looking along -z (identity extrinsic): depth d maps to z = -d.
-    depth = np.full((40, 40), 2.0)
-    target = np.zeros((40, 40), dtype=bool)
-    target[10:30, 10:30] = True
-    held = np.zeros((40, 40), dtype=bool)
-    held[2:9, 2:9] = True
+    # At d = 2 m with fx = 400 neighbouring pixels are 5 mm apart, as on the real table.
+    depth = np.full((100, 100), 2.0)
+    target = np.zeros((100, 100), dtype=bool)
+    target[20:80, 20:80] = True  # a 0.30 m square
+    if ring:
+        target[30:70, 30:70] = False  # only the rim is seen; the inside is hidden
+    held = np.zeros((100, 100), dtype=bool)
+    held[2:10, 2:10] = True
     depth[held] = 1.9  # the held object is 10 cm nearer the camera than the target top
     cam = {
-        "color": np.zeros((40, 40, 3), dtype=np.uint8),
+        "color": np.zeros((100, 100, 3), dtype=np.uint8),
         "distance_to_image_plane": depth,
-        "intrinsic_matrix": [[40.0, 0, 20.0], [0, 40.0, 20.0], [0, 0, 1]],
+        "intrinsic_matrix": [[400.0, 0, 50.0], [0, 400.0, 50.0], [0, 0, 1]],
         "extrinsic_matrix": np.eye(4),
     }
     held_xy = steerable.mask_points(cam, held).mean(axis=0)[:2]
@@ -315,6 +318,10 @@ def test_plan_place_releases_the_measured_object_just_above_the_target():
     # Object bottom = TCP z - hang = target top (-2.0) + clearance (0.03).
     assert best["release_xyz"][2] - 0.05 == pytest.approx(-2.0 + 0.03, abs=1e-3)
     assert best["approach_xyz"][2] == pytest.approx(best["release_xyz"][2] + 0.10)
+    # The most interior release lies near the 1 m square target's centre, not its edge.
+    tcp_xy = np.asarray(best["release_xyz"][:2]) + [steerable.ARX_TCP_OFFSET, 0.0]
+    assert np.abs(tcp_xy).max() < 0.03
+    assert best["edge_clearance_m"] > 0.1
     assert len(result.images) == 1
 
 
@@ -328,3 +335,16 @@ def test_plan_place_returns_no_candidates_when_nothing_is_reachable():
 
     assert data["candidates"] == [] and data["rejected"]["unreachable"] > 0
     assert data["held_object"]["measured"] is False
+
+
+def test_plan_place_treats_a_seen_rim_as_an_opening():
+    best = steerable.plan_place(
+        primitives=_place_scene(ring=True),
+        state=None,
+        target_prompt="the bin",
+        arm="left",
+        held_object_prompt="the bottle",
+    ).data["candidates"][0]
+
+    tcp_xy = np.asarray(best["release_xyz"][:2]) + [steerable.ARX_TCP_OFFSET, 0.0]
+    assert np.abs(tcp_xy).max() < 0.03 and best["edge_clearance_m"] > 0.1
