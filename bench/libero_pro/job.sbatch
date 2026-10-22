@@ -25,6 +25,9 @@ SVC=$OUT_ROOT/services/$SLURM_JOB_ID
 mkdir -p "$SVC"
 export HOME=$W/jobhome XDG_CACHE_HOME=$W/jobhome/.cache TRITON_CACHE_DIR=$W/jobhome/.triton
 export HF_HOME=$W/hf HF_HUB_OFFLINE=1
+# Nano4's soft limit of 2048 user threads per node is below what 12 cells and
+# the model servers use (~130 threads per cell); thread creation then fails.
+ulimit -Su "$(ulimit -Hu)"
 MTP_TOKENS=${RPENT_MTP_TOKENS:-0}
 spec=()
 [ "$MTP_TOKENS" -gt 0 ] && spec=(--speculative-config "{\"method\":\"mtp\",\"num_speculative_tokens\":$MTP_TOKENS}")
