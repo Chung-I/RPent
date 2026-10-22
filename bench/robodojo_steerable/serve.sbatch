@@ -23,6 +23,8 @@ SVC=$W/rpent-serve/steer/$SLURM_JOB_ID
 mkdir -p "$SVC"
 export HOME=$W/jobhome XDG_CACHE_HOME=$W/jobhome/.cache TRITON_CACHE_DIR=$W/jobhome/.triton
 export HF_HOME=$W/hf HF_HUB_OFFLINE=1
+# Nano4's soft limit of 2048 threads counts all of the user's jobs on a node.
+ulimit -Su "$(ulimit -Hu)"
 BASE=$((30000 + (SLURM_JOB_ID % 3000) * 10))
 LLM_PORT=$BASE SAM3_PORT=$((BASE + 3))
 IP=$(getent hosts "$(hostname)" | cut -d' ' -f1)
