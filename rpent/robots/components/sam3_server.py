@@ -20,8 +20,9 @@ Run manually with::
         python -m rpent.robots.components.sam3_server \
         --transport http --host 127.0.0.1 --port 8114
 
-RPent normally starts this process automatically. The service exposes a
-``sam3.segment`` RPC method over either HTTP or socket transport.
+RPent normally starts this process automatically. The service exposes the
+``sam3.segment`` (best mask) and ``sam3.segment_all`` (every text-prompt
+instance) RPC methods over either HTTP or socket transport.
 """
 
 from __future__ import annotations
@@ -122,7 +123,8 @@ class Sam3Facade(RpcFacade):
 
     def _register_rpc(self) -> None:
         self._rpc["sam3.segment"] = self.segment
-        self._readonly_methods.add("sam3.segment")
+        self._rpc["sam3.segment_all"] = self.segment_all
+        self._readonly_methods.update({"sam3.segment", "sam3.segment_all"})
 
     def _segment_bytes(
         self,
@@ -183,6 +185,33 @@ class Sam3Facade(RpcFacade):
             min_score=min_score,
         )
 
+    def _segment_text_all(
+        self,
+        image_bytes: bytes,
+        prompt: str,
+        min_score: float,
+    ) -> list[Sam3Result]:
+        """Return every instance of ``prompt`` scoring at least ``min_score``."""
+        with self._lock:
+            state = self._state_for_image(image_bytes)
+            with self._inference_context():
+                output = self._processor.set_text_prompt(prompt=prompt, state=state)
+            candidates = self._candidates(
+                masks=output.get("masks"),
+                scores=output.get("scores"),
+                boxes=output.get("boxes"),
+            )
+        if candidates is None:
+            return []
+        masks_array, scores_array, boxes_array = candidates
+        order = np.argsort(-scores_array)
+        results = [
+            self._result_at(int(i), masks_array, scores_array, boxes_array)
+            for i in order
+            if scores_array[i] >= min_score
+        ]
+        return [result for result in results if result.found]
+
     def _segment_point(
         self,
         state: dict[str, Any],
@@ -209,15 +238,15 @@ class Sam3Facade(RpcFacade):
         )
 
     @staticmethod
-    def _select_top(
+    def _candidates(
         *,
         masks: Any,
         scores: Any,
         boxes: Any,
-        min_score: float,
-    ) -> Sam3Result:
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray | None] | None:
+        """Convert model outputs to (N, H, W) masks, (N,) scores and boxes."""
         if masks is None or scores is None:
-            return Sam3Result(found=False, reason="SAM3 returned no candidate")
+            return None
         masks_array = (
             masks
             if isinstance(masks, np.ndarray)
@@ -229,7 +258,7 @@ class Sam3Facade(RpcFacade):
             else scores.detach().float().cpu().numpy()
         ).reshape(-1)
         if masks_array.size == 0 or scores_array.size == 0:
-            return Sam3Result(found=False, reason="SAM3 returned no candidate")
+            return None
         if masks_array.ndim == 4 and masks_array.shape[1] == 1:
             masks_array = masks_array[:, 0]
         if masks_array.ndim == 2:
@@ -239,26 +268,55 @@ class Sam3Facade(RpcFacade):
                 "unexpected SAM3 candidate shapes: "
                 f"masks={masks_array.shape}, scores={scores_array.shape}"
             )
-
-        index = int(np.argmax(scores_array))
-        score = float(scores_array[index])
-        box: list[float] | None = None
+        boxes_array = None
         if boxes is not None:
             boxes_array = (
                 boxes
                 if isinstance(boxes, np.ndarray)
                 else boxes.detach().float().cpu().numpy()
             )
-            if boxes_array.ndim >= 2 and index < boxes_array.shape[0]:
-                box = [float(value) for value in boxes_array[index].reshape(-1)[:4]]
+        return masks_array, scores_array, boxes_array
+
+    @classmethod
+    def _select_top(
+        cls,
+        *,
+        masks: Any,
+        scores: Any,
+        boxes: Any,
+        min_score: float,
+    ) -> Sam3Result:
+        candidates = cls._candidates(masks=masks, scores=scores, boxes=boxes)
+        if candidates is None:
+            return Sam3Result(found=False, reason="SAM3 returned no candidate")
+        masks_array, scores_array, boxes_array = candidates
+        index = int(np.argmax(scores_array))
+        score = float(scores_array[index])
         if score < min_score:
             return Sam3Result(
                 found=False,
                 score=score,
-                box=box,
+                box=cls._box_at(index, boxes_array),
                 reason=f"top score {score:.3f} is below min_score {min_score:.3f}",
             )
+        return cls._result_at(index, masks_array, scores_array, boxes_array)
 
+    @staticmethod
+    def _box_at(index: int, boxes_array: np.ndarray | None) -> list[float] | None:
+        if boxes_array is None or boxes_array.ndim < 2 or index >= boxes_array.shape[0]:
+            return None
+        return [float(value) for value in boxes_array[index].reshape(-1)[:4]]
+
+    @classmethod
+    def _result_at(
+        cls,
+        index: int,
+        masks_array: np.ndarray,
+        scores_array: np.ndarray,
+        boxes_array: np.ndarray | None,
+    ) -> Sam3Result:
+        score = float(scores_array[index])
+        box = cls._box_at(index, boxes_array)
         mask = np.asarray(masks_array[index]) > 0
         if mask.ndim != 2 or not mask.any():
             return Sam3Result(
@@ -274,6 +332,35 @@ class Sam3Facade(RpcFacade):
             mask_png_base64=_encode_mask_png(mask),
             mask_shape=[int(mask.shape[0]), int(mask.shape[1])],
         )
+
+    @staticmethod
+    def _decode_request(image_base64: str, min_score: Any) -> tuple[bytes, float]:
+        try:
+            min_score = float(min_score)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"min_score must be a number, got {min_score!r}") from exc
+        if not 0.0 <= min_score <= 1.0:
+            raise ValueError("min_score must be between 0 and 1")
+        if not isinstance(image_base64, str):
+            raise ValueError("image_base64 must be a string")
+        image_bytes = base64.b64decode(image_base64, validate=True)
+        if not image_bytes:
+            raise ValueError("image_base64 is empty")
+        return image_bytes, min_score
+
+    def segment_all(
+        self,
+        image_base64: str,
+        *,
+        text_prompt: str,
+        min_score: float = 0.2,
+    ) -> dict[str, Any]:
+        """Return ``{"instances": [...]}``, every text-prompt mask by score."""
+        if not isinstance(text_prompt, str) or not text_prompt.strip():
+            raise ValueError("text_prompt must be a non-empty string")
+        image_bytes, min_score = self._decode_request(image_base64, min_score)
+        results = self._segment_text_all(image_bytes, text_prompt.strip(), min_score)
+        return {"instances": [result.to_dict() for result in results]}
 
     def segment(
         self,
@@ -291,18 +378,7 @@ class Sam3Facade(RpcFacade):
             text_prompt = text_prompt.strip()
         if has_point and (not isinstance(point, list) or len(point) != 2):
             raise ValueError("point must be [row, col]")
-        try:
-            min_score = float(min_score)
-        except (TypeError, ValueError) as exc:
-            raise ValueError(f"min_score must be a number, got {min_score!r}") from exc
-        if not 0.0 <= min_score <= 1.0:
-            raise ValueError("min_score must be between 0 and 1")
-        if not isinstance(image_base64, str):
-            raise ValueError("image_base64 must be a string")
-
-        image_bytes = base64.b64decode(image_base64, validate=True)
-        if not image_bytes:
-            raise ValueError("image_base64 is empty")
+        image_bytes, min_score = self._decode_request(image_base64, min_score)
         response = self._segment_bytes(
             image_bytes,
             text_prompt=text_prompt,

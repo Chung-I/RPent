@@ -29,7 +29,7 @@ from rpent.utils.rpc import RpcClient
 
 @dataclass(frozen=True)
 class Sam3Result:
-    """One top-ranked SAM3 segmentation result."""
+    """One SAM3 segmentation result."""
 
     found: bool
     score: float | None = None
@@ -68,16 +68,7 @@ class Sam3Client:
         if not 0.0 <= float(min_score) <= 1.0:
             raise ValueError("min_score must be between 0 and 1")
 
-        if isinstance(image, np.ndarray):
-            buffer = io.BytesIO()
-            imageio.imwrite(buffer, image, format="png")
-            image_bytes = buffer.getvalue()
-        else:
-            image_bytes = bytes(image)
-        body: dict[str, Any] = {
-            "image_base64": base64.b64encode(image_bytes).decode("ascii"),
-            "min_score": float(min_score),
-        }
+        body = self._image_body(image, min_score)
         if has_text:
             body["text_prompt"] = prompt
         else:
@@ -89,6 +80,45 @@ class Sam3Client:
             timeout_s=self._timeout_s,
         )
         return self._decode_result(payload)
+
+    def segment_all(
+        self,
+        image: bytes | bytearray | memoryview | np.ndarray,
+        *,
+        text_prompt: str,
+        min_score: float = 0.2,
+    ) -> list[Sam3Result]:
+        """Return every instance matching ``text_prompt``, highest score first."""
+        prompt = text_prompt.strip() if isinstance(text_prompt, str) else ""
+        if not prompt:
+            raise ValueError("segment_all requires a text_prompt")
+        if not 0.0 <= float(min_score) <= 1.0:
+            raise ValueError("min_score must be between 0 and 1")
+        body = self._image_body(image, min_score)
+        body["text_prompt"] = prompt
+        payload = self._client.call(
+            "sam3.segment_all",
+            kwargs=body,
+            timeout_s=self._timeout_s,
+        )
+        if not isinstance(payload, dict) or not isinstance(payload.get("instances"), list):
+            raise RuntimeError(f"invalid SAM3 segment_all response: {payload!r}")
+        return [self._decode_result(item) for item in payload["instances"]]
+
+    @staticmethod
+    def _image_body(
+        image: bytes | bytearray | memoryview | np.ndarray, min_score: float
+    ) -> dict[str, Any]:
+        if isinstance(image, np.ndarray):
+            buffer = io.BytesIO()
+            imageio.imwrite(buffer, image, format="png")
+            image_bytes = buffer.getvalue()
+        else:
+            image_bytes = bytes(image)
+        return {
+            "image_base64": base64.b64encode(image_bytes).decode("ascii"),
+            "min_score": float(min_score),
+        }
 
     @staticmethod
     def _decode_result(payload: Any) -> Sam3Result:

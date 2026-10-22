@@ -19,6 +19,7 @@ import binascii
 import threading
 from typing import Any
 
+import numpy as np
 import pytest
 
 from rpent.robots.components.sam3_server import Sam3Facade, Sam3Result
@@ -143,3 +144,74 @@ def test_sam3_result_to_dict_drops_none_fields() -> None:
         "found": True,
         "score": 0.5,
     }
+
+
+class _FakeProcessor:
+    """Returns three text-prompt candidates; the middle one has an empty mask."""
+
+    def set_text_prompt(self, *, prompt: str, state: Any) -> dict[str, Any]:
+        masks = np.zeros((4, 1, 8, 8), dtype=np.float32)
+        masks[0, 0, 0:2, 0:2] = 1.0
+        masks[2, 0, 4:8, 4:8] = 1.0
+        masks[3, 0, 6:8, 0:2] = 1.0
+        scores = np.asarray([0.5, 0.95, 0.9, 0.1], dtype=np.float32)
+        boxes = np.arange(16, dtype=np.float32).reshape(4, 4)
+        return {"masks": masks, "scores": scores, "boxes": boxes}
+
+
+class _TextSam3(_StubSam3):
+    """Stub whose text path runs the real candidate parsing on fake outputs."""
+
+    def _load(self, checkpoint: str) -> None:
+        super()._load(checkpoint)
+        self._processor = _FakeProcessor()
+
+    _segment_text = Sam3Facade._segment_text
+
+
+def test_sam3_segment_all_is_a_readonly_namespaced_rpc() -> None:
+    facade = _StubSam3()
+    assert facade._rpc["sam3.segment_all"] == facade.segment_all
+    assert "sam3.segment_all" in facade._readonly_methods
+
+
+def test_sam3_segment_all_returns_every_instance_by_score() -> None:
+    result = _TextSam3().segment_all(_image_b64(), text_prompt=" watch ", min_score=0.2)
+    instances = result["instances"]
+    # Score 0.95 has an empty mask and score 0.1 is below min_score.
+    assert [item["score"] for item in instances] == pytest.approx([0.9, 0.5])
+    assert [item["box"] for item in instances] == [
+        [8.0, 9.0, 10.0, 11.0],
+        [0.0, 1.0, 2.0, 3.0],
+    ]
+    assert all(item["found"] and item["mask_shape"] == [8, 8] for item in instances)
+
+
+def test_sam3_segment_keeps_returning_only_the_top_candidate() -> None:
+    result = _TextSam3().segment(_image_b64(), text_prompt="watch")
+    # The argmax (0.95) has an empty mask; segment reports it, not a twin.
+    assert result["found"] is False
+    assert result["score"] == pytest.approx(0.95)
+
+
+@pytest.mark.parametrize("prompt", ["", "   ", None])
+def test_sam3_segment_all_requires_a_text_prompt(prompt: Any) -> None:
+    with pytest.raises(ValueError, match="text_prompt must be a non-empty string"):
+        _StubSam3().segment_all(_image_b64(), text_prompt=prompt)
+
+
+def test_sam3_client_segment_all_decodes_each_instance() -> None:
+    from rpent.robots.components.sam3_client import Sam3Client
+
+    facade = _TextSam3()
+
+    class _LoopbackRpc:
+        def call(self, method: str, *, kwargs: dict[str, Any], timeout_s: float) -> Any:
+            return facade._dispatch(method, (), kwargs)
+
+    results = Sam3Client(_LoopbackRpc()).segment_all(
+        np.zeros((8, 8, 3), dtype=np.uint8), text_prompt="watch"
+    )
+    assert [r.score for r in results] == pytest.approx([0.9, 0.5])
+    assert int(results[0].mask.sum()) == 16
+    assert results[1].mask[0:2, 0:2].all() and int(results[1].mask.sum()) == 4
