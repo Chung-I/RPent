@@ -3,6 +3,8 @@
 #   GPU 0: vLLM Qwen3.8-27B-FP8; GPU 1: Pi0.5 + SAM3 + LIBERO EGL rendering.
 # The worker takes cells from the shared queue in $OUT_ROOT; resubmit to resume.
 # Usage: sbatch --export=ALL,OUT_ROOT=/work/.../full,SLOTS=12[,WORKER_ARGS="--suites libero_10_task --limit 12"] job.sbatch
+# RPENT_MTP_TOKENS sets the MTP speculative tokens (default 0, disabled; the
+# RoboDojo planner serve uses 3).
 #SBATCH --job-name=rpent-libpro
 #SBATCH --partition=8gpus
 #SBATCH --exclude=25a-hgpn001
@@ -23,11 +25,14 @@ SVC=$OUT_ROOT/services/$SLURM_JOB_ID
 mkdir -p "$SVC"
 export HOME=$W/jobhome XDG_CACHE_HOME=$W/jobhome/.cache TRITON_CACHE_DIR=$W/jobhome/.triton
 export HF_HOME=$W/hf HF_HUB_OFFLINE=1
+MTP_TOKENS=${RPENT_MTP_TOKENS:-0}
+spec=()
+[ "$MTP_TOKENS" -gt 0 ] && spec=(--speculative-config "{\"method\":\"mtp\",\"num_speculative_tokens\":$MTP_TOKENS}")
 read -r GPU_LLM GPU_SIM <<<"${CUDA_VISIBLE_DEVICES//,/ }"
 # Localhost ports are shared by every job on a node; derive them from the job id.
 PORT_BASE=$((20000 + (SLURM_JOB_ID % 4000) * 10))
 LLM_PORT=$PORT_BASE VLA_PORT=$((PORT_BASE + 1)) SAM3_PORT=$((PORT_BASE + 2))
-echo "node=$(hostname) gpus=$CUDA_VISIBLE_DEVICES llm=$GPU_LLM sim=$GPU_SIM ports=$LLM_PORT/$VLA_PORT/$SAM3_PORT commit=$(git -C $REPO rev-parse HEAD)"
+echo "node=$(hostname) gpus=$CUDA_VISIBLE_DEVICES llm=$GPU_LLM sim=$GPU_SIM ports=$LLM_PORT/$VLA_PORT/$SAM3_PORT mtp=$MTP_TOKENS commit=$(git -C $REPO rev-parse HEAD)"
 
 pids=()
 cleanup() { kill "${pids[@]}" 2>/dev/null || true; wait 2>/dev/null || true; }
@@ -39,7 +44,7 @@ VLLM_USE_FLASHINFER_SAMPLER=0 VLLM_API_KEY="$(cat $W/rpent-serve/api_key)" CUDA_
   --max-model-len 262144 --max-num-seqs 12 --gpu-memory-utilization 0.9 --dtype bfloat16 \
   --limit-mm-per-prompt '{"image":4096}' --mm-processor-cache-gb 64 \
   --enable-auto-tool-choice --tool-call-parser qwen3_coder --reasoning-parser qwen3 \
-  --enable-prompt-tokens-details > "$SVC/vllm.log" 2>&1 &
+  --enable-prompt-tokens-details "${spec[@]}" > "$SVC/vllm.log" 2>&1 &
 pids+=($!)
 PI05_CHECKPOINT_PATH=$W/checkpoints/RLinf-Pi05-LIBERO-130-fullshot-SFT \
   $V/bin/python -u -m rpent.robots.components.pi05_vla_server --embodiment libero \
