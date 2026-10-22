@@ -19,6 +19,8 @@ Each slot claims one ``suite:task:seed`` cell with an atomic ``mkdir`` under
 writes ``<out-root>/<cell>/result.json``. Cells with a result are skipped, so
 restarting a job resumes the run. Infrastructure failures are retried once;
 task failures (planner finish, turn budget, timeout, truncation) are final.
+A job stops claiming cells after ``--max-infra-streak`` cells in a row end in
+infrastructure failure, so a broken node does not use up the queue.
 """
 
 from __future__ import annotations
@@ -42,6 +44,10 @@ MAX_ATTEMPTS = 2
 
 class ConfigError(RuntimeError):
     """The server rejected a request as invalid; every cell would fail."""
+
+
+class InfraStreakError(RuntimeError):
+    """Consecutive cells failed for infrastructure reasons; the node is suspect."""
 
 
 def all_cells() -> list[str]:
@@ -177,6 +183,8 @@ class Worker:
         self.job_id = os.environ.get("SLURM_JOB_ID", "local")
         self.lock = threading.Lock()
         self.stop = threading.Event()
+        self.stop_error: RuntimeError | None = None
+        self.infra_streak = 0
         self.run = None
         if args.wandb_project:
             import wandb
@@ -348,7 +356,22 @@ class Worker:
                     f"CONFIG ERROR in {cell}: {record['error']}; stopping this worker",
                     flush=True,
                 )
+                self.stop_error = ConfigError("a cell hit a server configuration error")
                 self.stop.set()
+            with self.lock:
+                self.infra_streak = (
+                    self.infra_streak + 1 if record["outcome"] == "infra_failure" else 0
+                )
+                if self.infra_streak >= self.args.max_infra_streak and not self.stop.is_set():
+                    print(
+                        f"{self.infra_streak} infrastructure failures in a row "
+                        f"(last {cell}: {record['error']}); stopping this worker",
+                        flush=True,
+                    )
+                    self.stop_error = InfraStreakError(
+                        f"{self.infra_streak} consecutive infrastructure failures"
+                    )
+                    self.stop.set()
 
     def main(self) -> None:
         released = reclaim_dead_claims(self.root)
@@ -364,8 +387,8 @@ class Worker:
             thread.join()
         if self.run is not None:
             self.run.finish()
-        if self.stop.is_set():
-            raise ConfigError("a cell hit a server configuration error")
+        if self.stop_error is not None:
+            raise self.stop_error
 
 
 def parse_args() -> argparse.Namespace:
@@ -399,6 +422,12 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--tag", default="qwen38-xhigh")
     p.add_argument("--suites", nargs="*", default=None, help="only these suites")
     p.add_argument("--limit", type=int, default=None, help="only the first N cells")
+    p.add_argument(
+        "--max-infra-streak",
+        type=int,
+        default=3,
+        help="stop claiming cells after this many infrastructure failures in a row",
+    )
     args = p.parse_args()
     if args.mode == "explore" and not args.memory_dir:
         p.error("--mode explore requires --memory-dir")
