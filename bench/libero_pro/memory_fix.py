@@ -14,6 +14,10 @@
 
 """Finish an exploration corpus with RPent's own merge, after a full backup.
 
+0. Rewrite list-valued ``evidence.attempts`` (attempt numbers such as
+   ``[1, 2]``) in published notes and pending inbox drafts to their count,
+   because merging into such a note fails with a ``TypeError``. The original
+   list is kept under ``evidence.source_attempts``.
 1. Publish cells whose environment reported success but whose planner timed
    out before the automatic merge (``rpent-memory merge --solved``, the path
    the memory guide documents for verified success).
@@ -56,8 +60,9 @@ def merge(
         cmd + (["--solved"] if solved else []),
         capture_output=True,
         text=True,
-        check=True,
     )
+    if out.returncode:
+        raise SystemExit(f"merge {cell} failed:\n{out.stderr}")
     return json.loads(out.stdout)
 
 
@@ -93,6 +98,50 @@ def repair_evidence(path: Path, cell: str) -> str:
     )
 
 
+def repair_attempts(memory: Path) -> list[dict]:
+    """Count list-valued ``evidence.attempts`` in notes a merge reads."""
+    paths = [
+        *(
+            p
+            for tier in ("global", "task-family", "task-specific")
+            for p in sorted((memory / tier).glob("*.md"))
+        ),
+        *sorted((memory / "_internal" / "inbox").glob("*/*.md")),
+    ]
+    repairs = []
+    for path in paths:
+        text = path.read_text()
+        if not text.startswith("---\n"):
+            continue
+        _, front, body = text.split("---\n", 2)
+        try:
+            meta = yaml.safe_load(front)
+        except yaml.YAMLError:
+            continue  # rpent-memory reports these itself
+        evidence = meta.get("evidence") if isinstance(meta, dict) else None
+        if not isinstance(evidence, dict) or not isinstance(
+            evidence.get("attempts"), list
+        ):
+            continue
+        original = evidence["attempts"]
+        evidence["attempts"] = len(original) or 1
+        evidence["source_attempts"] = original
+        path.write_text(
+            "---\n"
+            + yaml.safe_dump(meta, sort_keys=False, allow_unicode=True)
+            + "---\n"
+            + body
+        )
+        repairs.append(
+            {
+                "path": str(path.relative_to(memory)),
+                "from": original,
+                "to": evidence["attempts"],
+            }
+        )
+    return repairs
+
+
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--memory-dir", type=Path, required=True)
@@ -110,6 +159,7 @@ def main() -> None:
     if not backup.exists():
         shutil.copytree(memory, backup)
     log["backup"] = str(backup)
+    log["attempts_repairs"] = repair_attempts(memory)
 
     results = automatic_merges(runs)
     for run_dir in sorted(runs.iterdir()):
@@ -169,6 +219,7 @@ def main() -> None:
     print(
         json.dumps(
             {
+                "attempts_repaired": len(log["attempts_repairs"]),
                 "solved_merges": len(log["solved_merges"]),
                 "drafts_repaired": repaired,
                 "still_skipped_after_repair": still,
