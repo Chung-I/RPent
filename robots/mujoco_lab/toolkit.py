@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import json
 from functools import partial
 from typing import TYPE_CHECKING, Any
 
@@ -69,6 +70,15 @@ class MuJoCoLabToolkit(Toolkit):
         if command.get("action") == "pick_and_place" and "outcome" in result:
             self._state.save(LAST_PICK_ARTIFACT, {"step": record.step_idx, **result}, step=None)
         return ToolResult(data=data, images=images)
+
+    def solved(self) -> bool:
+        """The runner's ground truth: the last pick_and_place set the object down at the requested place."""
+        path = self._state.artifact_path(LAST_PICK_ARTIFACT, step=None) if hasattr(self._state, "artifact_path") else None
+        try:
+            last = json.loads(path.read_text()) if path is not None and path.exists() else None
+        except (OSError, ValueError):
+            last = None
+        return bool(last and last.get("placed_at_requested"))
 
     def close(self) -> None:
         return None

@@ -116,3 +116,14 @@ def test_finalize_run_writes_outcome(tmp_path):
 
     out = json.load(open(path))
     assert out["outcome"] == "placed_stable" and out["placed_at_requested"] is True and out["object"] == "mug"
+
+
+def test_solved_reads_the_last_pick_result(tmp_path):
+    tk = _toolkit(tmp_path)
+    assert tk.solved() is False
+    tk.execute_tool("pick_and_place", {"object": "mug", "destination": "table_centre"})
+    assert tk.solved() is True
+    tk2 = _toolkit(tmp_path / "second", env=FakeEnv(label="dropped_high"))
+    tk2.execute_tool("pick_and_place", {"object": "mug", "destination": "table_centre"})
+    assert tk2.solved() is False
+    assert tk2.exploration_continuation() is None
