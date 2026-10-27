@@ -33,6 +33,7 @@ from typing import Any
 import numpy as np
 
 from rpent.skills.pick_place.destinations import DESTINATIONS, OBJECT_REST_XY, has_surface, release_height
+from rpent.skills.pick_place.features import Geometry
 from rpent.skills.pick_place.protocol import OUTCOMES  # noqa: F401  (label vocabulary)
 
 RISE_M = 0.02
@@ -105,17 +106,6 @@ class Proposal:
     point: list[float]
     yaw: float
     width: float
-
-
-@dataclass
-class Geometry:
-    centres: np.ndarray
-    normals: np.ndarray
-    com: np.ndarray
-    length: float
-    base_extent: float
-    com_height: float
-    footprint_half_width: float
 
 
 @dataclass
@@ -210,7 +200,7 @@ class MuJoCoLabEnv:
         if th.get("com_s") is not None:
             shift = t3.com_shift_for(o, props, float(th["com_s"]), end=com_end)
         flat = not (o["hollow"] or o["liquid"])
-        pos, quat = gr.rest_pose(o, props, flat=flat, mu=th["mu"], mass_scale=th["mass_scale"], com_shift=shift)
+        pos, quat = gr.rest_pose(o, props, flat=flat)      # the default rest, as the t3/t3g corpora used
         pos = np.array([pos[0] + OBJECT_REST_XY[0], pos[1] + OBJECT_REST_XY[1], pos[2]])
         xml = sc.build_xml(o, props, mu=th["mu"], mass_scale=th["mass_scale"], com_shift=shift, obj_pos=pos,
                            obj_quat=quat, cam_k=1.0, fixtures=self._fixture_specs())
