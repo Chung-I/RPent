@@ -264,6 +264,11 @@ class MuJoCoLabEnv:
             "hollow": bool(o["hollow"]),
         }
 
+    def nominal_mass(self, object_id: str | None = None) -> float:
+        """The object's mass at mass_scale 1 (mesh volume times the material density)."""
+        props = self.props if object_id is None or (self.obj and self.obj["id"] == object_id) else object_props(object_id)
+        return float(props["mass"])
+
     def truth(self) -> dict[str, Any]:
         self._need()
         sim, t3 = self.sim, self.s["t3_make"]
