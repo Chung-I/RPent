@@ -27,3 +27,8 @@ build/
 
 # Standalone calibration environment.
 .venv-calibration/
+
+# pick_place data: only corpus.jsonl, fixtures.json and the metrics are committed
+robots/mujoco_lab/data/*
+!robots/mujoco_lab/data/corpus*.jsonl
+!robots/mujoco_lab/data/*.json
