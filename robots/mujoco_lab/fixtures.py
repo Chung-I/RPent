@@ -116,14 +116,19 @@ def layout(entry: dict[str, Any]) -> dict[str, Any]:
 
 def entry_for(mesh_dir: str, name: str, material: str) -> dict[str, Any]:
     a = analyse(mesh_dir)
-    lay = layout(a)
+    try:
+        lay = layout(a)
+        too_big = None
+    except ValueError as exc:
+        lay, too_big = {"xy": (0.0, 0.0), "object_rest_xy": OBJECT_REST_XY}, str(exc)
     return {
         "id": name, "kind": a["kind"], "xy": lay["xy"], "object_rest_xy": lay["object_rest_xy"],
         "surface_z": TABLE_TOP + a["surface_z"], "mu": MU_BY_MATERIAL.get(material, 0.5), "rim_height": a["rim_height"],
         "opening_half_width": a["opening_half_width"] if a["kind"] != "surface" else None, "fragile": material in FRAGILE,
         "material": material, "mesh_dir": mesh_dir, "footprint": a["footprint"], "centre_xy": a["centre_xy"],
         "z_offset": a["z_offset"], "open_top": a["open_top"], "hull_count": a["hull_count"],
-        "inspected": False, "rejected": None if a["open_top"] else "closed top: the centre ray does not reach below the rim",
+        "inspected": False,
+        "rejected": too_big or (None if a["open_top"] else "closed top: the centre ray does not reach below the rim"),
     }
 
 

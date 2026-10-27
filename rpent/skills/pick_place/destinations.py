@@ -80,7 +80,7 @@ HAND_HALF_WIDTH = 0.07   # the open gripper's half-width plus a margin: a cavity
 PRIMITIVE_IDS: tuple[str, ...] = tuple(DESTINATIONS)
 MESH_FIXTURES_PATH = os.environ.get(
     "RPENT_PICK_PLACE_FIXTURES",
-    os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "robots", "mujoco_lab", "data", "fixtures.json"),
+    os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), "robots", "mujoco_lab", "data", "fixtures.json"),
 )
 
 

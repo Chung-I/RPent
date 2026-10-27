@@ -37,7 +37,7 @@ import numpy as np
 from robots.mujoco_lab.corpus import draw_theta
 from robots.mujoco_lab.robot_spec import build_lab
 from rpent.skills.pick_place import menu as menu_mod
-from rpent.skills.pick_place.destinations import DESTINATIONS
+from rpent.skills.pick_place.destinations import DESTINATIONS, MESH_IDS, PRIMITIVE_IDS
 from rpent.skills.pick_place.evaluate import rows_of, score
 from rpent.skills.pick_place.features import extract
 from rpent.skills.pick_place.protocol import OUTCOMES, Prediction
@@ -53,14 +53,18 @@ def _load_corpus(path: str) -> list[dict[str, Any]]:
     return rows
 
 
-def run_case(prims, object_id: str, idx: int, seed: int, rng: np.random.Generator, follow: bool) -> dict[str, Any]:
+def run_case(prims, object_id: str, idx: int, seed: int, rng: np.random.Generator, follow: bool,
+             use_fixtures: bool = False) -> dict[str, Any]:
     env = prims.env
     from robots.mujoco_lab.adapter import object_props
 
     props = object_props(object_id)
     theta, com_end = draw_theta(rng, props["mass"])
-    destination = str(rng.choice(sorted(DESTINATIONS)))
-    env.reset(object_id, theta, seed=seed * 1000 + idx, com_end=com_end)
+    if use_fixtures and MESH_IDS and rng.random() < 0.5:
+        destination = str(rng.choice(sorted(MESH_IDS)))
+    else:
+        destination = str(rng.choice(sorted(PRIMITIVE_IDS)))
+    env.reset(object_id, theta, seed=seed * 1000 + idx, com_end=com_end, fixture=destination if destination in MESH_IDS else None)
     store: dict[str, Any] = {}
     a = assess_pick(object="object", destination=destination, primitives=prims, store=store).data
     truth = env.truth()
@@ -95,13 +99,17 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
     ap.add_argument("--follow-recommendation", action="store_true")
     ap.add_argument("--threshold", type=float, default=None, help="override the commit threshold (tests)")
     ap.add_argument("--model-kind", default=None)
+    ap.add_argument("--fixtures", action="store_true", help="draw half the destinations from the inspected mesh fixtures")
     a = ap.parse_args(argv)
     metrics = json.load(open(a.metrics))
     objects = a.objects.split(",") if a.objects else list(metrics["split"]["test"])
-    corpus_path = metrics["corpus"]
-    if not os.path.isabs(corpus_path):
-        corpus_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), corpus_path)
-    train_rows = rows_of(_load_corpus(corpus_path), metrics["split"]["train"]) if os.path.exists(corpus_path) else []
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    paths = metrics["corpus"] if isinstance(metrics["corpus"], list) else [metrics["corpus"]]
+    train_rows = []
+    for cp in paths:
+        cp = cp if os.path.isabs(cp) else os.path.join(root, cp)
+        if os.path.exists(cp):
+            train_rows += rows_of(_load_corpus(cp), metrics["split"]["train"])
     if a.threshold is not None:
         menu_mod.DEFAULT_THRESHOLD = a.threshold
     prims = build_lab(seed=a.seed, model_kind=a.model_kind)
@@ -110,7 +118,7 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
     for oid in objects:
         for k in range(a.repeats):
             try:
-                rows.append(run_case(prims, oid, k, a.seed, rng, a.follow_recommendation))
+                rows.append(run_case(prims, oid, k, a.seed, rng, a.follow_recommendation, a.fixtures))
             except Exception as exc:  # noqa: BLE001
                 rows.append({"object": oid, "error": str(exc)[:200], "executed": False})
             print(f"{oid} {k}: {rows[-1].get('outcome') or rows[-1].get('error') or 'abstained'}", file=sys.stderr, flush=True)

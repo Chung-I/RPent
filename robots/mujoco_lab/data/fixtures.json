@@ -1,0 +1,526 @@
+{
+ "fixtures": [
+  {
+   "id": "plate_small",
+   "kind": "rim",
+   "xy": [
+    0.0,
+    0.08040369804590944
+   ],
+   "object_rest_xy": [
+    -0.12,
+    -0.16
+   ],
+   "surface_z": 0.7600292167562008,
+   "mu": 0.4,
+   "rim_height": 0.014076596907214807,
+   "opening_half_width": 0.13500000000000012,
+   "fragile": true,
+   "material": "ceramic",
+   "mesh_dir": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-10-27-vlm-grasp-limits/sim/meshes/fx__plate_small",
+   "footprint": [
+    0.2991916282010078,
+    0.29919260390818114
+   ],
+   "centre_xy": [
+    -2.8380453824999874e-05,
+    1.5522614121438183e-06
+   ],
+   "z_offset": 0.0013873912539780122,
+   "open_top": true,
+   "hull_count": 57,
+   "inspected": true,
+   "rejected": null,
+   "inspection_note": "clean dish: rim ring plus a thin floor, no bridge; ray grid over the opening: every ray hits the fixture floor"
+  },
+  {
+   "id": "plate_large",
+   "kind": "rim",
+   "xy": [
+    0.0,
+    0.0
+   ],
+   "object_rest_xy": [
+    -0.12,
+    0.0
+   ],
+   "surface_z": 0.7604004818455488,
+   "mu": 0.4,
+   "rim_height": 0.018434077180960823,
+   "opening_half_width": 0.14500000000000013,
+   "fragile": true,
+   "material": "ceramic",
+   "mesh_dir": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-10-27-vlm-grasp-limits/sim/meshes/fx__plate_large",
+   "footprint": [
+    0.3329129737448692,
+    0.3329164639453888
+   ],
+   "centre_xy": [
+    1.7253816127771326e-06,
+    0.0
+   ],
+   "z_offset": -0.0012453724797964073,
+   "open_top": true,
+   "hull_count": 54,
+   "inspected": false,
+   "rejected": "fixture footprint (0.3329129737448692, 0.3329164639453888) does not fit the table beside an object"
+  },
+  {
+   "id": "serving_bowl",
+   "kind": "cavity",
+   "xy": [
+    0.21,
+    0.12
+   ],
+   "object_rest_xy": [
+    -0.12,
+    0.0
+   ],
+   "surface_z": 0.7565097257726568,
+   "mu": 0.4,
+   "rim_height": 0.04711919865640217,
+   "opening_half_width": 0.05999999999999998,
+   "fragile": true,
+   "material": "ceramic",
+   "mesh_dir": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-10-27-vlm-grasp-limits/sim/meshes/fx__serving_bowl",
+   "footprint": [
+    0.1611664522576332,
+    0.16116602395176888
+   ],
+   "centre_xy": [
+    -1.5894906520846908e-06,
+    -0.000246504758954047
+   ],
+   "z_offset": 0.00112526066583395,
+   "open_top": true,
+   "hull_count": 64,
+   "inspected": true,
+   "rejected": null,
+   "inspection_note": "clean: sloped wall hulls and a flat floor, cavity empty on both cuts; ray grid over the opening: every ray hits the fixture floor"
+  },
+  {
+   "id": "brass_bowl_small",
+   "kind": "cavity",
+   "xy": [
+    0.21,
+    0.12
+   ],
+   "object_rest_xy": [
+    -0.12,
+    0.0
+   ],
+   "surface_z": 0.7546255054933239,
+   "mu": 0.5,
+   "rim_height": 0.09836817450906751,
+   "opening_half_width": 0.06499999999999996,
+   "fragile": false,
+   "material": "metal",
+   "mesh_dir": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-10-27-vlm-grasp-limits/sim/meshes/fx__brass_bowl_small",
+   "footprint": [
+    0.1822373008203506,
+    0.18223770926356314
+   ],
+   "centre_xy": [
+    4.729342460638164e-07,
+    -2.6871263980599025e-07
+   ],
+   "z_offset": 0.0009498112840652453,
+   "open_top": true,
+   "hull_count": 64,
+   "inspected": true,
+   "rejected": null,
+   "inspection_note": "clean: wall hulls follow the curve, floor flat, cavity empty; ray grid over the opening: every ray hits the fixture floor"
+  },
+  {
+   "id": "bin_a01",
+   "kind": "cavity",
+   "xy": [
+    0.21,
+    0.12
+   ],
+   "object_rest_xy": [
+    -0.12,
+    0.0
+   ],
+   "surface_z": 0.7540480537106414,
+   "mu": 0.5,
+   "rim_height": 0.07643809536236329,
+   "opening_half_width": 0.035,
+   "fragile": false,
+   "material": "plastic",
+   "mesh_dir": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-10-27-vlm-grasp-limits/sim/meshes/fx__bin_a01",
+   "footprint": [
+    0.0879050520631671,
+    0.10774945079398154
+   ],
+   "centre_xy": [
+    -8.55481539666636e-05,
+    4.446947574412996e-08
+   ],
+   "z_offset": 0.000494384855985637,
+   "open_top": true,
+   "hull_count": 64,
+   "inspected": true,
+   "rejected": null,
+   "inspection_note": "clean: thin walls, floor continuous, open front lip lower; ray grid over the opening: every ray hits the fixture floor"
+  },
+  {
+   "id": "bin_a02",
+   "kind": "cavity",
+   "xy": [
+    0.21,
+    0.12
+   ],
+   "object_rest_xy": [
+    -0.12,
+    0.0
+   ],
+   "surface_z": 0.7542445126577183,
+   "mu": 0.5,
+   "rim_height": 0.07660255036215344,
+   "opening_half_width": 0.045000000000000005,
+   "fragile": false,
+   "material": "plastic",
+   "mesh_dir": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-10-27-vlm-grasp-limits/sim/meshes/fx__bin_a02",
+   "footprint": [
+    0.12311155289113522,
+    0.10791777114272118
+   ],
+   "centre_xy": [
+    -0.00010859378427267169,
+    1.4549493790316781e-08
+   ],
+   "z_offset": 0.0005668498780131356,
+   "open_top": true,
+   "hull_count": 64,
+   "inspected": true,
+   "rejected": null,
+   "inspection_note": "clean: thin walls, floor continuous; ray grid over the opening: every ray hits the fixture floor"
+  },
+  {
+   "id": "bin_a03",
+   "kind": "cavity",
+   "xy": [
+    0.21,
+    0.12
+   ],
+   "object_rest_xy": [
+    -0.12,
+    0.0
+   ],
+   "surface_z": 0.7545592433974255,
+   "mu": 0.5,
+   "rim_height": 0.07629044944642893,
+   "opening_half_width": 0.045000000000000005,
+   "fragile": false,
+   "material": "plastic",
+   "mesh_dir": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-10-27-vlm-grasp-limits/sim/meshes/fx__bin_a03",
+   "footprint": [
+    0.158449821805954,
+    0.10277795216739177
+   ],
+   "centre_xy": [
+    -0.00017197573184966897,
+    -4.683434962765576e-09
+   ],
+   "z_offset": 0.0007275755803585054,
+   "open_top": true,
+   "hull_count": 64,
+   "inspected": true,
+   "rejected": null,
+   "inspection_note": "64 hulls: the y cut showed floor pieces with ~2 cm gaps; re-decomposed at 128 hulls / 0.01: cut unchanged, but a 5 mm ray grid over the opening in the built scene hits the fixture floor on all 289 rays (floor 5 mm above the table), so the floor is closed and the cut gaps are a thin-floor artefact"
+  },
+  {
+   "id": "bin_b02",
+   "kind": "cavity",
+   "xy": [
+    0.21,
+    0.12
+   ],
+   "object_rest_xy": [
+    -0.12,
+    0.0
+   ],
+   "surface_z": 0.7529489466460849,
+   "mu": 0.5,
+   "rim_height": 0.07499183499301419,
+   "opening_half_width": 0.04,
+   "fragile": false,
+   "material": "plastic",
+   "mesh_dir": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-10-27-vlm-grasp-limits/sim/meshes/fx__bin_b02",
+   "footprint": [
+    0.171918534324646,
+    0.10182363821411133
+   ],
+   "centre_xy": [
+    0.0,
+    0.0
+   ],
+   "z_offset": 0.000935262184143068,
+   "open_top": true,
+   "hull_count": 64,
+   "inspected": true,
+   "rejected": null,
+   "inspection_note": "clean: thin walls, floor continuous, front lip; ray grid over the opening: every ray hits the fixture floor"
+  },
+  {
+   "id": "bin_b03",
+   "kind": "cavity",
+   "xy": [
+    0.21,
+    0.12
+   ],
+   "object_rest_xy": [
+    -0.12,
+    0.0
+   ],
+   "surface_z": 0.7538735673585322,
+   "mu": 0.5,
+   "rim_height": 0.11847877007003765,
+   "opening_half_width": 0.060000000000000005,
+   "fragile": false,
+   "material": "plastic",
+   "mesh_dir": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-10-27-vlm-grasp-limits/sim/meshes/fx__bin_b03",
+   "footprint": [
+    0.23377040919589998,
+    0.1426768862015605
+   ],
+   "centre_xy": [
+    -2.328287279605712e-05,
+    1.0683378576931135e-07
+   ],
+   "z_offset": 0.0012720050655603415,
+   "open_top": true,
+   "hull_count": 64,
+   "inspected": true,
+   "rejected": null,
+   "inspection_note": "clean: thin walls, floor continuous, front lip; ray grid over the opening: every ray hits the fixture floor"
+  },
+  {
+   "id": "tray_b02",
+   "kind": "cavity",
+   "xy": [
+    0.0,
+    0.0
+   ],
+   "object_rest_xy": [
+    -0.12,
+    0.0
+   ],
+   "surface_z": 0.7646570357855008,
+   "mu": 0.5,
+   "rim_height": 0.04454782275598782,
+   "opening_half_width": 0.13000000000000012,
+   "fragile": false,
+   "material": "plastic",
+   "mesh_dir": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-10-27-vlm-grasp-limits/sim/meshes/fx__tray_b02",
+   "footprint": [
+    0.4028513431549072,
+    0.30416752099990846
+   ],
+   "centre_xy": [
+    -2.0742416381863693e-06,
+    5.960464483090178e-09
+   ],
+   "z_offset": 0.0020048564672470112,
+   "open_top": true,
+   "hull_count": 54,
+   "inspected": false,
+   "rejected": "fixture footprint (0.4028513431549072, 0.30416752099990846) does not fit the table beside an object"
+  },
+  {
+   "id": "tray_b04",
+   "kind": "cavity",
+   "xy": [
+    0.0,
+    0.0
+   ],
+   "object_rest_xy": [
+    -0.12,
+    0.0
+   ],
+   "surface_z": 0.7647768207737189,
+   "mu": 0.5,
+   "rim_height": 0.1094375213882942,
+   "opening_half_width": 0.1250000000000001,
+   "fragile": false,
+   "material": "plastic",
+   "mesh_dir": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-10-27-vlm-grasp-limits/sim/meshes/fx__tray_b04",
+   "footprint": [
+    0.40715316283512115,
+    0.30313053523492817
+   ],
+   "centre_xy": [
+    -4.080717563720304e-07,
+    0.0
+   ],
+   "z_offset": 0.00202136205786467,
+   "open_top": true,
+   "hull_count": 64,
+   "inspected": false,
+   "rejected": "fixture footprint (0.40715316283512115, 0.30313053523492817) does not fit the table beside an object"
+  },
+  {
+   "id": "crate_c09",
+   "kind": "surface",
+   "xy": [
+    0.0,
+    0.0
+   ],
+   "object_rest_xy": [
+    -0.12,
+    0.0
+   ],
+   "surface_z": 0.8781463458982569,
+   "mu": 0.5,
+   "rim_height": 0.004096194613232046,
+   "opening_half_width": null,
+   "fragile": false,
+   "material": "plastic",
+   "mesh_dir": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-10-27-vlm-grasp-limits/sim/meshes/fx__crate_c09",
+   "footprint": [
+    0.40983533829152585,
+    0.30341612714231014
+   ],
+   "centre_xy": [
+    6.413653492881588e-07,
+    -1.0770097374906973e-06
+   ],
+   "z_offset": 0.0022332748332619806,
+   "open_top": false,
+   "hull_count": 64,
+   "inspected": false,
+   "rejected": "fixture footprint (0.40983533829152585, 0.30341612714231014) does not fit the table beside an object"
+  },
+  {
+   "id": "cubebox_a02",
+   "kind": "surface",
+   "xy": [
+    0.21,
+    0.12
+   ],
+   "object_rest_xy": [
+    -0.12,
+    0.0
+   ],
+   "surface_z": 0.9092931189047042,
+   "mu": 0.5,
+   "rim_height": 0.0008882482595499175,
+   "opening_half_width": null,
+   "fragile": false,
+   "material": "plastic",
+   "mesh_dir": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-10-27-vlm-grasp-limits/sim/meshes/fx__cubebox_a02",
+   "footprint": [
+    0.15890424364447592,
+    0.15789052300816775
+   ],
+   "centre_xy": [
+    1.958839333057044e-05,
+    -4.230279535055725e-06
+   ],
+   "z_offset": 0.0008032754613161025,
+   "open_top": false,
+   "hull_count": 20,
+   "inspected": false,
+   "rejected": "closed top: the centre ray does not reach below the rim"
+  },
+  {
+   "id": "wooden_bowl",
+   "kind": "cavity",
+   "xy": [
+    0.0,
+    0.08846252931800486
+   ],
+   "object_rest_xy": [
+    -0.12,
+    -0.16
+   ],
+   "surface_z": 0.764575331064923,
+   "mu": 0.6,
+   "rim_height": 0.11844899063357867,
+   "opening_half_width": 0.060000000000000046,
+   "fragile": false,
+   "material": "wood",
+   "mesh_dir": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-10-27-vlm-grasp-limits/sim/meshes/fx__wooden_bowl",
+   "footprint": [
+    0.2830093719779849,
+    0.2830749413639903
+   ],
+   "centre_xy": [
+    0.0010538299990594524,
+    -0.001865778569549309
+   ],
+   "z_offset": 0.001447113957837226,
+   "open_top": true,
+   "hull_count": 64,
+   "inspected": true,
+   "rejected": null,
+   "inspection_note": "clean: curved wall hulls, floor flat, cavity empty; ray grid over the opening: every ray hits the fixture floor"
+  },
+  {
+   "id": "ycb_bowl",
+   "kind": "cavity",
+   "xy": [
+    0.21,
+    0.12
+   ],
+   "object_rest_xy": [
+    -0.12,
+    0.0
+   ],
+   "surface_z": 0.7541862013811593,
+   "mu": 0.4,
+   "rim_height": 0.05223429317818829,
+   "opening_half_width": 0.049999999999999975,
+   "fragile": true,
+   "material": "ceramic",
+   "mesh_dir": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-10-27-vlm-grasp-limits/sim/meshes/fx__ycb_bowl",
+   "footprint": [
+    0.16215189256191254,
+    0.1619162780034542
+   ],
+   "centre_xy": [
+    -2.3296828508378997e-05,
+    1.0002913355830478e-05
+   ],
+   "z_offset": 0.02828577553033829,
+   "open_top": true,
+   "hull_count": 64,
+   "inspected": true,
+   "rejected": null,
+   "inspection_note": "clean: curved wall hulls, floor flat, cavity empty; ray grid over the opening: every ray hits the fixture floor"
+  },
+  {
+   "id": "clay_plates",
+   "kind": "rim",
+   "xy": [
+    0.0,
+    0.0
+   ],
+   "object_rest_xy": [
+    -0.12,
+    0.0
+   ],
+   "surface_z": 0.7644386023799263,
+   "mu": 0.4,
+   "rim_height": 0.03512743866730406,
+   "opening_half_width": 0.08999999999999996,
+   "fragile": true,
+   "material": "ceramic",
+   "mesh_dir": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-10-27-vlm-grasp-limits/sim/meshes/fx__clay_plates",
+   "footprint": [
+    0.3036399546929598,
+    0.3051522031918764
+   ],
+   "centre_xy": [
+    -0.01282716765040158,
+    0.018681478334486468
+   ],
+   "z_offset": 0.0012485018708556853,
+   "open_top": true,
+   "hull_count": 64,
+   "inspected": false,
+   "rejected": "fixture footprint (0.3036399546929598, 0.3051522031918764) does not fit the table beside an object"
+  }
+ ]
+}

@@ -42,12 +42,12 @@ def load_rows(path: str) -> list[dict]:
 
 def main(argv: list[str] | None = None) -> dict:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--corpus", required=True)
+    ap.add_argument("--corpus", required=True, nargs="+", help="one or more corpus JSONL files (rows are pooled)")
     ap.add_argument("--out-dir", required=True)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--n-belief", type=int, default=32)
     a = ap.parse_args(argv)
-    rows = load_rows(a.corpus)
+    rows = [r for path in a.corpus for r in load_rows(path)]
     split = split_objects(rows, seed=a.seed)
     tr, va = rows_of(rows, split["train"]), rows_of(rows, split["val"])
     os.makedirs(a.out_dir, exist_ok=True)
@@ -58,7 +58,7 @@ def main(argv: list[str] | None = None) -> dict:
     t2 = time.time()
     kind = "hazard" if haz["belief"]["brier"] <= clf["belief"]["brier"] else "classifier"
     out = {
-        "corpus": a.corpus, "n_rows": len(rows), "split": split, "n_train": len(tr), "n_val": len(va),
+        "corpus": a.corpus if len(a.corpus) > 1 else a.corpus[0], "n_rows": len(rows), "split": split, "n_train": len(tr), "n_val": len(va),
         "classifier": clf, "hazard": haz, "kind": kind,
         "acceptance_val_belief": {
             "classifier": {"ece": clf["belief"]["ece"], "brier": clf["belief"]["brier"], "brier_const": clf["belief"]["brier_const"]},
