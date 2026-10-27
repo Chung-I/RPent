@@ -62,6 +62,13 @@ class FakeEnv:
     def nominal_mass(self, object_id):
         return 0.3
 
+    obj = {"name": "mug", "id": "ycb__mug", "material": "ceramic"}
+
+    def get_obs(self):
+        return {"state": {"object_pos": [0.0, 0.0, 0.8], "object_mat": [1, 0, 0, 0, 1, 0, 0, 0, 1], "hand_pos": [0.0, 0.0, 1.1],
+                          "gripper_opening": 0.11, "pad_forces": [0.0, 0.0], "fixtures_in_scene": list(self.fixtures_in_scene)},
+                "vision": {}}
+
 
 class StubModel:
     kind = "classifier"

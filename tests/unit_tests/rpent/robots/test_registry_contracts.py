@@ -33,6 +33,7 @@ EXPECTED_ROBOTS = (
     "dual_franka",
     "franka",
     "libero",
+    "mujoco_lab",
     "robocasa",
     "robodojo",
     "robotwin",
@@ -111,6 +112,7 @@ PROMPT_VARIABLES = {
         "constraints": "1. Move exactly one arm per call",
         "output_dir": Path("/output"),
     },
+    "mujoco_lab": {"object": "ycb__banana", "destination": "plate", "care": "normal", "seed": 0},
 }
 
 

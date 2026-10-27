@@ -16,12 +16,6 @@
 
 from __future__ import annotations
 
-from typing import Any
+from robots.mujoco_lab.robot_spec import get_robot_spec, get_toolkit
 
-
-def get_robot_spec():
-    raise NotImplementedError("Task 10")
-
-
-def get_toolkit(**kwargs: Any):
-    raise NotImplementedError("Task 10")
+__all__ = ["get_robot_spec", "get_toolkit"]
