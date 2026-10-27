@@ -28,6 +28,7 @@ import json
 import multiprocessing as mp
 import os
 import sys
+import zlib
 from typing import Any
 
 import numpy as np
@@ -43,6 +44,11 @@ S_CHOICES = (0.3, 0.5, 0.7)
 P_COM_SHIFT = 0.5
 P_DROP_RELEASE = 0.3
 RELEASE_KEYS = ("tilt_deg", "displacement_xy_m", "drop_height_m", "final_zone", "final_speed")
+
+
+def case_rng(seed: int, object_id: str, idx: int) -> np.random.Generator:
+    """One stream per (seed, object, draw index), so objects do not share hidden draws."""
+    return np.random.default_rng([int(seed), zlib.crc32(object_id.encode()), int(idx)])
 
 
 def draw_theta(rng: np.random.Generator, nominal_mass: float) -> tuple[dict[str, Any], int]:
@@ -91,7 +97,7 @@ def rollout_row(env, object_id: str, idx: int, seed: int, use_fixtures: bool = F
     from robots.mujoco_lab.adapter import object_props
     from rpent.skills.pick_place.features import extract
 
-    rng = np.random.default_rng([seed, idx])
+    rng = case_rng(seed, object_id, idx)
     props = object_props(object_id)
     theta, com_end = draw_theta(rng, props["mass"])
     f_std = env.s["t3_make"].std_force(props["mass"])

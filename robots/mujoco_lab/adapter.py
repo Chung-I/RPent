@@ -45,6 +45,8 @@ A_TRANSPORT = 2.0        # m/s^2: the transport accelerates and brakes at 0.2 g 
 CLOSE_S = 0.6
 APPROACH_M = 0.12
 RELEASE_S = 3.0
+RETREAT_M = 0.10
+RETREAT_SETTLE_S = 0.5
 TIP_DEG = 45.0
 DISPLACE_TOL_M = 0.05
 
@@ -348,9 +350,14 @@ class MuJoCoLabEnv:
             base = float(min(np.ptp(proj[:, 0]), np.ptp(proj[:, 1])) / 2)
         else:
             base = 0.0
-        com = self.sim.d.subtree_com[self.sim.obj].copy()
+        com = self.nominal_com()
         return Geometry(centres=C, normals=N, com=com, length=float(self.props["length"]), base_extent=base,
                         com_height=float(com[2] - low), footprint_half_width=footprint_half)
+
+    def nominal_com(self) -> np.ndarray:
+        """The centre of mass the skill may know: the mesh-density CoM of props.json in the current
+        pose. The hidden shift of the episode is not in it (that is what the belief is for)."""
+        return self.sim.obj_mat() @ np.asarray(self.props["com"], dtype=float) + self.sim.obj_pos()
 
     def _pinch_frame(self) -> tuple[float, np.ndarray, np.ndarray]:
         axis = self.sim.obj_mat() @ np.array(self.props["axis"])
@@ -454,6 +461,8 @@ class MuJoCoLabEnv:
                     target_low - (surf_d if has_d else sc.TABLE_TOP), has_d, V_LOWER),
             Segment("release", int(RELEASE_S * hz), target_low - (surf_d if has_d else sc.TABLE_TOP),
                     target_low - (surf_d if has_d else sc.TABLE_TOP), has_d, 0.0),
+            Segment("retreat", _steps(RETREAT_M, V_LOWER, hz) + int(RETREAT_SETTLE_S * hz),
+                    target_low - (surf_d if has_d else sc.TABLE_TOP), target_low - (surf_d if has_d else sc.TABLE_TOP), has_d, V_LOWER),
         ]
         return segs
 
@@ -505,6 +514,15 @@ class MuJoCoLabEnv:
                 sim.step_ctrl()
                 on_step("lower")
             release = gr.run_release(sim, None, 1, [], [], len(trace), seconds=RELEASE_S, on_step=on_step, up0=self.up0)
+            z_up = z + RETREAT_M                        # the open hand moves away; a wedged object comes with it
+            while z < z_up - 1e-6:
+                z = min(z_up, z + V_LOWER / hz)
+                sim.set_hand([goal[0], goal[1], z], proposal.yaw)
+                sim.step_ctrl()
+                on_step("retreat")
+            for _ in range(int(RETREAT_SETTLE_S * hz)):
+                sim.step_ctrl()
+                on_step("retreat")
         return self._label(trace, rose, dest, release, planned)
 
     # ----------------------------------------------------------------- labels
@@ -520,10 +538,11 @@ class MuJoCoLabEnv:
 
     def _label(self, trace, rose, dest, release, planned) -> Rollout:
         sim = self.sim
-        touching, _ = sim.contacts()
+        touching, pads = sim.contacts()
         low = sim.obj_low_z()
         final = Final(zone=sim.zone_of(touching), pos=sim.obj_pos().tolist(), low_z=float(low),
-                      tipped=bool(release is not None and self._tipped(release, low)))
+                      tipped=bool(release is not None and self._tipped(release, low)), held=bool(any(pads)),
+                      com_xy=sim.d.subtree_com[sim.obj][:2].tolist())
         out = label_rollout(trace, dest, release, final)
         return Rollout(out["label"], out["max_z"], out["drop_z"], out["loss_phase"], out["loss_step"], out["loss_t"],
                        out["loss_speed"], final.zone, release, planned, trace)

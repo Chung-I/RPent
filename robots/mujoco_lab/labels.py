@@ -21,10 +21,12 @@ Rules, in order:
 2. Lost before the intended release (no pad touching in a held phase): ``dropped_high`` when
    the lowest point was 10 cm or more above the surface under it, or there was no surface;
    else ``dropped_low``. What happens after the drop does not change the label.
-3. After the release: ``rolled_off`` when the object ends on the floor and the place is not
-   the bin; ``missed`` when the place has an opening and the object's CoM is outside it or its
-   lowest point sits more than 2 cm above the place's floor (bridging); ``tipped`` when the
-   place reports it; else ``placed_stable``.
+3. After the release: ``missed`` when the object is still in the pads or rests on nothing
+   (a wedged object the open gripper did not let go of is not placed); ``rolled_off`` when the
+   object ends on the floor and the place is not the bin; ``missed`` when the place has an
+   opening and the object's centre of mass is outside it or its lowest point sits more than
+   2 cm above the place's floor (bridging); ``tipped`` when the place reports it; else
+   ``placed_stable``.
 """
 
 from __future__ import annotations
@@ -47,6 +49,8 @@ class Final:
     pos: list[float]
     low_z: float
     tipped: bool
+    held: bool = False                      # a pad still touches the object after the release and retreat
+    com_xy: list[float] | None = None       # the centre of mass (containment is judged by it, not the body origin)
 
 
 def inside_opening(dest: dict[str, Any], pos) -> bool:
@@ -74,10 +78,13 @@ def label_rollout(trace: list[dict[str, Any]], dest: dict[str, Any], release: di
         label = "dropped_high" if (drop_z >= HIGH_DROP_M or not x["has_surface"]) else "dropped_low"
         return {"label": label, "max_z": max_z, "drop_z": drop_z, "loss_phase": x["phase"], "loss_step": loss,
                 "loss_t": x["t"], "loss_speed": x["speed"]}
-    if final.zone == "floor" and dest["id"] != "bin":
+    com_xy = final.com_xy if final.com_xy is not None else final.pos[:2]
+    if final.held or final.zone is None:
+        label = "missed"
+    elif final.zone == "floor" and dest["id"] != "bin":
         label = "rolled_off"
     elif dest["kind"] in ("rim", "cavity", "open_bin") and not (
-            inside_opening(dest, final.pos) and final.low_z <= float(dest["surface_z"]) + CONTAIN_TOL_M):
+            inside_opening(dest, com_xy) and final.low_z <= float(dest["surface_z"]) + CONTAIN_TOL_M):
         label = "missed"
     elif release is not None and final.tipped:
         label = "tipped"

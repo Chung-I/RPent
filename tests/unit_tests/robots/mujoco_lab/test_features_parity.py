@@ -43,8 +43,10 @@ def test_parity_with_t3_features(key):
     p = env.proposals()[1]
     truth = env.truth()
     f = extract(env.geometry(), np.asarray(p.point), p.yaw, truth["mass"], cause["mu"], row["F"], cause["v_lift"], 0.5, "bin")
-    for k in ("width", "slope_deg", "lever", "com_h", "mass", "load_ratio"):
+    keys = ("width", "slope_deg", "mass", "load_ratio") + (("lever", "com_h") if cause["com_s"] is None else ())
+    for k in keys:                                   # t3 measured lever and com_h from the true CoM; the skill uses the nominal one
         if np.isnan(row[k]):
             assert np.isnan(f[k]), (k, f[k], row[k])     # no face under the pads in both (the 10 cm wood block)
         else:
-            assert abs(f[k] - row[k]) < 1e-5, (k, f[k], row[k])
+            tol = 5e-4 if k in ("lever", "com_h") else 1e-5     # the nominal CoM (props.json) and MuJoCo's subtree CoM differ by ~1e-4
+            assert abs(f[k] - row[k]) < tol, (k, f[k], row[k])

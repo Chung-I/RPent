@@ -24,7 +24,7 @@ METRICS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 METRICS = os.path.normpath(METRICS)
 pytestmark = pytest.mark.skipif(not (SIM and os.path.exists(METRICS)), reason="sim dir or trained model missing")
 
-KEYS = {"n", "n_executed", "recommendation_decline_rate", "abstained", "ece", "brier", "brier_const", "by_subgroup",
+KEYS = {"n", "n_executed", "recommendation_decline_rate", "abstained", "ece", "ece_ci95_object_bootstrap", "brier", "brier_const", "by_subgroup",
         "by_destination", "by_option", "rows", "kind", "objects"}
 
 

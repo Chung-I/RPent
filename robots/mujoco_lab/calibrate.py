@@ -74,19 +74,35 @@ def run_case(prims, object_id: str, idx: int, seed: int, rng: np.random.Generato
     if a["best_option"] is None or (follow and a["recommendation"] == "decline"):
         row["declared"] = {"p": None}
         return row
+    opt = next(o for o in a["options"] if o["id"] == a["best_option"])
+    g = env.geometry()                                   # before the move: the features describe the grasp as planned
+    prop = next(p for p in env.proposals() if abs(p.s - opt["action"]["s"]) < 1e-9)
+    feats = extract(g, np.asarray(prop.point), prop.yaw, truth["mass"], truth["mu"], opt["action"]["force"], opt["action"]["v_lift"],
+                    opt["action"]["v_transport"], opt["action"]["destination"], opt["action"].get("release_height"))
     r = pick_and_place(object="object", destination=destination, option_id=a["best_option"], primitives=prims, store=store).data
     if "outcome" not in r:
         row["error"] = r.get("error") or r.get("reason")
         return row
-    opt = next(o for o in a["options"] if o["id"] == a["best_option"])
-    g = env.geometry()
-    prop = next(p for p in env.proposals() if abs(p.s - opt["action"]["s"]) < 1e-9)
-    feats = extract(g, np.asarray(prop.point), prop.yaw, truth["mass"], truth["mu"], opt["action"]["force"], opt["action"]["v_lift"],
-                    opt["action"]["v_transport"], opt["action"]["destination"], opt["action"].get("release_height"))
     row.update({"executed": True, "outcome": r["outcome"], "placed_at_requested": r["placed_at_requested"], "option": r["option"],
                 "declared": {"p": opt["p"], "p_drop_height": opt["p_drop_height"], "expected_cost": opt["expected_cost"]},
                 "label": r["outcome"], "features": feats})
     return row
+
+
+def ece_bootstrap_ci(preds: list[Prediction], rows: list[dict[str, Any]], rng: np.random.Generator, n_boot: int = 300) -> list[float]:
+    """95 % interval of the ECE on P(placed_stable) by resampling objects (the unit of generalisation)."""
+    from rpent.skills.pick_place.evaluate import _ece
+
+    objects = sorted({r["object"] for r in rows})
+    by_obj = {o: [i for i, r in enumerate(rows) if r["object"] == o] for o in objects}
+    p = np.array([x.p["placed_stable"] for x in preds])
+    y = np.array([1.0 if r["label"] == "placed_stable" else 0.0 for r in rows])
+    vals = []
+    for _ in range(n_boot):
+        pick = rng.choice(objects, size=len(objects), replace=True)
+        idx = np.concatenate([by_obj[o] for o in pick])
+        vals.append(_ece(p[idx], y[idx]))
+    return [float(np.percentile(vals, 2.5)), float(np.percentile(vals, 97.5))]
 
 
 def main(argv: list[str] | None = None) -> dict[str, Any]:
@@ -125,6 +141,7 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
     done = [r for r in rows if r.get("executed")]
     preds = [Prediction(p={k: float(r["declared"]["p"][k]) for k in OUTCOMES}) for r in done]
     sc = score(preds, done, train_rows) if done else {"brier": None, "brier_const": None, "ece": None, "by_subgroup": {}}
+    ece_ci = ece_bootstrap_ci(preds, done, rng) if done else None
     by_dest = {}
     by_opt = defaultdict(lambda: {"n": 0, "placed": 0})
     for r in done:
@@ -136,13 +153,14 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
         "recommendation_decline_rate": float(np.mean([r.get("recommendation") == "decline" for r in rows if "recommendation" in r])) if rows else None,
         "abstained": sum(1 for r in rows if not r.get("executed") and "error" not in r),
         "errors": sum(1 for r in rows if "error" in r),
-        "ece": sc["ece"], "brier": sc["brier"], "brier_const": sc["brier_const"], "by_subgroup": sc.get("by_subgroup", {}),
+        "ece": sc["ece"], "ece_ci95_object_bootstrap": ece_ci, "brier": sc["brier"], "brier_const": sc["brier_const"],
+        "by_subgroup": sc.get("by_subgroup", {}),
         "by_destination": {d: dict(c) for d, c in by_dest.items()}, "by_option": dict(by_opt),
         "outcomes": dict(Counter(r["outcome"] for r in done)), "rows": rows,
     }
     with open(a.out, "w") as f:
         json.dump(out, f, indent=1, default=float)
-    print(json.dumps({k: out[k] for k in ("kind", "n", "n_executed", "abstained", "errors", "ece", "brier", "brier_const", "outcomes")}, indent=1))
+    print(json.dumps({k: out[k] for k in ("kind", "n", "n_executed", "abstained", "errors", "ece", "ece_ci95_object_bootstrap", "brier", "brier_const", "outcomes")}, indent=1))
     return out
 
 

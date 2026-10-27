@@ -50,15 +50,15 @@ def _assess(object: str, destination: str, care: str, primitives: Any, store: di
     if care not in ("low", "normal", "high"):
         return {"error": f"care must be low, normal or high, not {care!r}"}, None
     env = primitives.env
-    key = (object, destination, care, int(getattr(env, "episode", 0)))
-    cache = _cache(store)
-    if key in cache:
-        return None, cache[key]["assessment"]
     loc = env.locate(object)
     if loc is None:
         return {"assessed": False, "reason": "object not found",
                 "next": "call view_env_state and use the object's name as `object`"}, None
-    belief = Belief.prior(loc["volume"], loc["material"], loc.get("hollow", False))
+    key = (loc["object_id"], destination, care, int(getattr(env, "episode", 0)))
+    cache = _cache(store)
+    if key in cache:
+        return None, cache[key]["assessment"]
+    belief = Belief.prior(loc["volume"], loc["material"], loc.get("hollow", False), length=loc.get("extent"))
     geometry = env.geometry()
     proposals = env.proposals()
     f_std = standard_force(env.nominal_mass(loc["object_id"]))
@@ -138,9 +138,11 @@ def pick_and_place(*, object: str, destination: str = "bin", mode: str = "commit
     r = env.execute(prop, act["force"], act["v_lift"], act["v_transport"], act["destination"], act.get("release_height"))
     declared = option.to_data()
     cache = _cache(store)
-    for key in [k for k in cache if k[0] == object]:
-        cache.pop(key)
-    fresh_err, fresh = _assess(object, destination, care, primitives, store)
+    cache.clear()                                   # the scene changed: every assessment of this episode is stale
+    try:
+        fresh_err, fresh = _assess(object, destination, care, primitives, store)
+    except Exception as exc:  # noqa: BLE001  the executed outcome must survive a failed reassessment
+        fresh_err, fresh = {"error": f"reassessment failed: {exc}"}, None
     data = {
         "placed": r.label == "placed_stable",
         "placed_at_requested": r.label == "placed_stable" and act["destination"] == destination,

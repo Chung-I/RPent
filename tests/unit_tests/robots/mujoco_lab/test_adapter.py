@@ -16,6 +16,8 @@
 
 import os
 
+import numpy as np
+
 import pytest
 
 pytestmark = pytest.mark.skipif(not os.environ.get("RPENT_MUJOCO_SIM_DIR"), reason="sim dir not set")
@@ -109,7 +111,7 @@ def test_plan_trajectory_matches_execution():
     p = _control(env)
     planned = env.plan_trajectory(p, 0.15, 0.5, "plate")
     phases = [s.phase for s in planned]
-    assert phases == ["approach", "close", "lift", "hold", "transport", "lower", "release"]
+    assert phases == ["approach", "close", "lift", "hold", "transport", "lower", "release", "retreat"]
     r = env.execute(p, force=20.0, v_lift=0.15, v_transport=0.5, destination="plate")
     total = sum(s.n_steps for s in planned)
     assert abs(total - len(r.trace)) <= 0.05 * total   # the held object hangs a little differently from its rest pose
@@ -172,3 +174,25 @@ def test_mesh_fixture_not_in_scene_is_error():
         env.execute(env.proposals()[1], 20.0, 0.15, destination=_mesh_ids()[0])
     with pytest.raises(ValueError, match="fixture"):
         env.reset(SHORT, fixture="not_a_fixture")
+
+
+def test_hand_retreats_after_release_and_pads_let_go():
+    env = _env()
+    p = _control(env, SHORT)
+    r = env.execute(p, force=20.0, v_lift=0.15, destination="table_centre")
+    assert r.label == "placed_stable"
+    assert [s.phase for s in r.planned][-1] == "retreat" and r.trace[-1]["phase"] == "retreat"
+    assert not any(r.trace[-1]["pads"])
+    hand_z = env.sim.d.xpos[env.sim.hand][2]
+    assert hand_z > r.trace[-1]["low_z"] + 0.08
+
+
+def test_geometry_com_is_nominal_not_the_hidden_shift():
+    env = _env()
+    env.reset(LONG, {"mu": 0.8, "mass_scale": 1.0, "com_s": None, "v_lift": 0.15})
+    body_plain = env.sim.obj_mat().T @ (env.geometry().com - env.sim.obj_pos())      # nominal CoM in the object frame
+    env.reset(LONG, {"mu": 0.8, "mass_scale": 1.0, "com_s": 0.8, "v_lift": 0.15})
+    body_shifted = env.sim.obj_mat().T @ (env.geometry().com - env.sim.obj_pos())
+    truth = env.truth()
+    assert np.linalg.norm(body_plain - body_shifted) < 1e-6                        # the hidden shift is not in the geometry
+    assert np.linalg.norm(np.asarray(truth["com"]) - env.geometry().com) > 0.02    # but it is in the truth

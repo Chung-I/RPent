@@ -25,6 +25,7 @@ cavity, and no ray test catches every such case.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 from typing import Any
@@ -62,6 +63,10 @@ def _height_map(hulls: list[trimesh.Trimesh], xs: np.ndarray, ys: np.ndarray, z_
     for p, i in zip(locs, idx):
         H[i] = max(H[i], p[2])
     return H.reshape(X.shape)
+
+
+def hulls_hash(mesh_dir: str) -> str:
+    return hashlib.sha1(open(os.path.join(mesh_dir, "hulls.npz"), "rb").read()).hexdigest()[:16]
 
 
 def analyse(mesh_dir: str) -> dict[str, Any]:
@@ -126,7 +131,7 @@ def entry_for(mesh_dir: str, name: str, material: str) -> dict[str, Any]:
         "surface_z": TABLE_TOP + a["surface_z"], "mu": MU_BY_MATERIAL.get(material, 0.5), "rim_height": a["rim_height"],
         "opening_half_width": a["opening_half_width"] if a["kind"] != "surface" else None, "fragile": material in FRAGILE,
         "material": material, "mesh_dir": mesh_dir, "footprint": a["footprint"], "centre_xy": a["centre_xy"],
-        "z_offset": a["z_offset"], "open_top": a["open_top"], "hull_count": a["hull_count"],
+        "z_offset": a["z_offset"], "open_top": a["open_top"], "hull_count": a["hull_count"], "hulls_hash": hulls_hash(mesh_dir),
         "inspected": False,
         "rejected": too_big or (None if a["open_top"] else "closed top: the centre ray does not reach below the rim"),
     }
@@ -142,7 +147,7 @@ def write_registry(items: list[tuple[str, str, str]], out_path: str) -> list[dic
             existing = {}
     for e in entries:                       # keep a person's verdict across re-runs
         old = existing.get(e["id"])
-        if old and old.get("hull_count") == e["hull_count"]:
+        if old and old.get("hulls_hash") == e["hulls_hash"]:          # the same decomposition keeps its verdict
             e["inspected"], e["rejected"] = old.get("inspected", False), old.get("rejected", e["rejected"])
     with open(out_path, "w") as f:
         json.dump({"fixtures": entries}, f, indent=1)

@@ -43,8 +43,8 @@ def _trace(lift_steps=20, lost_at=None, lost_phase="transport", z_rise=0.2, has=
     return tr
 
 
-def _final(zone="table", pos=(0.0, 0.0, 0.76), low=0.751, tipped=False):
-    return Final(zone=zone, pos=list(pos), low_z=low, tipped=tipped)
+def _final(zone="table", pos=(0.0, 0.0, 0.76), low=0.751, tipped=False, held=False, com_xy=None):
+    return Final(zone=zone, pos=list(pos), low_z=low, tipped=tipped, held=held, com_xy=list(com_xy or pos[:2]))
 
 
 def test_knocked_over_during_approach_is_not_lifted():
@@ -88,3 +88,23 @@ def test_release_outcomes():
 def test_release_phase_pad_loss_is_not_a_loss():
     out = label_rollout(_trace(), DESTINATIONS["table_centre"], {"tilt_deg": 0.0, "displacement_xy_m": 0.0}, _final())
     assert out["loss_phase"] is None and out["label"] == "placed_stable"
+
+
+def test_object_still_in_the_pads_after_release_is_not_placed():
+    rel = {"tilt_deg": 0.0, "displacement_xy_m": 0.0}
+    held = Final(zone=None, pos=[0.0, 0.0, 0.8], low_z=0.77, tipped=False, held=True, com_xy=[0.0, 0.0])
+    assert label_rollout(_trace(), DESTINATIONS["table_centre"], rel, held)["label"] == "missed"
+    gap_held = Final(zone=None, pos=[0.0, -0.33, 0.8], low_z=0.77, tipped=False, held=True, com_xy=[0.0, -0.33])
+    assert label_rollout(_trace(has=False), DESTINATIONS["table_gap"], rel, gap_held)["label"] == "missed"
+
+
+def test_containment_uses_the_com_not_the_body_origin():
+    rel = {"tilt_deg": 0.0, "displacement_xy_m": 0.0}
+    plate = DESTINATIONS["plate"]
+    px, py = plate["xy"]
+    origin_far_com_inside = Final(zone="plate", pos=[px + 0.2, py, 0.8], low_z=plate["surface_z"] + 0.005, tipped=False,
+                                  held=False, com_xy=[px, py])
+    assert label_rollout(_trace(), plate, rel, origin_far_com_inside)["label"] == "placed_stable"
+    origin_inside_com_far = Final(zone="plate", pos=[px, py, 0.8], low_z=plate["surface_z"] + 0.005, tipped=False,
+                                  held=False, com_xy=[px + 0.2, py])
+    assert label_rollout(_trace(), plate, rel, origin_inside_com_far)["label"] == "missed"

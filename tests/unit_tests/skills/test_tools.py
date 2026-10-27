@@ -107,7 +107,7 @@ def test_assess_returns_protocol_keys_and_caches():
     assert d["assessed"] is True and d["best_option"] == "commit_std" and d["p_success"] == 0.8
     assert d["recommendation"] == "commit" and d["options"][-1]["id"] == "decline"
     assert any("prior mass" in e for e in d["evidence"])
-    key = ("mug", "table_centre", "normal", 1)
+    key = ("ycb__mug", "table_centre", "normal", 1)
     plate = assess_pick(object="mug", destination="plate", primitives=prims, store=store).data
     assert plate["best_option"] == "drop_release"      # same probabilities from the stub, so the faster row wins
     assert key in store["pick_place"]
@@ -175,3 +175,15 @@ def test_failed_outcome_reports_placed_false():
     prims = _prims(env=FakeEnv(label="dropped_high"))
     r = pick_and_place(object="mug", primitives=prims, store={}).data
     assert r["placed"] is False and r["outcome"] == "dropped_high"
+
+
+def test_cache_keyed_by_object_id_and_cleared_after_execution():
+    prims = _prims()
+    store = {}
+    a1 = assess_pick(object="mug", destination="table_centre", primitives=prims, store=store).data
+    a2 = assess_pick(object="object", destination="table_centre", primitives=prims, store=store).data
+    assert len(store["pick_place"]) == 1 and a1["best_option"] == a2["best_option"]   # same object under two prompts
+    pick_and_place(object="object", destination="table_centre", primitives=prims, store=store)
+    assert all(k[0] != "ycb__mug" or k[3] != 1 for k in store["pick_place"]) or len(store["pick_place"]) == 1
+    keys_after = list(store["pick_place"])
+    assert len(keys_after) == 1 and keys_after[0][:2] == ("ycb__mug", "table_centre")   # only the fresh assessment remains

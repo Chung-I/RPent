@@ -54,7 +54,8 @@ def rows_of(rows: list[dict[str, Any]], object_ids) -> list[dict[str, Any]]:
 def belief_features(row: dict[str, Any], rng: np.random.Generator, n: int = 64) -> list[dict[str, float]]:
     """The row's features with mass, friction and lever drawn from the prior the skill would hold."""
     g = row["geometry"]
-    belief = Belief.prior(g["volume"], g["material"], g.get("hollow", False), row["features"].get("visibility", 1.0))
+    belief = Belief.prior(g["volume"], g["material"], g.get("hollow", False), row["features"].get("visibility", 1.0),
+                          length=g.get("length"))
     out = []
     for s in belief.sample(n, rng):
         f = dict(row["features"])

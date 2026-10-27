@@ -94,3 +94,16 @@ def test_registry_and_loader_skip_uninspected_and_rejected(tmp_path):
     loaded = load_mesh_destinations(str(out))
     assert set(loaded) == {"cup"} and loaded["cup"]["kind"] == "cavity" and loaded["cup"]["mesh_dir"] == str(cup)
     assert set(loaded["cup"]) >= {"id", "kind", "xy", "surface_z", "mu", "rim_height", "opening_half_width", "fragile", "object_rest_xy"}
+
+
+def test_reexport_drops_the_approval(tmp_path):
+    cup = _cup_dir(tmp_path)
+    out = tmp_path / "fixtures.json"
+    write_registry([(str(cup), "cup", "ceramic")], str(out))
+    data = json.load(open(out))
+    data["fixtures"][0]["inspected"] = True
+    json.dump(data, open(out, "w"))
+    assert write_registry([(str(cup), "cup", "ceramic")], str(out))[0]["inspected"] is True      # same hulls: approval kept
+    parts = [_box((0, 0, 0.005), (0.12, 0.12, 0.01))] + [_box((dx * 0.055, dy * 0.055, 0.045), (0.01 if dx else 0.12, 0.01 if dy else 0.12, 0.08)) for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))]
+    _save_hulls(cup / "hulls.npz", parts)                                                            # re-exported: same count, different hulls
+    assert write_registry([(str(cup), "cup", "ceramic")], str(out))[0]["inspected"] is False

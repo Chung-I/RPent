@@ -25,25 +25,28 @@ from dataclasses import dataclass
 
 import numpy as np
 
-# kg/m^3 by the sim's material names (objects.py); hollow objects are shells at a quarter of the density
+# kg/m^3, a copy of the sim's MATERIAL table (sim/objects.py; a test checks they agree);
+# hollow objects are shells at a quarter of the density, as prepare.py applies it
 RHO: dict[str, float] = {
-    "cardboard": 300.0,
-    "ceramic": 2400.0,
-    "electronics": 1500.0,
-    "foam": 100.0,
-    "fruit": 950.0,
-    "glass": 2500.0,
-    "hard_plastic": 1000.0,
-    "metal_can": 7800.0,
     "steel": 7800.0,
-    "thin_plastic": 950.0,
     "wood": 700.0,
+    "hard_plastic": 1000.0,
+    "thin_plastic": 300.0,
+    "ceramic": 2300.0,
+    "cardboard": 250.0,
+    "metal_can": 900.0,
+    "fruit": 950.0,
+    "foam": 100.0,
+    "rubber": 1100.0,
+    "electronics": 1200.0,
+    "glass": 2400.0,
     "unknown": 1000.0,
 }
 HOLLOW_FACTOR = 0.25
 MASS_LOG_SIGMA = 0.5
 MU_RANGE = (0.1, 0.9)
 LEVER_SIGMA = 0.02
+LEVER_SIGMA_PER_LENGTH = 0.15     # the corpus shifts the CoM to 0.3 to 0.8 of the extent with p 0.5
 
 
 @dataclass
@@ -56,12 +59,14 @@ class Belief:
     visibility: float
 
     @staticmethod
-    def prior(volume_m3: float, material: str, hollow: bool = False, visibility: float = 1.0) -> Belief:
+    def prior(volume_m3: float, material: str, hollow: bool = False, visibility: float = 1.0,
+              length: float | None = None) -> Belief:
         rho = RHO.get(material, RHO["unknown"])
         median = max(1e-4, float(volume_m3) * rho * (HOLLOW_FACTOR if hollow else 1.0))
         sigma = MASS_LOG_SIGMA + 0.5 * (1.0 - float(np.clip(visibility, 0.0, 1.0)))
+        lever_sigma = LEVER_SIGMA_PER_LENGTH * float(length) if length else LEVER_SIGMA
         return Belief(mass_log_mu=float(np.log(median)), mass_log_sigma=float(sigma), mu_lo=MU_RANGE[0],
-                      mu_hi=MU_RANGE[1], lever_sigma=LEVER_SIGMA, visibility=float(visibility))
+                      mu_hi=MU_RANGE[1], lever_sigma=float(lever_sigma), visibility=float(visibility))
 
     def sample(self, n: int, rng: np.random.Generator) -> list[dict[str, float]]:
         mass = np.exp(rng.normal(self.mass_log_mu, self.mass_log_sigma, n))

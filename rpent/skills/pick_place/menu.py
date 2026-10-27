@@ -53,7 +53,7 @@ def estimate(model: Any, belief: Belief, geometry: Geometry, action: dict[str, A
     return Prediction.mean(preds)
 
 
-def _rows(proposals: list[Any], f_std: float, destination: str, geometry: Geometry, belief_com_s: float | None):
+def _rows(proposals: list[Any], f_std: float, destination: str, geometry: Geometry):
     """Candidate rows: (id, kind, proposal, action, cost_s, reason)."""
     dest = DESTINATIONS[destination]
     mid = min(proposals, key=lambda p: abs(p.s - 0.5))
@@ -86,7 +86,7 @@ def build_menu(model: Any, belief: Belief, geometry: Geometry, proposals: list[A
     skipped = len(proposals) - len(usable)
     options: list[Option] = []
     if usable:
-        for rid, kind, prop, action, cost_s, reason in _rows(usable, f_std, destination, geometry, None):
+        for rid, kind, prop, action, cost_s, reason in _rows(usable, f_std, destination, geometry):
             planned = plan_fn(prop, action["v_lift"], action["v_transport"], action["destination"], action.get("release_height"))
             planned = [s.to_dict() if hasattr(s, "to_dict") else s for s in planned]
             pred = estimate(model, belief, geometry, action, prop, planned, rng, n)

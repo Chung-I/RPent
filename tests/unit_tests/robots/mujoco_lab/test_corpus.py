@@ -60,3 +60,13 @@ def test_corpus_two_objects_two_draws(tmp_path):
     # resume: nothing new is written
     assert main(["--out", str(out), "--draws", "2", "--workers", "1", "--objects", "ycb__banana,ycb__mug", "--resume"]) == 0
     assert len([line for line in out.open()]) == 4
+
+
+def test_draws_differ_across_objects_at_the_same_index():
+    from robots.mujoco_lab.corpus import case_rng, draw_action, draw_theta
+
+    a = draw_theta(case_rng(0, "ycb__banana", 3), 0.2)[0]
+    b = draw_theta(case_rng(0, "ycb__mug", 3), 0.2)[0]
+    assert a != b
+    assert draw_action(case_rng(0, "ycb__banana", 3), 10.0) != draw_action(case_rng(0, "ycb__mug", 3), 10.0)
+    assert draw_theta(case_rng(0, "ycb__banana", 3), 0.2)[0] == a       # deterministic
