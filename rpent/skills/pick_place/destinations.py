@@ -24,6 +24,8 @@ keeps 2 cm clear of that box and lies inside the 70 × 50 cm table.
 
 from __future__ import annotations
 
+import json
+import os
 from typing import Any
 
 TABLE_TOP = 0.75
@@ -73,6 +75,37 @@ DESTINATIONS: dict[str, dict[str, Any]] = {
 
 
 HAND_HALF_WIDTH = 0.07   # the open gripper's half-width plus a margin: a cavity narrower than this is released from above the rim
+
+
+PRIMITIVE_IDS: tuple[str, ...] = tuple(DESTINATIONS)
+MESH_FIXTURES_PATH = os.environ.get(
+    "RPENT_PICK_PLACE_FIXTURES",
+    os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "robots", "mujoco_lab", "data", "fixtures.json"),
+)
+
+
+def load_mesh_destinations(path: str) -> dict[str, dict[str, Any]]:
+    """Mesh fixtures a person has inspected and not rejected, as registry entries."""
+    if not os.path.exists(path):
+        return {}
+    try:
+        data = json.load(open(path))
+    except (OSError, ValueError):
+        return {}
+    out = {}
+    for e in data.get("fixtures", []):
+        if not e.get("inspected") or e.get("rejected") or not e.get("open_top", True):
+            continue
+        out[e["id"]] = {**e, "xy": tuple(e["xy"]), "object_rest_xy": tuple(e["object_rest_xy"])}
+    return out
+
+
+DESTINATIONS.update(load_mesh_destinations(MESH_FIXTURES_PATH))
+MESH_IDS: tuple[str, ...] = tuple(k for k in DESTINATIONS if k not in PRIMITIVE_IDS)
+
+
+def is_mesh(dest: dict[str, Any]) -> bool:
+    return "mesh_dir" in dest
 
 
 def release_height(dest: dict[str, Any]) -> float:

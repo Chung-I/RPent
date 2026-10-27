@@ -24,7 +24,7 @@ pytestmark = pytest.mark.skipif(not os.environ.get("RPENT_MUJOCO_SIM_DIR"), reas
 
 ROW_KEYS = {
     "key", "object", "theta", "com_end", "truth", "seed", "destination", "s", "force", "v_lift",
-    "v_transport", "release_height", "width", "label", "max_z", "drop_z", "loss_phase", "loss_step",
+    "v_transport", "release_height", "width", "label", "max_z", "drop_z", "loss_phase", "loss_step", "fixture",
     "loss_t", "loss_speed", "zone", "release", "planned", "geometry", "features",
 }
 

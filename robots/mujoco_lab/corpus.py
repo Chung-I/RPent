@@ -32,7 +32,7 @@ from typing import Any
 
 import numpy as np
 
-from rpent.skills.pick_place.destinations import DESTINATIONS, release_height
+from rpent.skills.pick_place.destinations import DESTINATIONS, MESH_IDS, PRIMITIVE_IDS, release_height
 
 MASS_SCALE_RANGE = (0.5, 3.0)
 MU_RANGE = (0.1, 0.9)
@@ -58,8 +58,11 @@ def draw_theta(rng: np.random.Generator, nominal_mass: float) -> tuple[dict[str,
     return theta, com_end
 
 
-def draw_action(rng: np.random.Generator, f_std: float) -> dict[str, Any]:
-    dest_id = str(rng.choice(sorted(DESTINATIONS)))
+def draw_action(rng: np.random.Generator, f_std: float, use_fixtures: bool = False) -> dict[str, Any]:
+    if use_fixtures and MESH_IDS and rng.random() < 0.5:
+        dest_id = str(rng.choice(sorted(MESH_IDS)))
+    else:
+        dest_id = str(rng.choice(sorted(PRIMITIVE_IDS)))
     dest = DESTINATIONS[dest_id]
     rel = None
     if dest["kind"] in ("rim", "cavity", "open_bin") and rng.random() < P_DROP_RELEASE:
@@ -83,7 +86,7 @@ def _release_summary(rel: dict[str, Any] | None) -> dict[str, Any] | None:
     return out
 
 
-def rollout_row(env, object_id: str, idx: int, seed: int) -> dict[str, Any]:
+def rollout_row(env, object_id: str, idx: int, seed: int, use_fixtures: bool = False) -> dict[str, Any]:
     """One rollout of `object_id` under a fresh hidden draw; returns the corpus row."""
     from robots.mujoco_lab.adapter import object_props
     from rpent.skills.pick_place.features import extract
@@ -92,8 +95,9 @@ def rollout_row(env, object_id: str, idx: int, seed: int) -> dict[str, Any]:
     props = object_props(object_id)
     theta, com_end = draw_theta(rng, props["mass"])
     f_std = env.s["t3_make"].std_force(props["mass"])
-    act = draw_action(rng, f_std)
-    env.reset(object_id, theta, seed=seed * 1000 + idx, com_end=com_end)
+    act = draw_action(rng, f_std, use_fixtures)
+    fixture = act["destination"] if act["destination"] in MESH_IDS else None
+    env.reset(object_id, theta, seed=seed * 1000 + idx, com_end=com_end, fixture=fixture)
     props_list = env.proposals()
     prop = next(p for p in props_list if abs(p.s - act["s"]) < 1e-9)
     truth = env.truth()
@@ -111,6 +115,7 @@ def rollout_row(env, object_id: str, idx: int, seed: int) -> dict[str, Any]:
         "truth": {k: truth[k] for k in ("mass", "mu", "com_s")},
         "seed": seed,
         "destination": act["destination"],
+        "fixture": fixture,
         "s": act["s"],
         "force": act["force"],
         "v_lift": theta["v_lift"],
@@ -133,8 +138,8 @@ def rollout_row(env, object_id: str, idx: int, seed: int) -> dict[str, Any]:
     }
 
 
-def _worker(args: tuple[str, int, int, list[int]]) -> list[dict[str, Any]]:
-    object_id, draws, seed, skip = args
+def _worker(args: tuple[str, int, int, list[int], bool]) -> list[dict[str, Any]]:
+    object_id, draws, seed, skip, use_fixtures = args
     from robots.mujoco_lab.adapter import MuJoCoLabEnv
 
     env = MuJoCoLabEnv()
@@ -143,7 +148,7 @@ def _worker(args: tuple[str, int, int, list[int]]) -> list[dict[str, Any]]:
         if idx in skip:
             continue
         try:
-            rows.append(rollout_row(env, object_id, idx, seed))
+            rows.append(rollout_row(env, object_id, idx, seed, use_fixtures))
         except Exception as exc:  # noqa: BLE001  one bad rollout must not kill the object's batch
             rows.append({"key": f"{object_id}__d{idx}", "object": object_id, "error": str(exc)[:200]})
     return rows
@@ -157,6 +162,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--objects", default=None, help="comma-separated object ids (default: all)")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--resume", action="store_true")
+    ap.add_argument("--fixtures", action="store_true", help="draw half the destinations from the inspected mesh fixtures")
     a = ap.parse_args(argv)
     from robots.mujoco_lab.adapter import object_ids
 
@@ -171,7 +177,7 @@ def main(argv: list[str] | None = None) -> int:
             if "error" in row:
                 continue
             done.setdefault(row["object"], set()).add(int(row["key"].rsplit("d", 1)[1]))
-    jobs = [(oid, a.draws, a.seed, sorted(done.get(oid, set()))) for oid in objects]
+    jobs = [(oid, a.draws, a.seed, sorted(done.get(oid, set())), a.fixtures) for oid in objects]
     written = 0
     mode = "a" if a.resume and os.path.exists(a.out) else "w"
     with open(a.out, mode) as f:

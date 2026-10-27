@@ -32,7 +32,7 @@ from typing import Any
 
 import numpy as np
 
-from rpent.skills.pick_place.destinations import DESTINATIONS, OBJECT_REST_XY, has_surface, release_height
+from rpent.skills.pick_place.destinations import DESTINATIONS, OBJECT_REST_XY, PRIMITIVE_IDS, has_surface, is_mesh, release_height
 from robots.mujoco_lab.labels import RISE_M, Final, label_rollout
 from rpent.skills.pick_place.features import Geometry
 from rpent.skills.pick_place.protocol import OUTCOMES  # noqa: F401  (label vocabulary)
@@ -54,6 +54,8 @@ PRIMITIVE_FIXTURES: list[dict[str, Any]] = [
     {"name": "plate", "kind": "rim", "radius": 0.11, "rim_height": 0.015, "rgba": "0.92 0.92 0.9 1"},
     {"name": "box", "kind": "cavity", "half": 0.08, "wall_height": 0.12, "rgba": "0.6 0.45 0.3 1"},
 ]
+
+PRIMITIVE_HALF = {"mouse_pad": (0.10, 0.06), "plate": (0.12, 0.12), "box": (0.09, 0.09)}
 
 _SIM: dict[str, Any] = {}
 
@@ -179,16 +181,36 @@ class MuJoCoLabEnv:
         self.up0 = np.array([0.0, 0.0, 1.0])
         self.rest_low_z = 0.0
         self.fixtures_in_scene: list[str] = [f["name"] for f in PRIMITIVE_FIXTURES]
+        self.fixture: str | None = None
 
     # ------------------------------------------------------------------ setup
-    def _fixture_specs(self) -> list[dict[str, Any]]:
-        out = []
+    @staticmethod
+    def _overlaps(xy_a, half_a, xy_b, half_b) -> bool:
+        return abs(xy_a[0] - xy_b[0]) < half_a[0] + half_b[0] and abs(xy_a[1] - xy_b[1]) < half_a[1] + half_b[1]
+
+    def _fixture_specs(self, fixture: str | None) -> tuple[list[dict[str, Any]], list[str]]:
+        """The primitives (minus any the mesh fixture would overlap) plus the mesh fixture, and their names."""
+        mesh = None
+        if fixture is not None:
+            if fixture not in DESTINATIONS or not is_mesh(DESTINATIONS[fixture]):
+                raise ValueError(f"fixture {fixture!r} is not an inspected mesh fixture; known: {[k for k in DESTINATIONS if is_mesh(DESTINATIONS[k])]}")
+            mesh = DESTINATIONS[fixture]
+        out, names = [], []
         for f in PRIMITIVE_FIXTURES:
             dest = DESTINATIONS[f["name"]]
+            if mesh is not None and self._overlaps(dest["xy"], PRIMITIVE_HALF[f["name"]], mesh["xy"],
+                                                   (mesh["footprint"][0] / 2 + 0.01, mesh["footprint"][1] / 2 + 0.01)):
+                continue
             out.append({**f, "xy": tuple(dest["xy"]), "mu": dest["mu"]})
-        return out
+            names.append(f["name"])
+        if mesh is not None:
+            out.append({"name": mesh["id"], "kind": "mesh", "mesh_dir": mesh["mesh_dir"], "xy": tuple(mesh["xy"]), "mu": mesh["mu"],
+                        "z_offset": mesh.get("z_offset", 0.0), "centre_xy": tuple(mesh.get("centre_xy", (0.0, 0.0)))})
+            names.append(mesh["id"])
+        return out, names
 
-    def reset(self, object_id: str, theta: dict[str, Any] | None = None, seed: int = 0, com_end: int = +1) -> None:
+    def reset(self, object_id: str, theta: dict[str, Any] | None = None, seed: int = 0, com_end: int = +1,
+              fixture: str | None = None) -> None:
         sc, gr, ob, t3 = self.s["scene"], self.s["grasp"], self.s["objects"], self.s["t3_make"]
         o = ob.BY_ID[object_id]
         props = object_props(object_id)
@@ -199,10 +221,14 @@ class MuJoCoLabEnv:
             shift = t3.com_shift_for(o, props, float(th["com_s"]), end=com_end)
         flat = not (o["hollow"] or o["liquid"])
         pos, quat = gr.rest_pose(o, props, flat=flat)      # the default rest, as the t3/t3g corpora used
-        pos = np.array([pos[0] + OBJECT_REST_XY[0], pos[1] + OBJECT_REST_XY[1], pos[2]])
+        specs, names = self._fixture_specs(fixture)
+        rest_xy = tuple(DESTINATIONS[fixture]["object_rest_xy"]) if fixture is not None else OBJECT_REST_XY
+        pos = np.array([pos[0] + rest_xy[0], pos[1] + rest_xy[1], pos[2]])
         xml = sc.build_xml(o, props, mu=th["mu"], mass_scale=th["mass_scale"], com_shift=shift, obj_pos=pos,
-                           obj_quat=quat, cam_k=1.0, fixtures=self._fixture_specs())
+                           obj_quat=quat, cam_k=1.0, fixtures=specs)
         self.sim = sc.Sim(xml)
+        self.fixtures_in_scene = names
+        self.fixture = fixture
         self.sim.settle(0.2)
         self.obj, self.props, self.theta, self.com_end = o, props, th, com_end
         self.rng = np.random.default_rng(seed)
@@ -360,7 +386,13 @@ class MuJoCoLabEnv:
         """(surface height under this xy, whether there is one): a fixture, the table, the bin floor, or none."""
         x, y = float(xy[0]), float(xy[1])
         sc = self.s["scene"]
+        if self.fixture is not None:
+            m = DESTINATIONS[self.fixture]
+            if abs(x - m["xy"][0]) <= m["footprint"][0] / 2 and abs(y - m["xy"][1]) <= m["footprint"][1] / 2:
+                return float(m["surface_z"]), True
         for f in PRIMITIVE_FIXTURES:
+            if f["name"] not in self.fixtures_in_scene:
+                continue
             dest = DESTINATIONS[f["name"]]
             fx, fy = dest["xy"]
             if f["kind"] == "surface":
@@ -383,10 +415,10 @@ class MuJoCoLabEnv:
     def _dest(self, destination: str) -> dict[str, Any]:
         if destination not in DESTINATIONS:
             raise ValueError(f"unknown destination {destination!r}; known: {sorted(DESTINATIONS)}")
-        if destination not in self.fixtures_in_scene and DESTINATIONS[destination]["kind"] in ("rim", "cavity") \
-                and destination not in {f["name"] for f in PRIMITIVE_FIXTURES}:
-            raise ValueError(f"fixture {destination!r} is not in the scene")
-        return DESTINATIONS[destination]
+        dest = DESTINATIONS[destination]
+        if (is_mesh(dest) or destination in PRIMITIVE_HALF) and destination not in self.fixtures_in_scene:
+            raise ValueError(f"fixture {destination!r} is not in the scene (present: {self.fixtures_in_scene})")
+        return dest
 
     def _release_target_low_z(self, dest: dict[str, Any], rel_h: float | None) -> float:
         sc = self.s["scene"]

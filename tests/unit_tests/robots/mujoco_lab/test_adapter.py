@@ -142,3 +142,33 @@ def test_unset_sim_dir_raises(monkeypatch):
     monkeypatch.delenv("RPENT_MUJOCO_SIM_DIR")
     with pytest.raises(RuntimeError, match="RPENT_MUJOCO_SIM_DIR"):
         MuJoCoLabEnv()
+
+
+def _mesh_ids():
+    from rpent.skills.pick_place.destinations import MESH_IDS
+
+    return list(MESH_IDS)
+
+
+@pytest.mark.skipif(not _mesh_ids(), reason="no inspected mesh fixtures in fixtures.json")
+@pytest.mark.parametrize("fixture", [f for f in ("plate_small", "serving_bowl", "bin_b03", "tray_b02") if f in _mesh_ids()] or ["none"])
+def test_set_down_on_mesh_fixture(fixture):
+    if fixture == "none":
+        pytest.skip("none of the four reference fixtures is inspected")
+    env = _env()
+    env.reset(SHORT, fixture=fixture)
+    assert fixture in env.fixtures_in_scene
+    r = env.execute(env.proposals()[1], force=20.0, v_lift=0.15, destination=fixture)
+    assert r.label in ("placed_stable", "tipped", "missed", "dropped_low")
+    if r.label in ("placed_stable", "tipped"):
+        assert r.zone == fixture
+
+
+@pytest.mark.skipif(not _mesh_ids(), reason="no inspected mesh fixtures in fixtures.json")
+def test_mesh_fixture_not_in_scene_is_error():
+    env = _env()
+    env.reset(SHORT)
+    with pytest.raises(ValueError, match="fixture"):
+        env.execute(env.proposals()[1], 20.0, 0.15, destination=_mesh_ids()[0])
+    with pytest.raises(ValueError, match="fixture"):
+        env.reset(SHORT, fixture="not_a_fixture")
