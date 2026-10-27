@@ -33,10 +33,10 @@ from typing import Any
 import numpy as np
 
 from rpent.skills.pick_place.destinations import DESTINATIONS, OBJECT_REST_XY, has_surface, release_height
+from robots.mujoco_lab.labels import RISE_M, Final, label_rollout
 from rpent.skills.pick_place.features import Geometry
 from rpent.skills.pick_place.protocol import OUTCOMES  # noqa: F401  (label vocabulary)
 
-RISE_M = 0.02
 LIFT_H = 0.20
 HOLD_S = 0.5
 V_DOWN = 0.10
@@ -46,8 +46,6 @@ CLOSE_S = 0.6
 APPROACH_M = 0.12
 RELEASE_S = 3.0
 TIP_DEG = 45.0
-HIGH_DROP_M = 0.10
-CONTAIN_TOL_M = 0.02
 DISPLACE_TOL_M = 0.05
 
 # Primitive fixtures built into every scene (the registry gives the place; this gives the shape).
@@ -449,7 +447,7 @@ class MuJoCoLabEnv:
 
         out, _, _ = gr.run_grasp(sim, pt, proposal.yaw, force=force, v_lift=v_lift, lift_h=LIFT_H, hold_s=HOLD_S,
                                  on_step=on_step)
-        rose = out["max_z"] > RISE_M
+        rose = any(x["z"] > RISE_M and all(x["pads"]) and x["phase"] in ("lift", "hold") for x in trace)
         release = None
         if rose:
             hand_z0 = gr.hand_start_z(pt)
@@ -473,13 +471,6 @@ class MuJoCoLabEnv:
         return self._label(trace, rose, dest, release, planned)
 
     # ----------------------------------------------------------------- labels
-    def _inside_opening(self, dest: dict[str, Any], pos: np.ndarray) -> bool:
-        fx, fy = dest["xy"]
-        r = dest["opening_half_width"]
-        if dest["kind"] == "rim":
-            return math.hypot(pos[0] - fx, pos[1] - fy) <= r
-        return abs(pos[0] - fx) <= r and abs(pos[1] - fy) <= r
-
     def _tipped(self, release: dict[str, Any], low: float) -> bool:
         """Tipped = the object rests on a different face (its CoM height changed by more than a
         fifth after a large tilt; a rolled sphere keeps its CoM height), or it moved away."""
@@ -492,28 +483,10 @@ class MuJoCoLabEnv:
 
     def _label(self, trace, rose, dest, release, planned) -> Rollout:
         sim = self.sim
-        max_z = max((x["z"] for x in trace), default=0.0)
-        if not rose:
-            return Rollout("not_lifted", max_z, None, None, None, None, None, None, None, planned, trace)
-        first_rise = next(i for i, x in enumerate(trace) if x["z"] > RISE_M)
-        loss = next((i for i in range(first_rise, len(trace))
-                     if trace[i]["phase"] != "release" and not any(trace[i]["pads"])), None)
         touching, _ = sim.contacts()
-        zone = sim.zone_of(touching)
-        if loss is not None:
-            x = trace[loss]
-            drop_z = float(x["low_z"] - (x["surface_z_below"] if x["has_surface"] else 0.0))
-            label = "dropped_high" if (drop_z >= HIGH_DROP_M or not x["has_surface"]) else "dropped_low"
-            return Rollout(label, max_z, drop_z, x["phase"], loss, x["t"], x["speed"], zone, release, planned, trace)
-        pos = sim.obj_pos()
         low = sim.obj_low_z()
-        if zone == "floor" and dest["id"] != "bin":
-            label = "rolled_off"
-        elif dest["kind"] in ("rim", "cavity", "open_bin") and not (
-                self._inside_opening(dest, pos) and low <= dest["surface_z"] + CONTAIN_TOL_M):
-            label = "missed"
-        elif release is not None and self._tipped(release, low):
-            label = "tipped"
-        else:
-            label = "placed_stable"
-        return Rollout(label, max_z, None, None, None, None, None, zone, release, planned, trace)
+        final = Final(zone=sim.zone_of(touching), pos=sim.obj_pos().tolist(), low_z=float(low),
+                      tipped=bool(release is not None and self._tipped(release, low)))
+        out = label_rollout(trace, dest, release, final)
+        return Rollout(out["label"], out["max_z"], out["drop_z"], out["loss_phase"], out["loss_step"], out["loss_t"],
+                       out["loss_speed"], final.zone, release, planned, trace)
