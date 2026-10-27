@@ -1,0 +1,144 @@
+# Copyright 2026 The RPent Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""MuJoCo lab adapter: grasp, transport, set-down and the outcome labels (needs the sim)."""
+
+import os
+
+import pytest
+
+pytestmark = pytest.mark.skipif(not os.environ.get("RPENT_MUJOCO_SIM_DIR"), reason="sim dir not set")
+
+LONG = "ycb__banana"  # 19.6 cm: fits plate, mouse pad, bin, table; too long for the 16 cm box
+SHORT = "ycb__brick"  # 7.8 cm block, control grasp held 10/10 in t3 (a sphere like the orange is squeezed out of the pads)
+
+
+def _env(**kw):
+    from robots.mujoco_lab.adapter import MuJoCoLabEnv
+
+    return MuJoCoLabEnv(**kw)
+
+
+def _control(env, object_id=LONG, **theta):
+    env.reset(object_id, theta or None, seed=0)
+    return env.proposals()[1]
+
+
+def test_control_grasp_on_banana_is_placed_in_bin():
+    env = _env()
+    p = _control(env)
+    assert len(env.proposals()) == 3 and 0.03 < p.width < 0.05
+    r = env.execute(p, force=20.0, v_lift=0.15)
+    assert r.label == "placed_stable" and r.zone == "bin"
+
+
+@pytest.mark.parametrize(
+    "dest,expect",
+    [("table_centre", "placed_stable"), ("mouse_pad", "placed_stable"), ("plate", "placed_stable"), ("table_gap", "rolled_off")],
+)
+def test_set_down_per_destination(dest, expect):
+    env = _env()
+    p = _control(env)
+    assert env.execute(p, force=20.0, v_lift=0.15, destination=dest).label == expect
+
+
+def test_short_object_into_box_is_placed():
+    env = _env()
+    from robots.mujoco_lab.adapter import object_length
+
+    assert object_length(SHORT) < 0.12
+    p = _control(env, SHORT)
+    r = env.execute(p, force=20.0, v_lift=0.15, destination="box")
+    assert r.label == "placed_stable" and r.zone == "box"
+
+
+def test_long_object_into_box_is_never_placed_stable():
+    env = _env()
+    p = _control(env)
+    r = env.execute(p, force=20.0, v_lift=0.15, destination="box")
+    assert r.label in ("missed", "tipped", "dropped_low")   # the rim strips a 19.6 cm object out of the pads or it bridges the opening
+
+
+def test_unknown_destination_raises():
+    env = _env()
+    p = _control(env)
+    with pytest.raises(ValueError, match="destination"):
+        env.execute(p, 20.0, 0.15, destination="shelf")
+
+
+def test_slippery_heavy_grasp_drops_and_records_loss():
+    env = _env()
+    p = _control(env, mu=0.05, mass_scale=3.0, com_s=None, v_lift=0.15)
+    r = env.execute(p, force=10.0, v_lift=0.15)
+    assert r.label in ("not_lifted", "dropped_low", "dropped_high")
+    if r.label != "not_lifted":
+        assert r.loss_phase in ("lift", "hold", "transport", "lower")
+        assert r.loss_speed is not None and r.loss_step is not None and r.drop_z is not None
+
+
+def test_pinch_beside_object_is_not_lifted():
+    from robots.mujoco_lab.adapter import Proposal
+
+    env = _env()
+    p = _control(env)
+    beside = Proposal(s=p.s, point=[p.point[0], p.point[1] + 0.15, p.point[2]], yaw=p.yaw, width=p.width)
+    r = env.execute(beside, force=20.0, v_lift=0.15)
+    assert r.label == "not_lifted" and r.drop_z is None and r.loss_phase is None
+
+
+def test_intended_release_is_not_a_loss():
+    env = _env()
+    p = _control(env)
+    r = env.execute(p, force=20.0, v_lift=0.15, destination="table_centre")
+    assert r.label == "placed_stable" and r.loss_phase is None and r.release is not None
+
+
+def test_plan_trajectory_matches_execution():
+    env = _env()
+    p = _control(env)
+    planned = env.plan_trajectory(p, 0.15, 0.5, "plate")
+    phases = [s.phase for s in planned]
+    assert phases == ["approach", "close", "lift", "hold", "transport", "lower", "release"]
+    r = env.execute(p, force=20.0, v_lift=0.15, v_transport=0.5, destination="plate")
+    total = sum(s.n_steps for s in planned)
+    assert abs(total - len(r.trace)) <= 0.05 * total   # the held object hangs a little differently from its rest pose
+    assert [s.phase for s in r.planned] == phases
+
+
+def test_com_end_negative_moves_com_to_other_end():
+    env = _env()
+    env.reset(LONG, {"mu": 0.8, "mass_scale": 1.0, "com_s": 0.8, "v_lift": 0.15}, seed=0, com_end=+1)
+    hi = env.truth()["com_s"]
+    env.reset(LONG, {"mu": 0.8, "mass_scale": 1.0, "com_s": 0.8, "v_lift": 0.15}, seed=0, com_end=-1)
+    lo = env.truth()["com_s"]
+    assert hi > 0.65 and lo < 0.5
+
+
+def test_locate_geometry_and_truth():
+    env = _env()
+    env.reset(LONG)
+    loc = env.locate("banana")
+    assert loc["object_id"] == LONG and env.locate("spoon") is None
+    assert loc["volume"] > 0 and loc["material"] == "fruit" and loc["hollow"] is False
+    g = env.geometry()
+    assert 0.15 < g.length < 0.25 and g.com_height > 0 and g.footprint_half_width >= g.base_extent > 0
+    assert 0.1 < env.truth()["mass"] < 0.3
+
+
+def test_unset_sim_dir_raises(monkeypatch):
+    from robots.mujoco_lab.adapter import MuJoCoLabEnv
+
+    monkeypatch.delenv("RPENT_MUJOCO_SIM_DIR")
+    with pytest.raises(RuntimeError, match="RPENT_MUJOCO_SIM_DIR"):
+        MuJoCoLabEnv()

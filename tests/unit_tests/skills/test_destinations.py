@@ -44,9 +44,11 @@ def test_kinds_and_friction():
 
 def test_release_height_rule():
     assert release_height(DESTINATIONS["table_centre"]) == 0.02
-    assert abs(release_height(DESTINATIONS["plate"]) - 0.065) < 1e-9
-    assert abs(release_height(DESTINATIONS["box"]) - (0.05 + 0.12)) < 1e-9
+    assert release_height(DESTINATIONS["plate"]) == 0.02
+    assert release_height(DESTINATIONS["box"]) == 0.02 and release_height(DESTINATIONS["bin"]) == 0.02
     assert release_height(DESTINATIONS["table_gap"]) == 0.02
+    narrow = dict(DESTINATIONS["box"], opening_half_width=0.05, rim_height=0.10)
+    assert abs(release_height(narrow) - 0.15) < 1e-9
 
 
 def test_has_surface_and_edge_distance():
@@ -54,4 +56,16 @@ def test_has_surface_and_edge_distance():
     assert abs(edge_distance(DESTINATIONS["table_edge"]) - 0.06) < 1e-9
     assert edge_distance(DESTINATIONS["table_gap"]) < 0
     assert edge_distance(DESTINATIONS["bin"]) < 0
-    assert abs(edge_distance(DESTINATIONS["mouse_pad"]) - 0.10) < 1e-9
+    assert abs(edge_distance(DESTINATIONS["mouse_pad"]) - 0.08) < 1e-9
+
+
+def test_fixtures_clear_the_object_rest_box_and_fit_the_table():
+    from rpent.skills.pick_place.destinations import OBJECT_REST_XY, TABLE_HALF
+    ox, oy = OBJECT_REST_XY
+    box = (ox - 0.17 - 0.02, ox + 0.17 + 0.02, oy - 0.07 - 0.02, oy + 0.07 + 0.02)   # longest object plus 2 cm
+    extents = {"mouse_pad": (0.10, 0.06), "plate": (0.12, 0.12), "box": (0.09, 0.09)}
+    for name, (hx, hy) in extents.items():
+        x, y = DESTINATIONS[name]["xy"]
+        assert abs(x) + hx <= TABLE_HALF[0] and abs(y) + hy <= TABLE_HALF[1], name
+        overlaps = (x - hx < box[1] and x + hx > box[0] and y - hy < box[3] and y + hy > box[2])
+        assert not overlaps, name

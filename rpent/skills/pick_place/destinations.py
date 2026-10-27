@@ -17,7 +17,9 @@
 The seven primitive destinations live in the MuJoCo lab scene. Positions are in
 the scene frame (table centre at the origin, table top at ``TABLE_TOP``). The
 ``surface_z`` of a table place is the table top; of the bin it is the bin
-floor on the ground.
+floor on the ground. Layout rule: the object rests at ``OBJECT_REST_XY`` and the
+longest object (33 cm) spans x −0.29 to 0.05 and y ±0.07 there; every fixture
+keeps 2 cm clear of that box and lies inside the 70 × 50 cm table.
 """
 
 from __future__ import annotations
@@ -28,6 +30,7 @@ TABLE_TOP = 0.75
 TABLE_HALF = (0.35, 0.25)
 BIN_FLOOR_Z = 0.0
 BIN_H = 0.30
+OBJECT_REST_XY = (-0.12, 0.0)
 
 
 def _entry(
@@ -40,7 +43,7 @@ def _entry(
     rim_height: float = 0.0,
     opening_half_width: float | None = None,
     fragile: bool = False,
-    object_rest_xy: tuple[float, float] = (0.0, 0.0),
+    object_rest_xy: tuple[float, float] = OBJECT_REST_XY,
 ) -> dict[str, Any]:
     return {
         "id": id,
@@ -58,20 +61,24 @@ def _entry(
 DESTINATIONS: dict[str, dict[str, Any]] = {
     "table_centre": _entry("table_centre", "surface", (0.0, 0.0), mu=0.8),
     "table_edge": _entry("table_edge", "surface", (-0.29, 0.0), mu=0.8),
-    "table_gap": _entry("table_gap", "none", (-0.45, 0.0), mu=0.0),
-    "mouse_pad": _entry("mouse_pad", "surface", (0.15, -0.15), surface_z=TABLE_TOP + 0.004, mu=1.2),
-    "plate": _entry("plate", "rim", (0.12, 0.15), surface_z=TABLE_TOP + 0.005, mu=0.4,
+    "table_gap": _entry("table_gap", "none", (0.0, -0.33), mu=0.0),   # 8 cm past the -y edge: floor below, no bin
+    "mouse_pad": _entry("mouse_pad", "surface", (-0.12, 0.17), surface_z=TABLE_TOP + 0.004, mu=1.2),
+    "plate": _entry("plate", "rim", (0.21, 0.12), surface_z=TABLE_TOP + 0.005, mu=0.4,
                     rim_height=0.015, opening_half_width=0.11, fragile=True),
-    "box": _entry("box", "cavity", (-0.15, 0.15), surface_z=TABLE_TOP + 0.005, mu=0.6,
+    "box": _entry("box", "cavity", (0.22, -0.14), surface_z=TABLE_TOP + 0.005, mu=0.6,
                   rim_height=0.12, opening_half_width=0.08),
     "bin": _entry("bin", "open_bin", (-0.62, 0.0), surface_z=BIN_FLOOR_Z, mu=0.6,
                   rim_height=BIN_H, opening_half_width=0.15),
 }
 
 
+HAND_HALF_WIDTH = 0.07   # the open gripper's half-width plus a margin: a cavity narrower than this is released from above the rim
+
+
 def release_height(dest: dict[str, Any]) -> float:
-    """Height of the object's lowest point above ``surface_z`` when the pads open."""
-    if dest["kind"] in ("rim", "cavity", "open_bin"):
+    """Height of the object's lowest point above ``surface_z`` when the pads open: 2 cm wherever
+    the hand can reach the surface, else 5 cm above the rim (a cavity too narrow for the hand)."""
+    if dest["kind"] in ("cavity", "open_bin") and float(dest["opening_half_width"] or 0.0) < HAND_HALF_WIDTH:
         return 0.05 + float(dest["rim_height"])
     return 0.02
 
