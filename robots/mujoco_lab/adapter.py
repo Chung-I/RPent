@@ -284,8 +284,12 @@ class MuJoCoLabEnv:
         return out
 
     def _pad_hull_forces(self) -> tuple[float, float]:
-        """(vertical force on the object from both pads, normal force), pad-hull contacts only
-        (the t3_probes.pad_forces formula; mj_contactForce only reads)."""
+        """(net vertical force of both pads on the object, summed normal force), pad-hull contacts only.
+
+        The vertical force is signed (up is positive), so in a static two-pad hold it equals the
+        weight whatever the squeeze; a per-contact absolute sum (t3_probes.pad_forces) also counts
+        the normal force's vertical parts on curved or sloped faces. mj_contactForce gives the force
+        in the contact frame, whose normal points from geom1 to geom2, as the force on geom2."""
         import mujoco
 
         sim = self.sim
@@ -300,7 +304,7 @@ class MuJoCoLabEnv:
                 if other in hull:
                     mujoco.mj_contactForce(sim.m, sim.d, i, f)
                     fw = c.frame.reshape(3, 3).T @ f[:3]
-                    fz += abs(float(fw[2]))
+                    fz += float(fw[2]) if other == c.geom2 else -float(fw[2])
                     fn += abs(float(f[0]))
         return fz, fn
 

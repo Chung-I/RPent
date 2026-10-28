@@ -210,6 +210,18 @@ def test_trace_records_pad_forces_during_the_hold():
     assert r.readouts["rose"] is True and r.readouts["fz_hold_n"] is not None
 
 
+
+@pytest.mark.parametrize("oid", ["ycb__spam_can", "hope__ketchup_bottle"])
+def test_hold_force_is_the_weight_under_a_firm_squeeze(oid):
+    """The hold reading is the pads' net vertical force on the object: the weight, whatever the squeeze
+    (a per-contact absolute sum counts the normal force's vertical parts on curved faces)."""
+    env = _env()
+    env.reset(oid, {"mu": 0.8, "mass_scale": 1.0, "com_s": None, "v_lift": 0.15}, seed=0)
+    f_std = env.s["t3_make"].std_force(env.nominal_mass())
+    r = env.execute(env.proposals()[1], force=2 * f_std, v_lift=0.15, v_transport=0.5, destination="table_centre")
+    assert r.readouts["fz_hold_n"] is not None
+    assert r.readouts["fz_hold_n"] / (env.truth()["mass"] * 9.81) == pytest.approx(1.0, abs=0.02)
+
 def _roll_about_long_axis(env, deg=90.0):
     """Turn the object onto another face (a knock-over without the randomness of a fall) and let it settle."""
     import mujoco
