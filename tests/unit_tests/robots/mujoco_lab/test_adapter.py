@@ -303,6 +303,26 @@ def test_trace_records_the_pad_normals_the_hand_height_and_the_turn_since_the_li
     assert lift[-1]["hand_z"] - lift[0]["hand_z"] > 0.15
 
 
+def test_trace_follows_the_object_point_between_the_pads():
+    """grip_dz: the rise since the lift began of the object point between the pads at the end of the close.
+    It is None before the lift, the hand's rise while the pads carry the brick, and about 0 while the pads
+    slide up a brick they cannot lift (2 mu F = 1 N against a 1.96 N weight), until they run off its top edge
+    and tip it (the last two steps: 0.6 and 2.4 mm)."""
+    env = _env()
+    for mu, force, carried in ((0.8, 20.0, True), (0.1, 5.0, False)):
+        env.reset(SHORT, {"mu": mu, "mass_scale": 1.0, "com_s": None, "v_lift": 0.15}, seed=0)
+        r = env.execute(env.proposals()[1], force=force, v_lift=0.15, v_transport=0.5, destination="table_centre")
+        close = [x for x in r.trace if x["phase"] == "close"][-1]
+        lift = [x for x in r.trace if x["phase"] == "lift" and all(x["pads"])]
+        assert close["grip_dz"] is None and len(lift) >= 10
+        rise = np.array([x["hand_z"] - close["hand_z"] for x in lift])
+        grip = np.array([x["grip_dz"] for x in lift])
+        if carried:
+            assert np.abs(grip - rise).max() < 0.001
+        else:
+            assert rise.max() > 0.005 and np.abs(grip[:-2]).max() < 0.0005
+
+
 @pytest.mark.parametrize("oid", ["ycb__spam_can", "hope__ketchup_bottle"])
 def test_hold_force_is_the_weight_under_a_firm_squeeze(oid):
     """The hold reading is the pads' net vertical force on the object: the weight, whatever the squeeze

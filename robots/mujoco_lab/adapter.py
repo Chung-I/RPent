@@ -685,7 +685,8 @@ class MuJoCoLabEnv:
         forces are means over the step's physics substeps (``_install_meter``): ``fz`` the pads' net
         vertical force on the object, ``fn`` their normal force, ``pad_nz`` each pad's force-weighted
         vertical part of its contact normal into the object (None without contact). ``hand_z`` is the
-        hand's height, ``rot_lift_deg`` the object's turn since the lift began (None before it)."""
+        hand's height, ``rot_lift_deg`` the object's turn since the lift began and ``grip_dz`` the rise since
+        then of the object point that sat between the pads at the end of the close (both None before it)."""
         sim = self.sim
         hz = self.s["scene"].CTRL_HZ
         p0z = sim.obj_pos()[2]
@@ -693,11 +694,15 @@ class MuJoCoLabEnv:
         trace: list[dict[str, Any]] = []
         pitch_of = self._pitch_meter(pt, yaw)
         pitch0: list[float] = []
-        prev_R, lift_R = [R0], []
         self._metering = True
 
         def turn(A: np.ndarray, B: np.ndarray) -> float:
             return float(np.degrees(np.arccos(np.clip(((A @ B.T).trace() - 1) / 2, -1, 1))))
+
+        def mid() -> np.ndarray:
+            return (sim.d.geom_xpos[sim.pad_l] + sim.d.geom_xpos[sim.pad_r]) / 2
+
+        prev, lift_R, grip = [(R0, sim.obj_pos(), mid())], [], []
 
         def on_step(phase: str) -> None:
             pos = sim.obj_pos()
@@ -707,8 +712,10 @@ class MuJoCoLabEnv:
             surf, has = self._surface_below(pos[:2])
             R = sim.obj_mat().copy()
             if phase == "lift" and not lift_R:
-                lift_R.append(prev_R[0])                         # the pose at the end of the close
-            prev_R[0] = R
+                Rc, pc, mc = prev[0]                             # the pose at the end of the close
+                lift_R.append(Rc)
+                grip.extend((Rc.T @ (mc - pc), float(mc[2])))   # the point between the pads, in the object frame
+            prev[0] = (R, pos, mid())
             acc = self._step_forces
             pad_nz = [float(acc[3 + k] / acc[1 + k]) if acc[1 + k] > 0 else None for k in (0, 1)]
             pitch = pitch_of()
@@ -719,6 +726,7 @@ class MuJoCoLabEnv:
                           "pads": list(pads), "zone": sim.zone_of(touching), "rot_deg": turn(R, R0),
                           "fz": float(acc[0]), "fn": float(acc[1] + acc[2]), "pad_nz": pad_nz,
                           "hand_z": float(sim.d.xpos[sim.hand][2]), "rot_lift_deg": turn(R, lift_R[0]) if lift_R else None,
+                          "grip_dz": float((R @ grip[0] + pos)[2] - grip[1]) if grip else None,
                           "pitch_ey": float(pitch - pitch0[0])})
         return trace, on_step
 

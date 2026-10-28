@@ -20,12 +20,14 @@ import pytest
 from robots.mujoco_lab.readouts import summarize
 
 
-def _s(t, phase, z, pads=(True, True), fz=0.0, rot=0.0, pitch=0.0, hand_z=None, nz=(0.0, 0.0), rot_lift=None):
-    """One trace step; by default the hand carries the object (hand_z = 0.3 + z) and the pads press side faces."""
-    if rot_lift is None and phase not in ("approach", "close"):
-        rot_lift = 0.0
+def _s(t, phase, z, pads=(True, True), fz=0.0, rot=0.0, pitch=0.0, hand_z=None, nz=(0.0, 0.0), rot_lift=None, grip=None):
+    """One trace step; by default the hand carries the object (hand_z = 0.3 + z), the pads press side faces and the
+    object point between them rises with the object (grip_dz = z)."""
+    if phase not in ("approach", "close"):
+        rot_lift = 0.0 if rot_lift is None else rot_lift
+        grip = z if grip is None else grip
     return {"t": t, "phase": phase, "z": z, "pads": list(pads), "fz": fz, "fn": 10.0, "rot_deg": rot, "pitch_ey": pitch,
-            "hand_z": 0.3 + z if hand_z is None else hand_z, "pad_nz": list(nz), "rot_lift_deg": rot_lift}
+            "hand_z": 0.3 + z if hand_z is None else hand_z, "pad_nz": list(nz), "rot_lift_deg": rot_lift, "grip_dz": grip}
 
 
 def _label(label, loss_phase=None, loss_step=None, loss_t=None):
@@ -57,16 +59,18 @@ def test_summarize_hold_reading():
 
 
 def _slide_trace(lift_fz=(1.3, 1.5, 1.4), close_fz=(0.0, 0.4, 0.8), rise=(0.0, 0.0, 0.0), nz=(0.0, 0.0), rot=(0.0, 0.0, 0.0),
-                 pads_lift=None):
-    """A not-lifted attempt: the hand rises 3 mm per lift step while the object stays (the pads slide up it)."""
+                 pads_lift=None, grip=None, hand=None):
+    """A not-lifted attempt: the hand rises 3 mm per lift step (or to `hand` since the lift began) while the object
+    stays (the pads slide up it); `grip` is the rise of the object point between the pads (default: `rise`)."""
+    hand = [0.003 * (k + 1) for k in range(len(lift_fz))] if hand is None else hand
     tr, t = [], 0.0
     for fz in close_fz:
         tr.append(_s(t, "close", 0.0, fz=fz, hand_z=0.30)); t += 0.02
     for k, fz in enumerate(lift_fz):
-        tr.append(_s(t, "lift", rise[k], fz=fz, hand_z=0.30 + 0.003 * (k + 1), nz=nz, rot_lift=rot[k],
-                     pads=(True, True) if pads_lift is None else pads_lift[k])); t += 0.02
+        tr.append(_s(t, "lift", rise[k], fz=fz, hand_z=0.30 + hand[k], nz=nz, rot_lift=rot[k],
+                     pads=(True, True) if pads_lift is None else pads_lift[k], grip=None if grip is None else grip[k])); t += 0.02
     for _ in range(6):
-        tr.append(_s(t, "hold", rise[-1], fz=0.1, hand_z=0.30 + 0.003 * len(lift_fz), pads=(False, False))); t += 0.02
+        tr.append(_s(t, "hold", rise[-1], fz=0.1, hand_z=0.30 + hand[-1], pads=(False, False))); t += 0.02
     return tr
 
 
@@ -96,6 +100,25 @@ def test_slip_reading_needs_the_object_to_stay_while_the_hand_rises():
     assert summarize(carried, _label("not_lifted"), v_lift=0.15)["fz_slip_max_n"] is None
     turned = _slide_trace(lift_fz=(16.5, 17.6, 18.5), rot=(2.0, 4.0, 6.0))
     assert summarize(turned, _label("not_lifted"), v_lift=0.15)["fz_slip_max_n"] is None
+
+
+def test_slip_reading_needs_the_point_between_the_pads_to_stay():
+    """A pivot about a table contact near the body origin (potato_masher d57): the origin stays and the turn stays
+    under 3 deg, but the object point between the pads rises with the hand, so the force is a share of the weight."""
+    tr = _slide_trace(lift_fz=(12.1, 13.7, 13.6), rot=(0.4, 0.8, 1.2), grip=(0.0027, 0.0054, 0.0081))
+    assert summarize(tr, _label("not_lifted"), v_lift=0.05)["fz_slip_max_n"] is None
+
+
+def test_slip_reading_counts_a_step_once_the_pads_have_slid_a_millimetre():
+    """The contact gives about 0.5 mm before the pads slide. In a slow lift the pads carry the object point up within
+    that give for a few steps, so those steps tell nothing yet: a pivot breaks the run right after, a slide goes on."""
+    hand = (0.0001, 0.0003, 0.0006, 0.0011)
+    pivot = _slide_trace(lift_fz=(7.3, 11.3, 12.1, 13.3), rise=(0.0,) * 4, rot=(0.0, 0.1, 0.1, 0.3), hand=hand,
+                         grip=(0.0001, 0.0003, 0.0006, 0.001))
+    assert summarize(pivot, _label("not_lifted"), v_lift=0.05)["fz_slip_max_n"] is None
+    hand = (0.0001, 0.0003, 0.0006, 0.0011, 0.0016, 0.0022)
+    slide = _slide_trace(lift_fz=(0.5, 1.0, 1.9, 1.5, 1.6, 1.5), rise=(0.0,) * 6, rot=(0.0,) * 6, hand=hand)
+    assert summarize(slide, _label("not_lifted"), v_lift=0.05)["fz_slip_max_n"] == pytest.approx(1.6)
 
 
 def test_slip_reading_needs_two_sliding_steps():
