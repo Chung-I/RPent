@@ -20,7 +20,9 @@ objects in oracle and belief mode, and write a model bundle (models, metrics, ma
 
 ``--features true`` (the default) trains on the true-CoM features of corpus v2 rows and scores
 belief mode with the lab prior (the corpus generator); ``--features nominal`` is milestone 1's
-recipe (nominal-CoM features, the parametric prior).
+recipe (nominal-CoM features, the parametric prior). When the training rows carry readouts, the
+readout model (likelihood.ReadoutModel) is fitted on them and written into the bundle; a retrain
+clears the bundle's tempers (posterior_check chooses them again).
 """
 
 from __future__ import annotations
@@ -38,6 +40,8 @@ from rpent.skills.pick_place.success_model import train
 
 MANIFEST = "manifest.json"
 METRICS = "success_model_metrics.json"
+READOUT_MODEL = "readout_model.json"
+READOUT_ROT = "readout_rot.joblib"
 
 
 def load_rows(path: str) -> list[dict]:
@@ -87,6 +91,14 @@ def main(argv: list[str] | None = None) -> dict:
     haz = train_hazard(tr, va, os.path.join(a.out_dir, "hazard_model.joblib"), seed=a.seed, n_belief=a.n_belief,
                        prior_fn=prior_fn, features=a.features)
     t2 = time.time()
+    readout = None
+    if any(r.get("readouts") for r in tr):
+        from rpent.skills.pick_place.likelihood import ReadoutModel
+
+        rm = ReadoutModel.fit(tr, seed=a.seed)
+        rm.save(os.path.join(a.out_dir, READOUT_MODEL), os.path.join(a.out_dir, READOUT_ROT))
+        readout = {"terms": rm.to_json()["terms"], "side_error": rm.side_error, "stats": rm.stats}
+    t3 = time.time()
     kind = "hazard" if haz["belief"]["brier"] <= clf["belief"]["brier"] else "classifier"
     out = {
         "corpus": a.corpus if len(a.corpus) > 1 else a.corpus[0], "n_rows": len(rows), "split": split, "n_train": len(tr), "n_val": len(va),
@@ -95,12 +107,14 @@ def main(argv: list[str] | None = None) -> dict:
             "classifier": {"ece": clf["belief"]["ece"], "brier": clf["belief"]["brier"], "brier_const": clf["belief"]["brier_const"]},
             "hazard": {"ece": haz["belief"]["ece"], "brier": haz["belief"]["brier"], "brier_const": haz["belief"]["brier_const"]},
         },
-        "seconds": {"classifier": round(t1 - t0, 1), "hazard": round(t2 - t1, 1)},
+        "readout": readout,
+        "seconds": {"classifier": round(t1 - t0, 1), "hazard": round(t2 - t1, 1), "readout": round(t3 - t2, 1)},
     }
     with open(os.path.join(a.out_dir, METRICS), "w") as f:
         json.dump(out, f, indent=1)
     write_manifest(a.out_dir, features=a.features, prior=prior, kind=kind, success_model="success_model.joblib",
-                   hazard_model="hazard_model.joblib", metrics=METRICS, corpus=out["corpus"], split_seed=a.seed)
+                   hazard_model="hazard_model.joblib", metrics=METRICS, corpus=out["corpus"], split_seed=a.seed,
+                   readout_model=READOUT_MODEL if readout else None, tempers={})      # new models: tempers are re-chosen
     out["wandb"] = tracking.log_run("train_models", {"corpus": out["corpus"], "features": a.features, "prior": prior,
                                                      "seed": a.seed, "n_belief": a.n_belief, "out_dir": a.out_dir},
                                     {"acceptance_val_belief": out["acceptance_val_belief"], "kind_hazard": kind == "hazard",

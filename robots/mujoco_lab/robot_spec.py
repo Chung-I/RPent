@@ -71,9 +71,17 @@ def load_bundle(bundle_dir: str, kind: str | None = None) -> dict[str, Any]:
         from rpent.skills.pick_place.success_model import SuccessModel
 
         model = SuccessModel.load(path)
+    readout = None
+    if man.get("readout_model"):
+        from rpent.skills.pick_place.likelihood import ReadoutModel
+
+        readout = ReadoutModel.load(os.path.join(bundle_dir, man["readout_model"]))
+        temper = (man.get("tempers") or {}).get("readout")
+        if temper is not None:
+            readout.temper = float(temper)
     return {"manifest": man, "kind": kind, "model": model,
             "prior": lab_prior_fn if man.get("prior") == "lab_generator" else None,
-            "readout_model": None, "probe_models": None}
+            "readout_model": readout, "probe_models": None}
 
 
 def load_model(model_path: str | None = None, kind: str | None = None) -> Any:

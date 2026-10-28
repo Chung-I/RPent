@@ -1,0 +1,178 @@
+# Copyright 2026 The RPent Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+
+"""Posterior check: does one attempt's update give honest 80 % intervals?
+
+For each corpus row of the chosen objects: the lab prior's particles (the generator, so the truth
+is a prior draw), one update with the row's outcome and readouts (the bundle's outcome model and
+readout model), then the 80 % intervals of mass, friction and the CoM fraction along the pivot.
+Coverage is reported overall and by label, beside the prior's. With a temper grid and
+``--choose-on``, the temper whose coverage of all three lies in [0.75, 0.85] and is closest to 0.80
+(worst of the three; ties: the smaller temper) goes into the bundle (manifest ``tempers.readout``);
+when no temper is feasible the bundle keeps 1 and the result says so.
+
+    python -P -m robots.mujoco_lab.posterior_check --bundle robots/mujoco_lab/data/m2 --split val \\
+        --temper-grid 0.7,0.85,1,1.25,1.5,2,3 --choose-on val --out robots/mujoco_lab/data/m2/posterior_check.json
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+import time
+from collections import Counter, defaultdict
+from typing import Any
+
+import numpy as np
+
+from robots.mujoco_lab import tracking
+from robots.mujoco_lab.prior import lab_prior
+from robots.mujoco_lab.robot_spec import load_bundle
+from robots.mujoco_lab.train_models import load_rows, write_manifest
+from rpent.skills.pick_place.belief import ParticleBelief
+from rpent.skills.pick_place.evaluate import rows_of
+from rpent.skills.pick_place.features import particle_matrix, particle_sides
+
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+COVER = (0.75, 0.85)
+TARGET = 0.80
+KEYS = (("mass", "mass"), ("mu", "mu"), ("com", "com_frac"))
+
+
+def true_com_frac(row: dict[str, Any]) -> float:
+    """The row's true CoM as a fraction along the pivot axis (the particles' com_frac)."""
+    pv = row["pose"]["pivot"]
+    c, ax = np.asarray(pv["centre"], dtype=float), np.asarray(pv["axis"], dtype=float)
+    return float(((np.asarray(row["com_obj_true"], dtype=float) - c) @ ax - float(pv["lo"])) / float(pv["L"]))
+
+
+def _hits(b: ParticleBelief, truth: dict[str, float]) -> dict[str, bool]:
+    return {k: bool(b.quantile(key, 0.1) <= truth[k] <= b.quantile(key, 0.9)) for k, key in KEYS}
+
+
+def _widths(b: ParticleBelief) -> dict[str, float]:
+    return {k: b.quantile(key, 0.9) - b.quantile(key, 0.1) for k, key in KEYS}
+
+
+def check_rows(rows: list[dict[str, Any]], bundle: dict[str, Any], grid: list[float], n: int, seed: int) -> list[dict[str, Any]]:
+    """One case per row: the prior's hits and widths, and per temper the posterior's."""
+    model, readout = bundle["model"], bundle["readout_model"]
+    rng = np.random.default_rng(seed)
+    cases = []
+    for r in rows:
+        b = lab_prior(r["pose"], n, rng)
+        a = b.arrays()
+        X = particle_matrix(r["features"], a, r["pose"], r["force"])
+        P = model.predict_matrix(X, r.get("planned"))[0]
+        obs = {"label": r["label"], "readouts": r["readouts"], "force": r["force"]}
+        comp, info = readout.components(obs, P, X, a, particle_sides(a, r["pose"]))
+        truth = {"mass": float(r["truth"]["mass"]), "mu": float(r["truth"]["mu"]), "com": true_com_frac(r)}
+        case = {"object": r["object"], "label": r["label"], "info": info, "prior": _hits(b, truth), "prior_width": _widths(b),
+                "post": {}, "post_width": {}}
+        for t in grid:
+            post = b.reweight(readout.combine(comp, t))
+            case["post"][t], case["post_width"][t] = _hits(post, truth), _widths(post)
+        cases.append(case)
+    return cases
+
+
+def coverage(hits: list[dict[str, bool]]) -> dict[str, float | None]:
+    return {k: (float(np.mean([h[k] for h in hits])) if hits else None) for k, _ in KEYS}
+
+
+def _inside(cov: dict[str, float | None]) -> bool:
+    return all(cov[k] is not None and COVER[0] <= cov[k] <= COVER[1] for k, _ in KEYS)
+
+
+def choose_temper(grid_cov: dict[float, dict[str, float | None]]) -> tuple[float, bool]:
+    """The feasible temper closest to 0.80 (worst of the three; ties: the smaller), else (1.0, False)."""
+    feasible = [t for t, c in grid_cov.items() if _inside(c)]
+    if not feasible:
+        return 1.0, False
+    return min(feasible, key=lambda t: (max(abs(grid_cov[t][k] - TARGET) for k, _ in KEYS), t)), True
+
+
+def main(argv: list[str] | None = None) -> dict[str, Any]:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--bundle", required=True)
+    ap.add_argument("--split", default="val", choices=("train", "val", "test"))
+    ap.add_argument("--objects", default=None, help="comma-separated ids in place of the split's")
+    ap.add_argument("--n-particles", type=int, default=2000)
+    ap.add_argument("--temper-grid", default=None, help="comma-separated tempers (always with 1 and the bundle's)")
+    ap.add_argument("--choose-on", default=None, choices=("train", "val"), help="choose the temper on this split; write it into the bundle")
+    ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--out", required=True)
+    a = ap.parse_args(argv)
+    B = load_bundle(a.bundle)
+    if B["readout_model"] is None:
+        raise SystemExit("the bundle has no readout model: train it on corpus v2 rows (they carry readouts)")
+    man = B["manifest"]
+    metrics = json.load(open(os.path.join(a.bundle, man["metrics"])))
+    paths = metrics["corpus"] if isinstance(metrics["corpus"], list) else [metrics["corpus"]]
+    rows = [r for p in paths for r in load_rows(p if os.path.isabs(p) else os.path.join(ROOT, p))]
+    rows = [r for r in rows if r.get("readouts") and "pose" in r and "com_obj_true" in r]
+
+    def rows_for(split: str) -> list[dict[str, Any]]:
+        ids = a.objects.split(",") if (a.objects and split == a.split) else metrics["split"][split]
+        return rows_of(rows, ids)
+
+    grid = sorted({float(t) for t in (a.temper_grid.split(",") if a.temper_grid else [])} | {1.0, float(B["readout_model"].temper)})
+    t0 = time.time()
+    cases = check_rows(rows_for(a.split), B, grid, a.n_particles, a.seed)
+    if not cases:
+        raise SystemExit(f"no rows with readouts for split {a.split!r}")
+    pick = cases if a.choose_on in (None, a.split) else check_rows(rows_for(a.choose_on), B, grid, a.n_particles, a.seed + 1)
+    grid_cov = {t: coverage([c["post"][t] for c in pick]) for t in grid}
+    if a.choose_on:
+        temper, feasible = choose_temper(grid_cov)
+    else:
+        temper = float(B["readout_model"].temper)
+        feasible = _inside(coverage([c["post"][temper] for c in cases]))
+    cov = coverage([c["post"][temper] for c in cases])
+    by_label: dict[str, list[dict[str, bool]]] = defaultdict(list)
+    for c in cases:
+        by_label[c["label"]].append(c["post"][temper])
+    out = {
+        "bundle": a.bundle, "split": a.split, "objects": sorted({c["object"] for c in cases}), "n": len(cases),
+        "n_particles": a.n_particles, "temper": temper, "feasible": feasible, "chosen_on": a.choose_on,
+        "mass_cov80": cov["mass"], "mu_cov80": cov["mu"], "com_cov80": cov["com"],
+        "acceptance_b": {"bounds": list(COVER), "pass": _inside(cov)},
+        "prior_cov80": coverage([c["prior"] for c in cases]),
+        "by_label": {lbl: {"n": len(h), **{f"{k}_cov80": v for k, v in coverage(h).items()}} for lbl, h in sorted(by_label.items())},
+        "grid": {str(t): grid_cov[t] for t in grid},
+        "width80_median": {"prior": {k: float(np.median([c["prior_width"][k] for c in cases])) for k, _ in KEYS},
+                           "posterior": {k: float(np.median([c["post_width"][temper][k] for c in cases])) for k, _ in KEYS}},
+        "terms": {"used": dict(Counter(t for c in cases for t in c["info"]["used"])),
+                  "rejected": dict(Counter(t for c in cases for t in c["info"]["rejected"]))},
+        "seconds": round(time.time() - t0, 1),
+    }
+    with open(a.out, "w") as f:
+        json.dump(out, f, indent=1)
+    if a.choose_on:
+        write_manifest(a.bundle, tempers={**(man.get("tempers") or {}), "readout": temper})
+    out["wandb"] = tracking.log_run("posterior_check", {"bundle": a.bundle, "split": a.split, "n_particles": a.n_particles,
+                                                        "grid": grid, "choose_on": a.choose_on, "seed": a.seed},
+                                    {"cov80": cov, "temper": temper, "feasible": feasible, "prior_cov80": out["prior_cov80"],
+                                     "grid": out["grid"], "width80_median": out["width80_median"], "n": len(cases)})
+    print(json.dumps({k: out[k] for k in ("n", "temper", "feasible", "mass_cov80", "mu_cov80", "com_cov80", "prior_cov80",
+                                          "acceptance_b", "width80_median", "terms", "seconds")}, indent=1))
+    return out
+
+
+if __name__ == "__main__":
+    main()
+    sys.exit(0)
