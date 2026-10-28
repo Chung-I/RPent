@@ -1,0 +1,32 @@
+{
+ "protocol_a": "repair",
+ "protocol_b": "commit",
+ "n_paired": 1045,
+ "n_objects": 95,
+ "unpaired": {
+  "a_only": 0,
+  "b_only": 0
+ },
+ "realized_cost": {
+  "a": 2.262870813397129,
+  "b": 1.60688995215311,
+  "diff": 0.6559808612440192,
+  "ci95_object_bootstrap": [
+   0.5772105263157895,
+   0.7381818181818183
+  ]
+ },
+ "ece_first_attempt": {
+  "a": 0.04025203252032521,
+  "b": 0.04025203252032521,
+  "n_a": 984,
+  "n_b": 984,
+  "diff": 0.0,
+  "ci95_object_bootstrap": [
+   0.0,
+   0.0
+  ]
+ },
+ "a": "robots/mujoco_lab/data/m2/calibration_crossfit_repair.json",
+ "b": "robots/mujoco_lab/data/m2/calibration_crossfit_commit.json"
+}

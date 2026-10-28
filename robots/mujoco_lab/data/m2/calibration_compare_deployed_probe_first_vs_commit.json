@@ -1,0 +1,32 @@
+{
+ "protocol_a": "probe_first",
+ "protocol_b": "commit",
+ "n_paired": 1008,
+ "n_objects": 14,
+ "unpaired": {
+  "a_only": 0,
+  "b_only": 0
+ },
+ "realized_cost": {
+  "a": 1.6119047619047617,
+  "b": 1.6111111111111112,
+  "diff": 0.0007936507936507947,
+  "ci95_object_bootstrap": [
+   0.00019841269841269847,
+   0.0015873015873015882
+  ]
+ },
+ "ece_first_attempt": {
+  "a": 0.03241567460317461,
+  "b": 0.03305853174603176,
+  "n_a": 1008,
+  "n_b": 1008,
+  "diff": -0.0006428571428571464,
+  "ci95_object_bootstrap": [
+   -0.0019404761904761802,
+   0.0006488095238095309
+  ]
+ },
+ "a": "robots/mujoco_lab/data/m2/calibration_deployed_probe_first.json",
+ "b": "robots/mujoco_lab/data/m2/calibration_deployed_commit.json"
+}
