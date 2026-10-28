@@ -13,12 +13,13 @@
  "split_seed": 0,
  "readout_model": "readout_model.json",
  "tempers": {
-  "readout": 1.0
+  "readout": 1.0,
+  "probe": 1.0
  },
  "probe_models": {
   "weigh": "probe_weigh.joblib",
   "push": "probe_push.joblib"
  },
  "probe_metrics": "probe_metrics.json",
- "probe_corpus": "robots/mujoco_lab/data/probe_corpus.jsonl"
+ "probe_corpus": "robots/mujoco_lab/data/probe_corpus_v2.jsonl"
 }

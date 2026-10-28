@@ -1,5 +1,5 @@
 {
- "probe_corpus": "robots/mujoco_lab/data/probe_corpus.jsonl",
+ "probe_corpus": "robots/mujoco_lab/data/probe_corpus_v2.jsonl",
  "split": {
   "train": [
    "fruits_veggies__avocado",
@@ -105,42 +105,42 @@
  },
  "probes": {
   "weigh": {
-   "n": 4476,
-   "n_train": 3158,
+   "n": 4472,
+   "n_train": 3154,
    "kind_rates": {
-    "measured": 0.7685433422698839,
-    "lower_bound": 0.22810545129579982,
-    "lost": 0.003351206434316354
+    "measured": 0.7692307692307693,
+    "lower_bound": 0.2274150268336315,
+    "lost": 0.0033542039355992843
    },
-   "thrown_rate": 0.04714030384271671,
+   "thrown_rate": 0.0731216457960644,
    "reading": {
     "measured": [
      -5.703175614711346e-09,
      0.05
     ],
     "lower_bound": [
-     -0.3330010700963212,
-     0.4398680183352795
+     -0.3289946888537931,
+     0.43392815750510744
     ]
    },
    "stats": {
-    "n": 3158,
+    "n": 3154,
     "kinds": {
      "measured": 2393,
-     "lower_bound": 756,
+     "lower_bound": 752,
      "lost": 9
     },
     "n_reading": {
      "measured": 2387,
-     "lower_bound": 361,
+     "lower_bound": 357,
      "lost": 0
     },
-    "thrown": 113
+    "thrown": 180
    },
    "val": {
     "n": 669,
-    "brier": 0.20069740492282967,
-    "brier_const": 0.31704935610403584
+    "brier": 0.19196327781908545,
+    "brier_const": 0.31683753002358966
    }
   },
   "push": {
@@ -152,7 +152,7 @@
     "no_breakaway": 0.03684210526315789,
     "no_contact": 0.035526315789473684
    },
-   "thrown_rate": 0.03684210526315789,
+   "thrown_rate": 0.03859649122807018,
    "reading": {
     "slid": [
      0.14222953227079418,
@@ -173,11 +173,11 @@
      "no_breakaway": 0,
      "no_contact": 0
     },
-    "thrown": 58
+    "thrown": 62
    },
    "val": {
     "n": 336,
-    "brier": 0.13935000641875708,
+    "brier": 0.13855081119178123,
     "brier_const": 0.2048174086037474
    }
   }
