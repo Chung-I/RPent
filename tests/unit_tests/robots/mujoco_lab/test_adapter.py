@@ -343,3 +343,20 @@ def test_retry_after_the_object_fell_plans_from_the_new_pose():
     f_std = env.s["t3_make"].std_force(env.nominal_mass())
     r = env.execute(p, force=2 * f_std, v_lift=0.15, v_transport=0.5, destination="table_centre")
     assert r.label == "placed_stable"                                           # not "tipped" against the old face
+
+
+def test_reset_frees_the_previous_sim():
+    """The metered control step must not tie a sim to itself: a corpus worker resets once per row, and
+    sims kept alive until the cycle collector ran filled the 14 GB limit of 16 workers in 19 s."""
+    import gc
+    import weakref
+
+    env = _env()
+    env.reset("ycb__brick", seed=0)
+    old = weakref.ref(env.sim)
+    gc.disable()
+    try:
+        env.reset("ycb__brick", seed=1)
+        assert old() is None
+    finally:
+        gc.enable()

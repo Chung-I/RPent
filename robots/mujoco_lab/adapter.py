@@ -384,16 +384,19 @@ class MuJoCoLabEnv:
         of ``_pad_hull_sums`` over its physics substeps in ``_step_forces``. The hand follows its mocap
         target in a jump per control step, so a force sampled at the end of a step misses most of it: a
         carried lift read 0.9 of the weight, and a light object's lift step read below zero (the push
-        averages the same way, see _push_step)."""
+        averages the same way, see _push_step). The wrapper holds its sim by a weak reference: a strong one
+        ties each sim to itself, and a worker's old sims then live until the cycle collector runs."""
+        import weakref
+
         import mujoco
 
-        sim, sub = self.sim, int(self.s["scene"].SUB)
-        plain = sim.step_ctrl
+        ref, plain, sub = weakref.ref(self.sim), type(self.sim).step_ctrl, int(self.s["scene"].SUB)
         self._metering, self._step_forces = False, None
 
         def step_ctrl() -> None:
+            sim = ref()
             if not self._metering:
-                plain()
+                plain(sim)
                 return
             acc = np.zeros(5)
             for _ in range(sub):
@@ -401,7 +404,7 @@ class MuJoCoLabEnv:
                 acc += self._pad_hull_sums()
             self._step_forces = acc / sub
 
-        sim.step_ctrl = step_ctrl
+        self.sim.step_ctrl = step_ctrl
 
     def locate(self, prompt: str) -> dict[str, Any] | None:
         self._need()
