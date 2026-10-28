@@ -137,9 +137,11 @@ class ReadoutModel:
         return laws.get(label) or laws.get(POOLED)
 
     def components(self, obs: dict[str, Any], preds, X: np.ndarray | None, arrays: dict[str, np.ndarray],
-                   sides: np.ndarray | None) -> tuple[dict[str, Any], dict[str, list[str]]]:
+                   sides: np.ndarray | None, terms: list[str] | None = None) -> tuple[dict[str, Any], dict[str, list[str]]]:
         """The untempered terms: discrete log-likelihoods and standardised residuals, plus which terms
-        were used and rejected. ``combine`` applies a temper."""
+        were used and rejected. ``combine`` applies a temper. ``terms`` (an entry's recorded used terms)
+        replays exactly those terms, without the rejection rule (a belief refresh)."""
+        want = (lambda term: True) if terms is None else (lambda term: term in terms)
         label, r = obs["label"], obs.get("readouts") or {}
         force = float(obs.get("force", np.nan))
         m, mu = np.asarray(arrays["mass"], dtype=float), np.asarray(arrays["mu"], dtype=float)
@@ -147,32 +149,32 @@ class ReadoutModel:
         norm: dict[str, tuple[np.ndarray, float]] = {}
         used: list[str] = []
         rejected: list[str] = []
-        if preds is not None:
+        if preds is not None and want("outcome"):
             P = preds if isinstance(preds, np.ndarray) else prediction_matrix(preds)
             cat["outcome"] = np.log(np.maximum(self.floor_p, P[:, OUTCOMES.index(label)]))
             used.append("outcome")
         for term in CONTINUOUS:
             fz, law = r.get(READING[term]), self.law(term, label)
-            if fz is None or law is None:
+            if fz is None or law is None or not want(term):
                 continue
-            if not float(fz) > 0:
+            if terms is None and not float(fz) > 0:
                 rejected.append(term)
                 continue
             b, sd = law
             z = (_log_ratio(term, float(fz), m, mu, force) - b) / sd
             z = np.where(np.isfinite(z), z, np.inf)
-            if not np.isfinite(z).any() or float(np.min(np.abs(z))) > REJECT_Z:
+            if terms is None and (not np.isfinite(z).any() or float(np.min(np.abs(z))) > REJECT_Z):
                 rejected.append(term)
                 continue
             norm[term] = (z, float(sd))
             used.append(term)
-        if self.rot_clf is not None and X is not None:
+        if self.rot_clf is not None and X is not None and want("rot"):
             p = self.rot_clf.predict(X, label)
             rotated = float(r.get("rot_deg") or 0.0) >= ROT_DEG
             cat["rot"] = np.log(np.maximum(self.floor_p, p if rotated else 1.0 - p))
             used.append("rot")
         heavy = int(r.get("heavy_side") or 0)
-        if sides is not None and heavy != 0:
+        if sides is not None and heavy != 0 and want("side"):
             s, e = np.asarray(sides), float(self.side_error)
             cat["side"] = np.log(np.where(s == heavy, 1.0 - e, np.where(s == 0, 0.5, e)))
             used.append("side")

@@ -152,3 +152,21 @@ def test_loglik_temper_argument_matches_the_model_temper():
     pm.temper = 1.0
     plain, _ = pm.loglik(obs, X, b.arrays(), rows[0]["force"])
     assert not np.allclose(plain, by_arg)
+
+
+def test_probe_loglik_replays_listed_terms():
+    """A refresh replays the terms a probe entry recorded: a listed reading is used without the
+    rejection rule, an unlisted one is left out."""
+    rows = _probe_rows()
+    pm = fit_probe_models(rows)["push"]
+    b = _particles(500)
+    X = particle_matrix(rows[0]["base"], b.arrays(), rows[0]["pose"], rows[0]["force"])
+    far = {"probe": "push", "kind": "slid", "reading": {"f_break": 500.0}}
+    ll, info = pm.loglik(far, X, b.arrays(), rows[0]["force"], terms=["kind", "reading"])
+    assert info == {"used": ["kind", "reading"], "rejected": []}
+    kind_only, _ = pm.loglik(far, X, b.arrays(), rows[0]["force"], terms=["kind"])
+    assert not np.allclose(ll, kind_only)
+    near = {"probe": "push", "kind": "slid", "reading": {"f_break": 1.0}}
+    ll_k, info_k = pm.loglik(near, X, b.arrays(), rows[0]["force"], terms=["kind"])
+    np.testing.assert_allclose(ll_k, kind_only)
+    assert info_k == {"used": ["kind"], "rejected": []}

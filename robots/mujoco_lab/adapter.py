@@ -330,6 +330,7 @@ class MuJoCoLabEnv:
         names = {o["id"].lower(), o["name"].lower(), "object", o["name"].lower().replace("_", " ")}
         if p not in names:
             return None
+        zone = self.sim.zone_of(self.sim.contacts()[0])
         return {
             "object_id": o["id"],
             "centroid": self.sim.obj_pos().tolist(),
@@ -337,6 +338,7 @@ class MuJoCoLabEnv:
             "volume": float(sum(h["volume"] for h in props["hulls"])),
             "material": o["material"],
             "hollow": bool(o["hollow"]),
+            "reachable": zone == "table" or zone in self.fixtures_in_scene,     # not on the floor or in the bin
         }
 
     def nominal_mass(self, object_id: str | None = None) -> float:

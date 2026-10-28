@@ -16,23 +16,37 @@
 
 Resources the toolkit injects: ``primitives`` (``.env`` with the lab adapter's method set,
 ``.model`` a SuccessModel or HazardModel, ``.rng``, and optionally ``.prior(pose, n, rng)``, the
-substrate's prior over the hidden properties) and ``store`` (a dict that holds the per-episode
-assessments; separate from RPent's EnvState).
+substrate's prior over the hidden properties, ``.readout_model`` and ``.probe_models``, which turn
+attempts and probes into belief updates) and ``store`` (a dict that holds the per-episode
+assessments and beliefs; separate from RPent's EnvState).
+
+The belief lives in ``store["beliefs"][object_id]`` (``{"episode", "belief", "probes_run"}``) for one
+episode; every attempt appends a history entry ``{"type", "base", "pose", "force", "planned", "obs",
+"used_terms", "rejected_terms"}`` and reweights it (``update_belief``), and every cached assessment is
+then stale.
 """
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Callable
 
-from rpent.skills.pick_place.belief import N_PARTICLES, Belief, ParticleBelief
+import numpy as np
+
+from rpent.skills.pick_place.belief import MIN_ESS, N_PARTICLES, REFRESH_DRAWS, Belief, ParticleBelief, refresh
+from rpent.skills.pick_place.costs import prediction_matrix
 from rpent.skills.pick_place.destinations import DESTINATIONS
-from rpent.skills.pick_place.menu import build_menu, geometry_pose
-from rpent.skills.pick_place.protocol import Assessment, Option
+from rpent.skills.pick_place.diagnose import diagnose
+from rpent.skills.pick_place.features import particle_matrix, particle_sides
+from rpent.skills.pick_place.menu import build_menu, estimate, geometry_pose
+from rpent.skills.pick_place.protocol import OUTCOMES, Assessment, Option
 from rpent.tools.base import ToolResult, tool
 
 G = 9.81
 MIN_FORCE_N = 10.0
 MODES = ("commit", "assess_only")
+REFRESH_ESS = MIN_ESS             # update_belief refreshes when the effective particles fall below this
+FLOOR_P = 1e-4                    # the outcome term's floor without a readout model
+OUT_OF_REACH = {"assessed": False, "reason": "object is out of reach (floor or bin)", "next": "report it; the skill cannot reach it"}
 
 
 def standard_force(nominal_mass: float) -> float:
@@ -44,15 +58,84 @@ def _cache(store: dict[str, Any]) -> dict[tuple, dict[str, Any]]:
     return store.setdefault("pick_place", {})
 
 
-def _prior_belief(loc: dict[str, Any], env: Any, geometry: Any, primitives: Any) -> ParticleBelief:
+def _beliefs(store: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    return store.setdefault("beliefs", {})
+
+
+def _prior_belief(loc: dict[str, Any], env: Any, primitives: Any, n: int = N_PARTICLES,
+                  rng: np.random.Generator | None = None) -> ParticleBelief:
     """The substrate's prior (``primitives.prior``) when it has one, else the milestone 1 prior as
     particles at the nominal CoM."""
+    rng = primitives.rng if rng is None else rng
     prior = getattr(primitives, "prior", None)
     if prior is not None and hasattr(env, "pose_info"):
-        return prior(env.pose_info(), N_PARTICLES, primitives.rng)
+        return prior(env.pose_info(), n, rng)
     parametric = Belief.prior(loc["volume"], loc["material"], loc.get("hollow", False), length=loc.get("extent"))
-    com = env.pose_info()["com_obj_nominal"] if hasattr(env, "pose_info") else list(map(float, geometry.com))
-    return ParticleBelief.from_parametric(parametric, com, N_PARTICLES, primitives.rng)
+    com = env.pose_info()["com_obj_nominal"] if hasattr(env, "pose_info") else list(map(float, env.geometry().com))
+    return ParticleBelief.from_parametric(parametric, com, n, rng)
+
+
+def _laws(primitives: Any, label: str) -> dict[str, tuple[float, float] | None] | None:
+    """The readout model's fitted laws of the slip and loss terms for a label (the diagnosis corrects its
+    friction numbers with them); None without a readout model."""
+    rm = getattr(primitives, "readout_model", None)
+    return None if rm is None else {t: rm.law(t, label) for t in ("slip", "loss")}
+
+
+def _belief_record(loc: dict[str, Any], env: Any, primitives: Any, store: dict[str, Any]) -> dict[str, Any]:
+    """The object's belief record for this episode; a new episode starts from the prior."""
+    episode = int(getattr(env, "episode", 0))
+    rec = _beliefs(store).get(loc["object_id"])
+    if rec is None or rec["episode"] != episode:
+        rec = {"episode": episode, "belief": _prior_belief(loc, env, primitives), "probes_run": set()}
+        _beliefs(store)[loc["object_id"]] = rec
+    return rec
+
+
+def entry_loglik(belief: ParticleBelief, entry: dict[str, Any], primitives: Any,
+                 terms: list[str] | None = None) -> tuple[np.ndarray, dict[str, list[str]]]:
+    """Per-particle log-likelihood of one history entry and the terms ``{"used", "rejected"}``. An
+    attempt goes through the success model's per-particle predictions and the readout model (the
+    outcome term alone without one); a probe through its probe model. ``terms`` replays exactly an
+    entry's recorded terms (a refresh); None applies the rejection rule (a new reading)."""
+    a = belief.arrays()
+    X = particle_matrix(entry["base"], a, entry["pose"], float(entry["force"]))
+    if entry["type"] == "probe":
+        pm = (getattr(primitives, "probe_models", None) or {}).get(entry["obs"]["probe"])
+        if pm is None:
+            raise ValueError(f"no probe model for {entry['obs']['probe']!r}")
+        return pm.loglik(entry["obs"], X, a, float(entry["force"]), terms=terms)
+    obs = entry["obs"]
+    _, per = estimate(primitives.model, belief, entry["base"], entry["pose"], float(entry["force"]), entry.get("planned") or [])
+    rm = getattr(primitives, "readout_model", None)
+    if rm is None:
+        if terms is not None and "outcome" not in terms:
+            return np.zeros(len(belief)), {"used": [], "rejected": []}
+        P = prediction_matrix(per)
+        return np.log(np.maximum(FLOOR_P, P[:, OUTCOMES.index(obs["label"])])), {"used": ["outcome"], "rejected": []}
+    comp, info = rm.components(obs, per, X, a, particle_sides(a, entry["pose"]), terms=terms)
+    return rm.combine(comp), info
+
+
+def update_belief(belief: ParticleBelief, entry: dict[str, Any], primitives: Any,
+                  prior_fn: Callable[[int, np.random.Generator], ParticleBelief] | None = None,
+                  refresh_draws: tuple[int, ...] = REFRESH_DRAWS) -> ParticleBelief:
+    """The belief after one attempt or probe: reweighted by the entry's log-likelihood, the entry (with
+    the terms used and rejected) appended to the history, and refreshed from the prior when fewer than
+    REFRESH_ESS effective particles remain. ``prior_fn(n, rng)`` draws the prior (default:
+    ``primitives.prior`` at the entry's pose); without one the collapsed belief is kept and flagged."""
+    ll, info = entry_loglik(belief, entry, primitives)
+    rec = dict(entry, used_terms=list(info["used"]), rejected_terms=list(info["rejected"]))
+    post = belief.reweight(ll)
+    post = post._replace(history=post.history + [rec])
+    if post.effective_size() >= REFRESH_ESS:
+        return post
+    if prior_fn is None and getattr(primitives, "prior", None) is not None:
+        prior_fn = lambda n, rng: primitives.prior(entry["pose"], n, rng)  # noqa: E731
+    if prior_fn is None:
+        return post._replace(degenerate=True, flags=post.flags + ["fewer than 100 effective particles and no prior to refresh from"])
+    replay = lambda fresh, e: entry_loglik(fresh, e, primitives, terms=e["used_terms"])[0]  # noqa: E731
+    return refresh(post, prior_fn, replay, primitives.rng, n_draws=refresh_draws, n_keep=len(belief))
 
 
 def _assess(object: str, destination: str, care: str, primitives: Any, store: dict[str, Any]) -> tuple[dict[str, Any] | None, Assessment | None]:
@@ -66,6 +149,8 @@ def _assess(object: str, destination: str, care: str, primitives: Any, store: di
     if loc is None:
         return {"assessed": False, "reason": "object not found",
                 "next": "call view_env_state and use the object's name as `object`"}, None
+    if loc.get("reachable") is False:
+        return dict(OUT_OF_REACH), None
     key = (loc["object_id"], destination, care, int(getattr(env, "episode", 0)))
     cache = _cache(store)
     if key in cache:
@@ -73,7 +158,7 @@ def _assess(object: str, destination: str, care: str, primitives: Any, store: di
     geometry = env.geometry()
     proposals = env.proposals()
     pose_fn = getattr(env, "proposal_pose", None) or (lambda prop: geometry_pose(geometry, prop))
-    belief = _prior_belief(loc, env, geometry, primitives)
+    belief = _belief_record(loc, env, primitives, store)["belief"]
     f_std = standard_force(env.nominal_mass(loc["object_id"]))
     options, recommendation = build_menu(primitives.model, belief, geometry, proposals, f_std, care, destination,
                                          env.plan_trajectory, primitives.rng, pose_fn=pose_fn,
@@ -113,7 +198,9 @@ def pick_and_place(*, object: str, destination: str = "bin", mode: str = "commit
     With no option_id the best row for the requested destination runs, unless the
     recommendation is decline (then nothing runs; pass an option_id to override). Rows that
     change the destination (inboard_place) run only when named. mode "assess_only" returns
-    the assessment without moving.
+    the assessment without moving. After an attempt the result carries the pad readouts, a
+    diagnosis of what went wrong, the belief before and after the update, and a fresh assessment
+    under the updated belief and the object's new pose.
 
     Args:
         object: The object's name as shown by view_env_state.
@@ -147,12 +234,23 @@ def pick_and_place(*, object: str, destination: str = "bin", mode: str = "commit
         return ToolResult(data={"placed": False, "reason": option.reason,
                                 "next": "pick another option_id or raise care"})
     env = primitives.env
+    loc = env.locate(object)
+    rec = _belief_record(loc, env, primitives, store)
+    before = rec["belief"]
     prop = next(p for p in env.proposals() if abs(p.s - option.action["s"]) < 1e-9)
     act = option.action
     r = env.execute(prop, act["force"], act["v_lift"], act["v_transport"], act["destination"], act.get("release_height"))
     declared = option.to_data()
+    readouts = dict(getattr(r, "readouts", None) or {})
+    entry = {"type": "attempt", "option": option.id, "base": option._base, "pose": option._pose, "force": float(act["force"]),
+             "planned": option._planned, "obs": {"label": r.label, "readouts": readouts, "force": float(act["force"])}}
+    try:
+        after = update_belief(before, entry, primitives, prior_fn=lambda n, rng: _prior_belief(loc, env, primitives, n, rng))
+    except Exception as exc:  # noqa: BLE001  the executed outcome must survive a failed update
+        after = before._replace(flags=before.flags + [f"belief update failed: {exc}"])
+    rec["belief"] = after
     cache = _cache(store)
-    cache.clear()                                   # the scene changed: every assessment of this episode is stale
+    cache.clear()                                   # the scene and the belief changed: every assessment is stale
     try:
         fresh_err, fresh = _assess(object, destination, care, primitives, store)
     except Exception as exc:  # noqa: BLE001  the executed outcome must survive a failed reassessment
@@ -171,6 +269,10 @@ def pick_and_place(*, object: str, destination: str = "bin", mode: str = "commit
                      "p_irreversible": {k: declared["p"][k] for k in ("dropped_high", "rolled_off")},
                      "p_recoverable": {k: declared["p"][k] for k in ("tipped", "missed", "dropped_low", "not_lifted")},
                      "p_drop_height": declared["p_drop_height"], "expected_cost": declared["expected_cost"]},
+        "readouts": readouts,
+        "diagnosis": diagnose(r.label, readouts, act, before.to_data(), after.to_data(), laws=_laws(primitives, r.label)),
+        "belief_before": before.to_data(),
+        "belief": after.to_data(),
         "assessment": fresh.to_data() if fresh is not None else fresh_err,
     }
     return ToolResult(data=data)

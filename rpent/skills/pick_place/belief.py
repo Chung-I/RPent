@@ -16,7 +16,8 @@
 
 ``ParticleBelief`` is the belief the skill holds: weighted particles, each a full hypothesis
 (mass in kg, friction, CoM in the object frame, and the generator's keys when the prior is the
-lab's corpus generator). Attempts and probes reweight it; see ``tools.update_belief``.
+lab's corpus generator). Attempts and probes reweight it; see ``tools.update_belief``. When the
+weights collapse, ``refresh`` redraws fresh prior particles and weights them by the whole history.
 ``Belief`` is the milestone 1 parametric prior (volume times material density, uniform
 friction), kept as the fallback for substrates without a generator
 (``ParticleBelief.from_parametric``).
@@ -25,7 +26,7 @@ friction), kept as the fallback for substrates without a generator
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Callable
 
 import numpy as np
 
@@ -52,6 +53,8 @@ MU_RANGE = (0.1, 0.9)
 LEVER_SIGMA = 0.02
 LEVER_SIGMA_PER_LENGTH = 0.15     # the corpus shifts the CoM to 0.3 to 0.8 of the extent with p 0.5
 N_PARTICLES = 2000
+MIN_ESS = 100.0                   # fewer effective particles than this: refresh, then report degenerate
+REFRESH_DRAWS = (20000, 100000)
 
 
 @dataclass
@@ -103,6 +106,7 @@ class ParticleBelief:
     history: list[dict[str, Any]] = field(default_factory=list)
     flags: list[str] = field(default_factory=list)
     degenerate: bool = False
+    importance_ess: float | None = None      # the last refresh's importance-sampling ESS (before resampling)
     _arrays: dict[str, np.ndarray] | None = field(default=None, init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
@@ -118,6 +122,13 @@ class ParticleBelief:
     def ess(self) -> float:
         """Effective sample size of the weights, 1 / sum(w^2)."""
         return float(1.0 / np.sum(self.weights ** 2))
+
+    def effective_size(self) -> float:
+        """The effective number of particles: the weights' ESS; after a refresh, the refresh's importance
+        ESS times the share of the resampled set the later weights keep (ESS / n)."""
+        if self.importance_ess is None:
+            return self.ess()
+        return float(self.importance_ess) * self.ess() / len(self)
 
     def reweight(self, loglik: np.ndarray) -> ParticleBelief:
         """A new belief with weights times exp(loglik); non-finite entries get weight 0, and when no
@@ -187,7 +198,7 @@ class ParticleBelief:
             "com_frac_median": round(self.quantile("com_frac", 0.5), 3) if has_frac else None,
             "com_frac_80": self._interval("com_frac") if has_frac else None,
             "p_com_shifted": None if self.p_com_shifted() is None else round(self.p_com_shifted(), 3),
-            "ess": round(self.ess(), 1), "n_ancestors": self.n_ancestors(), "n_observations": len(self.history),
+            "ess": round(self.effective_size(), 1), "n_ancestors": self.n_ancestors(), "n_observations": len(self.history),
             "flags": list(self.flags), "degenerate": bool(self.degenerate),
         }
 
@@ -201,13 +212,18 @@ class ParticleBelief:
             lines.append(f"P(CoM shifted toward one end) {d['p_com_shifted']:.2f}")
         lines.append(f"{d['ess']:.0f} effective particles of {len(self)}, {d['n_observations']} observations")
         lines += [f"belief flag: {f}" for f in self.flags]
+        for e in self.history:
+            for term in e.get("rejected_terms") or ():
+                name = f"{(e.get('obs') or {}).get('probe', 'probe')} {term}" if e.get("type") == "probe" else term
+                lines.append(f"reading outside the belief: {name}")
         if self.degenerate:
-            lines.append("belief degenerate: fewer than 100 effective particles after a refresh")
+            lines.append("belief degenerate: fewer than 100 effective particles or ancestors after a refresh")
         return lines
 
     def _replace(self, **kw: Any) -> ParticleBelief:
         args = {"particles": self.particles, "weights": self.weights, "visibility": self.visibility,
-                "history": list(self.history), "flags": list(self.flags), "degenerate": self.degenerate}
+                "history": list(self.history), "flags": list(self.flags), "degenerate": self.degenerate,
+                "importance_ess": self.importance_ess}
         args.update(kw)
         out = ParticleBelief(**args)
         if args["particles"] is self.particles:
@@ -221,3 +237,31 @@ class ParticleBelief:
         com = [float(x) for x in com_obj]
         parts = [{"mass": s["mass"], "mu": s["mu"], "com_obj": list(com), "ancestor": i} for i, s in enumerate(belief.sample(n, rng))]
         return ParticleBelief(parts, np.ones(n), visibility=belief.visibility)
+
+
+def refresh(belief: ParticleBelief, prior_fn: Callable[[int, np.random.Generator], ParticleBelief],
+            loglik_fn: Callable[[ParticleBelief, dict[str, Any]], np.ndarray], rng: np.random.Generator,
+            n_draws: tuple[int, ...] = REFRESH_DRAWS, n_keep: int = N_PARTICLES) -> ParticleBelief:
+    """Rebuild a collapsed belief: draw fresh prior particles, weight them by the summed log-likelihood
+    of every history entry (``loglik_fn(fresh, entry)``, which replays the entry's recorded terms), and
+    resample ``n_keep``. The importance-sampling ESS is measured before resampling; the next, larger
+    draw runs while it is under MIN_ESS. Each fresh particle's ``ancestor`` is its index in the draw, so
+    ``n_ancestors`` counts the distinct draws that survive. The result is ``degenerate`` when the ESS
+    or the ancestor count stays under MIN_ESS after the largest draw."""
+    for n in n_draws:
+        fresh = prior_fn(int(n), rng)
+        parts = [dict(p, ancestor=i) for i, p in enumerate(fresh.particles)]
+        fresh = ParticleBelief(parts, np.ones(len(parts)), visibility=belief.visibility)
+        ll = np.zeros(len(fresh))
+        for entry in belief.history:
+            ll = ll + np.asarray(loglik_fn(fresh, entry), dtype=float)
+        weighted = fresh.reweight(ll)
+        ess = weighted.ess()
+        if ess >= MIN_ESS:
+            break
+    out = ParticleBelief(weighted.resample(int(n_keep), rng), np.ones(int(n_keep)), visibility=belief.visibility,
+                         history=list(belief.history), importance_ess=float(ess))
+    n_anc = out.n_ancestors()
+    flags = [f for f in belief.flags if not f.startswith("refreshed")] + [f for f in weighted.flags if f not in belief.flags]
+    flags.append(f"refreshed from {len(fresh)} prior draws: importance ESS {ess:.0f}, {n_anc} ancestors")
+    return out._replace(flags=flags, degenerate=bool(ess < MIN_ESS or n_anc < MIN_ESS))

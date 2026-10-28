@@ -155,27 +155,32 @@ class ProbeModel:
         return self.p_thrown.predict(X)[:, 1]
 
     def loglik(self, obs: dict[str, Any], X: np.ndarray, arrays: dict[str, np.ndarray], force: float,
-               temper: float | None = None) -> tuple[np.ndarray, dict[str, list[str]]]:
+               temper: float | None = None, terms: list[str] | None = None) -> tuple[np.ndarray, dict[str, list[str]]]:
         """Per-particle log-likelihood of one probe result ``{"kind", "reading"}``: the kind term
         log max(floor_p, P(kind)) / temper, and the reading term log N(ratio; b, sd * temper), rejected
         (listed, not used) when the reading is not positive or its best particle lies 5 sd off.
-        ``temper`` overrides the model's (the posterior check's grid)."""
+        ``temper`` overrides the model's (the posterior check's grid). ``terms`` (an entry's recorded
+        used terms) replays exactly those terms, without the rejection rule (a belief refresh)."""
         t = self.temper if temper is None else float(temper)
+        want = (lambda term: True) if terms is None else (lambda term: term in terms)
         kind = obs["kind"]
-        used, rejected = ["kind"], []
-        P = self.p_kind(X)
-        ll = np.log(np.maximum(self.floor_p, P[:, self.classes.index(kind)])) / t
+        used, rejected = [], []
+        ll = np.zeros(np.asarray(X).shape[0])
+        if want("kind"):
+            P = self.p_kind(X)
+            ll = np.log(np.maximum(self.floor_p, P[:, self.classes.index(kind)])) / t
+            used.append("kind")
         law = self.reading.get(kind)
         key = READING.get(kind)
         value = (obs.get("reading") or {}).get(key) if key else None
-        if law is not None and value is not None:
-            if not float(value) > 0:
+        if law is not None and value is not None and want("reading"):
+            if terms is None and not float(value) > 0:
                 rejected.append("reading")
             else:
                 b, sd = law
                 z = (log_ratio(kind, obs["reading"], arrays["mass"], arrays["mu"]) - b) / sd
                 z = np.where(np.isfinite(z), z, np.inf)
-                if not np.isfinite(z).any() or float(np.min(np.abs(z))) > REJECT_Z:
+                if terms is None and (not np.isfinite(z).any() or float(np.min(np.abs(z))) > REJECT_Z):
                     rejected.append("reading")
                 else:
                     with np.errstate(invalid="ignore", over="ignore"):

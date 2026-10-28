@@ -175,3 +175,16 @@ def test_readout_model_round_trips(tmp_path):
     X = np.zeros((50, len(FEATURES)))
     obs = _obs(fz_hold_n=0.4 * G, rot_deg=15.0)
     np.testing.assert_allclose(m.loglik(obs, _flat(50), X, b.arrays(), None)[0], back.loglik(obs, _flat(50), X, b.arrays(), None)[0])
+
+
+def test_listed_terms_are_replayed_without_the_rejection_rule():
+    """``terms`` replays exactly the listed terms: a refresh must not re-run the rejection rule."""
+    b = _belief()
+    m = _model()
+    far = _obs(fz_hold_n=100.0 * G)
+    _, info = m.loglik(far, _flat(N), None, b.arrays(), None)
+    assert info["rejected"] == ["hold"]
+    comp, info = m.components(far, _flat(N), None, b.arrays(), None, terms=["outcome", "hold"])
+    assert info == {"used": ["outcome", "hold"], "rejected": []} and "hold" in comp["norm"]
+    comp, info = m.components(_obs(fz_hold_n=0.5 * G), _flat(N), None, b.arrays(), None, terms=["outcome"])
+    assert info == {"used": ["outcome"], "rejected": []} and comp["norm"] == {} and set(comp["cat"]) == {"outcome"}
