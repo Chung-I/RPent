@@ -79,12 +79,102 @@ def test_cost_table_and_care_scales_only_irreversible():
     assert set(IRREVERSIBLE) == {"dropped_high", "rolled_off"} and COST["placed_stable"] == 0.0
 
 
+def _base(destination="bin", v_lift=0.15):
+    from rpent.skills.pick_place.features import extract
+
+    return extract(_geometry(), [0.0, 0.0, 0.76], 0.0, 0.2, 0.5, 20.0, v_lift, 0.5, destination)
+
+
+def _pose(com_y=0.0):
+    from tests.unit_tests.skills.synthetic import synthetic_pose
+
+    return dict(synthetic_pose(), com_obj_nominal=[0.0, com_y, 0.02])
+
+
+def _particles(mus, weights, com=(0.0, 0.0, 0.02)):
+    from rpent.skills.pick_place.belief import ParticleBelief
+
+    parts = [{"mass": 0.2 + 0.001 * i, "mu": float(m), "com_obj": list(com)} for i, m in enumerate(mus)]
+    return ParticleBelief(parts, np.asarray(weights, dtype=float))
+
+
 def test_estimate_averages_over_belief_samples():
     model = StubModel()
-    pred = estimate(model, Belief.prior(1e-4, "wood"), _geometry(), {"s": 0.5, "force": 20.0, "v_lift": 0.15, "v_transport": 0.5, "destination": "bin", "release_height": None},
-                    P(0.5), [], np.random.default_rng(0), n=16)
-    assert len(model.calls) == 16 and abs(sum(pred.p.values()) - 1) < 1e-9
+    belief = _particles(np.linspace(0.2, 0.8, 16), np.ones(16))
+    pred, per = estimate(model, belief, _base(), _pose(), 20.0, [], np.random.default_rng(0))
+    assert len(model.calls) == 16 and len(per) == 16 and abs(sum(pred.p.values()) - 1) < 1e-9
     assert len({round(c["mass"], 6) for c in model.calls}) == 16
+
+
+class MuStub:
+    """P(placed_stable) = 1 for mu > 0.5 else 0 (the rest not_lifted); the hazard kind also needs the trajectory."""
+
+    def __init__(self, kind="classifier"):
+        self.kind, self.planned = kind, []
+
+    def predict_many(self, feats, planned=None):
+        if self.kind == "hazard":
+            assert planned is not None
+            self.planned.append(planned)
+        out = []
+        for f in feats:
+            p = {k: 0.0 for k in OUTCOMES}
+            p["placed_stable" if f["mu"] > 0.5 else "not_lifted"] = 1.0
+            dh = {"0.00-0.05": 0.0, "0.05-0.10": 0.0, "0.10-0.20": 0.0, "0.20+": 0.0} if self.kind == "hazard" else None
+            out.append(Prediction(p=p, drop_height=dh))
+        return out
+
+
+def test_estimate_weights_particles():
+    belief = _particles([0.7, 0.2], [0.8, 0.2])
+    planned = plan_fn(P(0.5), 0.15, 0.5, "bin")
+    for kind in ("classifier", "hazard"):
+        model = MuStub(kind)
+        pred, per = estimate(model, belief, _base(), _pose(), 20.0, planned, np.random.default_rng(0))
+        assert abs(pred.p["placed_stable"] - 0.8) < 1e-12 and abs(pred.p["not_lifted"] - 0.2) < 1e-12
+        assert [x.p["placed_stable"] for x in per] == [1.0, 0.0]
+    assert model.planned and model.planned[0] == planned
+
+
+class LeverStub:
+    """P(dropped_low) rises with the lever: min(1, lever / 0.1); the rest placed_stable."""
+
+    kind = "classifier"
+
+    def predict_many(self, feats):
+        out = []
+        for f in feats:
+            p = {k: 0.0 for k in OUTCOMES}
+            p["dropped_low"] = min(1.0, f["lever"] / 0.1)
+            p["placed_stable"] = 1.0 - p["dropped_low"]
+            out.append(Prediction(p=p))
+        return out
+
+
+class Q:
+    """A proposal along the object's axis (world y), 4 cm apart."""
+
+    def __init__(self, s):
+        self.s, self.point, self.yaw, self.width = s, [0.0, (s - 0.5) * 0.2, 0.76], 0.0, 0.04
+
+
+def test_menu_uses_the_particle_com():
+    def menu_for(com_y):
+        pose = _pose()
+        belief = _particles(np.full(50, 0.6), np.ones(50), com=(0.0, com_y, 0.02))
+        options, _ = build_menu(LeverStub(), belief, _geometry(), [Q(0.3), Q(0.5), Q(0.7)], 20.0, "normal", "table_centre",
+                                plan_fn, np.random.default_rng(0), pose_fn=lambda q: dict(pose, pt=list(q.point), yaw=q.yaw))
+        return {o.id: o for o in options}
+
+    shifted = menu_for(0.08)                                                  # every CoM 8 cm toward the +y end
+    assert shifted["regrasp_com"].action["s"] == 0.7
+    assert shifted["regrasp_com"].expected_cost < shifted["commit_std"].expected_cost
+    centred = menu_for(0.0)
+    assert centred["regrasp_com"].action["s"] == 0.5
+    assert centred["regrasp_com"].expected_cost > centred["commit_std"].expected_cost
+    o = shifted["commit_std"]
+    assert o._costs.shape == (50,) and abs(float(np.mean(o._costs)) - o.expected_cost) < 1e-9
+    assert o._pose["pt"] == list(Q(0.5).point) and o._base["v_lift"] == 0.15
 
 
 def test_menu_order_and_decline_last():

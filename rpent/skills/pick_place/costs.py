@@ -16,7 +16,9 @@
 
 from __future__ import annotations
 
-from rpent.skills.pick_place.protocol import IRREVERSIBLE, Prediction
+import numpy as np
+
+from rpent.skills.pick_place.protocol import IRREVERSIBLE, OUTCOMES, Prediction
 
 COST: dict[str, float] = {
     "placed_stable": 0.0,
@@ -37,3 +39,18 @@ def expected_cost(pred: Prediction, cost_s: float, care: str = "normal") -> floa
     for k, p in pred.p.items():
         total += p * COST[k] * (scale if k in IRREVERSIBLE else 1.0)
     return float(total + TIME_COST_PER_S * cost_s)
+
+
+def cost_vector(care: str = "normal") -> np.ndarray:
+    """The outcome costs in OUTCOMES order, the irreversible ones scaled by care."""
+    scale = CARE_SCALE[care]
+    return np.array([COST[k] * (scale if k in IRREVERSIBLE else 1.0) for k in OUTCOMES])
+
+
+def prediction_matrix(preds: list[Prediction]) -> np.ndarray:
+    return np.array([[x.p.get(k, 0.0) for k in OUTCOMES] for x in preds])
+
+
+def particle_costs(preds: list[Prediction], cost_s: float, care: str = "normal") -> np.ndarray:
+    """Expected cost of one row under each particle (the row's expected cost is their weighted mean)."""
+    return prediction_matrix(preds) @ cost_vector(care) + TIME_COST_PER_S * cost_s

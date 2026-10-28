@@ -32,3 +32,7 @@ build/
 robots/mujoco_lab/data/*
 !robots/mujoco_lab/data/corpus*.jsonl
 !robots/mujoco_lab/data/*.json
+# the milestone 2 bundle: the manifest and the metrics are committed, the models stay local
+!robots/mujoco_lab/data/m2/
+robots/mujoco_lab/data/m2/*
+!robots/mujoco_lab/data/m2/*.json

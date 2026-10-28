@@ -30,7 +30,7 @@ import numpy as np
 from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.linear_model import LogisticRegression
 
-from rpent.skills.pick_place.evaluate import belief_features, score
+from rpent.skills.pick_place.evaluate import belief_features, score, true_features
 from rpent.skills.pick_place.features import as_vector
 from rpent.skills.pick_place.protocol import DROP_HEIGHT_BINS, OUTCOMES, Prediction
 
@@ -80,15 +80,19 @@ class _Head:
         self.clf, self.classes, self.const = clf, classes, const
 
     def proba(self, X: np.ndarray) -> list[dict[str, float]]:
+        M = self.proba_matrix(X)
+        return [dict(zip(self.classes, map(float, row))) for row in M]
+
+    def proba_matrix(self, X: np.ndarray) -> np.ndarray:
+        """Class probabilities for the rows of X, columns in ``self.classes`` order."""
+        X = np.asarray(X, dtype=float)
         if self.const is not None:
-            return [dict(self.const) for _ in range(len(X))]
+            return np.tile([self.const.get(c, 0.0) for c in self.classes], (len(X), 1))
         P = self.clf.predict_proba(X)
-        out = []
-        for row in P:
-            d = {c: 0.0 for c in self.classes}
-            for j, c in enumerate(self.clf.classes_):
-                d[str(c)] = float(row[j])
-            out.append(d)
+        out = np.zeros((len(X), len(self.classes)))
+        for j, c in enumerate(self.clf.classes_):
+            if str(c) in self.classes:
+                out[:, self.classes.index(str(c))] = P[:, j]
         return out
 
 
@@ -129,54 +133,69 @@ class HazardModel:
     def p_not_lifted(self, features: dict[str, float]) -> float:
         return float(self.not_lifted.proba(as_vector(features)[None, :])[0]["1"])
 
-    def outcome_distribution(self, features: dict[str, float], planned: list[dict[str, Any]]) -> Prediction:
-        p_nl = self.p_not_lifted(features)
-        surv = 1.0
-        low = high = 0.0
-        bins = {b: 0.0 for b in DROP_HEIGHT_BINS}
-        t_mass = 0.0
+    def predict_matrix(self, X: np.ndarray, planned: list[dict[str, Any]] | None = None
+                       ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """The outcome walk for every feature row at once: (P (n x 7, OUTCOMES order), drop-height
+        bins (n x 4), expected loss time (n,), nan where no loss mass)."""
+        if planned is None:
+            raise ValueError("the hazard model needs the planned trajectory")
+        X = np.asarray(X, dtype=float)
+        n = len(X)
+        p_nl = self.not_lifted.proba_matrix(X)[:, self.not_lifted.classes.index("1")]
+        surv, low, high, t_mass = np.ones(n), np.zeros(n), np.zeros(n), np.zeros(n)
+        bins = np.zeros((n, len(DROP_HEIGHT_BINS)))
         t = 0.0
         for seg in planned:
-            phase, n = seg["phase"], int(seg["n_steps"])
-            if phase not in AT_RISK or n <= 0:
-                t += n / self.hz
+            phase, ns = seg["phase"], int(seg["n_steps"])
+            if phase not in AT_RISK or ns <= 0:
+                t += ns / self.hz
                 continue
-            h = self.loss_hazard(features, phase)
-            if h <= 0:
-                t += n / self.hz
-                continue
-            ks = np.arange(1, n + 1)
-            p_loss = surv * (1 - h) ** (ks - 1) * h
-            z = seg["z_start"] + (seg["z_end"] - seg["z_start"]) * (ks / n)
+            Xh = np.hstack([X, np.tile(_phase_onehot(phase), (n, 1))])
+            h = np.clip(self.hazard.proba_matrix(Xh)[:, self.hazard.classes.index("1")], 0.0, 1.0)
+            ks = np.arange(1, ns + 1)
+            p_loss = surv[:, None] * (1 - h[:, None]) ** (ks - 1)[None, :] * h[:, None]
+            z = seg["z_start"] + (seg["z_end"] - seg["z_start"]) * (ks / ns)
             high_mask = (z >= HIGH_DROP_M) | (not seg.get("has_surface", True))
-            high += float(p_loss[high_mask].sum())
-            low += float(p_loss[~high_mask].sum())
-            bins["0.00-0.05"] += float(p_loss[z < 0.05].sum())
-            bins["0.05-0.10"] += float(p_loss[(z >= 0.05) & (z < 0.10)].sum())
-            bins["0.10-0.20"] += float(p_loss[(z >= 0.10) & (z < 0.20)].sum())
-            bins["0.20+"] += float(p_loss[z >= 0.20].sum())
-            t_mass += float((p_loss * (t + ks / self.hz)).sum())
-            surv *= (1 - h) ** n
-            t += n / self.hz
-        rel = self.release.proba(as_vector(features)[None, :])[0]
+            high += p_loss[:, high_mask].sum(1)
+            low += p_loss[:, ~high_mask].sum(1)
+            for j, m in enumerate((z < 0.05, (z >= 0.05) & (z < 0.10), (z >= 0.10) & (z < 0.20), z >= 0.20)):
+                bins[:, j] += p_loss[:, m].sum(1)
+            t_mass += (p_loss * (t + ks / self.hz)[None, :]).sum(1)
+            surv *= (1 - h) ** ns
+            t += ns / self.hz
+        rel = self.release.proba_matrix(X)
         lifted = 1.0 - p_nl
-        p = {k: 0.0 for k in OUTCOMES}
-        p["not_lifted"] = p_nl
-        p["dropped_low"] = lifted * low
-        p["dropped_high"] = lifted * high
+        P = np.zeros((n, len(OUTCOMES)))
+        P[:, OUTCOMES.index("not_lifted")] = p_nl
+        P[:, OUTCOMES.index("dropped_low")] = lifted * low
+        P[:, OUTCOMES.index("dropped_high")] = lifted * high
         for c in RELEASE_CLASSES:
-            p[c] = lifted * surv * rel.get(c, 0.0)
-        total = sum(p.values())
-        p = {k: v / total for k, v in p.items()}
-        dh = {b: lifted * v / total for b, v in bins.items()}
+            P[:, OUTCOMES.index(c)] = lifted * surv * rel[:, self.release.classes.index(c)]
+        total = P.sum(1)
+        P /= total[:, None]
+        DH = lifted[:, None] * bins / total[:, None]
         loss_mass = low + high
-        expected_t = (t_mass / loss_mass) if loss_mass > 1e-9 else None
-        return Prediction(p=p, drop_height=dh, expected_loss_t=expected_t)
+        LT = np.where(loss_mass > 1e-9, t_mass / np.maximum(loss_mass, 1e-300), np.nan)
+        return P, DH, LT
+
+    def outcome_distribution(self, features: dict[str, float], planned: list[dict[str, Any]]) -> Prediction:
+        return self.predict_many([features], planned)[0]
 
     def predict_many(self, features: list[dict[str, float]], planned: list[dict[str, Any]] | None = None) -> list[Prediction]:
         if planned is None:
             raise ValueError("the hazard model needs the planned trajectory")
-        return [self.outcome_distribution(f, planned) for f in features]
+        P, DH, LT = self.predict_matrix(np.array([as_vector(f) for f in features]), planned)
+        return predictions_from_matrix(P, DH, LT)
+
+
+def predictions_from_matrix(P: np.ndarray, DH: np.ndarray | None = None, LT: np.ndarray | None = None) -> list[Prediction]:
+    """Per-row Prediction objects from predict_matrix's arrays."""
+    out = []
+    for i in range(len(P)):
+        dh = None if DH is None else dict(zip(DROP_HEIGHT_BINS, map(float, DH[i])))
+        lt = None if LT is None or not np.isfinite(LT[i]) else float(LT[i])
+        out.append(Prediction(p=dict(zip(OUTCOMES, map(float, P[i]))), drop_height=dh, expected_loss_t=lt))
+    return out
 
 
 def fit_hazard_model(rows: list[dict[str, Any]], seed: int = 0) -> HazardModel:
@@ -202,12 +221,12 @@ def fit_hazard_model(rows: list[dict[str, Any]], seed: int = 0) -> HazardModel:
 
 
 def _score_hazard(model: HazardModel, rows_val: list[dict[str, Any]], rows_train: list[dict[str, Any]], seed: int,
-                  n_belief: int) -> dict[str, Any]:
+                  n_belief: int, prior_fn=None, features: str = "nominal") -> dict[str, Any]:
     rng = np.random.default_rng(seed)
     oracle, belief = [], []
     for r in rows_val:
-        oracle.append(model.outcome_distribution(r["features"], r["planned"]))
-        belief.append(Prediction.mean([model.outcome_distribution(f, r["planned"]) for f in belief_features(r, rng, n_belief)]))
+        oracle.append(model.outcome_distribution(true_features(r) if features == "true" else r["features"], r["planned"]))
+        belief.append(Prediction.mean(model.predict_many(belief_features(r, rng, n_belief, prior_fn), r["planned"])))
     out = {"oracle": score(oracle, rows_val, rows_train), "belief": score(belief, rows_val, rows_train)}
     for name, preds in (("oracle", oracle), ("belief", belief)):
         errs = [abs(p.expected_loss_t - r["loss_t"]) for p, r in zip(preds, rows_val)
@@ -217,10 +236,12 @@ def _score_hazard(model: HazardModel, rows_val: list[dict[str, Any]], rows_train
 
 
 def train_hazard(rows_train: list[dict[str, Any]], rows_val: list[dict[str, Any]], out_path: str, seed: int = 0,
-                 n_belief: int = 16) -> dict[str, Any]:
-    model = fit_hazard_model(rows_train, seed)
+                 n_belief: int = 16, prior_fn=None, features: str = "nominal") -> dict[str, Any]:
+    fit_rows = [dict(r, features=true_features(r)) for r in rows_train] if features == "true" else rows_train
+    model = fit_hazard_model(fit_rows, seed)
     model.save(out_path)
-    metrics = _score_hazard(model, rows_val, rows_train, seed, n_belief)
+    metrics = _score_hazard(model, rows_val, rows_train, seed, n_belief, prior_fn=prior_fn, features=features)
     metrics.update({"kind": "hazard", "held_out_objects": sorted({r["object"] for r in rows_val}),
-                    "n_train": len(rows_train), "n_records": len(hazard_records(rows_train)), "path": out_path})
+                    "n_train": len(rows_train), "n_records": len(hazard_records(fit_rows)), "path": out_path,
+                    "features": features})
     return metrics

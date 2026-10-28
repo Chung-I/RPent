@@ -36,7 +36,6 @@ import numpy as np
 
 from robots.mujoco_lab.corpus import draw_theta
 from robots.mujoco_lab.robot_spec import build_lab
-from rpent.skills.pick_place import menu as menu_mod
 from rpent.skills.pick_place.destinations import DESTINATIONS, MESH_IDS, PRIMITIVE_IDS
 from rpent.skills.pick_place.evaluate import rows_of, score
 from rpent.skills.pick_place.features import extract
@@ -126,9 +125,7 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
         cp = cp if os.path.isabs(cp) else os.path.join(root, cp)
         if os.path.exists(cp):
             train_rows += rows_of(_load_corpus(cp), metrics["split"]["train"])
-    if a.threshold is not None:
-        menu_mod.DEFAULT_THRESHOLD = a.threshold
-    prims = build_lab(seed=a.seed, model_kind=a.model_kind)
+    prims = build_lab(seed=a.seed, model_kind=a.model_kind, threshold=a.threshold)   # read by the menu at call time
     rng = np.random.default_rng(a.seed)
     rows = []
     for oid in objects:

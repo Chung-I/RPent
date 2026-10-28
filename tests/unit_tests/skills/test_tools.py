@@ -106,7 +106,7 @@ def test_assess_returns_protocol_keys_and_caches():
     d = assess_pick(object="mug", destination="table_centre", primitives=prims, store=store).data
     assert d["assessed"] is True and d["best_option"] == "commit_std" and d["p_success"] == 0.8
     assert d["recommendation"] == "commit" and d["options"][-1]["id"] == "decline"
-    assert any("prior mass" in e for e in d["evidence"])
+    assert any(e.startswith("mass median") for e in d["evidence"])      # the particle belief's summary
     key = ("ycb__mug", "table_centre", "normal", 1)
     plate = assess_pick(object="mug", destination="plate", primitives=prims, store=store).data
     assert plate["best_option"] == "drop_release"      # same probabilities from the stub, so the faster row wins
@@ -187,3 +187,45 @@ def test_cache_keyed_by_object_id_and_cleared_after_execution():
     assert all(k[0] != "ycb__mug" or k[3] != 1 for k in store["pick_place"]) or len(store["pick_place"]) == 1
     keys_after = list(store["pick_place"])
     assert len(keys_after) == 1 and keys_after[0][:2] == ("ycb__mug", "table_centre")   # only the fresh assessment remains
+
+
+class _PoseEnv(FakeEnv):
+    """FakeEnv with the substrate's pose (the lab adapter's pose_info)."""
+
+    def pose_info(self):
+        from tests.unit_tests.skills.synthetic import synthetic_pose
+
+        return synthetic_pose()
+
+
+class _RecordingPrior:
+    """A primitives.prior stub: records (pose, n) and returns a point-mass belief."""
+
+    def __init__(self):
+        self.calls = []
+
+    def __call__(self, pose, n, rng):
+        from rpent.skills.pick_place.belief import ParticleBelief
+
+        self.calls.append((pose, n))
+        parts = [{"mass": 0.2, "mu": 0.6, "com_obj": [0.0, 0.0, 0.03]} for _ in range(n)]
+        return ParticleBelief(particles=parts, weights=np.full(n, 1.0 / n))
+
+
+def test_assess_draws_the_belief_from_the_primitives_prior():
+    from rpent.skills.pick_place.belief import N_PARTICLES
+    from tests.unit_tests.skills.synthetic import synthetic_pose
+
+    prior = _RecordingPrior()
+    prims = SimpleNamespace(env=_PoseEnv(), model=StubModel(), rng=np.random.default_rng(0), prior=prior)
+    d = assess_pick(object="mug", destination="table_centre", primitives=prims, store={}).data
+    assert len(prior.calls) == 1 and prior.calls[0] == (synthetic_pose(), N_PARTICLES)
+    assert any(e.startswith("mass median 0.200 kg") for e in d["evidence"])
+
+
+def test_assess_without_a_prior_uses_the_parametric_prior_as_particles():
+    from rpent.skills.pick_place.belief import N_PARTICLES
+
+    d = assess_pick(object="mug", destination="table_centre", primitives=_prims(), store={}).data
+    assert any(f"effective particles of {N_PARTICLES}, 0 observations" in e for e in d["evidence"])
+    assert not any(e.startswith("mass median 0.200 kg") for e in d["evidence"])

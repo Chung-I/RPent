@@ -34,9 +34,46 @@ from rpent.robots.prompt_bundle import PromptBundle
 from rpent.robots.robot_spec import RobotSpec, RunConfig
 from rpent.utils.config import get_memory_dir, get_repo_root
 
-DEFAULT_MODEL_PATH = str(Path(__file__).resolve().parent / "data" / "success_model.joblib")
-DEFAULT_HAZARD_PATH = str(Path(__file__).resolve().parent / "data" / "hazard_model.joblib")
-DEFAULT_METRICS_PATH = str(Path(__file__).resolve().parent / "data" / "success_model_metrics.json")
+DATA_DIR = Path(__file__).resolve().parent / "data"
+DEFAULT_MODEL_PATH = str(DATA_DIR / "success_model.joblib")
+DEFAULT_HAZARD_PATH = str(DATA_DIR / "hazard_model.joblib")
+DEFAULT_METRICS_PATH = str(DATA_DIR / "success_model_metrics.json")
+DEFAULT_BUNDLE = DATA_DIR / "m2"                 # milestone 2's versioned models (manifest.json); milestone 1's stay in data/
+
+
+def lab_prior_fn(pose: dict[str, Any], n: int = 2000, rng: np.random.Generator | None = None):
+    """The lab prior: the corpus generator itself (robots.mujoco_lab.prior.lab_prior)."""
+    from robots.mujoco_lab.prior import lab_prior
+
+    return lab_prior(pose, n, rng)
+
+
+def resolve_bundle(bundle: str | None = None) -> str | None:
+    """The model bundle to load: the argument, else RPENT_PICK_PLACE_BUNDLE, else data/m2 when its
+    manifest exists, else None (milestone 1's files)."""
+    b = bundle or os.environ.get("RPENT_PICK_PLACE_BUNDLE")
+    if b:
+        return str(b)
+    return str(DEFAULT_BUNDLE) if (DEFAULT_BUNDLE / "manifest.json").exists() else None
+
+
+def load_bundle(bundle_dir: str, kind: str | None = None) -> dict[str, Any]:
+    """The models a bundle's manifest names: the success model of its kind (or ``kind``), the prior,
+    and the readout and probe models when present."""
+    man = json.load(open(os.path.join(bundle_dir, "manifest.json")))
+    kind = kind or os.environ.get("RPENT_PICK_PLACE_MODEL_KIND") or man.get("kind", "classifier")
+    path = os.path.join(bundle_dir, man["hazard_model" if kind == "hazard" else "success_model"])
+    if kind == "hazard":
+        from rpent.skills.pick_place.hazard_model import HazardModel
+
+        model = HazardModel.load(path)
+    else:
+        from rpent.skills.pick_place.success_model import SuccessModel
+
+        model = SuccessModel.load(path)
+    return {"manifest": man, "kind": kind, "model": model,
+            "prior": lab_prior_fn if man.get("prior") == "lab_generator" else None,
+            "readout_model": None, "probe_models": None}
 
 
 def load_model(model_path: str | None = None, kind: str | None = None) -> Any:
@@ -57,16 +94,24 @@ def load_model(model_path: str | None = None, kind: str | None = None) -> Any:
 
 
 def build_lab(sim_dir: str | None = None, model_path: str | None = None, render: bool = False, object_id: str | None = None,
-              theta: dict[str, Any] | None = None, seed: int = 0, model_kind: str | None = None):
-    """The convenience factory: an adapter, a model and a random stream (used by the calibration
-    check and the tests; the runner goes through get_toolkit)."""
+              theta: dict[str, Any] | None = None, seed: int = 0, model_kind: str | None = None, bundle: str | None = None,
+              threshold: float | None = None):
+    """The convenience factory: an adapter, the models and a random stream (used by the calibration
+    check and the tests; the runner goes through get_toolkit). An explicit ``model_path`` loads that
+    milestone 1 model; otherwise the bundle (see resolve_bundle), else milestone 1's files."""
     from robots.mujoco_lab.adapter import MuJoCoLabEnv
     from robots.mujoco_lab.toolkit import MuJoCoLabPrimitives
 
     env = MuJoCoLabEnv(sim_dir=sim_dir, render=render)
     if object_id is not None:
         env.reset(object_id, theta, seed=seed)
-    return MuJoCoLabPrimitives(env=env, model=load_model(model_path, model_kind), rng=np.random.default_rng(seed))
+    rng = np.random.default_rng(seed)
+    b = None if model_path else resolve_bundle(bundle)
+    if b is not None:
+        B = load_bundle(b, model_kind)
+        return MuJoCoLabPrimitives(env=env, model=B["model"], rng=rng, prior=B["prior"], readout_model=B["readout_model"],
+                                   probe_models=B["probe_models"], threshold=threshold, manifest=B["manifest"])
+    return MuJoCoLabPrimitives(env=env, model=load_model(model_path, model_kind), rng=rng, threshold=threshold)
 
 
 def get_toolkit(*, runtime_kwargs: dict[str, Any], dashboard_events: DashboardEventSink, config: RunConfig):

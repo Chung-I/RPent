@@ -46,3 +46,14 @@ def test_follow_recommendation_can_abstain(tmp_path):
 
     res = main(["--metrics", METRICS, "--repeats", "1", "--out", str(tmp_path / "c.json"), "--objects", "ycb__banana", "--seed", "2", "--follow-recommendation", "--threshold", "1.01"])
     assert res["n"] == 1 and res["n_executed"] == 0 and res["abstained"] == 1 and res["recommendation_decline_rate"] == 1.0
+
+
+def test_threshold_override_does_not_leak(tmp_path, monkeypatch):
+    """--threshold goes through the primitives; the module default stays as it was for later callers."""
+    from robots.mujoco_lab.calibrate import main
+    from rpent.skills.pick_place import menu
+
+    monkeypatch.setattr(menu, "DEFAULT_THRESHOLD", 0.7)      # a known start, whatever ran before
+    main(["--metrics", METRICS, "--repeats", "1", "--out", str(tmp_path / "c.json"), "--objects", "ycb__banana", "--seed", "2",
+          "--follow-recommendation", "--threshold", "1.01"])
+    assert menu.DEFAULT_THRESHOLD == 0.7

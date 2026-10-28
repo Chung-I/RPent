@@ -90,3 +90,70 @@ def test_train_hazard_reports_both_modes(tmp_path):
     m = train_hazard(tr, va, str(tmp_path / "h.joblib"))
     assert set(m) >= {"oracle", "belief", "kind", "held_out_objects"} and "loss_time_mae" in m["oracle"]
     assert m["belief"]["brier"] < m["belief"]["brier_const"]
+
+
+def test_score_hazard_scores_with_the_prior_fn(tmp_path):
+    from rpent.skills.pick_place.hazard_model import _score_hazard, fit_hazard_model
+    from tests.unit_tests.skills.synthetic import with_pose
+    from tests.unit_tests.skills.test_success_model import _RecordingPrior
+
+    rows = with_pose(synthetic_rows(400))
+    tr, va = _split(rows)
+    model = fit_hazard_model(tr)
+    prior = _RecordingPrior()
+    m = _score_hazard(model, va, tr, 0, 8, prior_fn=prior, features="true")
+    assert len(prior.calls) == len(va) and m["belief"]["n"] == len(va)
+
+
+def _reference_walk(model, features, planned):
+    """The milestone 1 scalar outcome walk, kept here as the reference for the vectorised one."""
+    from rpent.skills.pick_place.features import as_vector
+    from rpent.skills.pick_place.hazard_model import AT_RISK, HIGH_DROP_M, RELEASE_CLASSES
+    from rpent.skills.pick_place.protocol import DROP_HEIGHT_BINS
+
+    p_nl = float(model.not_lifted.proba(as_vector(features)[None, :])[0]["1"])
+    surv, low, high, t_mass, t = 1.0, 0.0, 0.0, 0.0, 0.0
+    bins = {b: 0.0 for b in DROP_HEIGHT_BINS}
+    for seg in planned:
+        phase, n = seg["phase"], int(seg["n_steps"])
+        if phase not in AT_RISK or n <= 0:
+            t += n / model.hz
+            continue
+        h = model.loss_hazard(features, phase)
+        ks = np.arange(1, n + 1)
+        p_loss = surv * (1 - h) ** (ks - 1) * h
+        z = seg["z_start"] + (seg["z_end"] - seg["z_start"]) * (ks / n)
+        hm = (z >= HIGH_DROP_M) | (not seg.get("has_surface", True))
+        high += float(p_loss[hm].sum())
+        low += float(p_loss[~hm].sum())
+        bins["0.00-0.05"] += float(p_loss[z < 0.05].sum())
+        bins["0.05-0.10"] += float(p_loss[(z >= 0.05) & (z < 0.10)].sum())
+        bins["0.10-0.20"] += float(p_loss[(z >= 0.10) & (z < 0.20)].sum())
+        bins["0.20+"] += float(p_loss[z >= 0.20].sum())
+        t_mass += float((p_loss * (t + ks / model.hz)).sum())
+        surv *= (1 - h) ** n
+        t += n / model.hz
+    rel = model.release.proba(as_vector(features)[None, :])[0]
+    p = {k: 0.0 for k in OUTCOMES}
+    p.update(not_lifted=p_nl, dropped_low=(1 - p_nl) * low, dropped_high=(1 - p_nl) * high)
+    for c in RELEASE_CLASSES:
+        p[c] = (1 - p_nl) * surv * rel.get(c, 0.0)
+    total = sum(p.values())
+    return ({k: v / total for k, v in p.items()}, {b: (1 - p_nl) * v / total for b, v in bins.items()},
+            t_mass / (low + high) if low + high > 1e-9 else None)
+
+
+def test_predict_matrix_matches_the_scalar_walk(tmp_path):
+    from rpent.skills.pick_place.features import as_vector
+    from rpent.skills.pick_place.hazard_model import fit_hazard_model
+
+    rows = synthetic_rows(400)
+    model = fit_hazard_model(rows)
+    planned = rows[0]["planned"]
+    feats = [r["features"] for r in rows[:12]]
+    P, DH, LT = model.predict_matrix(np.array([as_vector(f) for f in feats]), planned)
+    for i, f in enumerate(feats):
+        p, dh, lt = _reference_walk(model, f, planned)
+        assert np.allclose(P[i], [p[k] for k in OUTCOMES], atol=1e-12)
+        assert np.allclose(DH[i], list(dh.values()), atol=1e-12)
+        assert (lt is None and not np.isfinite(LT[i])) or abs(LT[i] - lt) < 1e-9

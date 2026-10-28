@@ -17,6 +17,8 @@
 The deployed skill never sees the true hidden properties: it samples them from
 the belief prior. So the acceptance score is computed on predictions made from
 belief samples ("belief mode"); the true-θ score ("oracle mode") is an upper bound.
+Milestone 2 models are conditional on the true CoM (``true_features``), and belief
+mode draws whole particles from a prior function (``prior_fn(pose, n, rng)``).
 """
 
 from __future__ import annotations
@@ -26,6 +28,7 @@ from typing import Any
 import numpy as np
 
 from rpent.skills.pick_place.belief import Belief
+from rpent.skills.pick_place.features import particle_features
 from rpent.skills.pick_place.protocol import OUTCOMES, Prediction
 
 G = 9.81
@@ -51,8 +54,19 @@ def rows_of(rows: list[dict[str, Any]], object_ids) -> list[dict[str, Any]]:
     return [r for r in rows if r["object"] in ids]
 
 
-def belief_features(row: dict[str, Any], rng: np.random.Generator, n: int = 64) -> list[dict[str, float]]:
-    """The row's features with mass, friction and lever drawn from the prior the skill would hold."""
+def true_features(row: dict[str, Any]) -> dict[str, float]:
+    """The row's features at its true mass, friction and CoM (corpus v2: ``pose`` and ``com_obj_true``)."""
+    truth = {"mass": row["truth"]["mass"], "mu": row["truth"]["mu"], "com_obj": row["com_obj_true"]}
+    return particle_features(row["features"], truth, row["pose"], row["force"])
+
+
+def belief_features(row: dict[str, Any], rng: np.random.Generator, n: int = 64, prior_fn=None) -> list[dict[str, float]]:
+    """The row's features under n draws of the prior the skill would hold: with ``prior_fn`` whole
+    particles (mass, friction, CoM) through the row's pose; without it the milestone 1 prior
+    (mass, friction, lever noise)."""
+    if prior_fn is not None:
+        b = prior_fn(row["pose"], n, rng)
+        return [particle_features(row["features"], part, row["pose"], row["force"]) for part in b.particles]
     g = row["geometry"]
     belief = Belief.prior(g["volume"], g["material"], g.get("hollow", False), row["features"].get("visibility", 1.0),
                           length=g.get("length"))

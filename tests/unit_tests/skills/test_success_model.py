@@ -52,3 +52,48 @@ def test_calibrated_on_val_in_belief_mode(tmp_path):
     assert set(m) >= {"oracle", "belief", "kind", "held_out_objects"}
     assert m["oracle"]["brier"] < m["oracle"]["brier_const"]
     assert m["belief"]["brier"] < m["belief"]["brier_const"] and m["belief"]["ece"] < 0.08
+
+
+import numpy as np  # noqa: E402
+
+
+class _RecordingPrior:
+    """A prior_fn stub: records its calls, returns n particles at the nominal CoM."""
+
+    def __init__(self):
+        self.calls = []
+
+    def __call__(self, pose, n, rng):
+        from rpent.skills.pick_place.belief import ParticleBelief
+
+        self.calls.append(pose)
+        parts = [{"mass": float(m), "mu": float(u), "com_obj": [0.0, 0.0, 0.03]}
+                 for m, u in zip(rng.uniform(0.05, 1.0, n), rng.uniform(0.1, 0.9, n))]
+        return ParticleBelief(parts, np.ones(n))
+
+
+def test_evaluate_model_scores_with_the_prior_fn(tmp_path):
+    from rpent.skills.pick_place.success_model import evaluate_model, fit_success_model
+    from tests.unit_tests.skills.synthetic import with_pose
+
+    rows = with_pose(synthetic_rows(400))
+    tr, va = _split(rows)
+    model = fit_success_model(tr)
+    prior = _RecordingPrior()
+    m = evaluate_model(model, va, tr, prior_fn=prior, features="true")
+    assert len(prior.calls) == len(va) and m["belief"]["n"] == len(va)
+    plain = evaluate_model(model, [{k: v for k, v in r.items() if k not in ("pose", "com_obj_true")} for r in va], tr)
+    assert plain["belief"]["n"] == len(va)                                   # without it: the milestone 1 path, no pose needed
+
+
+def test_predict_matrix_equals_predict_many():
+    from rpent.skills.pick_place.features import as_vector
+    from rpent.skills.pick_place.protocol import OUTCOMES
+    from rpent.skills.pick_place.success_model import fit_success_model
+
+    rows = synthetic_rows(300)
+    model = fit_success_model(rows)
+    feats = [r["features"] for r in rows[:20]]
+    P, dh, lt = model.predict_matrix(np.array([as_vector(f) for f in feats]))
+    want = np.array([[p.p[k] for k in OUTCOMES] for p in model.predict_many(feats)])
+    assert dh is None and lt is None and np.allclose(P, want)

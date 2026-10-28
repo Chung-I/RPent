@@ -25,6 +25,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
+import numpy as np
+
 OUTCOMES: tuple[str, ...] = (
     "placed_stable",
     "tipped",
@@ -61,6 +63,22 @@ class Prediction:
         lt = [x.expected_loss_t for x in preds if x.expected_loss_t is not None]
         return Prediction(p=p, drop_height=dh, expected_loss_t=sum(lt) / len(lt) if lt else None)
 
+    @staticmethod
+    def weighted_mean(preds: list[Prediction], weights) -> Prediction:
+        """The belief-weighted mean of per-particle predictions (the expected loss time over the
+        particles that have one)."""
+        w = np.asarray(weights, dtype=float)
+        w = w / w.sum()
+        P = np.array([[x.p.get(k, 0.0) for k in OUTCOMES] for x in preds])
+        p = dict(zip(OUTCOMES, (w @ P).tolist()))
+        if any(x.drop_height is None for x in preds):
+            return Prediction(p=p, drop_height=None, expected_loss_t=None)
+        DH = np.array([[x.drop_height.get(b, 0.0) for b in DROP_HEIGHT_BINS] for x in preds])
+        lt = [(wi, x.expected_loss_t) for wi, x in zip(w, preds) if x.expected_loss_t is not None]
+        wl = sum(wi for wi, _ in lt)
+        return Prediction(p=p, drop_height=dict(zip(DROP_HEIGHT_BINS, (w @ DH).tolist())),
+                          expected_loss_t=(sum(wi * t for wi, t in lt) / wl) if wl > 0 else None)
+
     def held_to_release(self) -> float:
         return 1.0 - self.p["not_lifted"] - self.p["dropped_low"] - self.p["dropped_high"]
 
@@ -76,6 +94,10 @@ class Option:
     cost_s: float
     expected_cost: float | None
     reason: str = ""
+    _costs: Any = field(default=None, repr=False, compare=False)       # per-particle expected costs (not serialised)
+    _base: dict[str, Any] | None = field(default=None, repr=False, compare=False)
+    _pose: dict[str, Any] | None = field(default=None, repr=False, compare=False)
+    _planned: list[dict[str, Any]] | None = field(default=None, repr=False, compare=False)
 
     def to_data(self) -> dict[str, Any]:
         pred = self.pred

@@ -34,12 +34,22 @@ if TYPE_CHECKING:
 
 
 class MuJoCoLabPrimitives:
-    """The lab adapter, the success model and a random stream, as the skill tools expect them."""
+    """The lab adapter, the success model, a random stream and the belief's models, as the skill tools
+    expect them. ``prior(pose, n, rng)`` is the lab prior (the corpus generator) or None (the
+    milestone 1 parametric prior); ``readout_model`` and ``probe_models`` update the belief;
+    ``threshold`` overrides the commit threshold; ``manifest`` is the loaded bundle's manifest."""
 
-    def __init__(self, env: Any, model: Any, rng: np.random.Generator | None = None):
+    def __init__(self, env: Any, model: Any, rng: np.random.Generator | None = None, prior: Any = None,
+                 readout_model: Any = None, probe_models: dict[str, Any] | None = None, threshold: float | None = None,
+                 manifest: dict[str, Any] | None = None):
         self.env = env
         self.model = model
         self.rng = rng if rng is not None else np.random.default_rng(0)
+        self.prior = prior
+        self.readout_model = readout_model
+        self.probe_models = probe_models
+        self.threshold = threshold
+        self.manifest = manifest
 
 
 class MuJoCoLabToolkit(Toolkit):

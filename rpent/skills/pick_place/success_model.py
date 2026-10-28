@@ -27,7 +27,7 @@ from sklearn.isotonic import IsotonicRegression
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import GroupKFold
 
-from rpent.skills.pick_place.evaluate import MIN_CLASS_ROWS, belief_features, score
+from rpent.skills.pick_place.evaluate import MIN_CLASS_ROWS, belief_features, score, true_features
 from rpent.skills.pick_place.features import as_vector
 from rpent.skills.pick_place.protocol import OUTCOMES, Prediction
 
@@ -108,6 +108,14 @@ class SuccessModel:
     def predict(self, features: dict[str, float]) -> Prediction:
         return self.predict_many([features])[0]
 
+    def predict_matrix(self, X: np.ndarray, planned: list[dict[str, Any]] | None = None) -> tuple[np.ndarray, None, None]:
+        """Outcome probabilities for feature rows X (n x len(FEATURES)), columns in OUTCOMES order."""
+        P = self._proba(np.asarray(X, dtype=float))
+        out = np.zeros((len(P), len(OUTCOMES)))
+        for j, c in enumerate(self.classes):
+            out[:, OUTCOMES.index(c)] = P[:, j]
+        return out, None, None
+
 
 def _fit_gbm(X: np.ndarray, y: np.ndarray, seed: int) -> GradientBoostingClassifier:
     return GradientBoostingClassifier(n_estimators=N_ESTIMATORS, max_depth=MAX_DEPTH, random_state=seed).fit(X, y)
@@ -140,23 +148,27 @@ def fit_success_model(rows: list[dict[str, Any]], seed: int = 0) -> SuccessModel
 
 
 def evaluate_model(model: Any, rows_val: list[dict[str, Any]], rows_train: list[dict[str, Any]], seed: int = 0,
-                   n_belief: int = 32) -> dict[str, Any]:
+                   n_belief: int = 32, prior_fn=None, features: str = "nominal") -> dict[str, Any]:
     """Oracle-mode (true θ) and belief-mode (prior samples) scores on the validation rows."""
     rng = np.random.default_rng(seed)
-    oracle = model.predict_many([r["features"] for r in rows_val]) if hasattr(model, "predict_many") else [
-        model.predict(r["features"]) for r in rows_val]
+    exact = [true_features(r) if features == "true" else r["features"] for r in rows_val]
+    oracle = model.predict_many(exact) if hasattr(model, "predict_many") else [model.predict(f) for f in exact]
     belief = []
     for r in rows_val:
-        feats = belief_features(r, rng, n_belief)
+        feats = belief_features(r, rng, n_belief, prior_fn)
         preds = model.predict_many(feats) if hasattr(model, "predict_many") else [model.predict(f) for f in feats]
         belief.append(Prediction.mean(preds))
     return {"oracle": score(oracle, rows_val, rows_train), "belief": score(belief, rows_val, rows_train)}
 
 
-def train(rows_train: list[dict[str, Any]], rows_val: list[dict[str, Any]], out_path: str, seed: int = 0) -> dict[str, Any]:
-    model = fit_success_model(rows_train, seed)
+def train(rows_train: list[dict[str, Any]], rows_val: list[dict[str, Any]], out_path: str, seed: int = 0,
+          prior_fn=None, features: str = "nominal") -> dict[str, Any]:
+    """Fit on the training rows (on their true-CoM features when ``features="true"``), save, and score
+    on the validation rows in oracle and belief mode."""
+    fit_rows = [dict(r, features=true_features(r)) for r in rows_train] if features == "true" else rows_train
+    model = fit_success_model(fit_rows, seed)
     model.save(out_path)
-    metrics = evaluate_model(model, rows_val, rows_train, seed)
+    metrics = evaluate_model(model, rows_val, rows_train, seed, prior_fn=prior_fn, features=features)
     metrics.update({"kind": "classifier", "held_out_objects": sorted({r["object"] for r in rows_val}),
-                    "classes": model.classes, "n_train": len(rows_train), "path": out_path})
+                    "classes": model.classes, "n_train": len(rows_train), "path": out_path, "features": features})
     return metrics

@@ -13,9 +13,14 @@
 # limitations under the License.
 
 """Train the classifier and the hazard model on a corpus, score both on the validation
-objects in oracle and belief mode, and record the split and the chosen model kind.
+objects in oracle and belief mode, and write a model bundle (models, metrics, manifest).
 
-    python -m robots.mujoco_lab.train_models --corpus data/corpus.jsonl --out-dir data [--seed 0]
+    python -P -m robots.mujoco_lab.train_models --corpus data/corpus_v2.jsonl data/corpus_fixtures_v2.jsonl \
+        --out-dir robots/mujoco_lab/data/m2 [--features true] [--seed 0]
+
+``--features true`` (the default) trains on the true-CoM features of corpus v2 rows and scores
+belief mode with the lab prior (the corpus generator); ``--features nominal`` is milestone 1's
+recipe (nominal-CoM features, the parametric prior).
 """
 
 from __future__ import annotations
@@ -26,9 +31,13 @@ import os
 import sys
 import time
 
+from robots.mujoco_lab import tracking
 from rpent.skills.pick_place.evaluate import rows_of, split_objects
 from rpent.skills.pick_place.hazard_model import train_hazard
 from rpent.skills.pick_place.success_model import train
+
+MANIFEST = "manifest.json"
+METRICS = "success_model_metrics.json"
 
 
 def load_rows(path: str) -> list[dict]:
@@ -40,35 +49,64 @@ def load_rows(path: str) -> list[dict]:
     return rows
 
 
+def write_manifest(out_dir: str, **fields) -> dict:
+    """Create or update the bundle's manifest (paths are relative to the bundle directory)."""
+    path = os.path.join(out_dir, MANIFEST)
+    man = json.load(open(path)) if os.path.exists(path) else {"version": 2}
+    man.update(fields)
+    with open(path, "w") as f:
+        json.dump(man, f, indent=1)
+    return man
+
+
 def main(argv: list[str] | None = None) -> dict:
     ap = argparse.ArgumentParser()
     ap.add_argument("--corpus", required=True, nargs="+", help="one or more corpus JSONL files (rows are pooled)")
     ap.add_argument("--out-dir", required=True)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--n-belief", type=int, default=32)
+    ap.add_argument("--features", choices=("true", "nominal"), default="true")
     a = ap.parse_args(argv)
     rows = [r for path in a.corpus for r in load_rows(path)]
+    if a.features == "true":
+        missing = sum(1 for r in rows if "pose" not in r or "com_obj_true" not in r)
+        if missing:
+            raise SystemExit(f"{missing} rows have no pose or true CoM: --features true needs the corpus v2 fields "
+                             "(regenerate the corpus, or pass --features nominal)")
+    prior_fn, prior = (None, "m1_parametric")
+    if a.features == "true":
+        from robots.mujoco_lab.prior import lab_prior
+
+        prior_fn, prior = lab_prior, "lab_generator"
     split = split_objects(rows, seed=a.seed)
     tr, va = rows_of(rows, split["train"]), rows_of(rows, split["val"])
     os.makedirs(a.out_dir, exist_ok=True)
     t0 = time.time()
-    clf = train(tr, va, os.path.join(a.out_dir, "success_model.joblib"), seed=a.seed)
+    clf = train(tr, va, os.path.join(a.out_dir, "success_model.joblib"), seed=a.seed, prior_fn=prior_fn, features=a.features)
     t1 = time.time()
-    haz = train_hazard(tr, va, os.path.join(a.out_dir, "hazard_model.joblib"), seed=a.seed, n_belief=a.n_belief)
+    haz = train_hazard(tr, va, os.path.join(a.out_dir, "hazard_model.joblib"), seed=a.seed, n_belief=a.n_belief,
+                       prior_fn=prior_fn, features=a.features)
     t2 = time.time()
     kind = "hazard" if haz["belief"]["brier"] <= clf["belief"]["brier"] else "classifier"
     out = {
         "corpus": a.corpus if len(a.corpus) > 1 else a.corpus[0], "n_rows": len(rows), "split": split, "n_train": len(tr), "n_val": len(va),
-        "classifier": clf, "hazard": haz, "kind": kind,
+        "features": a.features, "prior": prior, "classifier": clf, "hazard": haz, "kind": kind,
         "acceptance_val_belief": {
             "classifier": {"ece": clf["belief"]["ece"], "brier": clf["belief"]["brier"], "brier_const": clf["belief"]["brier_const"]},
             "hazard": {"ece": haz["belief"]["ece"], "brier": haz["belief"]["brier"], "brier_const": haz["belief"]["brier_const"]},
         },
         "seconds": {"classifier": round(t1 - t0, 1), "hazard": round(t2 - t1, 1)},
     }
-    with open(os.path.join(a.out_dir, "success_model_metrics.json"), "w") as f:
+    with open(os.path.join(a.out_dir, METRICS), "w") as f:
         json.dump(out, f, indent=1)
-    print(json.dumps({"kind": kind, "acceptance_val_belief": out["acceptance_val_belief"],
+    write_manifest(a.out_dir, features=a.features, prior=prior, kind=kind, success_model="success_model.joblib",
+                   hazard_model="hazard_model.joblib", metrics=METRICS, corpus=out["corpus"], split_seed=a.seed)
+    out["wandb"] = tracking.log_run("train_models", {"corpus": out["corpus"], "features": a.features, "prior": prior,
+                                                     "seed": a.seed, "n_belief": a.n_belief, "out_dir": a.out_dir},
+                                    {"acceptance_val_belief": out["acceptance_val_belief"], "kind_hazard": kind == "hazard",
+                                     "seconds": out["seconds"],
+                                     "classifier_by_subgroup": {k: v for k, v in clf["belief"]["by_subgroup"].items() if isinstance(v, dict)}})
+    print(json.dumps({"kind": kind, "features": a.features, "acceptance_val_belief": out["acceptance_val_belief"],
                       "oracle": {"classifier": clf["oracle"]["brier"], "hazard": haz["oracle"]["brier"]},
                       "unsupported": clf["belief"]["unsupported_classes"], "seconds": out["seconds"]}, indent=1))
     return out

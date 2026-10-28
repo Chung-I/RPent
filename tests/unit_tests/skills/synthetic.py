@@ -78,3 +78,20 @@ def synthetic_rows(n: int = 300, seed: int = 0, n_objects: int = 30, noise: floa
                      "destination": "table_centre", "s": 0.5, "force": force, "v_lift": v_lift, "v_transport": 0.5,
                      "release_height": 0.02, "point_yaw": [0.0, 0.0, 0.76, 0.0]})
     return rows
+
+
+def synthetic_pose(lever: float = 0.0) -> dict:
+    """A pose for the synthetic rows: identity rotation, the pinch at the origin's height, the CoM `lever` along ey."""
+    return {"R": [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0], "p": [0.0, 0.0, 0.75], "low_z": 0.75, "base_extent": 0.03,
+            "length": 0.1, "com_obj_nominal": [0.0, 0.0, 0.03],
+            "pivot": {"centre": [0.0, 0.0, 0.03], "axis": [0.0, 1.0, 0.0], "lo": -0.05, "L": 0.1},
+            "nominal_mass": 0.2, "pt": [0.0, 0.0, 0.76], "yaw": 0.0}
+
+
+def with_pose(rows: list[dict]) -> list[dict]:
+    """The rows with the corpus v2 fields (pose, true CoM in the object frame) matching their lever feature."""
+    out = []
+    for r in rows:
+        lever = float(r["features"]["lever"])
+        out.append(dict(r, pose=synthetic_pose(), com_obj_true=[0.0, lever, 0.03]))
+    return out

@@ -63,3 +63,17 @@ def test_score_ece_of_perfect_and_bad_predictions():
     bad = [Prediction(p={k: (0.9 if k == "placed_stable" else 0.1 / 6) for k in OUTCOMES}) for _ in rows]
     assert score(perfect, rows, train)["ece"] < 1e-9 and score(perfect, rows, train)["brier"] < 1e-9
     assert score(bad, rows, train)["ece"] > 0.3
+
+
+def test_true_features_differ_from_nominal_for_a_shifted_com():
+    from rpent.skills.pick_place.evaluate import true_features
+    from tests.unit_tests.skills.synthetic import synthetic_pose
+
+    row = dict(synthetic_rows(1)[0])
+    row["features"] = dict(row["features"], lever=0.0)
+    row.update(pose=synthetic_pose(), com_obj_true=[0.0, 0.0, 0.03])
+    assert abs(true_features(row)["lever"]) < 1e-12
+    row["com_obj_true"] = [0.0, 0.05, 0.03]                                  # 5 cm along the hand's ey
+    f = true_features(row)
+    assert abs(f["lever"] - row["features"]["lever"] - 0.05) < 1e-9
+    assert f["mass"] == row["truth"]["mass"] and f["mu"] == row["truth"]["mu"]

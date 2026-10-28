@@ -15,17 +15,18 @@
 """The two planner-facing tools: ``assess_pick`` (read-only) and ``pick_and_place``.
 
 Resources the toolkit injects: ``primitives`` (``.env`` with the lab adapter's method set,
-``.model`` a SuccessModel or HazardModel, ``.rng``) and ``store`` (a dict that holds the
-per-episode assessments; separate from RPent's EnvState).
+``.model`` a SuccessModel or HazardModel, ``.rng``, and optionally ``.prior(pose, n, rng)``, the
+substrate's prior over the hidden properties) and ``store`` (a dict that holds the per-episode
+assessments; separate from RPent's EnvState).
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-from rpent.skills.pick_place.belief import Belief
+from rpent.skills.pick_place.belief import N_PARTICLES, Belief, ParticleBelief
 from rpent.skills.pick_place.destinations import DESTINATIONS
-from rpent.skills.pick_place.menu import build_menu
+from rpent.skills.pick_place.menu import build_menu, geometry_pose
 from rpent.skills.pick_place.protocol import Assessment, Option
 from rpent.tools.base import ToolResult, tool
 
@@ -43,6 +44,17 @@ def _cache(store: dict[str, Any]) -> dict[tuple, dict[str, Any]]:
     return store.setdefault("pick_place", {})
 
 
+def _prior_belief(loc: dict[str, Any], env: Any, geometry: Any, primitives: Any) -> ParticleBelief:
+    """The substrate's prior (``primitives.prior``) when it has one, else the milestone 1 prior as
+    particles at the nominal CoM."""
+    prior = getattr(primitives, "prior", None)
+    if prior is not None and hasattr(env, "pose_info"):
+        return prior(env.pose_info(), N_PARTICLES, primitives.rng)
+    parametric = Belief.prior(loc["volume"], loc["material"], loc.get("hollow", False), length=loc.get("extent"))
+    com = env.pose_info()["com_obj_nominal"] if hasattr(env, "pose_info") else list(map(float, geometry.com))
+    return ParticleBelief.from_parametric(parametric, com, N_PARTICLES, primitives.rng)
+
+
 def _assess(object: str, destination: str, care: str, primitives: Any, store: dict[str, Any]) -> tuple[dict[str, Any] | None, Assessment | None]:
     """Build (or reuse) the assessment. Returns (error-or-semantic payload, None) or (None, assessment)."""
     if destination not in DESTINATIONS:
@@ -58,12 +70,14 @@ def _assess(object: str, destination: str, care: str, primitives: Any, store: di
     cache = _cache(store)
     if key in cache:
         return None, cache[key]["assessment"]
-    belief = Belief.prior(loc["volume"], loc["material"], loc.get("hollow", False), length=loc.get("extent"))
     geometry = env.geometry()
     proposals = env.proposals()
+    pose_fn = getattr(env, "proposal_pose", None) or (lambda prop: geometry_pose(geometry, prop))
+    belief = _prior_belief(loc, env, geometry, primitives)
     f_std = standard_force(env.nominal_mass(loc["object_id"]))
     options, recommendation = build_menu(primitives.model, belief, geometry, proposals, f_std, care, destination,
-                                         env.plan_trajectory, primitives.rng)
+                                         env.plan_trajectory, primitives.rng, pose_fn=pose_fn,
+                                         threshold=getattr(primitives, "threshold", None))
     evidence = belief.summary() + [f"standard squeeze {f_std:.0f} N per pad", f"{len(proposals)} pinch proposals along the long axis"]
     a = Assessment(object=object, destination=destination, options=options, evidence=evidence,
                    recommendation=recommendation, care=care, visibility=belief.visibility, episode=key[3])
