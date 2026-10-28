@@ -23,6 +23,11 @@ belief mode with the lab prior (the corpus generator); ``--features nominal`` is
 recipe (nominal-CoM features, the parametric prior). When the training rows carry readouts, the
 readout model (likelihood.ReadoutModel) is fitted on them and written into the bundle; a retrain
 clears the bundle's tempers (posterior_check chooses them again).
+
+``--probe-corpus PATH`` (with or without ``--corpus``) fits the probe models (probes.ProbeModel) on
+the probe rows of the bundle's training objects, scores each kind classifier on the validation
+objects (Brier against the training kind rates), and writes the models, ``probe_metrics.json`` and
+the manifest's ``probe_models``; without ``--corpus`` the split is the bundle's.
 """
 
 from __future__ import annotations
@@ -33,6 +38,8 @@ import os
 import sys
 import time
 
+import numpy as np
+
 from robots.mujoco_lab import tracking
 from rpent.skills.pick_place.evaluate import rows_of, split_objects
 from rpent.skills.pick_place.hazard_model import train_hazard
@@ -42,6 +49,8 @@ MANIFEST = "manifest.json"
 METRICS = "success_model_metrics.json"
 READOUT_MODEL = "readout_model.json"
 READOUT_ROT = "readout_rot.joblib"
+PROBE_METRICS = "probe_metrics.json"
+PROBE_MODEL = "probe_{}.joblib"
 
 
 def load_rows(path: str) -> list[dict]:
@@ -63,14 +72,70 @@ def write_manifest(out_dir: str, **fields) -> dict:
     return man
 
 
+def fit_probes(path: str, out_dir: str, split: dict, seed: int = 0) -> dict:
+    """Probe models on the training objects' probe rows; per probe the kind rates, the thrown rate, the
+    reading laws and the validation Brier of the kind classifier against the training kind rates."""
+    from rpent.skills.pick_place.probes import fit_probe_models, true_matrix
+
+    rows = load_rows(path)
+    tr, va = rows_of(rows, split["train"]), rows_of(rows, split["val"])
+    models = fit_probe_models(tr, seed=seed)
+    out: dict = {"probe_corpus": path, "split": split, "probes": {}}
+    for probe, pm in models.items():
+        every = [r for r in rows if r["probe"] == probe]
+        tr_p, va_p = [r for r in tr if r["probe"] == probe], [r for r in va if r["probe"] == probe]
+        const = np.array([sum(r["kind"] == k for r in tr_p) / len(tr_p) for k in pm.classes])
+        val: dict = {"n": len(va_p), "brier": None, "brier_const": None}
+        if va_p:
+            Y = np.array([[float(r["kind"] == k) for k in pm.classes] for r in va_p])
+            P = pm.p_kind(true_matrix(va_p))
+            val.update(brier=float(np.mean(np.sum((P - Y) ** 2, axis=1))), brier_const=float(np.mean(np.sum((const - Y) ** 2, axis=1))))
+        out["probes"][probe] = {"n": len(every), "n_train": len(tr_p), "kind_rates": {k: sum(r["kind"] == k for r in every) / len(every) for k in pm.classes},
+                                "thrown_rate": sum(bool(r["thrown"]) for r in every) / len(every),
+                                "reading": {k: list(v) for k, v in pm.reading.items()}, "stats": pm.stats, "val": val}
+        pm.save(os.path.join(out_dir, PROBE_MODEL.format(probe)))
+    with open(os.path.join(out_dir, PROBE_METRICS), "w") as f:
+        json.dump(out, f, indent=1)
+    man_path = os.path.join(out_dir, MANIFEST)
+    tempers = (json.load(open(man_path)).get("tempers") or {}) if os.path.exists(man_path) else {}
+    write_manifest(out_dir, probe_models={p: PROBE_MODEL.format(p) for p in models}, probe_metrics=PROBE_METRICS, probe_corpus=path,
+                   tempers={k: v for k, v in tempers.items() if k != "probe"})      # new probe models: their temper is re-chosen
+    out["wandb"] = tracking.log_run("train_probe_models", {"probe_corpus": path, "seed": seed, "out_dir": out_dir},
+                                    {p: {"val": m["val"], "kind_rates": m["kind_rates"], "thrown_rate": m["thrown_rate"]}
+                                     for p, m in out["probes"].items()})
+    print(json.dumps({p: {"n": m["n"], "kind_rates": m["kind_rates"], "thrown_rate": m["thrown_rate"], "reading": m["reading"], "val": m["val"]}
+                      for p, m in out["probes"].items()}, indent=1))
+    return out
+
+
+def bundle_split(out_dir: str) -> dict:
+    """The object split of an existing bundle (its metrics file)."""
+    man_path = os.path.join(out_dir, MANIFEST)
+    if not os.path.exists(man_path):
+        raise SystemExit(f"{out_dir} has no manifest: train the bundle with --corpus first (the probe fit uses its split)")
+    man = json.load(open(man_path))
+    return json.load(open(os.path.join(out_dir, man["metrics"])))["split"]
+
+
 def main(argv: list[str] | None = None) -> dict:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--corpus", required=True, nargs="+", help="one or more corpus JSONL files (rows are pooled)")
+    ap.add_argument("--corpus", nargs="+", default=None, help="one or more corpus JSONL files (rows are pooled)")
+    ap.add_argument("--probe-corpus", default=None, help="a probe corpus JSONL: fit the probe models into the bundle")
     ap.add_argument("--out-dir", required=True)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--n-belief", type=int, default=32)
     ap.add_argument("--features", choices=("true", "nominal"), default="true")
     a = ap.parse_args(argv)
+    if not a.corpus and not a.probe_corpus:
+        ap.error("give --corpus, --probe-corpus, or both")
+    out = train_bundle(a) if a.corpus else {"split": bundle_split(a.out_dir)}
+    if a.probe_corpus:
+        out["probes"] = fit_probes(a.probe_corpus, a.out_dir, out["split"], a.seed)
+    return out
+
+
+def train_bundle(a: argparse.Namespace) -> dict:
+    """The classifier, the hazard model and the readout model on ``a.corpus``; metrics and manifest."""
     rows = [r for path in a.corpus for r in load_rows(path)]
     if a.features == "true":
         missing = sum(1 for r in rows if "pose" not in r or "com_obj_true" not in r)

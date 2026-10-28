@@ -79,9 +79,18 @@ def load_bundle(bundle_dir: str, kind: str | None = None) -> dict[str, Any]:
         temper = (man.get("tempers") or {}).get("readout")
         if temper is not None:
             readout.temper = float(temper)
+    probe_models = None
+    if man.get("probe_models"):
+        from rpent.skills.pick_place.probes import ProbeModel
+
+        probe_models = {p: ProbeModel.load(os.path.join(bundle_dir, f)) for p, f in man["probe_models"].items()}
+        temper = (man.get("tempers") or {}).get("probe")
+        if temper is not None:
+            for pm in probe_models.values():
+                pm.temper = float(temper)
     return {"manifest": man, "kind": kind, "model": model,
             "prior": lab_prior_fn if man.get("prior") == "lab_generator" else None,
-            "readout_model": readout, "probe_models": None}
+            "readout_model": readout, "probe_models": probe_models}
 
 
 def load_model(model_path: str | None = None, kind: str | None = None) -> Any:

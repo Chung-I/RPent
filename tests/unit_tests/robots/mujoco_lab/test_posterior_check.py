@@ -104,3 +104,62 @@ def test_rotation_threshold_matches_the_readouts():
     from rpent.skills.pick_place.likelihood import ROT_DEG
 
     assert ROT_DEG == ROT_SIDE_DEG
+
+
+@pytest.fixture(scope="module")
+def probe_bundle(tiny_bundle, tmp_path_factory):
+    """The tiny bundle plus probe models fitted on a probe corpus of the same three objects."""
+    from robots.mujoco_lab.probe_corpus import main as probe_main
+    from robots.mujoco_lab.train_models import main as train_main
+
+    pc = tmp_path_factory.mktemp("pp") / "p.jsonl"
+    assert probe_main(["--out", str(pc), "--draws", "8", "--workers", "1", "--objects", "ycb__banana,ycb__brick,ycb__mug", "--seed", "7"]) >= 48
+    out = train_main(["--probe-corpus", str(pc), "--out-dir", str(tiny_bundle)])
+    rows = [r for r in map(json.loads, open(pc)) if "error" not in r]
+    return tiny_bundle, rows, out
+
+
+def test_train_models_fits_the_probe_models(probe_bundle):
+    from robots.mujoco_lab.robot_spec import load_bundle
+    from rpent.skills.pick_place.probes import PROBE_KINDS
+
+    bundle, rows, out = probe_bundle
+    man = json.load(open(bundle / "manifest.json"))
+    assert man["probe_models"] == {"weigh": "probe_weigh.joblib", "push": "probe_push.joblib"}
+    assert man["readout_model"] == "readout_model.json"          # a probe-only fit leaves the main models alone
+    metrics = json.load(open(bundle / man["probe_metrics"]))
+    assert metrics["split"] == json.load(open(bundle / man["metrics"]))["split"] and metrics["probe_corpus"] == man["probe_corpus"]
+    for probe in ("weigh", "push"):
+        m = metrics["probes"][probe]
+        assert set(m["kind_rates"]) == set(PROBE_KINDS[probe]) and sum(m["kind_rates"].values()) == pytest.approx(1.0)
+        assert m["n"] == sum(r["probe"] == probe for r in rows) and {"brier", "brier_const", "n"} <= set(m["val"])
+    B = load_bundle(str(bundle))
+    assert set(B["probe_models"]) == {"weigh", "push"} and B["probe_models"]["push"].probe == "push"
+
+
+@pytest.mark.parametrize("probes", ["A", "B"])
+def test_posterior_check_after_the_probes(probe_bundle, tmp_path, probes):
+    from robots.mujoco_lab.posterior_check import main
+
+    bundle, rows, _ = probe_bundle
+    val = set(json.load(open(bundle / "probe_metrics.json"))["split"]["val"])
+    tags = [r["key"].rsplit("__", 1)[1] for r in rows if r["object"] in val]
+    out = main(["--bundle", str(bundle), "--split", "val", "--probes", probes, "--n-particles", "200", "--temper-grid", "1,2",
+                "--out", str(tmp_path / f"pc_{probes}.json")])
+    assert out["probes"] == probes and out["n"] == tags.count("Bweigh" if probes == "B" else "Apush") > 0
+    assert {"mass_cov80", "mu_cov80", "com_cov80", "prior_cov80", "by_kind", "grid", "sim_truth", "terms"} <= set(out)
+    if probes == "A":
+        assert out["n_with_weigh"] == tags.count("Aweigh")
+
+
+def test_probe_temper_reaches_the_probe_models(probe_bundle, tmp_path):
+    from robots.mujoco_lab.posterior_check import main
+    from robots.mujoco_lab.robot_spec import load_bundle
+
+    bundle, _, _ = probe_bundle
+    before = json.load(open(bundle / "manifest.json"))["tempers"].get("readout")
+    out = main(["--bundle", str(bundle), "--split", "val", "--probes", "B", "--n-particles", "200", "--temper-grid", "1,2",
+                "--choose-on", "val", "--out", str(tmp_path / "pc.json")])
+    tempers = json.load(open(bundle / "manifest.json"))["tempers"]
+    assert tempers["probe"] == out["temper"] and tempers.get("readout") == before
+    assert all(pm.temper == out["temper"] for pm in load_bundle(str(bundle))["probe_models"].values())

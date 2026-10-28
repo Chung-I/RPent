@@ -34,8 +34,9 @@ import numpy as np
 
 from rpent.skills.pick_place.destinations import DESTINATIONS, OBJECT_REST_XY, PRIMITIVE_IDS, has_surface, is_mesh, release_height
 from robots.mujoco_lab.labels import RISE_M, Final, label_rollout
-from robots.mujoco_lab.readouts import summarize
-from rpent.skills.pick_place.features import Geometry
+from robots.mujoco_lab.readouts import RISEN_M, summarize
+from rpent.skills.pick_place.features import G, Geometry
+from rpent.skills.pick_place.probes import ProbeResult
 from rpent.skills.pick_place.protocol import OUTCOMES  # noqa: F401  (label vocabulary)
 
 LIFT_H = 0.20
@@ -50,6 +51,20 @@ RETREAT_M = 0.10
 RETREAT_SETTLE_S = 0.5
 TIP_DEG = 45.0
 DISPLACE_TOL_M = 0.05
+WEIGH_V_LIFT = 0.03          # the weigh probe: lift 2 cm slowly, hold 0.5 s, then set down
+WEIGH_LIFT_M = 0.02
+WEIGH_HOLD_S = 0.5
+WEIGH_OPEN_S = 0.5
+WEIGH_SETTLE_S = 1.0
+PUSH_V = 0.03                # the push probe (t3_probes.push_probe): 3 cm/s, stop at 4 cm or 25 deg
+PUSH_MAX_S = 4.0
+PUSH_STOP_M = 0.04
+PUSH_STOP_DEG = 25.0
+PUSH_BREAKAWAY_M = 0.003
+PUSH_WINDOW_S = 0.3
+PUSH_TIP_DEG = 8.0
+PUSH_MIN_FORCE_N = 0.05
+THROWN_M = 0.10              # a probe "throws" the object off the table top or this far from where it was
 
 # Primitive fixtures built into every scene (the registry gives the place; this gives the shape).
 PRIMITIVE_FIXTURES: list[dict[str, Any]] = [
@@ -531,28 +546,7 @@ class MuJoCoLabEnv:
         sim = self.sim
         hz = sc.CTRL_HZ
         pt = np.asarray(proposal.point, dtype=float)
-        p0z = sim.obj_pos()[2]
-        R0 = sim.obj_mat().copy()
-        trace: list[dict[str, Any]] = []
-        pitch_of = self._pitch_meter(pt, proposal.yaw)
-        pitch0: list[float] = []
-
-        def on_step(phase: str) -> None:
-            pos = sim.obj_pos()
-            low = sim.obj_low_z()
-            lin, _ = sim.obj_vel()
-            touching, pads = sim.contacts()
-            surf, has = self._surface_below(pos[:2])
-            ang = float(np.degrees(np.arccos(np.clip(((sim.obj_mat() @ R0.T).trace() - 1) / 2, -1, 1))))
-            fz, fn = self._pad_hull_forces()
-            pitch = pitch_of()
-            if not pitch0:
-                pitch0.append(pitch)
-            trace.append({"t": len(trace) / hz, "phase": phase, "z": float(pos[2] - p0z), "low_z": float(low),
-                          "surface_z_below": surf, "has_surface": has, "speed": float(np.linalg.norm(lin)),
-                          "pads": list(pads), "zone": sim.zone_of(touching), "rot_deg": ang,
-                          "fz": fz, "fn": fn, "pitch_ey": float(pitch - pitch0[0])})
-
+        trace, on_step = self._tracer(pt, proposal.yaw)
         out, _, _ = gr.run_grasp(sim, pt, proposal.yaw, force=force, v_lift=v_lift, lift_h=LIFT_H, hold_s=HOLD_S,
                                  on_step=on_step)
         rose = any(x["z"] > RISE_M and all(x["pads"]) and x["phase"] in ("lift", "hold") for x in trace)
@@ -586,6 +580,200 @@ class MuJoCoLabEnv:
                 sim.step_ctrl()
                 on_step("retreat")
         return self._label(trace, rose, dest, release, planned, v_lift)
+
+    def _tracer(self, pt: np.ndarray, yaw: float):
+        """(trace, on_step): on_step(phase) appends one dict per control step (see execute's trace)."""
+        sim = self.sim
+        hz = self.s["scene"].CTRL_HZ
+        p0z = sim.obj_pos()[2]
+        R0 = sim.obj_mat().copy()
+        trace: list[dict[str, Any]] = []
+        pitch_of = self._pitch_meter(pt, yaw)
+        pitch0: list[float] = []
+
+        def on_step(phase: str) -> None:
+            pos = sim.obj_pos()
+            low = sim.obj_low_z()
+            lin, _ = sim.obj_vel()
+            touching, pads = sim.contacts()
+            surf, has = self._surface_below(pos[:2])
+            ang = float(np.degrees(np.arccos(np.clip(((sim.obj_mat() @ R0.T).trace() - 1) / 2, -1, 1))))
+            fz, fn = self._pad_hull_forces()
+            pitch = pitch_of()
+            if not pitch0:
+                pitch0.append(pitch)
+            trace.append({"t": len(trace) / hz, "phase": phase, "z": float(pos[2] - p0z), "low_z": float(low),
+                          "surface_z_below": surf, "has_surface": has, "speed": float(np.linalg.norm(lin)),
+                          "pads": list(pads), "zone": sim.zone_of(touching), "rot_deg": ang,
+                          "fz": fz, "fn": fn, "pitch_ey": float(pitch - pitch0[0])})
+        return trace, on_step
+
+    # ---------------------------------------------------------------- probes
+    def _hand_geoms(self) -> set[int]:
+        """Every geom of the hand's body subtree (pads, fingers, palm)."""
+        m = self.sim.m
+        bodies = {self.sim.hand}
+        for b in range(m.nbody):
+            k = b
+            while k > 0 and k not in bodies:
+                k = int(m.body_parentid[k])
+            if k in bodies:
+                bodies.add(b)
+        return {g for g in range(m.ngeom) if int(m.geom_bodyid[g]) in bodies}
+
+    def _hand_push_force(self, hand: set[int], ex: np.ndarray) -> float:
+        """Net force of the hand's geoms on the object along ex (the push direction)."""
+        import mujoco
+
+        sim = self.sim
+        f = np.zeros(6)
+        hull = set(sim.hull_ids)
+        total = 0.0
+        for i in range(sim.d.ncon):
+            c = sim.d.contact[i]
+            if (c.geom1 in hand and c.geom2 in hull) or (c.geom2 in hand and c.geom1 in hull):
+                mujoco.mj_contactForce(sim.m, sim.d, i, f)
+                fw = c.frame.reshape(3, 3).T @ f[:3]
+                total += float(fw @ ex) if c.geom2 in hull else -float(fw @ ex)
+        return total
+
+    def _push_step(self, hand: set[int], ex: np.ndarray) -> float:
+        """One control step, physics substep by substep: the hand force along ex averaged over the
+        step. The hand follows its mocap target in jumps, so on a light, slippery object the push is a
+        train of short strikes that a force sampled at the end of the step misses."""
+        import mujoco
+
+        sim, sub = self.sim, int(self.s["scene"].SUB)
+        total = 0.0
+        for _ in range(sub):
+            mujoco.mj_step(sim.m, sim.d)
+            total += self._hand_push_force(hand, ex)
+        return total / sub
+
+    def _tilt_from(self, R0: np.ndarray) -> float:
+        return float(np.degrees(np.arccos(np.clip(((self.sim.obj_mat() @ R0.T).trace() - 1) / 2, -1, 1))))
+
+    def _probe_cost(self, p_start: np.ndarray, R_start: np.ndarray) -> tuple[float, float, bool]:
+        """(displacement from where the probe started, tilt, thrown: off the table top or > 10 cm away)."""
+        sc, sim = self.s["scene"], self.sim
+        pos = sim.obj_pos()
+        disp = float(np.linalg.norm((pos - p_start)[:2]))
+        off = (sim.obj_low_z() < sc.TABLE_TOP - 0.01 or abs(pos[0]) > sc.TABLE_HALF[0] or abs(pos[1]) > sc.TABLE_HALF[1])
+        return disp, self._tilt_from(R_start), bool(off or disp > THROWN_M)
+
+    def _rise_hand(self, yaw: float, steps: list[int]) -> None:
+        """The open hand rises RETREAT_M from where it is."""
+        sim, hz = self.sim, self.s["scene"].CTRL_HZ
+        x, y, z = (float(v) for v in sim.d.mocap_pos[sim.mocap])
+        z_up = z + RETREAT_M
+        while z < z_up - 1e-6:
+            z = min(z_up, z + V_LOWER / hz)
+            sim.set_hand([x, y, z], yaw)
+            sim.step_ctrl()
+            steps[0] += 1
+
+    @staticmethod
+    def weigh_reading(trace: list[dict[str, Any]], force: float) -> tuple[str, dict[str, float]]:
+        """The weigh probe's kind and reading from its trace (see probe_weigh)."""
+        risen = [i for i, x in enumerate(trace) if x["phase"] in ("lift", "hold") and x["z"] > RISEN_M and all(x["pads"])]
+        if risen:
+            i0 = risen[0]
+            if any(not any(x["pads"]) for x in trace[i0:] if x["phase"] in ("lift", "hold")):
+                return "lost", {}
+            held = [x["fz"] for x in trace[i0:] if x["phase"] == "hold" and x["z"] > RISEN_M and all(x["pads"])]
+            seg = held or [trace[i]["fz"] for i in risen]
+            return "measured", {"m_hat": float(np.median(seg)) / G}
+        both = [x["fz"] for x in trace if x["phase"] in ("close", "lift", "hold") and all(x["pads"])]
+        fmax = float(max(both)) if both else 0.0
+        return "lower_bound", {"mu_hat": fmax / (2.0 * float(force)), "m_lower": fmax / G}
+
+    def probe_weigh(self, proposal: Proposal, force: float) -> ProbeResult:
+        """Close with ``force``, lift 2 cm at 3 cm/s, hold 0.5 s (the execute trace); then open, settle
+        0.5 s, rise 10 cm, settle 1 s. Kinds: measured (rose 1.2 cm with both pads: m_hat = the median
+        net vertical pad force over the still hold, / g), lower_bound (never rose: mu_hat = max force /
+        2F, m_lower = max force / g), lost (rose, then both pads lost it). The hold, not the lift: the
+        hand follows its mocap target in jumps, so a force sampled at the end of a lift step reads
+        0.9 of the weight on every object."""
+        self._need()
+        self._refresh_baselines()
+        gr, sim, hz = self.s["grasp"], self.sim, self.s["scene"].CTRL_HZ
+        pt = np.asarray(proposal.point, dtype=float)
+        p_start, R_start = sim.obj_pos().copy(), sim.obj_mat().copy()
+        trace, on_step = self._tracer(pt, proposal.yaw)
+        gr.run_grasp(sim, pt, proposal.yaw, force=force, v_lift=WEIGH_V_LIFT, lift_h=WEIGH_LIFT_M, hold_s=WEIGH_HOLD_S,
+                     on_step=on_step)
+        kind, reading = self.weigh_reading(trace, force)
+        steps = [len(trace)]
+        sim.grip(-20.0)
+        for _ in range(int(WEIGH_OPEN_S * hz)):
+            sim.step_ctrl()
+            steps[0] += 1
+        self._rise_hand(proposal.yaw, steps)
+        for _ in range(int(WEIGH_SETTLE_S * hz)):
+            sim.step_ctrl()
+            steps[0] += 1
+        disp, tilt, thrown = self._probe_cost(p_start, R_start)
+        return ProbeResult("weigh", kind, reading, disp, tilt, thrown, steps[0] / hz, trace)
+
+    def probe_push(self) -> ProbeResult:
+        """The t3_probes.push_probe motion: the open hand's leading pad, at a quarter of the object's
+        height, pushes across the long axis at 3 cm/s until the object moved 4 cm or turned 25 deg; then
+        the hand rises 10 cm and the scene settles 0.5 s. The push force is the net force along the push
+        of every hand geom touching the object, averaged over each control step's physics substeps. Kinds: slid (breakaway, 3 mm, with a force above 0.05 N
+        and a tilt of at most 8 deg; reading f_break = the largest force over the 0.3 s before it),
+        tipped, no_breakaway, no_contact (moved with no hand force above 0.05 N)."""
+        self._need()
+        self._refresh_baselines()
+        sc, sim, hz = self.s["scene"], self.sim, self.s["scene"].CTRL_HZ
+        R, p = sim.obj_mat(), sim.obj_pos()
+        axis = R @ np.asarray(self.props["axis"], dtype=float)
+        yaw = float(np.arctan2(axis[1], axis[0]) + np.pi / 2)
+        ex = np.array([np.cos(yaw), np.sin(yaw), 0.0])
+        V = self._hull_vertices_world()
+        lo = float((V @ ex).min())
+        zlo, zhi = float(V[:, 2].min()), float(V[:, 2].max())
+        pad_z = max(zlo + 0.25 * (zhi - zlo), sc.TABLE_TOP + sc.PAD_HALF[2] + 0.002)
+        hand_z = pad_z + sc.PAD_DROP - sc.PAD_HALF[2]
+        start_s = lo - 0.01 - sc.MAX_OPEN
+        perp = p - ex * float(p @ ex)
+        perp[2] = 0.0
+        p_start, R_start = p.copy(), R.copy()
+        sim.teleport_hand(perp + ex * start_s + np.array([0.0, 0.0, hand_z]), yaw)
+        sim.grip(-20.0)
+        steps = [0]
+        for _ in range(int(0.3 * hz)):
+            sim.step_ctrl()
+            steps[0] += 1
+        p0, R0 = sim.obj_pos().copy(), sim.obj_mat().copy()
+        hand = self._hand_geoms()
+        rec: list[dict[str, Any]] = []
+        breakaway = None
+        window = int(round(PUSH_WINDOW_S * hz))
+        for k in range(int(PUSH_MAX_S * hz)):
+            sim.set_hand(perp + ex * (start_s + PUSH_V * k / hz) + np.array([0.0, 0.0, hand_z]), yaw)
+            f = self._push_step(hand, ex)
+            steps[0] += 1
+            disp = float((sim.obj_pos() - p0) @ ex)
+            tilt = self._tilt_from(R0)
+            rec.append({"t": k / hz, "f": f, "disp": disp, "tilt": tilt})
+            if breakaway is None and disp > PUSH_BREAKAWAY_M:
+                breakaway = (max(r["f"] for r in rec[-window:]), tilt)
+            if disp > PUSH_STOP_M or tilt > PUSH_STOP_DEG:
+                break
+        if breakaway is None:
+            kind, reading = "no_breakaway", {}
+        elif breakaway[0] <= PUSH_MIN_FORCE_N:
+            kind, reading = "no_contact", {}
+        elif breakaway[1] > PUSH_TIP_DEG:
+            kind, reading = "tipped", {}
+        else:
+            kind, reading = "slid", {"f_break": float(breakaway[0])}
+        self._rise_hand(yaw, steps)
+        for _ in range(int(RETREAT_SETTLE_S * hz)):
+            sim.step_ctrl()
+            steps[0] += 1
+        disp, tilt, thrown = self._probe_cost(p_start, R_start)
+        return ProbeResult("push", kind, reading, disp, tilt, thrown, steps[0] / hz, rec)
 
     def _pitch_meter(self, pt: np.ndarray, yaw: float):
         """A function giving (z+ - z-) / 0.10 for the object-fixed points pt ± 0.05 ey (ey: the hand's
