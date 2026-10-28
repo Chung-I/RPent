@@ -1,0 +1,185 @@
+{
+ "probe_corpus": "robots/mujoco_lab/data/probe_corpus.jsonl",
+ "split": {
+  "train": [
+   "fruits_veggies__avocado",
+   "fruits_veggies__lemon1",
+   "fruits_veggies__lime",
+   "fruits_veggies__orange1",
+   "fruits_veggies__red_onion",
+   "handal__green_serving_spoon",
+   "handal__hammer",
+   "handal__hammer_2",
+   "handal__hammer_3",
+   "handal__hammer_4",
+   "handal__hammer_5",
+   "handal__hammer_7",
+   "handal__ladle",
+   "handal__measuring_cups",
+   "handal__measuring_cups_1",
+   "handal__measuring_spoon",
+   "handal__pink_spaghetti_spoon",
+   "handal__red_serving_spoon",
+   "hope__bbq_sauce_bottle",
+   "hope__butter",
+   "hope__canned_mushrooms",
+   "hope__canned_peaches",
+   "hope__canned_tuna",
+   "hope__chocolate_pudding_mix",
+   "hope__corn_can",
+   "hope__cream_cheese",
+   "hope__green_beans_can",
+   "hope__milk_carton",
+   "hope__mustard_bottle",
+   "hope__oatmeal_raisin_cookies",
+   "hope__orange_juice_carton",
+   "hope__peas_and_carrots",
+   "hope__popcorn_box",
+   "hope__raisin_box",
+   "hope__ranch_dressing",
+   "hope__spaghetti",
+   "hope__yogurt_cup",
+   "hot3d__birdhouse",
+   "hot3d__ceramic_mug",
+   "hot3d__clay_plates",
+   "hot3d__coffee_pot",
+   "hot3d__computer_mouse",
+   "hot3d__foam_roller",
+   "hot3d__frozen_waffles",
+   "hot3d__lizard_figurine",
+   "hot3d__mug",
+   "hot3d__potato_masher",
+   "hot3d__remote_control",
+   "hot3d__rubiks_cube",
+   "hot3d__smartphone",
+   "hot3d__soup_can",
+   "hot3d__storage_box",
+   "hot3d__wooden_bowl",
+   "hot3d__wooden_spoons",
+   "ycb__bowl",
+   "ycb__bowl2",
+   "ycb__coffee_can",
+   "ycb__cordless_drill",
+   "ycb__dry_erase_marker",
+   "ycb__jello",
+   "ycb__pitcher",
+   "ycb__scissors",
+   "ycb__soft_scrub",
+   "ycb__spam_can",
+   "ycb__spring_clamp",
+   "ycb__tuna_can",
+   "ycb__wood_block"
+  ],
+  "val": [
+   "handal__hammer_6",
+   "handal__hammer_8",
+   "hope__ketchup_bottle",
+   "hope__macaroni_and_cheese",
+   "hope__parmesan_cheese_canister",
+   "hope__pineapple_slices_can",
+   "hope__tomato_sauce_can",
+   "hot3d__glasses",
+   "hot3d__megaphone",
+   "ycb__banana",
+   "ycb__mug",
+   "ycb__mustard",
+   "ycb__sugar_box",
+   "ycb__tomato_soup_can"
+  ],
+  "test": [
+   "handal__hammer_1",
+   "hope__granola_bars",
+   "hope__mayonnaise_bottle",
+   "hope__pitted_cherries",
+   "hot3d__bbq_sauce_bottle",
+   "hot3d__dumbbell",
+   "hot3d__frozen_vegetable_block",
+   "hot3d__keyboard",
+   "hot3d__pitcher",
+   "hot3d__spatula",
+   "ycb__brick",
+   "ycb__cheez_it",
+   "ycb__chocolate_pudding",
+   "ycb__clamp"
+  ]
+ },
+ "probes": {
+  "weigh": {
+   "n": 4476,
+   "n_train": 3158,
+   "kind_rates": {
+    "measured": 0.7685433422698839,
+    "lower_bound": 0.22810545129579982,
+    "lost": 0.003351206434316354
+   },
+   "thrown_rate": 0.04714030384271671,
+   "reading": {
+    "measured": [
+     -5.703175614711346e-09,
+     0.05
+    ],
+    "lower_bound": [
+     -0.3330010700963212,
+     0.4398680183352795
+    ]
+   },
+   "stats": {
+    "n": 3158,
+    "kinds": {
+     "measured": 2393,
+     "lower_bound": 756,
+     "lost": 9
+    },
+    "n_reading": {
+     "measured": 2387,
+     "lower_bound": 361,
+     "lost": 0
+    },
+    "thrown": 113
+   },
+   "val": {
+    "n": 669,
+    "brier": 0.20069740492282967,
+    "brier_const": 0.31704935610403584
+   }
+  },
+  "push": {
+   "n": 2280,
+   "n_train": 1608,
+   "kind_rates": {
+    "slid": 0.894298245614035,
+    "tipped": 0.03333333333333333,
+    "no_breakaway": 0.03684210526315789,
+    "no_contact": 0.035526315789473684
+   },
+   "thrown_rate": 0.03684210526315789,
+   "reading": {
+    "slid": [
+     0.14222953227079418,
+     0.30403182497456077
+    ]
+   },
+   "stats": {
+    "n": 1608,
+    "kinds": {
+     "slid": 1431,
+     "tipped": 64,
+     "no_breakaway": 46,
+     "no_contact": 67
+    },
+    "n_reading": {
+     "slid": 1431,
+     "tipped": 0,
+     "no_breakaway": 0,
+     "no_contact": 0
+    },
+    "thrown": 58
+   },
+   "val": {
+    "n": 336,
+    "brier": 0.13935000641875708,
+    "brier_const": 0.2048174086037474
+   }
+  }
+ }
+}

@@ -31,6 +31,7 @@ build/
 # pick_place data: only corpus.jsonl, fixtures.json and the metrics are committed
 robots/mujoco_lab/data/*
 !robots/mujoco_lab/data/corpus*.jsonl
+!robots/mujoco_lab/data/probe_corpus*.jsonl
 !robots/mujoco_lab/data/*.json
 # the milestone 2 bundle: the manifest and the metrics are committed, the models stay local
 !robots/mujoco_lab/data/m2/
