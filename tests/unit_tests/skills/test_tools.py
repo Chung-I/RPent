@@ -296,6 +296,14 @@ def test_pick_payload_carries_readouts_diagnosis_and_beliefs():
     assert r["belief"]["mu_median"] < 0.25 < r["belief_before"]["mu_median"]       # 3 N over 2 x 10 N: mu about 0.15
 
 
+def test_pick_diagnosis_gives_no_friction_outside_the_belief():
+    """100 N of slip force at the standard squeeze reads a friction far above the prior's 0.9: the line
+    says so and gives no number."""
+    env = _ReadingEnv([("not_lifted", {"fz_slip_max_n": 100.0, "rot_deg": 0.0, "heavy_side": 0, "loss_phase": None})])
+    r = _commit(_bprims(env), {})
+    assert not any("friction about" in s for s in r["diagnosis"]) and any("outside the belief" in s for s in r["diagnosis"])
+
+
 def test_a_reading_outside_the_belief_is_reported():
     """A hold reading 10x the largest prior mass: the term is rejected, the history lists the terms used
     and rejected, the reading does not move the belief, and the evidence names it."""

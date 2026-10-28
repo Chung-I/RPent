@@ -76,3 +76,23 @@ def test_diagnose_corrects_the_friction_reading_with_the_fitted_law():
     assert any("friction about 1.48" in s for s in d)                           # 0.20 x e^2.0
     d = diagnose("not_lifted", _r(rose=False, fz_slip_max_n=3.0), ACT, BEFORE, AFTER, laws={"slip": None})
     assert any("friction about 0.15" in s and "fitted" not in s for s in d)
+
+
+def test_no_friction_number_from_an_unusable_force():
+    """A slip or loss force at or below 0 N gives no friction (and no weight bound); a positive force
+    whose friction lies outside the belief's range gives no number either."""
+    d = diagnose("not_lifted", _r(rose=False, fz_slip_max_n=-5.0), ACT, BEFORE, AFTER)
+    assert not any("friction about" in s or "-5.0" in s for s in d) and any("not usable" in s for s in d)
+    d = diagnose("dropped_low", _r(loss_phase="hold", fz_at_loss_n=0.0, rot_deg=3.0), ACT, BEFORE, AFTER)
+    assert not any("friction about" in s for s in d) and any("not usable" in s for s in d)
+    d = diagnose("not_lifted", _r(rose=False, fz_slip_max_n=39.0), ACT, BEFORE, AFTER, mu_range=(0.1, 0.9))   # 1.95
+    assert not any("friction about" in s for s in d) and any("outside the belief" in s for s in d)
+
+
+def test_friction_number_carries_its_one_reading_range():
+    """3 N over 2 x 10 N is 0.15, corrected by e^1 (b -1) to 0.41; with the law's sd 1 the 80 % range from
+    this one reading is 0.41 x e^(-/+1.28): 0.11 to 1.47."""
+    d = diagnose("not_lifted", _r(rose=False, fz_slip_max_n=3.0), ACT, BEFORE, AFTER, laws={"slip": (-1.0, 1.0)},
+                 mu_range=(0.1, 0.9))
+    line = next(s for s in d if "friction about" in s)
+    assert "friction about 0.41" in line and "0.11 to 1.47" in line
