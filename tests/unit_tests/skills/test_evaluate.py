@@ -77,3 +77,87 @@ def test_true_features_differ_from_nominal_for_a_shifted_com():
     f = true_features(row)
     assert abs(f["lever"] - row["features"]["lever"] - 0.05) < 1e-9
     assert f["mass"] == row["truth"]["mass"] and f["mu"] == row["truth"]["mu"]
+
+
+# ---------------------------------------------------------------- cross-fitted calibration (milestone 2, task 8)
+import pytest  # noqa: E402
+
+
+def _P(rows):
+    return np.array([[r.get(k, 0.0) for k in OUTCOMES] for r in rows])
+
+
+def test_iid_floor_of_calibrated_outcomes():
+    from rpent.skills.pick_place.evaluate import _ece, ece_iid_floor
+
+    rng = np.random.default_rng(0)
+    p = rng.uniform(0.0, 1.0, 1000)
+    y = (rng.random(1000) < p).astype(float)                    # calibrated outcomes
+    floor = ece_iid_floor(p, np.random.default_rng(1))
+    assert 0.0 < floor < 0.1 and abs(floor - _ece(p, y)) < 0.02
+    half = np.full(1000, 0.5)
+    assert _ece(half, np.ones(1000)) == pytest.approx(0.5)
+    assert ece_iid_floor(half, np.random.default_rng(2)) < 0.05     # the floor depends on the declared p only
+
+
+def test_ci_coverage_of_a_known_miscalibration():
+    from rpent.skills.pick_place.evaluate import ci_coverage
+
+    rng = np.random.default_rng(0)
+    objects = np.repeat([f"o{i}" for i in range(95)], 11)
+    p = np.clip(rng.beta(2.0, 5.0, len(objects)), 0.01, 0.99)
+    y = (rng.random(len(p)) < p).astype(float)
+    cov = ci_coverage(p, objects, 0.05, n_sim=400, rng=np.random.default_rng(1), y=y)
+    assert 0.85 <= cov <= 1.0
+
+
+def test_ci_coverage_matches_the_between_object_variance():
+    from rpent.skills.pick_place.evaluate import coverage_design
+
+    rng = np.random.default_rng(3)
+    objects = np.repeat([f"o{i}" for i in range(95)], 11)
+    p = np.clip(rng.beta(2.0, 5.0, len(objects)), 0.01, 0.99)
+    inv = np.repeat(np.arange(95), 11)
+    flat = (rng.random(len(p)) < p).astype(float)
+    u = rng.uniform(-0.9, 0.9, 95)[inv]
+    clustered = (rng.random(len(p)) < p + u * np.minimum(p, 1 - p)).astype(float)
+    d0 = coverage_design(p, objects, 0.05, n_sim=50, rng=np.random.default_rng(4), y=flat)
+    d1 = coverage_design(p, objects, 0.05, n_sim=50, rng=np.random.default_rng(4), y=clustered)
+    assert d1["object_effect"] > d0["object_effect"] + 0.2
+    assert d1["population_ece"] == pytest.approx(0.05, abs=1e-6) and {"coverage", "mean_width", "n_sim"} <= set(d1)
+
+
+def test_per_class_marks_insufficient_classes():
+    from rpent.skills.pick_place.evaluate import per_class
+
+    labels = ["placed_stable"] * 60 + ["tipped"] * 49 + ["not_lifted"] * 91
+    P = _P([{"placed_stable": 0.3, "tipped": 0.245, "not_lifted": 0.455}] * 200)
+    out = per_class(P, labels)
+    assert set(out) == set(OUTCOMES)
+    assert out["placed_stable"]["n_pos"] == 60 and out["placed_stable"]["ece"] == pytest.approx(0.0, abs=1e-9)
+    assert out["not_lifted"]["n_pos"] == 91 and out["not_lifted"]["ece"] == pytest.approx(0.0, abs=1e-9)
+    assert out["tipped"] == {"n_pos": 49, "ece": "insufficient"}
+    assert out["missed"] == {"n_pos": 0, "ece": "insufficient"}
+
+
+def test_ece_ci_resamples_objects():
+    from rpent.skills.pick_place.evaluate import _ece, ece_ci
+
+    rng = np.random.default_rng(5)
+    objects = np.repeat([f"o{i}" for i in range(60)], 10)
+    p = rng.uniform(0.1, 0.9, 600)
+    y = (rng.random(600) < p).astype(float)
+    lo, hi = ece_ci(p, y, objects, np.random.default_rng(6))
+    assert lo <= _ece(p, y) <= hi and hi - lo > 0.005
+    y_same = np.repeat((rng.random(60) < 0.5).astype(float), 10)          # every case of an object has one outcome
+    lo2, hi2 = ece_ci(p, y_same, objects, np.random.default_rng(6))
+    assert hi2 - lo2 > hi - lo                                          # clustered outcomes widen the interval
+
+
+def test_score_takes_a_per_row_constant_baseline():
+    rows = synthetic_rows(100)
+    preds = [Prediction(p={k: 1.0 / len(OUTCOMES) for k in OUTCOMES}) for _ in rows]
+    const = np.tile(np.eye(len(OUTCOMES))[0], (len(rows), 1))           # "always placed_stable"
+    s = score(preds, rows, [], const=const)
+    Y = np.array([[1.0 if r["label"] == k else 0.0 for k in OUTCOMES] for r in rows])
+    assert s["brier_const"] == pytest.approx(float(np.mean(np.sum((const - Y) ** 2, axis=1))))

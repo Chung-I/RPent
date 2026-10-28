@@ -28,6 +28,12 @@ clears the bundle's tempers (posterior_check chooses them again).
 the probe rows of the bundle's training objects, scores each kind classifier on the validation
 objects (Brier against the training kind rates), and writes the models, ``probe_metrics.json`` and
 the manifest's ``probe_models``; without ``--corpus`` the split is the bundle's.
+
+``--folds K`` (with ``--corpus``) cross-fits: the corpus objects are split into K folds by a seeded
+shuffle (``folds.json`` maps object to fold); each ``fold_<k>/`` is a full bundle trained on the other
+folds' objects with the deployed recipe (an inner object split of them gives the validation objects,
+on which the kind, the readout temper and the probe temper are chosen; Task 4's rule), so the fold's
+own objects are only ever scored (``calibrate --crossfit``).
 """
 
 from __future__ import annotations
@@ -51,6 +57,9 @@ READOUT_MODEL = "readout_model.json"
 READOUT_ROT = "readout_rot.joblib"
 PROBE_METRICS = "probe_metrics.json"
 PROBE_MODEL = "probe_{}.joblib"
+FOLDS = "folds.json"
+INNER_VAL = 0.15 / 0.85           # the deployed bundle's validation share of its training objects (split_objects 0.70 / 0.15)
+TEMPER_GRID = "0.7,0.85,1,1.25,1.5,2,3"
 
 
 def load_rows(path: str) -> list[dict]:
@@ -125,18 +134,85 @@ def main(argv: list[str] | None = None) -> dict:
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--n-belief", type=int, default=32)
     ap.add_argument("--features", choices=("true", "nominal"), default="true")
+    ap.add_argument("--folds", type=int, default=None, help="cross-fit: K object folds, one bundle per fold (needs --corpus)")
+    ap.add_argument("--temper-grid", default=TEMPER_GRID, help="with --folds: the tempers each fold chooses from")
     a = ap.parse_args(argv)
     if not a.corpus and not a.probe_corpus:
         ap.error("give --corpus, --probe-corpus, or both")
+    if a.folds is not None:
+        if not a.corpus or a.folds < 2:
+            ap.error("--folds needs --corpus and at least 2 folds")
+        return crossfit(a)
     out = train_bundle(a) if a.corpus else {"split": bundle_split(a.out_dir)}
     if a.probe_corpus:
         out["probes"] = fit_probes(a.probe_corpus, a.out_dir, out["split"], a.seed)
     return out
 
 
-def train_bundle(a: argparse.Namespace) -> dict:
-    """The classifier, the hazard model and the readout model on ``a.corpus``; metrics and manifest."""
+def fold_assignment(objects, k: int, seed: int) -> dict[str, int]:
+    """Object -> fold in 0..k-1: a seeded shuffle of the sorted ids, dealt round-robin (sizes differ by at most one)."""
+    order = sorted(objects)
+    np.random.default_rng(seed).shuffle(order)
+    return {o: i % k for i, o in enumerate(order)}
+
+
+def inner_split(objects, seed, val_fraction: float = INNER_VAL) -> dict[str, list[str]]:
+    """Training and validation objects of an outer training fold (a seeded shuffle; at least one validation object)."""
+    order = sorted(objects)
+    np.random.default_rng(seed).shuffle(order)
+    n_val = max(1, int(round(val_fraction * len(order))))
+    return {"train": sorted(order[n_val:]), "val": sorted(order[:n_val])}
+
+
+def fold_tempers(bundle: str, a: argparse.Namespace) -> dict:
+    """Task 4's rule on the bundle's validation objects: the readout temper (one update per corpus row) and
+    the probe temper (scene A: the push, then the weigh); posterior_check writes them into the manifest."""
+    from robots.mujoco_lab import posterior_check
+
+    man = json.load(open(os.path.join(bundle, MANIFEST)))
+    out = {}
+    common = ["--bundle", bundle, "--split", "val", "--temper-grid", a.temper_grid, "--choose-on", "val", "--seed", str(a.seed)]
+    if man.get("readout_model"):
+        r = posterior_check.main(common + ["--out", os.path.join(bundle, "posterior_check.json")])
+        out["readout"] = {"temper": r["temper"], "feasible": r["feasible"]}
+    if man.get("probe_models"):
+        r = posterior_check.main(common + ["--probes", "A", "--out", os.path.join(bundle, "posterior_check_probes_A.json")])
+        out["probe"] = {"temper": r["temper"], "feasible": r["feasible"]}
+    return out
+
+
+def crossfit(a: argparse.Namespace) -> dict:
+    """K fold bundles under ``a.out_dir`` (see the module docstring) and ``folds.json``."""
     rows = [r for path in a.corpus for r in load_rows(path)]
+    objects = sorted({r["object"] for r in rows})
+    if len(objects) < 2 * a.folds:
+        raise SystemExit(f"{len(objects)} objects are too few for {a.folds} folds")
+    folds = fold_assignment(objects, a.folds, a.seed)
+    os.makedirs(a.out_dir, exist_ok=True)
+    with open(os.path.join(a.out_dir, FOLDS), "w") as f:
+        json.dump(folds, f, indent=1)
+    out: dict = {"folds": folds, "bundles": {}}
+    for k in range(a.folds):
+        held = sorted(o for o in objects if folds[o] == k)
+        inner = inner_split([o for o in objects if folds[o] != k], seed=[a.seed, k])
+        split = {"train": inner["train"], "val": inner["val"], "test": held}
+        d = os.path.join(a.out_dir, f"fold_{k}")
+        res = train_bundle(argparse.Namespace(**{**vars(a), "out_dir": d}), split=split, rows=rows)
+        write_manifest(d, fold=k, n_folds=a.folds, folds=os.path.join("..", FOLDS))
+        if a.probe_corpus:
+            fit_probes(a.probe_corpus, d, split, a.seed)
+        out["bundles"][k] = {"dir": d, "kind": res["kind"], "n_train_objects": len(split["train"]), "n_val_objects": len(split["val"]),
+                             "n_test_objects": len(held), "tempers": fold_tempers(d, a)}
+        print(f"fold {k}: {json.dumps(out['bundles'][k])}", file=sys.stderr, flush=True)
+    with open(os.path.join(a.out_dir, "crossfit.json"), "w") as f:
+        json.dump(out, f, indent=1)
+    return out
+
+
+def train_bundle(a: argparse.Namespace, split: dict | None = None, rows: list[dict] | None = None) -> dict:
+    """The classifier, the hazard model and the readout model on ``a.corpus``; metrics and manifest.
+    ``split`` (train / val / test objects) replaces the seeded split_objects; ``rows`` the corpus read."""
+    rows = rows if rows is not None else [r for path in a.corpus for r in load_rows(path)]
     if a.features == "true":
         missing = sum(1 for r in rows if "pose" not in r or "com_obj_true" not in r)
         if missing:
@@ -147,7 +223,7 @@ def train_bundle(a: argparse.Namespace) -> dict:
         from robots.mujoco_lab.prior import lab_prior
 
         prior_fn, prior = lab_prior, "lab_generator"
-    split = split_objects(rows, seed=a.seed)
+    split = split if split is not None else split_objects(rows, seed=a.seed)
     tr, va = rows_of(rows, split["train"]), rows_of(rows, split["val"])
     os.makedirs(a.out_dir, exist_ok=True)
     t0 = time.time()

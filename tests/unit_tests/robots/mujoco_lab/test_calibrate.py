@@ -66,3 +66,150 @@ def test_threshold_reaches_the_menu(tmp_path):
     res = main(["--metrics", METRICS, "--repeats", "1", "--out", str(tmp_path / "c.json"), "--objects", "ycb__banana", "--seed", "2",
                 "--follow-recommendation", "--threshold", "0.0"])
     assert res["n"] == 1 and res["n_executed"] == 1 and res["abstained"] == 0 and res["recommendation_decline_rate"] == 0.0
+
+
+# ---------------------------------------------------------------- cross-fitted and deployment calibration (milestone 2, task 8)
+import numpy as np  # noqa: E402
+
+from rpent.skills.pick_place.protocol import OUTCOMES  # noqa: E402
+
+BUNDLE = os.path.normpath(os.path.join(os.path.dirname(METRICS), "m2"))
+needs_bundle = pytest.mark.skipif(not os.path.exists(os.path.join(BUNDLE, "success_model.joblib")), reason="the m2 bundle is not built")
+
+
+def _stub_fold(root, k, train, val, test):
+    """A fold directory: the deployed bundle's model files, with a metrics split that holds out ``test``."""
+    d = root / f"fold_{k}"
+    d.mkdir()
+    man = json.load(open(os.path.join(BUNDLE, "manifest.json")))
+    for f in os.listdir(BUNDLE):
+        if f.endswith(".joblib") or f == man.get("readout_model"):
+            os.symlink(os.path.join(BUNDLE, f), d / f)
+    metrics = json.load(open(os.path.join(BUNDLE, man["metrics"])))
+    metrics["split"] = {"train": train, "val": val, "test": test}
+    (d / man["metrics"]).write_text(json.dumps(metrics))
+    (d / "manifest.json").write_text(json.dumps(dict(man, fold=k)))
+    return d
+
+
+@needs_bundle
+def test_crossfit_uses_the_fold_that_excludes_the_object(tmp_path):
+    from robots.mujoco_lab.calibrate import main
+
+    cf = tmp_path / "folds"
+    cf.mkdir()
+    _stub_fold(cf, 0, ["ycb__brick", "ycb__mug"], ["ycb__clamp"], ["ycb__banana"])
+    _stub_fold(cf, 1, ["ycb__banana", "ycb__mug"], ["ycb__clamp"], ["ycb__brick"])
+    (cf / "folds.json").write_text(json.dumps({"ycb__banana": 0, "ycb__brick": 1}))
+    args = ["--crossfit", str(cf), "--protocol", "commit", "--repeats", "1", "--seed", "1", "--coverage-sims", "0",
+            "--out", str(tmp_path / "c.json")]
+    res = main(args)
+    assert res["objects"] == ["ycb__banana", "ycb__brick"] and res["n"] == 2 and res["errors"] == 0
+    assert {r["object"]: r["fold"] for r in res["rows"]} == {"ycb__banana": 0, "ycb__brick": 1}
+    assert all(r["bundle"] == str(cf / f"fold_{r['fold']}") for r in res["rows"])
+    (cf / "folds.json").write_text(json.dumps({"ycb__banana": 1, "ycb__brick": 0}))      # each object in the fold that trained on it
+    with pytest.raises(SystemExit, match="trained on"):
+        main(args)
+
+
+@needs_bundle
+def test_protocols_are_paired_by_case(tmp_path):
+    from robots.mujoco_lab.calibrate import main
+
+    common = ["--bundle", BUNDLE, "--objects", "ycb__banana,ycb__brick", "--repeats", "2", "--seed", "3", "--coverage-sims", "0"]
+    a = main(common + ["--protocol", "commit", "--out", str(tmp_path / "a.json")])
+    b = main(common + ["--protocol", "repair", "--out", str(tmp_path / "b.json")])
+
+    def key(r):
+        return r["object"], r["idx"], r["destination"], json.dumps(r["theta"], sort_keys=True), r["com_end"]
+
+    assert len(a["rows"]) == 4 and [key(r) for r in a["rows"]] == [key(r) for r in b["rows"]]
+    assert len({json.dumps(r["theta"], sort_keys=True) for r in a["rows"]}) == 4             # one draw per case
+    assert all(r["executed"] for r in a["rows"])                                            # the best row runs whatever the recommendation
+    first = [(r["attempts"][0]["option"], r["attempts"][0]["outcome"]) for r in a["rows"]]
+    assert first == [(r["attempts"][0]["option"], r["attempts"][0]["outcome"]) for r in b["rows"]]
+    assert a["protocol"] == "commit" and b["protocol"] == "repair"
+    assert b["second_attempt"]["n"] == sum(len(r["attempts"]) == 2 for r in b["rows"])
+    cmp = main(["--compare", str(tmp_path / "b.json"), str(tmp_path / "a.json"), "--out", str(tmp_path / "cmp.json")])
+    assert cmp["n_paired"] == 4
+    assert cmp["realized_cost"]["diff"] == pytest.approx(b["realized_cost"]["mean"] - a["realized_cost"]["mean"])
+
+
+def test_every_case_is_kept_for_the_cost():
+    """A thrown probe and an unreachable object after a failed attempt end their cases with their cost."""
+    from robots.mujoco_lab.calibrate import realized_cost, run_protocol
+    from rpent.skills.pick_place.costs import COST, TIME_COST_PER_S
+    from rpent.skills.pick_place.probes import PROBE_SECONDS
+    from tests.unit_tests.skills.probe_stubs import PerfectPush
+    from tests.unit_tests.skills.test_tools import _FallEnv, _ProbeEnv, _prims, _probe_prims, _push
+
+    env = _ProbeEnv(probes=[_push(thrown=True)])
+    thrown = run_protocol(_probe_prims(env, push=PerfectPush()), "probe_first", "table_centre", np.random.default_rng(0))
+    assert thrown["ended"] == "thrown" and thrown["attempts"] == [] and env.calls == []
+    assert [p["probe"] for p in thrown["probes"]] == ["push"] and thrown["probes"][0]["thrown"] is True
+    assert thrown["cost"] == pytest.approx(TIME_COST_PER_S * PROBE_SECONDS["push"] + COST["dropped_high"])
+    fall = run_protocol(_prims(env=_FallEnv()), "repair", "bin", np.random.default_rng(0))
+    assert fall["ended"] == "unreachable" and [t["outcome"] for t in fall["attempts"]] == ["dropped_high"]
+    assert fall["cost"] == pytest.approx(COST["dropped_high"] + TIME_COST_PER_S * fall["attempts"][0]["cost_s"])
+    rows = [dict(thrown, object="a", idx=0), dict(fall, object="b", idx=0), {"object": "c", "idx": 0, "error": "boom"}]
+    rc = realized_cost(rows, np.random.default_rng(0))
+    assert rc["n"] == 2 and rc["n_errors"] == 1 and rc["mean"] == pytest.approx((thrown["cost"] + fall["cost"]) / 2)
+    assert rc["by_end"]["thrown"]["n"] == 1 and rc["by_end"]["unreachable"]["n"] == 1
+
+
+def test_probe_first_runs_the_recommended_probe_then_the_best_row():
+    from robots.mujoco_lab.calibrate import run_protocol
+    from rpent.skills.pick_place.costs import TIME_COST_PER_S
+    from rpent.skills.pick_place.probes import PROBE_SECONDS
+    from tests.unit_tests.skills.probe_stubs import FlatWeigh, PerfectPush
+    from tests.unit_tests.skills.test_tools import _ProbeEnv, _probe_prims, _push
+
+    env = _ProbeEnv(results=[("placed_stable", {})], probes=[_push(high=1.0)])
+    case = run_protocol(_probe_prims(env, push=PerfectPush(), weigh=FlatWeigh()), "probe_first", "table_centre", np.random.default_rng(0))
+    assert [p["probe"] for p in case["probes"]] == ["push"] and case["probes"][0]["declared"]["p_kind"]["slid"] == pytest.approx(1.0)
+    assert [(t["option"], t["outcome"]) for t in case["attempts"]] == [("firm_grip", "placed_stable")] and case["ended"] == "placed"
+    assert case["cost"] == pytest.approx(TIME_COST_PER_S * (PROBE_SECONDS["push"] + case["attempts"][0]["cost_s"]))
+
+
+def test_random_row_draws_among_the_same_destination_rows():
+    from robots.mujoco_lab.calibrate import run_protocol
+    from rpent.skills.pick_place.tools import assess_pick
+    from tests.unit_tests.skills.test_tools import _prims
+
+    menu = assess_pick(object="mug", destination="table_centre", primitives=_prims(), store={}).data["options"]
+    allowed = {o["id"] for o in menu if o["kind"] in ("commit", "lower_risk") and o["action"]["destination"] == "table_centre"}
+    seen = {run_protocol(_prims(), "random_row", "table_centre", np.random.default_rng(s))["attempts"][0]["option"] for s in range(12)}
+    assert seen <= allowed and len(seen) > 1
+
+
+def _att(obj, fold, p, label):
+    P = {k: 0.0 for k in OUTCOMES}
+    P.update(placed_stable=p, not_lifted=0.6 * (1 - p), dropped_low=0.4 * (1 - p))
+    return {"object": obj, "fold": fold, "declared": {"p": P}, "label": label}
+
+
+def test_nested_map_is_fitted_without_the_held_out_fold():
+    from robots.mujoco_lab.calibrate import nested_isotonic
+
+    rows = [_att(f"a{i}", 0, 0.8, "not_lifted") for i in range(20)] + [_att(f"b{i}", 1, 0.8, "placed_stable") for i in range(20)]
+    preds = nested_isotonic(rows)
+    assert all(x.p["placed_stable"] == pytest.approx(1.0) for x in preds[:20])        # fold 0: the map of fold 1 (always placed)
+    assert all(x.p["placed_stable"] == pytest.approx(0.0) for x in preds[20:])
+    assert preds[20].p["not_lifted"] == pytest.approx(0.6) and preds[20].p["dropped_low"] == pytest.approx(0.4)   # rescaled to 1 - p'
+    assert all(sum(x.p.values()) == pytest.approx(1.0) for x in preds)
+
+
+def test_compare_resamples_objects_jointly():
+    from robots.mujoco_lab.calibrate import compare
+
+    def case(obj, idx, cost, label):
+        return {"object": obj, "idx": idx, "cost": cost, "ended": "placed", "executed": True,
+                "attempts": [dict(_att(obj, 0, 0.5, label), cost=cost)]}
+
+    A = [case(f"o{i}", j, 1.0 + 0.1 * i, "placed_stable" if j else "not_lifted") for i in range(10) for j in range(3)]
+    B = [case(r["object"], r["idx"], r["cost"] - 0.5, "not_lifted") for r in A if (r["object"], r["idx"]) != ("o9", 2)]
+    out = compare({"protocol": "probe_first", "rows": A}, {"protocol": "commit", "rows": B}, np.random.default_rng(0))
+    assert out["n_paired"] == 29 and out["unpaired"] == {"a_only": 1, "b_only": 0} and out["n_objects"] == 10
+    assert out["realized_cost"]["diff"] == pytest.approx(0.5)
+    assert out["realized_cost"]["ci95_object_bootstrap"] == pytest.approx([0.5, 0.5])
+    assert {"a", "b", "diff", "ci95_object_bootstrap"} <= set(out["ece_first_attempt"])

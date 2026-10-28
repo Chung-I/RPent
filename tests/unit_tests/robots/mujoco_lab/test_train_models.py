@@ -69,3 +69,25 @@ def test_train_models_on_true_features(tmp_path):
     out = main(["--corpus", str(corpus), "--out-dir", str(tmp_path / "m2"), "--n-belief", "4"])
     assert out["features"] == "true" and out["prior"] == "lab_generator"
     assert out["classifier"]["features"] == "true" and out["classifier"]["belief"]["n"] == out["n_val"]
+
+
+def test_train_models_folds_hold_out_each_fold(tmp_path):
+    """--folds K: one bundle per fold, trained and tuned on the other folds' objects (an inner split)."""
+    from robots.mujoco_lab.train_models import main
+    from tests.unit_tests.skills.synthetic import synthetic_rows, with_pose
+
+    corpus = tmp_path / "c.jsonl"
+    _write(with_pose(synthetic_rows(300)), corpus)
+    out = main(["--corpus", str(corpus), "--out-dir", str(tmp_path / "folds"), "--folds", "3", "--n-belief", "4"])
+    folds = json.load(open(tmp_path / "folds" / "folds.json"))
+    objects = {f"o{i}" for i in range(30)}
+    assert set(folds) == objects and sorted(list(folds.values()).count(k) for k in range(3)) == [10, 10, 10]
+    for k in range(3):
+        d = tmp_path / "folds" / f"fold_{k}"
+        man = json.load(open(d / "manifest.json"))
+        split = json.load(open(d / man["metrics"]))["split"]
+        held = {o for o, f in folds.items() if f == k}
+        assert set(split["test"]) == held and not (set(split["train"]) | set(split["val"])) & held
+        assert set(split["train"]) | set(split["val"]) | held == objects and not set(split["train"]) & set(split["val"])
+        assert man["fold"] == k and len(split["val"]) >= 1
+    assert out["folds"] == folds
