@@ -109,6 +109,7 @@ def rollout_row(env, object_id: str, idx: int, seed: int, use_fixtures: bool = F
     truth = env.truth()
     loc = env.locate("object")
     g = env.geometry()
+    pose = env.proposal_pose(prop)                      # before the move: the pose the action was planned in
     feats = extract(g, np.asarray(prop.point), prop.yaw, truth["mass"], truth["mu"], act["force"], theta["v_lift"],
                     act["v_transport"], act["destination"], act["release_height"])
     r = env.execute(prop, act["force"], theta["v_lift"], act["v_transport"], act["destination"], act["release_height"])
@@ -141,6 +142,9 @@ def rollout_row(env, object_id: str, idx: int, seed: int, use_fixtures: bool = F
         "geometry": {"base_extent": g.base_extent, "com_height": g.com_height, "footprint_half_width": g.footprint_half_width,
                      "length": g.length, "volume": loc["volume"], "material": loc["material"], "hollow": loc["hollow"]},
         "features": feats,
+        "pose": pose,
+        "com_obj_true": truth["com_obj"],
+        "readouts": r.readouts,
     }
 
 

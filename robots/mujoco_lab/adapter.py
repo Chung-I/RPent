@@ -34,6 +34,7 @@ import numpy as np
 
 from rpent.skills.pick_place.destinations import DESTINATIONS, OBJECT_REST_XY, PRIMITIVE_IDS, has_surface, is_mesh, release_height
 from robots.mujoco_lab.labels import RISE_M, Final, label_rollout
+from robots.mujoco_lab.readouts import summarize
 from rpent.skills.pick_place.features import Geometry
 from rpent.skills.pick_place.protocol import OUTCOMES  # noqa: F401  (label vocabulary)
 
@@ -136,6 +137,7 @@ class Rollout:
     release: dict[str, Any] | None
     planned: list[Segment]
     trace: list[dict[str, Any]] = field(default_factory=list)
+    readouts: dict[str, Any] = field(default_factory=dict)
 
 
 def _steps(distance: float, speed: float, hz: float) -> int:
@@ -234,10 +236,15 @@ class MuJoCoLabEnv:
         self.sim.settle(0.2)
         self.obj, self.props, self.theta, self.com_end = o, props, th, com_end
         self.rng = np.random.default_rng(seed)
+        self._refresh_baselines()
+        self.episode += 1
+
+    def _refresh_baselines(self) -> None:
+        """The rest pose an attempt is planned and labelled against: the up axis, the lowest point
+        and the CoM height, from the current state (after a fall or a push, not the reset pose)."""
         self.up0 = self.sim.obj_mat()[:, 2].copy()
         self.rest_low_z = self.sim.obj_low_z()
         self.rest_com_height = float(self.sim.d.subtree_com[self.sim.obj][2] - self.rest_low_z)
-        self.episode += 1
 
     def _need(self) -> None:
         if self.sim is None:
@@ -276,6 +283,27 @@ class MuJoCoLabEnv:
                     out[k] += float(abs(f[0]))
         return out
 
+    def _pad_hull_forces(self) -> tuple[float, float]:
+        """(vertical force on the object from both pads, normal force), pad-hull contacts only
+        (the t3_probes.pad_forces formula; mj_contactForce only reads)."""
+        import mujoco
+
+        sim = self.sim
+        f = np.zeros(6)
+        hull = set(sim.hull_ids)
+        fz = fn = 0.0
+        for i in range(sim.d.ncon):
+            c = sim.d.contact[i]
+            pads = (sim.pad_l, sim.pad_r)
+            if c.geom1 in pads or c.geom2 in pads:
+                other = c.geom2 if c.geom1 in pads else c.geom1
+                if other in hull:
+                    mujoco.mj_contactForce(sim.m, sim.d, i, f)
+                    fw = c.frame.reshape(3, 3).T @ f[:3]
+                    fz += abs(float(fw[2]))
+                    fn += abs(float(f[0]))
+        return fz, fn
+
     def locate(self, prompt: str) -> dict[str, Any] | None:
         self._need()
         o, props = self.obj, self.props
@@ -305,7 +333,28 @@ class MuJoCoLabEnv:
         ax, lo, L = t3.pivot_axis(self.obj, self.props)
         com_obj = sim.obj_mat().T @ (com - sim.obj_pos())
         com_s = float(((com_obj - np.array(self.props["centre"])) @ ax - lo) / L)
-        return {"mass": mass, "mu": float(self.theta["mu"]), "com_s": com_s, "com": com.tolist(), "theta": dict(self.theta)}
+        return {"mass": mass, "mu": float(self.theta["mu"]), "com_s": com_s, "com": com.tolist(), "com_obj": com_obj.tolist(),
+                "theta": dict(self.theta)}
+
+    def pose_info(self) -> dict[str, Any]:
+        """The object's current pose and what a CoM hypothesis needs (object frame, nominal values)."""
+        self._need()
+        sim, t3 = self.sim, self.s["t3_make"]
+        ax, lo, L = t3.pivot_axis(self.obj, self.props)
+        return {
+            "R": sim.obj_mat().ravel().tolist(),
+            "p": sim.obj_pos().tolist(),
+            "low_z": float(sim.obj_low_z()),
+            "base_extent": float(self.geometry().base_extent),
+            "length": float(self.props["length"]),
+            "com_obj_nominal": [float(x) for x in self.props["com"]],
+            "pivot": {"centre": [float(x) for x in self.props["centre"]], "axis": [float(x) for x in ax], "lo": float(lo), "L": float(L)},
+            "nominal_mass": float(self.props["mass"]),
+        }
+
+    def proposal_pose(self, proposal: Proposal) -> dict[str, Any]:
+        """pose_info plus the pinch point and the hand yaw of one proposal."""
+        return {**self.pose_info(), "pt": [float(x) for x in proposal.point], "yaw": float(proposal.yaw)}
 
     def hull_faces_world(self) -> tuple[np.ndarray, np.ndarray]:
         self._need()
@@ -441,9 +490,10 @@ class MuJoCoLabEnv:
         hz = sc.CTRL_HZ
         pt = np.asarray(proposal.point, dtype=float)
         hand_z0 = gr.hand_start_z(pt)
-        low_off = self.rest_low_z - hand_z0           # object's lowest point relative to the hand (held)
+        rest_low_z = self.sim.obj_low_z()             # the current rest: a plan after a fall starts from the new pose
+        low_off = rest_low_z - hand_z0                # object's lowest point relative to the hand (held)
         surf0, _ = self._surface_below(pt[:2])
-        z_rest = self.rest_low_z - surf0
+        z_rest = rest_low_z - surf0
         dxy = np.asarray(dest["xy"], dtype=float) - pt[:2]
         surf_d, has_d = self._surface_below(np.asarray(dest["xy"]))
         z_hand_top = hand_z0 + LIFT_H
@@ -472,6 +522,7 @@ class MuJoCoLabEnv:
         self._need()
         sc, gr = self.s["scene"], self.s["grasp"]
         dest = self._dest(destination)
+        self._refresh_baselines()
         planned = self.plan_trajectory(proposal, v_lift, v_transport, destination, release_height)
         sim = self.sim
         hz = sc.CTRL_HZ
@@ -479,6 +530,8 @@ class MuJoCoLabEnv:
         p0z = sim.obj_pos()[2]
         R0 = sim.obj_mat().copy()
         trace: list[dict[str, Any]] = []
+        pitch_of = self._pitch_meter(pt, proposal.yaw)
+        pitch0: list[float] = []
 
         def on_step(phase: str) -> None:
             pos = sim.obj_pos()
@@ -487,9 +540,14 @@ class MuJoCoLabEnv:
             touching, pads = sim.contacts()
             surf, has = self._surface_below(pos[:2])
             ang = float(np.degrees(np.arccos(np.clip(((sim.obj_mat() @ R0.T).trace() - 1) / 2, -1, 1))))
+            fz, fn = self._pad_hull_forces()
+            pitch = pitch_of()
+            if not pitch0:
+                pitch0.append(pitch)
             trace.append({"t": len(trace) / hz, "phase": phase, "z": float(pos[2] - p0z), "low_z": float(low),
                           "surface_z_below": surf, "has_surface": has, "speed": float(np.linalg.norm(lin)),
-                          "pads": list(pads), "zone": sim.zone_of(touching), "rot_deg": ang})
+                          "pads": list(pads), "zone": sim.zone_of(touching), "rot_deg": ang,
+                          "fz": fz, "fn": fn, "pitch_ey": float(pitch - pitch0[0])})
 
         out, _, _ = gr.run_grasp(sim, pt, proposal.yaw, force=force, v_lift=v_lift, lift_h=LIFT_H, hold_s=HOLD_S,
                                  on_step=on_step)
@@ -523,7 +581,20 @@ class MuJoCoLabEnv:
             for _ in range(int(RETREAT_SETTLE_S * hz)):
                 sim.step_ctrl()
                 on_step("retreat")
-        return self._label(trace, rose, dest, release, planned)
+        return self._label(trace, rose, dest, release, planned, v_lift)
+
+    def _pitch_meter(self, pt: np.ndarray, yaw: float):
+        """A function giving (z+ - z-) / 0.10 for the object-fixed points pt ± 0.05 ey (ey: the hand's
+        horizontal axis across the pinch), positive when the +ey side is higher."""
+        sim = self.sim
+        ey = np.array([-np.sin(yaw), np.cos(yaw), 0.0])
+        R0, p0 = sim.obj_mat(), sim.obj_pos()
+        qp, qm = R0.T @ (pt + 0.05 * ey - p0), R0.T @ (pt - 0.05 * ey - p0)
+
+        def pitch() -> float:
+            R, p = sim.obj_mat(), sim.obj_pos()
+            return float(((R @ qp + p)[2] - (R @ qm + p)[2]) / 0.10)
+        return pitch
 
     # ----------------------------------------------------------------- labels
     def _tipped(self, release: dict[str, Any], low: float) -> bool:
@@ -536,7 +607,7 @@ class MuJoCoLabEnv:
         com_h = float(self.sim.d.subtree_com[self.sim.obj][2] - low)
         return abs(com_h - self.rest_com_height) > 0.2 * max(self.rest_com_height, 1e-3)
 
-    def _label(self, trace, rose, dest, release, planned) -> Rollout:
+    def _label(self, trace, rose, dest, release, planned, v_lift: float = 0.0) -> Rollout:
         sim = self.sim
         touching, pads = sim.contacts()
         low = sim.obj_low_z()
@@ -545,4 +616,4 @@ class MuJoCoLabEnv:
                       com_xy=sim.d.subtree_com[sim.obj][:2].tolist())
         out = label_rollout(trace, dest, release, final)
         return Rollout(out["label"], out["max_z"], out["drop_z"], out["loss_phase"], out["loss_step"], out["loss_t"],
-                       out["loss_speed"], final.zone, release, planned, trace)
+                       out["loss_speed"], final.zone, release, planned, trace, summarize(trace, out, v_lift))

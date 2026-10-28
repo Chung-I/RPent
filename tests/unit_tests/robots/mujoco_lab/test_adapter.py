@@ -196,3 +196,54 @@ def test_geometry_com_is_nominal_not_the_hidden_shift():
     truth = env.truth()
     assert np.linalg.norm(body_plain - body_shifted) < 1e-6                        # the hidden shift is not in the geometry
     assert np.linalg.norm(np.asarray(truth["com"]) - env.geometry().com) > 0.02    # but it is in the truth
+
+
+def test_trace_records_pad_forces_during_the_hold():
+    env = _env()
+    env.reset(SHORT, {"mu": 0.8, "mass_scale": 1.0, "com_s": None, "v_lift": 0.15}, seed=0)
+    f_std = env.s["t3_make"].std_force(env.nominal_mass())
+    r = env.execute(env.proposals()[1], force=f_std, v_lift=0.15, v_transport=0.5, destination="table_centre")
+    assert all({"fz", "fn", "pitch_ey"} <= set(x) for x in r.trace)
+    hold = [x["fz"] for x in r.trace if x["phase"] == "hold"]
+    m = env.truth()["mass"]
+    assert hold and 0.8 <= float(np.median(hold)) / (m * 9.81) <= 1.25
+    assert r.readouts["rose"] is True and r.readouts["fz_hold_n"] is not None
+
+
+def _roll_about_long_axis(env, deg=90.0):
+    """Turn the object onto another face (a knock-over without the randomness of a fall) and let it settle."""
+    import mujoco
+
+    sim = env.sim
+    R = sim.obj_mat()
+    a = R @ np.asarray(env.props["axis"], dtype=float)
+    a /= np.linalg.norm(a)
+    K = np.array([[0, -a[2], a[1]], [a[2], 0, -a[0]], [-a[1], a[0], 0]])
+    th = np.radians(deg)
+    Rn = (np.eye(3) + np.sin(th) * K + (1 - np.cos(th)) * K @ K) @ R
+    q = np.zeros(4)
+    mujoco.mju_mat2Quat(q, Rn.ravel())
+    adr, dof = sim.m.joint("obj_free").qposadr[0], sim.m.joint("obj_free").dofadr[0]
+    sim.d.qpos[adr + 3:adr + 7] = q
+    sim.d.qvel[dof:dof + 6] = 0
+    mujoco.mj_forward(sim.m, sim.d)
+    sim.d.qpos[adr + 2] += env.s["scene"].TABLE_TOP + 0.003 - sim.obj_low_z()
+    mujoco.mj_forward(sim.m, sim.d)
+    sim.settle(1.5)
+
+
+def test_retry_after_the_object_fell_plans_from_the_new_pose():
+    env = _env()
+    env.reset("ycb__spam_can", {"mu": 0.8, "mass_scale": 1.0, "com_s": None, "v_lift": 0.15}, seed=0)
+    sim = env.sim
+    up0, h0 = sim.obj_mat()[:, 2].copy(), float(sim.d.subtree_com[sim.obj][2] - sim.obj_low_z())
+    _roll_about_long_axis(env)
+    up1, h1 = sim.obj_mat()[:, 2], float(sim.d.subtree_com[sim.obj][2] - sim.obj_low_z())
+    assert np.degrees(np.arccos(np.clip(up0 @ up1, -1, 1))) > 60 and abs(h1 - h0) > 0.2 * h0   # another face, another CoM height
+    p = env.proposals()[1]
+    lift = next(s for s in env.plan_trajectory(p, 0.15, 0.5, "table_centre") if s.phase == "lift")
+    surf, _ = env._surface_below(np.asarray(p.point[:2]))
+    assert abs(lift.z_start - (sim.obj_low_z() - surf)) < 0.005
+    f_std = env.s["t3_make"].std_force(env.nominal_mass())
+    r = env.execute(p, force=2 * f_std, v_lift=0.15, v_transport=0.5, destination="table_centre")
+    assert r.label == "placed_stable"                                           # not "tipped" against the old face

@@ -25,7 +25,7 @@ pytestmark = pytest.mark.skipif(not os.environ.get("RPENT_MUJOCO_SIM_DIR"), reas
 ROW_KEYS = {
     "key", "object", "theta", "com_end", "truth", "seed", "destination", "s", "force", "v_lift",
     "v_transport", "release_height", "width", "label", "max_z", "drop_z", "loss_phase", "loss_step", "fixture",
-    "loss_t", "loss_speed", "zone", "release", "planned", "geometry", "features",
+    "loss_t", "loss_speed", "zone", "release", "planned", "geometry", "features", "pose", "com_obj_true", "readouts",
 }
 
 
@@ -70,3 +70,18 @@ def test_draws_differ_across_objects_at_the_same_index():
     assert a != b
     assert draw_action(case_rng(0, "ycb__banana", 3), 10.0) != draw_action(case_rng(0, "ycb__mug", 3), 10.0)
     assert draw_theta(case_rng(0, "ycb__banana", 3), 0.2)[0] == a       # deterministic
+
+
+def test_corpus_row_has_pose_readouts_and_true_com():
+    from robots.mujoco_lab.adapter import MuJoCoLabEnv
+    from robots.mujoco_lab.corpus import rollout_row
+
+    env = MuJoCoLabEnv()
+    row = rollout_row(env, "ycb__banana", 1, 0)
+    assert {"pose", "com_obj_true", "readouts"} <= set(row)
+    assert len(row["pose"]["R"]) == 9 and len(row["com_obj_true"]) == 3 and {"pivot", "nominal_mass", "pt", "yaw"} <= set(row["pose"])
+    assert row["readouts"]["rose"] == (row["label"] != "not_lifted")
+    env.reset("ycb__banana", row["theta"], seed=row["seed"] * 1000 + 1, com_end=row["com_end"], fixture=row["fixture"])
+    prop = next(p for p in env.proposals() if abs(p.s - row["s"]) < 1e-9)
+    assert np.allclose(row["pose"]["pt"], prop.point) and abs(row["pose"]["yaw"] - prop.yaw) < 1e-9
+    assert np.allclose(row["com_obj_true"], env.truth()["com_obj"])
