@@ -18,7 +18,14 @@
 For each corpus row of the chosen objects: the lab prior's particles (the generator, so the truth
 is a prior draw), one update with the row's outcome and readouts (the bundle's outcome model and
 readout model), then the 80 % intervals of mass, friction and the CoM fraction along the pivot.
-Coverage is reported overall and by label, beside the prior's. With a temper grid and
+Coverage is reported overall and by label, beside the prior's.
+
+The truth is the row's theta in the prior's hypothesis space (``generator_truth``): the mass
+nominal x scale x (1 + f), the friction drawn, and the generator's CoM fraction. The particles live
+in that space. The sim's CoM differs from the generator's by a model error (corpus v3: median 4e-4,
+max 0.031 of the pivot extent), and the prior puts about 0.7 of its weight on one point (the
+unshifted CoM), so a posterior on that point has a zero-width interval that a sub-millimetre error
+falls outside. Coverage against the sim's values (``sim_truth``) is reported beside it. With a temper grid and
 ``--choose-on``, the temper whose coverage of all three lies in [0.75, 0.85] and is closest to 0.80
 (worst of the three; ties: the smaller temper) goes into the bundle (manifest ``tempers.readout``);
 when no temper is feasible the bundle keeps 1 and the result says so.
@@ -40,7 +47,7 @@ from typing import Any
 import numpy as np
 
 from robots.mujoco_lab import tracking
-from robots.mujoco_lab.prior import lab_prior
+from robots.mujoco_lab.prior import com_hypothesis, lab_prior
 from robots.mujoco_lab.robot_spec import load_bundle
 from robots.mujoco_lab.train_models import load_rows, write_manifest
 from rpent.skills.pick_place.belief import ParticleBelief
@@ -60,6 +67,21 @@ def true_com_frac(row: dict[str, Any]) -> float:
     return float(((np.asarray(row["com_obj_true"], dtype=float) - c) @ ax - float(pv["lo"])) / float(pv["L"]))
 
 
+def sim_truth(row: dict[str, Any]) -> dict[str, float]:
+    """The sim's values: the row's truth mass and friction, and the CoM fraction of ``com_obj_true``."""
+    return {"mass": float(row["truth"]["mass"]), "mu": float(row["truth"]["mu"]), "com": true_com_frac(row)}
+
+
+def generator_truth(row: dict[str, Any]) -> dict[str, float]:
+    """The row's theta as a point of the prior's space: mass nominal x scale x (1 + f), the friction drawn,
+    the CoM fraction of ``com_hypothesis`` (the particles' arithmetic)."""
+    pose, th = row["pose"], row["theta"]
+    com, f = com_hypothesis(pose["pivot"], pose["com_obj_nominal"], th["com_s"], int(row["com_end"]))
+    pv = pose["pivot"]
+    frac = ((np.asarray(com) - np.asarray(pv["centre"], dtype=float)) @ np.asarray(pv["axis"], dtype=float) - float(pv["lo"])) / float(pv["L"])
+    return {"mass": float(pose["nominal_mass"]) * float(th["mass_scale"]) * (1.0 + f), "mu": float(th["mu"]), "com": float(frac)}
+
+
 def _hits(b: ParticleBelief, truth: dict[str, float]) -> dict[str, bool]:
     return {k: bool(b.quantile(key, 0.1) <= truth[k] <= b.quantile(key, 0.9)) for k, key in KEYS}
 
@@ -69,7 +91,7 @@ def _widths(b: ParticleBelief) -> dict[str, float]:
 
 
 def check_rows(rows: list[dict[str, Any]], bundle: dict[str, Any], grid: list[float], n: int, seed: int) -> list[dict[str, Any]]:
-    """One case per row: the prior's hits and widths, and per temper the posterior's."""
+    """One case per row: the prior's hits and widths, and per temper the posterior's (``*_sim``: against the sim's values)."""
     model, readout = bundle["model"], bundle["readout_model"]
     rng = np.random.default_rng(seed)
     cases = []
@@ -80,12 +102,12 @@ def check_rows(rows: list[dict[str, Any]], bundle: dict[str, Any], grid: list[fl
         P = model.predict_matrix(X, r.get("planned"))[0]
         obs = {"label": r["label"], "readouts": r["readouts"], "force": r["force"]}
         comp, info = readout.components(obs, P, X, a, particle_sides(a, r["pose"]))
-        truth = {"mass": float(r["truth"]["mass"]), "mu": float(r["truth"]["mu"]), "com": true_com_frac(r)}
-        case = {"object": r["object"], "label": r["label"], "info": info, "prior": _hits(b, truth), "prior_width": _widths(b),
-                "post": {}, "post_width": {}}
+        truth, sim = generator_truth(r), sim_truth(r)
+        case = {"object": r["object"], "label": r["label"], "info": info, "prior": _hits(b, truth), "prior_sim": _hits(b, sim),
+                "prior_width": _widths(b), "post": {}, "post_sim": {}, "post_width": {}}
         for t in grid:
             post = b.reweight(readout.combine(comp, t))
-            case["post"][t], case["post_width"][t] = _hits(post, truth), _widths(post)
+            case["post"][t], case["post_sim"][t], case["post_width"][t] = _hits(post, truth), _hits(post, sim), _widths(post)
         cases.append(case)
     return cases
 
@@ -124,7 +146,7 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
     metrics = json.load(open(os.path.join(a.bundle, man["metrics"])))
     paths = metrics["corpus"] if isinstance(metrics["corpus"], list) else [metrics["corpus"]]
     rows = [r for p in paths for r in load_rows(p if os.path.isabs(p) else os.path.join(ROOT, p))]
-    rows = [r for r in rows if r.get("readouts") and "pose" in r and "com_obj_true" in r]
+    rows = [r for r in rows if r.get("readouts") and "pose" in r and "com_obj_true" in r and "com_end" in r]
 
     def rows_for(split: str) -> list[dict[str, Any]]:
         ids = a.objects.split(",") if (a.objects and split == a.split) else metrics["split"][split]
@@ -151,7 +173,8 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
         "n_particles": a.n_particles, "temper": temper, "feasible": feasible, "chosen_on": a.choose_on,
         "mass_cov80": cov["mass"], "mu_cov80": cov["mu"], "com_cov80": cov["com"],
         "acceptance_b": {"bounds": list(COVER), "pass": _inside(cov)},
-        "prior_cov80": coverage([c["prior"] for c in cases]),
+        "prior_cov80": coverage([c["prior"] for c in cases]), "truth": "generator",
+        "sim_truth": {"cov80": coverage([c["post_sim"][temper] for c in cases]), "prior_cov80": coverage([c["prior_sim"] for c in cases])},
         "by_label": {lbl: {"n": len(h), **{f"{k}_cov80": v for k, v in coverage(h).items()}} for lbl, h in sorted(by_label.items())},
         "grid": {str(t): grid_cov[t] for t in grid},
         "width80_median": {"prior": {k: float(np.median([c["prior_width"][k] for c in cases])) for k, _ in KEYS},
@@ -167,9 +190,10 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
     out["wandb"] = tracking.log_run("posterior_check", {"bundle": a.bundle, "split": a.split, "n_particles": a.n_particles,
                                                         "grid": grid, "choose_on": a.choose_on, "seed": a.seed},
                                     {"cov80": cov, "temper": temper, "feasible": feasible, "prior_cov80": out["prior_cov80"],
+                                     "sim_cov80": out["sim_truth"]["cov80"],
                                      "grid": out["grid"], "width80_median": out["width80_median"], "n": len(cases)})
     print(json.dumps({k: out[k] for k in ("n", "temper", "feasible", "mass_cov80", "mu_cov80", "com_cov80", "prior_cov80",
-                                          "acceptance_b", "width80_median", "terms", "seconds")}, indent=1))
+                                          "sim_truth", "acceptance_b", "width80_median", "terms", "seconds")}, indent=1))
     return out
 
 

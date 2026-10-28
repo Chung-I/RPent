@@ -57,6 +57,46 @@ def test_posterior_check_reports_coverage(tiny_bundle, tmp_path):
     assert man["tempers"]["readout"] == out["temper"]
     prims = build_lab(bundle=str(tiny_bundle))
     assert prims.readout_model is not None and prims.readout_model.temper == out["temper"]
+    assert out["truth"] == "generator" and {"cov80", "prior_cov80"} <= set(out["sim_truth"])
+    assert all(0.0 <= out["sim_truth"]["cov80"][k] <= 1.0 for k in ("mass", "mu", "com"))
+
+
+def _row(com_s, end, offset=0.0005):
+    """A synthetic row: pivot along x over [-0.1, 0.1] m, nominal CoM at the centre; the sim's CoM sits
+    ``offset`` m past the generator's along the pivot."""
+    from robots.mujoco_lab.prior import com_hypothesis
+
+    pose = {"pivot": {"centre": [0.0, 0.0, 0.0], "axis": [1.0, 0.0, 0.0], "lo": -0.1, "L": 0.2},
+            "com_obj_nominal": [0.0, 0.0, 0.0], "nominal_mass": 0.4}
+    com, f = com_hypothesis(pose["pivot"], pose["com_obj_nominal"], com_s, end)
+    row = {"pose": pose, "theta": {"mass_scale": 1.5, "mu": 0.4, "com_s": com_s}, "com_end": end,
+           "com_obj_true": [com[0] + offset, com[1], com[2]], "truth": {"mass": 0.4 * 1.5 * (1 + f) * 1.001, "mu": 0.4}}
+    return row, f
+
+
+def test_generator_truth_is_the_row_theta_in_the_prior_space():
+    from robots.mujoco_lab.posterior_check import generator_truth, sim_truth
+
+    row, f = _row(0.7, 1)
+    g, s = generator_truth(row), sim_truth(row)
+    assert f > 0 and g["mass"] == pytest.approx(0.4 * 1.5 * (1 + f), rel=1e-12) and g["mu"] == 0.4
+    assert g["com"] == pytest.approx(0.7, abs=1e-12) and s["com"] - g["com"] == pytest.approx(0.0005 / 0.2, abs=1e-12)
+    assert s["mass"] == pytest.approx(g["mass"] * 1.001, rel=1e-12)
+
+
+def test_an_atom_posterior_covers_the_generator_truth_not_the_sim_truth():
+    """All weight on the unshifted hypotheses (f = 0): a zero-width CoM interval at the nominal fraction.
+    The generator's CoM is that point; the sim's sits 0.5 mm away and falls outside."""
+    import numpy as np
+
+    from robots.mujoco_lab.posterior_check import _hits, generator_truth, sim_truth
+    from robots.mujoco_lab.prior import lab_prior
+
+    row, _ = _row(None, 1)
+    b = lab_prior(row["pose"], 2000, np.random.default_rng(0))
+    post = b.reweight(np.where(b.arrays()["f"] == 0, 0.0, -np.inf))
+    assert post.quantile("com_frac", 0.1) == post.quantile("com_frac", 0.9) == pytest.approx(0.5)
+    assert _hits(post, generator_truth(row))["com"] and not _hits(post, sim_truth(row))["com"]
 
 
 def test_rotation_threshold_matches_the_readouts():
