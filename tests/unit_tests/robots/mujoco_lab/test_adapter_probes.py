@@ -108,3 +108,18 @@ def test_push_reads_a_slippery_brick():
     res = env.probe_push()
     t = env.truth()
     assert res.kind == "slid" and 0.5 <= res.reading["f_break"] / (t["mu"] * t["mass"] * G) <= 2.0
+
+
+def test_a_probe_that_leaves_the_object_off_the_table_throws_it():
+    """The mug of calibrate seed 2, case 1: after the push, the weigh flips it onto the left pad and the
+    rising hand carries it 10 cm up. It rests on nothing the skill can reach, so the probe threw it."""
+    from robots.mujoco_lab.adapter import object_props
+    from robots.mujoco_lab.calibrate import case_draw
+
+    env = _env()
+    theta, com_end, _ = case_draw(2, "ycb__mug", 1, object_props("ycb__mug")["mass"])
+    env.reset("ycb__mug", theta, seed=2001, com_end=com_end)
+    assert not env.probe_push().thrown
+    res = _weigh(env)
+    assert not env.locate("object")["reachable"]               # the case: the object hangs on the hand
+    assert res.thrown

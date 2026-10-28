@@ -213,3 +213,22 @@ def test_compare_resamples_objects_jointly():
     assert out["realized_cost"]["diff"] == pytest.approx(0.5)
     assert out["realized_cost"]["ci95_object_bootstrap"] == pytest.approx([0.5, 0.5])
     assert {"a", "b", "diff", "ci95_object_bootstrap"} <= set(out["ece_first_attempt"])
+
+
+def test_probe_all_runs_both_probes_then_the_best_row():
+    """The diagnostic protocol: push, then weigh, whatever the recommendation, then the best row."""
+    from robots.mujoco_lab.calibrate import run_protocol
+    from rpent.skills.pick_place.costs import TIME_COST_PER_S
+    from rpent.skills.pick_place.probes import PROBE_SECONDS, ProbeResult
+    from tests.unit_tests.skills.probe_stubs import FlatWeigh, PerfectPush
+    from tests.unit_tests.skills.test_tools import _ProbeEnv, _probe_prims, _push
+
+    weigh = ProbeResult(probe="weigh", kind="measured", reading={"m_hat": 0.3}, displacement_m=0.0, tilt_deg=0.0, thrown=False, seconds=4.0)
+    env = _ProbeEnv(results=[("placed_stable", {})], probes=[_push(high=1.0), weigh])
+    case = run_protocol(_probe_prims(env, push=PerfectPush(), weigh=FlatWeigh()), "probe_all", "table_centre", np.random.default_rng(0))
+    assert env.probe_calls == ["push", "weigh"] and [p["kind"] for p in case["probes"]] == ["slid", "measured"]
+    assert len(case["attempts"]) == 1 and case["ended"] == "placed"
+    assert case["cost"] == pytest.approx(TIME_COST_PER_S * (PROBE_SECONDS["push"] + PROBE_SECONDS["weigh"] + case["attempts"][0]["cost_s"]))
+    env = _ProbeEnv(probes=[_push(thrown=True)])
+    thrown = run_protocol(_probe_prims(env, push=PerfectPush(), weigh=FlatWeigh()), "probe_all", "table_centre", np.random.default_rng(0))
+    assert env.probe_calls == ["push"] and thrown["ended"] == "thrown" and thrown["attempts"] == []

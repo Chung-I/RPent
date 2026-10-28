@@ -330,7 +330,6 @@ class MuJoCoLabEnv:
         names = {o["id"].lower(), o["name"].lower(), "object", o["name"].lower().replace("_", " ")}
         if p not in names:
             return None
-        zone = self.sim.zone_of(self.sim.contacts()[0])
         return {
             "object_id": o["id"],
             "centroid": self.sim.obj_pos().tolist(),
@@ -338,8 +337,14 @@ class MuJoCoLabEnv:
             "volume": float(sum(h["volume"] for h in props["hulls"])),
             "material": o["material"],
             "hollow": bool(o["hollow"]),
-            "reachable": zone == "table" or zone in self.fixtures_in_scene,     # not on the floor or in the bin
+            "reachable": self._resting(),
         }
+
+    def _resting(self) -> bool:
+        """The object touches the table or a fixture in the scene: not on the floor, in the bin, or held
+        up by the hand alone."""
+        zone = self.sim.zone_of(self.sim.contacts()[0])
+        return zone == "table" or zone in self.fixtures_in_scene
 
     def nominal_mass(self, object_id: str | None = None) -> float:
         """The object's mass at mass_scale 1 (mesh volume times the material density)."""
@@ -656,12 +661,13 @@ class MuJoCoLabEnv:
         return float(np.degrees(np.arccos(np.clip(((self.sim.obj_mat() @ R0.T).trace() - 1) / 2, -1, 1))))
 
     def _probe_cost(self, p_start: np.ndarray, R_start: np.ndarray) -> tuple[float, float, bool]:
-        """(displacement from where the probe started, tilt, thrown: off the table top or > 10 cm away)."""
+        """(displacement from where the probe started, tilt, thrown: off the table top, > 10 cm away, or
+        not resting on the table or a fixture, e.g. carried up on a pad by the rising hand)."""
         sc, sim = self.s["scene"], self.sim
         pos = sim.obj_pos()
         disp = float(np.linalg.norm((pos - p_start)[:2]))
         off = (sim.obj_low_z() < sc.TABLE_TOP - 0.01 or abs(pos[0]) > sc.TABLE_HALF[0] or abs(pos[1]) > sc.TABLE_HALF[1])
-        return disp, self._tilt_from(R_start), bool(off or disp > THROWN_M)
+        return disp, self._tilt_from(R_start), bool(off or disp > THROWN_M or not self._resting())
 
     def _rise_hand(self, yaw: float, steps: list[int]) -> None:
         """The open hand rises RETREAT_M from where it is."""

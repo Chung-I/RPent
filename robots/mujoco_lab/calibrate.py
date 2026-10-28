@@ -25,7 +25,10 @@ protocols are paired case by case), resets the lab, and runs one protocol throug
 * ``repair``: the best row, then, when it did not place the object stably and the object is still in
   reach, the best row of the fresh assessment (the belief after the failure);
 * ``random_row``: a uniformly drawn commit or lower-risk row to the requested destination (the
-  control for the selection effect of executing the best row).
+  control for the selection effect of executing the best row);
+* ``probe_all`` (a diagnostic): the push, then the weigh (each when the menu offers it), whatever the
+  recommendation, then the best row; it scores the probes' declared kinds when the recommendation
+  rarely asks for a probe.
 
 Every assigned case is kept: a thrown probe or an object out of reach ends it with its cost. The
 calibration blocks score the executed attempts (``first_attempt``, and ``second_attempt`` for repair):
@@ -71,7 +74,8 @@ from rpent.skills.pick_place.probes import PROBE_KINDS, PROBE_SECONDS
 from rpent.skills.pick_place.protocol import IRREVERSIBLE, OUTCOMES, Prediction
 from rpent.skills.pick_place.tools import MAX_PROBES, assess_pick, pick_and_place
 
-PROTOCOLS = ("commit", "probe_first", "repair", "random_row")
+PROTOCOLS = ("commit", "probe_first", "repair", "random_row", "probe_all")
+PROBE_ORDER = ("probe_push", "probe_weigh")     # probe_all: the order of scene A of the probe corpus
 CARE = "normal"                   # the realized cost uses the cost table at care normal
 ECE_TARGET = 0.05                 # the plug-in rule's bound on the ECE of P(placed_stable)
 N_BOOT = 2000
@@ -149,19 +153,33 @@ def run_protocol(prims: Any, protocol: str, destination: str, rng: np.random.Gen
     case["recommendation"], case["best_option"] = a.get("recommendation"), a.get("best_option")
     if follow and a.get("recommendation") == "decline":
         return end("abstained")
+    def probe(option_id: str) -> str | None:
+        """Run one probe row; the reason the case ends, or None (``a`` is then the fresh assessment)."""
+        nonlocal a
+        d = call(option_id=option_id)
+        if "error" in d:
+            case["error"] = d["error"]
+            return "error"
+        case["probes"].append(_probe_record(d, prims, care))
+        if d["thrown"]:
+            return "thrown"
+        a = d["assessment"]
+        if "error" in a:
+            case["error"] = a["error"]
+            return "error"
+        return None if a.get("assessed", False) else "unreachable"
+
     if protocol == "probe_first":
         while a.get("recommendation") == "probe" and len(case["probes"]) < max_probes:
-            d = call(option_id=a["recommended_option"])
-            if "error" in d:
-                return end("error", d["error"])
-            case["probes"].append(_probe_record(d, prims, care))
-            if d["thrown"]:
-                return end("thrown")
-            a = d["assessment"]
-            if "error" in a:
-                return end("error", a["error"])
-            if not a.get("assessed", False):
-                return end("unreachable")
+            reason = probe(a["recommended_option"])
+            if reason is not None:
+                return end(reason)
+    if protocol == "probe_all":
+        for option_id in PROBE_ORDER:
+            if any(o["id"] == option_id for o in a["options"]):
+                reason = probe(option_id)
+                if reason is not None:
+                    return end(reason)
     for attempt in range(2 if protocol == "repair" else 1):
         if protocol == "random_row":
             rows = _rows_to(a, destination)
@@ -226,7 +244,7 @@ def run_case(prims: Any, object_id: str, idx: int, seed: int, protocol: str = "c
     first = case["attempts"][0] if case["attempts"] else None
     row.update(executed=first is not None, option=first and first["option"], outcome=first and first["outcome"],
                label=first and first["outcome"], placed_at_requested=first and first["placed_at_requested"],
-               declared=first["declared"] if first else {"p": None}, features=first and first["features"])
+               declared=first["declared"] if first else {"p": None})
     return row
 
 
