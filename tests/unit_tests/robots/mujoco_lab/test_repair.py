@@ -23,7 +23,7 @@ SIM = os.environ.get("RPENT_MUJOCO_SIM_DIR")
 BUNDLE = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "..", "robots", "mujoco_lab", "data", "m2"))
 pytestmark = pytest.mark.skipif(not (SIM and os.path.exists(os.path.join(BUNDLE, "readout_rot.joblib"))),
                                 reason="sim dir or m2 bundle missing")
-THETA = {"mu": 0.15, "mass_scale": 1.0, "com_s": None, "v_lift": 0.15}
+THETA = {"mu": 0.12, "mass_scale": 2.8, "com_s": None, "v_lift": 0.15}
 
 
 def _lab():
@@ -37,11 +37,12 @@ def _row(assessment, rid):
 
 
 def test_failed_attempt_updates_the_belief_and_the_menu():
-    """The brick at mu 0.15 does not lift with commit_std: the posterior friction drops below 0.3 (prior
-    median 0.5) with at least 100 effective particles, and the fresh menu predicts the failure: every
-    row's success falls, commit_std's not_lifted rises, and the recommendation is decline. (Not "the best
-    row is not commit_std": at this truth every row fails and not lifting is the cheapest failure, so
-    commit_std ranks first under the posterior as under the truth.)"""
+    """The brick at mu 0.12 and 2.8 times its mass (5.5 N) does not lift with commit_std (2 mu F = 2.4 N):
+    the posterior friction drops below 0.3 (prior median 0.5) with at least 100 effective particles, and
+    the fresh menu predicts the failure: every row's success falls, commit_std's not_lifted rises, and the
+    recommendation is decline. (Not "the best row is not commit_std": at this truth every row fails, firm
+    grip too, and not lifting is the cheapest failure, so commit_std ranks first under the posterior as
+    under the truth.)"""
     from rpent.skills.pick_place.tools import assess_pick, pick_and_place
 
     prims, store = _lab(), {}

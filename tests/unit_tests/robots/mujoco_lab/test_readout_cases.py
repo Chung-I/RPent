@@ -13,15 +13,16 @@
 # limitations under the License.
 
 
-"""The friction readouts on corpus attempts that read impossible values with end-of-step samples
-over the close and lift (corpus v4 keys, seed 0, no fixtures; needs the sim)."""
+"""The friction readouts and the loss step on corpus attempts that once read impossible values: end-of-step
+samples over the close and lift (corpus v4), a pivot taken for a slide once the hand moved smoothly, and a
+loss in a step over which the pads still carried the object (keys of the corpus draws, seed 0, no fixtures;
+needs the sim)."""
 
 import os
 
 import pytest
 
 pytestmark = pytest.mark.skipif(not os.environ.get("RPENT_MUJOCO_SIM_DIR"), reason="sim dir not set")
-G = 9.81
 
 
 @pytest.fixture(scope="module")
@@ -61,9 +62,10 @@ def test_pads_on_top_give_no_slip_reading(env):
 
 
 def test_a_pivot_gives_no_slip_reading(env):
-    """hammer_1 d77: the head stays on the table while the pads hold the handle and the hammer turns
-    (it read 17.5 N against 2 mu F = 55.6 N)."""
-    r = _row(env, "handal__hammer_1__d77")
+    """potato_masher d57: the masher turns about a table contact 18 cm from the pads, next to its body
+    origin. The origin rose 0.1 mm and the turn stayed under 3 deg for 15 steps, but the object point
+    between the pads rose with the hand (it read 6.4 N against 2 mu F = 31.2 N)."""
+    r = _row(env, "hot3d__potato_masher__d57")
     assert r["label"] == "not_lifted" and r["readouts"]["fz_slip_max_n"] is None
 
 
@@ -74,11 +76,14 @@ def test_a_slide_reads_twice_mu_f(env):
     assert r["readouts"]["fz_slip_max_n"] == pytest.approx(2 * r["truth"]["mu"] * r["force"], rel=0.1)
 
 
-def test_a_drop_in_the_lift_reads_the_carried_weight(env):
-    """lemon1 d36: the end-of-step sample before the loss read -0.61 N; the weight is 1.78 N."""
-    r = _row(env, "fruits_veggies__lemon1__d36")
-    assert r["loss_phase"] == "lift"
-    assert 0.7 <= r["readouts"]["fz_at_loss_n"] / (r["truth"]["mass"] * G) <= 1.3
+def test_a_slide_out_in_the_lift_reads_the_pads_friction(env):
+    """tomato_soup_can d78: the grip limit 2 mu F is 1.11 times the weight, and the speed-up of the 0.8 m/s
+    lift asks 1.41 times. The pads slide up the can at that limit while it rises 3.6 cm, then run off its
+    top. The loss reading, the mean over the last three two-pad steps, is the sliding friction less the
+    exit step (0.74 of 2 mu F; an end-of-step sample before a loss once read -0.61 N, lemon1 d36)."""
+    r = _row(env, "ycb__tomato_soup_can__d78")
+    assert r["label"] == "dropped_low" and r["loss_phase"] == "lift"
+    assert 0.6 <= r["readouts"]["fz_at_loss_n"] / (2 * r["truth"]["mu"] * r["force"]) <= 1.1
 
 
 def test_a_loss_is_a_step_in_which_no_pad_pressed(env):

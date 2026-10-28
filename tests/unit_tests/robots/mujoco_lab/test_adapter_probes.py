@@ -111,15 +111,17 @@ def test_push_reads_a_slippery_brick():
 
 
 def test_a_probe_that_leaves_the_object_off_the_table_throws_it():
-    """The mug of calibrate seed 2, case 1: after the push, the weigh flips it onto the left pad and the
-    rising hand carries it 10 cm up. It rests on nothing the skill can reach, so the probe threw it."""
+    """macaroni_and_cheese, probe corpus seed 7, draw 2, scene B: the pinch across the box is 12.5 cm and the
+    pads open 10.2 cm. The descending pads push the fingers 1.5 cm past their soft limits, the open cannot
+    free the wedged box, and the rising hand carries it 12 cm up. It rests on nothing the skill can reach,
+    so the probe threw it."""
     from robots.mujoco_lab.adapter import object_props
-    from robots.mujoco_lab.calibrate import case_draw
+    from robots.mujoco_lab.corpus import case_rng, draw_theta
 
     env = _env()
-    theta, com_end, _ = case_draw(2, "ycb__mug", 1, object_props("ycb__mug")["mass"])
-    env.reset("ycb__mug", theta, seed=2001, com_end=com_end)
-    assert not env.probe_push().thrown
+    oid = "hope__macaroni_and_cheese"
+    theta, com_end = draw_theta(case_rng(7, oid, 2), object_props(oid)["mass"])
+    env.reset(oid, theta, seed=7002, com_end=com_end)
     res = _weigh(env)
     assert not env.locate("object")["reachable"]               # the case: the object hangs on the hand
     assert res.thrown
