@@ -1,0 +1,14 @@
+{
+ "version": 2,
+ "features": "true",
+ "prior": "lab_generator",
+ "kind": "classifier",
+ "success_model": "success_model.joblib",
+ "hazard_model": "hazard_model.joblib",
+ "metrics": "success_model_metrics.json",
+ "corpus": [
+  "robots/mujoco_lab/data/corpus_v2.jsonl",
+  "robots/mujoco_lab/data/corpus_fixtures_v2.jsonl"
+ ],
+ "split_seed": 0
+}
