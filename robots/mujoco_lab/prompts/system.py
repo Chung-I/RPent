@@ -59,11 +59,12 @@ release height). The top-level numbers repeat the best row's values; `best_optio
   sets it back (about 4 s). Nothing is placed. Each probe runs once per episode. A probe row's
   `probe` field has `p_kind` (the probabilities of its result kinds), `p_thrown` (P(the probe
   knocks the object off the table or more than 10 cm away)), `evoi` (the value of information:
-  the expected fall in the best row's expected cost after the probe) and `expected_cost_after`.
-  Its `expected_cost` is the probe's time, the push's tip risk and `expected_cost_after`.
-- `recommendation`: `probe` when the highest-ranked probe row ranks above the best row and has
-  `evoi` above 0; else `commit` when the best row's `p_success` is at least 0.7; else
-  `decline`. `recommended_option` names the row it means. `decline_reason` says which outcome
+  the expected fall in the best row's expected cost after the probe; 0 when no result can change
+  the best row), `evoi_se` (the Monte Carlo error of `evoi`) and `expected_cost_after`. Its
+  `expected_cost` is the probe's time, the push's tip risk and `expected_cost_after`.
+- `recommendation`: `probe` when the highest-ranked probe row ranks above the best row by more
+  than twice `evoi_se` and has `evoi` above 0; else `commit` when the best row's `p_success` is at
+  least 0.7; else `decline`. `recommended_option` names the row it means. `decline_reason` says which outcome
   carries the cost. With no `option_id`, a `decline` recommendation executes nothing, and a
   `probe` recommendation executes nothing while the best row's `p_success` is below 0.7. Pass
   `option_id` `probe_push` or `probe_weigh`, or mode `probe_first`, to run the probe. Pass a

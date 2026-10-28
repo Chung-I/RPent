@@ -23,7 +23,10 @@ with the belief's weights; each row keeps its per-particle costs for the probe v
 Probe rows (push, weigh; when the substrate has probe models) are valued by preposterior analysis:
 the expected cost of the best continuation row after the probe's result, over results simulated
 from the belief (``probe_value``). A probe row's expected cost is its time, the push's tip risk and
-that expected cost after it; it competes with the other rows in the same ranking.
+that expected cost after it; it competes with the other rows in the same ranking. The value is
+estimated per simulated result against the best row now, so it is exactly 0 when no result can
+change that row; a probe is recommended only when its row beats the best row by more than EVOI_Z
+Monte Carlo errors.
 """
 
 from __future__ import annotations
@@ -46,7 +49,8 @@ STD = {"v_lift": 0.15, "v_transport": 0.5}
 PLACEHOLDER = {"mass": 1.0, "mu": 0.5}       # base features carry these; every particle overwrites them
 PROBE_V_LIFT = 0.03                          # the probe features, as the probe corpus extracted them
 PROBE_DESTINATION = "table_centre"
-EVOI_K = 24
+EVOI_K = 200                                 # simulated probe results per probe row
+EVOI_Z = 2.0                                 # a probe is recommended when it beats the best row by more than this many errors
 EVOI_EPS = 1e-9
 
 
@@ -83,32 +87,35 @@ def believed_com_world(belief: ParticleBelief, pose: dict[str, Any]) -> np.ndarr
 
 def probe_value(belief: ParticleBelief, continuation_costs: list[np.ndarray], probe_model: Any, X_probe: np.ndarray, force: float,
                 care: str, rng: np.random.Generator, k: int = EVOI_K) -> dict[str, Any]:
-    """The preposterior value of one probe. For k particles drawn by weight: the probe throws the
-    object with that particle's risk (the case ends at the irreversible cost), else one result is
-    sampled from the probe model, the belief is reweighted by its likelihood and the cheapest
-    continuation row (per-particle costs ``continuation_costs``) is taken. Returns the belief's
-    P(kind) and P(thrown), ``expected_cost_after`` (the mean over the k draws) and ``evoi`` (the
-    cheapest row now minus the mean over the draws that kept the object, floored at 0)."""
+    """The preposterior value of one probe against the cheapest continuation row now (row b, per-particle
+    costs C_b). The probe throws the object with each particle's risk r (the case ends at the
+    irreversible cost T), so the exact cost after the probe when its result is not used is
+    sum_i w_i (r_i T + (1 - r_i) C_b,i). For k particles drawn by weight one result is sampled from the
+    probe model and the belief w' is reweighted by its likelihood; the result's gain is the posterior
+    saving of the row it then picks (a, the cheapest under w') over row b where the object is kept:
+    sum_l w'_l (1 - r_l) (C_b,l - C_a,l), 0 whenever the result leaves row b cheapest. Returns the
+    belief's P(kind) and P(thrown), ``evoi`` (the mean gain, floored at 0), ``evoi_se`` (its Monte
+    Carlo error) and ``expected_cost_after`` (the cost when the result is not used, minus the mean gain)."""
     C = np.asarray(continuation_costs, dtype=float).reshape(len(continuation_costs), -1)
     w = belief.weights
-    now = float(np.min(C @ w))
+    best = int(np.argmin(C @ w))
     risk = np.asarray(probe_model.risk(X_probe), dtype=float)
     P = np.asarray(probe_model.p_kind(X_probe), dtype=float)
     a = belief.arrays()
-    thrown_cost = COST["dropped_high"] * CARE_SCALE[care]
-    after, kept = [], []
-    for i in rng.choice(len(w), size=int(k), p=w):
-        if rng.random() < risk[i]:
-            after.append(thrown_cost)
-            continue
-        obs = probe_model.sample(X_probe[i], belief.particles[i], force, rng)
-        ll, _ = probe_model.loglik(obs, X_probe, a, force)
-        c = float(np.min(C @ belief.reweight(ll).weights))
-        after.append(c)
-        kept.append(c)
-    gain = now - float(np.mean(kept)) if kept else 0.0
+    keep = 1.0 - risk
+    unused = float(w @ (risk * COST["dropped_high"] * CARE_SCALE[care] + keep * C[best]))
+    gains = np.zeros(int(k))
+    for j, i in enumerate(rng.choice(len(w), size=int(k), p=w)):
+        obs = probe_model.sample(X_probe[i], belief.particles[i], force, rng, p=P[i])
+        ll, _ = probe_model.loglik(obs, X_probe, a, force, P=P)
+        wp = belief.reweight(ll).weights
+        pick = int(np.argmin(C @ wp))
+        if pick != best:
+            gains[j] = float((wp * keep) @ (C[best] - C[pick]))
+    gain = float(np.mean(gains)) if len(gains) else 0.0
+    se = float(np.std(gains, ddof=1) / np.sqrt(len(gains))) if len(gains) > 1 else 0.0
     return {"p_kind": dict(zip(probe_model.classes, (w @ P).tolist())), "p_thrown": float(w @ risk),
-            "evoi": gain if gain > EVOI_EPS else 0.0, "expected_cost_after": float(np.mean(after))}
+            "evoi": gain if gain > EVOI_EPS else 0.0, "evoi_se": se, "expected_cost_after": unused - gain}
 
 
 def _probe_rows(probe_models: dict[str, Any], belief: ParticleBelief, geometry: Geometry, mid: Any, pose: dict[str, Any],
@@ -165,8 +172,9 @@ def build_menu(model: Any, belief: ParticleBelief | Belief, geometry: Geometry, 
     through (default: ``geometry_pose``); a milestone 1 ``Belief`` becomes n particles at the
     nominal CoM; ``threshold`` None reads DEFAULT_THRESHOLD now, not at import; ``probe_models``
     ({probe: model}) adds a probe row per model. The recommendation is "probe" when the first row
-    that is a probe or the best same-destination row is a probe with a positive value of information,
-    else "commit" when the best row reaches the threshold, else "decline"."""
+    that is a probe or the best same-destination row is a probe with a positive value of information
+    whose expected cost is below the best row's by more than EVOI_Z Monte Carlo errors (read at call
+    time), else "commit" when the best row reaches the threshold, else "decline"."""
     threshold = DEFAULT_THRESHOLD if threshold is None else float(threshold)
     pose_fn = pose_fn or (lambda prop: geometry_pose(geometry, prop))
     usable = [p for p in proposals if not (np.isfinite(p.width) and p.width > max_open)]
@@ -200,7 +208,8 @@ def build_menu(model: Any, belief: ParticleBelief | Belief, geometry: Geometry, 
         reason = f"{worst[0]} carries the largest expected cost in the best row ({best.id})"
         recommendation = "commit" if best.pred.p["placed_stable"] >= threshold else "decline"
         first = next(o for o in options if o.kind == "probe" or o is best)
-        if first.kind == "probe" and first.probe["evoi"] > 0:
+        if (first.kind == "probe" and first.probe["evoi"] > 0
+                and best.expected_cost - first.expected_cost > EVOI_Z * first.probe["evoi_se"]):
             recommendation = "probe"
     else:
         reason = "every proposal is too wide for the gripper" if skipped and not usable else "no row reaches the requested destination"

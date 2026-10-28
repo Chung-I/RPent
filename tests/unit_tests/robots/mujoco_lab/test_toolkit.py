@@ -104,7 +104,7 @@ def test_system_prompt_explains_probes_and_the_belief():
     from robots.mujoco_lab.prompts.system import system_prompt
 
     text = system_prompt()
-    for k in ("probe_push", "probe_weigh", "probe_first", "`probe`", "recommended_option", "evoi",
+    for k in ("probe_push", "probe_weigh", "probe_first", "`probe`", "recommended_option", "evoi", "evoi_se",
               "expected_cost_after", "p_kind", "p_thrown", "`belief`", "`belief_before`", "`diagnosis`",
               "`assessment`", "mass_80", "mu_80", "p_com_shifted"):
         assert k in text, k

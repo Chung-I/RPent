@@ -110,7 +110,7 @@ def test_prediction_mean_averages_and_drops_height_when_any_none():
 def _probe_row(id="probe_push", expected_cost=0.5, evoi=0.2):
     return Option(id=id, kind="probe", action={"probe": id.split("_", 1)[1], "s": 0.5, "force": 20.0}, pred=None, cost_s=2.0,
                   expected_cost=expected_cost, reason="push first",
-                  probe={"p_kind": {"slid": 0.9, "tipped": 0.1}, "p_thrown": 0.02, "evoi": evoi, "expected_cost_after": 0.4})
+                  probe={"p_kind": {"slid": 0.9, "tipped": 0.1}, "p_thrown": 0.02, "evoi": evoi, "evoi_se": 0.01, "expected_cost_after": 0.4})
 
 
 def test_best_never_returns_a_probe():
@@ -123,7 +123,7 @@ def test_best_never_returns_a_probe():
     assert d["recommendation"] == "probe" and d["recommended_option"] == "probe_push"
     probe = d["options"][0]
     assert probe["kind"] == "probe" and probe["p"] is None
-    assert probe["probe"] == {"p_kind": {"slid": 0.9, "tipped": 0.1}, "p_thrown": 0.02, "evoi": 0.2, "expected_cost_after": 0.4}
+    assert probe["probe"] == {"p_kind": {"slid": 0.9, "tipped": 0.1}, "p_thrown": 0.02, "evoi": 0.2, "evoi_se": 0.01, "expected_cost_after": 0.4}
     assert d["options"][1]["probe"] is None
     json.dumps(d)
     commit = Assessment(object="mug", destination="plate", options=[_row(id="slow_lift"), _probe_row(), _decline()],

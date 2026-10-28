@@ -155,19 +155,21 @@ class ProbeModel:
         return self.p_thrown.predict(X)[:, 1]
 
     def loglik(self, obs: dict[str, Any], X: np.ndarray, arrays: dict[str, np.ndarray], force: float,
-               temper: float | None = None, terms: list[str] | None = None) -> tuple[np.ndarray, dict[str, list[str]]]:
+               temper: float | None = None, terms: list[str] | None = None,
+               P: np.ndarray | None = None) -> tuple[np.ndarray, dict[str, list[str]]]:
         """Per-particle log-likelihood of one probe result ``{"kind", "reading"}``: the kind term
         log max(floor_p, P(kind)) / temper, and the reading term log N(ratio; b, sd * temper), rejected
         (listed, not used) when the reading is not positive or its best particle lies 5 sd off.
         ``temper`` overrides the model's (the posterior check's grid). ``terms`` (an entry's recorded
-        used terms) replays exactly those terms, without the rejection rule (a belief refresh)."""
+        used terms) replays exactly those terms, without the rejection rule (a belief refresh). ``P``:
+        ``p_kind(X)`` when the caller has it already (the preposterior loop)."""
         t = self.temper if temper is None else float(temper)
         want = (lambda term: True) if terms is None else (lambda term: term in terms)
         kind = obs["kind"]
         used, rejected = [], []
         ll = np.zeros(np.asarray(X).shape[0])
         if want("kind"):
-            P = self.p_kind(X)
+            P = self.p_kind(X) if P is None else np.asarray(P, dtype=float)
             ll = np.log(np.maximum(self.floor_p, P[:, self.classes.index(kind)])) / t
             used.append("kind")
         law = self.reading.get(kind)
@@ -188,10 +190,12 @@ class ProbeModel:
                     used.append("reading")
         return ll, {"used": used, "rejected": rejected}
 
-    def sample(self, x_row: np.ndarray, particle: dict[str, Any], force: float, rng: np.random.Generator) -> dict[str, Any]:
-        """One simulated result of the probe for one particle (its feature row and properties)."""
+    def sample(self, x_row: np.ndarray, particle: dict[str, Any], force: float, rng: np.random.Generator,
+               p: np.ndarray | None = None) -> dict[str, Any]:
+        """One simulated result of the probe for one particle (its feature row and properties); ``p``:
+        the row's P(kind) when the caller has it already."""
         x = np.asarray(x_row, dtype=float).reshape(1, -1)
-        p = self.p_kind(x)[0]
+        p = self.p_kind(x)[0] if p is None else np.asarray(p, dtype=float)
         kind = self.classes[int(rng.choice(len(self.classes), p=p / p.sum()))]
         reading: dict[str, float] = {}
         law = self.reading.get(kind)

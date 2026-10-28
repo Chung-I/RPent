@@ -87,7 +87,7 @@ def _probe_data(probe: dict[str, Any] | None) -> dict[str, Any] | None:
     if probe is None:
         return None
     return {"p_kind": {k: _r(v) for k, v in probe["p_kind"].items()}, "p_thrown": _r(probe["p_thrown"]),
-            "evoi": _r(probe["evoi"]), "expected_cost_after": _r(probe["expected_cost_after"])}
+            "evoi": _r(probe["evoi"]), "evoi_se": _r(probe["evoi_se"]), "expected_cost_after": _r(probe["expected_cost_after"])}
 
 
 @dataclass

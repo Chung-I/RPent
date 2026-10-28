@@ -42,10 +42,10 @@ class PerfectPush:
     def risk(self, X):
         return np.full(len(X), float(self.p_thrown))
 
-    def sample(self, x_row, particle, force, rng):
+    def sample(self, x_row, particle, force, rng, p=None):
         return {"probe": "push", "kind": "slid", "reading": {"high": float(particle["mu"] > self.cut)}, "thrown": False}
 
-    def loglik(self, obs, X, arrays, force, temper=None, terms=None):
+    def loglik(self, obs, X, arrays, force, temper=None, terms=None, P=None):
         hi = np.asarray(arrays["mu"], dtype=float) > self.cut
         ok = hi if obs["reading"]["high"] else ~hi
         return np.where(ok, 0.0, -np.inf), {"used": ["kind", "reading"], "rejected": []}
@@ -63,10 +63,10 @@ class FlatWeigh:
     def risk(self, X):
         return np.zeros(len(X))
 
-    def sample(self, x_row, particle, force, rng):
+    def sample(self, x_row, particle, force, rng, p=None):
         return {"probe": "weigh", "kind": "measured", "reading": {"m_hat": 0.3}, "thrown": False}
 
-    def loglik(self, obs, X, arrays, force, temper=None, terms=None):
+    def loglik(self, obs, X, arrays, force, temper=None, terms=None, P=None):
         return np.zeros(len(X)), {"used": ["kind"], "rejected": []}
 
 

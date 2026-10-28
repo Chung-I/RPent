@@ -246,7 +246,7 @@ def test_probe_rows_present_when_models_exist():
     for pid, probe in (("probe_push", "push"), ("probe_weigh", "weigh")):
         o = rows[pid]
         assert o.kind == "probe" and o.pred is None and o.action == {"probe": probe, "s": 0.5, "force": weigh_force(20.0)}
-        assert set(o.probe) == {"p_kind", "p_thrown", "evoi", "expected_cost_after"}
+        assert set(o.probe) == {"p_kind", "p_thrown", "evoi", "evoi_se", "expected_cost_after"}
         tip = o.probe["p_kind"]["tipped"] * COST["tipped"] if probe == "push" else 0.0
         assert o.expected_cost == pytest.approx(TIME_COST_PER_S * PROBE_SECONDS[probe] + tip + o.probe["expected_cost_after"])
     assert rows["probe_push"].probe["p_kind"]["tipped"] == pytest.approx(0.1)
@@ -294,3 +294,62 @@ def test_thrown_probe_ends_the_case_in_the_preposterior():
         v = probe_value(b, C, PerfectPush(p_thrown=1.0), np.zeros((40, 3)), 20.0, care, np.random.default_rng(0))
         assert v["expected_cost_after"] == pytest.approx(COST["dropped_high"] * _CARE[care]) and v["evoi"] == 0.0
         assert v["p_thrown"] == pytest.approx(1.0)
+
+
+class RiskyPush(PerfectPush):
+    """A perfect push that throws the object with P 0.5 when mu (column 0 of X) is at most the cut."""
+
+    def risk(self, X):
+        return np.where(np.asarray(X, dtype=float)[:, 0] <= self.cut, 0.5, 0.0)
+
+
+def test_evoi_is_zero_on_every_stream_when_no_result_changes_the_best_row():
+    """Row 0 is cheaper than row 1 for every particle, so no push result can change the best row,
+    however much it tells about mu: the value of information is 0 on every random stream, and the
+    cost after the probe is row 0's cost now."""
+    b = _particles(np.random.default_rng(0).uniform(0.1, 0.9, 400), np.ones(400))
+    c0 = np.where(b.arrays()["mu"] > 0.3, 0.5, 0.9)
+    vs = [probe_value(b, [c0, c0 + 0.2], PerfectPush(), np.zeros((400, 3)), 20.0, "normal", np.random.default_rng(s))
+          for s in range(20)]
+    assert [v["evoi"] for v in vs] == [0.0] * 20
+    assert all(v["evoi_se"] == 0.0 for v in vs)
+    assert all(v["expected_cost_after"] == pytest.approx(float(b.weights @ c0), abs=1e-12) for v in vs)
+
+
+def test_evoi_counts_each_particles_throw_risk():
+    """mu above 0.3 (share f): never thrown, firm_grip (0.4) after the push. mu at most 0.3: thrown
+    with P 0.5 (cost 5), else slow_lift (0.7), the best row now. Exact: cost after
+    f x 0.4 + (1 - f) x (2.5 + 0.35); value f x (0.7 - 0.4), counted where the probe keeps the object."""
+    b = _particles(np.random.default_rng(0).uniform(0.1, 0.9, 400), np.ones(400))
+    mu = b.arrays()["mu"]
+    f = float(np.mean(mu > 0.3))
+    C = [np.where(mu > 0.3, 0.4, 5.4), np.full(400, 0.7)]
+    X = np.zeros((400, 3))
+    X[:, 0] = mu
+    v = probe_value(b, C, RiskyPush(), X, 20.0, "normal", np.random.default_rng(3), k=4000)
+    assert v["evoi"] == pytest.approx(0.3 * f, abs=0.012)
+    assert v["expected_cost_after"] == pytest.approx(f * 0.4 + (1 - f) * (2.5 + 0.35), abs=0.012)
+    assert v["p_thrown"] == pytest.approx(0.5 * (1 - f))
+
+
+def test_evoi_se_is_the_monte_carlo_error_of_the_mean_gain():
+    """The perfect push: each result gains 0.3 (mu above 0.3) or 0, so the error of the mean over k
+    draws is 0.3 x sqrt(f (1 - f) / k)."""
+    b = _particles(np.random.default_rng(0).uniform(0.1, 0.9, 400), np.ones(400))
+    mu = b.arrays()["mu"]
+    f = float(np.mean(mu > 0.3))
+    C = [np.where(mu > 0.3, 0.4, 5.4), np.full(400, 0.7)]
+    v = probe_value(b, C, PerfectPush(), np.zeros((400, 3)), 20.0, "normal", np.random.default_rng(5), k=400)
+    assert v["evoi_se"] == pytest.approx(0.3 * np.sqrt(f * (1 - f) / 400), rel=0.25)
+
+
+def test_probe_recommendation_needs_a_margin_beyond_the_monte_carlo_error(monkeypatch):
+    """The perfect push ranks first and is recommended; with the margin rule at 10^6 errors it is
+    still ranked first but no longer recommended."""
+    from rpent.skills.pick_place import menu
+
+    options, rec = _pmenu(probe_models={"push": PerfectPush(), "weigh": FlatWeigh()})
+    assert options[0].id == "probe_push" and rec == "probe"
+    monkeypatch.setattr(menu, "EVOI_Z", 1e6)
+    options, rec = _pmenu(probe_models={"push": PerfectPush(), "weigh": FlatWeigh()})
+    assert options[0].id == "probe_push" and rec != "probe"
