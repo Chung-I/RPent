@@ -44,6 +44,7 @@ HOLD_S = 0.5
 V_DOWN = 0.10
 V_LOWER = 0.10
 A_TRANSPORT = 2.0        # m/s^2: the transport accelerates and brakes at 0.2 g (a step change in speed strips the pads)
+RAMP_S = 0.2             # s: the lift, the lower and the retreats reach their speed in 0.2 s and brake in 0.2 s
 CLOSE_S = 0.6
 APPROACH_M = 0.12
 RELEASE_S = 3.0
@@ -203,6 +204,13 @@ def transport_profile(distance: float, v_max: float, hz: float, accel: float = A
         out.append(min(1.0, d / distance))
     out[-1] = 1.0
     return out
+
+
+def ramp_profile(distance: float, v_max: float, hz: float) -> list[float]:
+    """Path fractions per control step for the lift, the lower and the retreats: transport_profile's
+    trapezoid with the acceleration that reaches v_max in RAMP_S. A lift that started at full speed
+    yanked the hand at 10 g at 0.8 m/s."""
+    return transport_profile(distance, v_max, hz, accel=v_max / RAMP_S)
 
 
 class MuJoCoLabEnv:
@@ -381,14 +389,13 @@ class MuJoCoLabEnv:
 
     def _install_meter(self) -> None:
         """Wrap the sim's control step: while a trace records (``_metering``), each step also keeps the mean
-        of ``_pad_hull_sums`` over its physics substeps in ``_step_forces``. The hand follows its mocap
-        target in a jump per control step, so a force sampled at the end of a step misses most of it: a
-        carried lift read 0.9 of the weight, and a light object's lift step read below zero (the push
+        of ``_pad_hull_sums`` over its physics substeps in ``_step_forces``. The substeps go through
+        ``Sim.substep``, so a metered step moves the hand target smoothly too. The forces vary within a step,
+        and a force sampled at the end of one can miss most of it: while the target still jumped once per
+        step, a carried lift read 0.9 of the weight and a light object's lift step read below zero (the push
         averages the same way, see _push_step). The wrapper holds its sim by a weak reference: a strong one
         ties each sim to itself, and a worker's old sims then live until the cycle collector runs."""
         import weakref
-
-        import mujoco
 
         ref, plain, sub = weakref.ref(self.sim), type(self.sim).step_ctrl, int(self.s["scene"].SUB)
         self._metering, self._step_forces = False, None
@@ -400,7 +407,7 @@ class MuJoCoLabEnv:
                 return
             acc = np.zeros(5)
             for _ in range(sub):
-                mujoco.mj_step(sim.m, sim.d)
+                sim.substep()
                 acc += self._pad_hull_sums()
             self._step_forces = acc / sub
 
@@ -612,15 +619,15 @@ class MuJoCoLabEnv:
         segs = [
             Segment("approach", _steps(APPROACH_M, V_DOWN, hz), z_rest, z_rest, True, V_DOWN),
             Segment("close", int(CLOSE_S * hz), z_rest, z_rest, True, 0.0),
-            Segment("lift", _steps(LIFT_H, v_lift, hz), z_rest, low_top - surf0, True, v_lift),
+            Segment("lift", len(ramp_profile(LIFT_H, v_lift, hz)), z_rest, low_top - surf0, True, v_lift),
             Segment("hold", int(HOLD_S * hz), low_top - surf0, low_top - surf0, True, 0.0),
             Segment("transport", len(transport_profile(float(np.linalg.norm(dxy)), v_transport, hz)), low_top - surf0,
                     low_top - (surf_d if has_d else sc.TABLE_TOP), has_d, v_transport),
-            Segment("lower", _steps(z_hand_top - z_hand_rel, V_LOWER, hz), low_top - (surf_d if has_d else sc.TABLE_TOP),
+            Segment("lower", len(ramp_profile(z_hand_top - z_hand_rel, V_LOWER, hz)), low_top - (surf_d if has_d else sc.TABLE_TOP),
                     target_low - (surf_d if has_d else sc.TABLE_TOP), has_d, V_LOWER),
             Segment("release", int(RELEASE_S * hz), target_low - (surf_d if has_d else sc.TABLE_TOP),
                     target_low - (surf_d if has_d else sc.TABLE_TOP), has_d, 0.0),
-            Segment("retreat", _steps(RETREAT_M, V_LOWER, hz) + int(RETREAT_SETTLE_S * hz),
+            Segment("retreat", len(ramp_profile(RETREAT_M, V_LOWER, hz)) + int(RETREAT_SETTLE_S * hz),
                     target_low - (surf_d if has_d else sc.TABLE_TOP), target_low - (surf_d if has_d else sc.TABLE_TOP), has_d, V_LOWER),
         ]
         return segs
@@ -638,7 +645,7 @@ class MuJoCoLabEnv:
         pt = np.asarray(proposal.point, dtype=float)
         trace, on_step = self._tracer(pt, proposal.yaw)
         out, _, _ = gr.run_grasp(sim, pt, proposal.yaw, force=force, v_lift=v_lift, lift_h=LIFT_H, hold_s=HOLD_S,
-                                 on_step=on_step)
+                                 on_step=on_step, lift_profile=ramp_profile(LIFT_H, v_lift, hz))
         rose = any(x["z"] > RISE_M and all(x["pads"]) and x["phase"] in ("lift", "hold") for x in trace)
         release = None
         if rose:
@@ -654,15 +661,16 @@ class MuJoCoLabEnv:
             low_off = sim.obj_low_z() - sim.d.xpos[sim.hand][2]
             target_low = self._release_target_low_z(dest, release_height)
             z_rel = target_low - low_off
-            while z > z_rel + 1e-6:
-                z = max(z_rel, z - V_LOWER / hz)
+            z0 = z
+            for frac in ramp_profile(z0 - z_rel, V_LOWER, hz):
+                z = z0 + (z_rel - z0) * frac
                 sim.set_hand([goal[0], goal[1], z], proposal.yaw)
                 sim.step_ctrl()
                 on_step("lower")
             release = gr.run_release(sim, None, 1, [], [], len(trace), seconds=RELEASE_S, on_step=on_step, up0=self.up0)
-            z_up = z + RETREAT_M                        # the open hand moves away; a wedged object comes with it
-            while z < z_up - 1e-6:
-                z = min(z_up, z + V_LOWER / hz)
+            z0 = z                                      # the open hand moves away; a wedged object comes with it
+            for frac in ramp_profile(RETREAT_M, V_LOWER, hz):
+                z = z0 + RETREAT_M * frac
                 sim.set_hand([goal[0], goal[1], z], proposal.yaw)
                 sim.step_ctrl()
                 on_step("retreat")
@@ -745,14 +753,12 @@ class MuJoCoLabEnv:
 
     def _push_step(self, hand: set[int], ex: np.ndarray) -> float:
         """One control step, physics substep by substep: the hand force along ex averaged over the
-        step. The hand follows its mocap target in jumps, so on a light, slippery object the push is a
-        train of short strikes that a force sampled at the end of the step misses."""
-        import mujoco
-
+        step. A force sampled at the end of the step misses its variation within the step (while the hand
+        target still jumped once per step, the push on a light, slippery object was a train of strikes)."""
         sim, sub = self.sim, int(self.s["scene"].SUB)
         total = 0.0
         for _ in range(sub):
-            mujoco.mj_step(sim.m, sim.d)
+            sim.substep()
             total += self._hand_push_force(hand, ex)
         return total / sub
 
@@ -771,11 +777,9 @@ class MuJoCoLabEnv:
     def _rise_hand(self, yaw: float, steps: list[int]) -> None:
         """The open hand rises RETREAT_M from where it is."""
         sim, hz = self.sim, self.s["scene"].CTRL_HZ
-        x, y, z = (float(v) for v in sim.d.mocap_pos[sim.mocap])
-        z_up = z + RETREAT_M
-        while z < z_up - 1e-6:
-            z = min(z_up, z + V_LOWER / hz)
-            sim.set_hand([x, y, z], yaw)
+        x, y, z0 = (float(v) for v in sim.d.mocap_pos[sim.mocap])
+        for frac in ramp_profile(RETREAT_M, V_LOWER, hz):
+            sim.set_hand([x, y, z0 + RETREAT_M * frac], yaw)
             sim.step_ctrl()
             steps[0] += 1
 

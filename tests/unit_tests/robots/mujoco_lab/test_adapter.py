@@ -124,7 +124,9 @@ def test_long_object_into_box_is_never_placed_stable():
     env = _env()
     p = _control(env)
     r = env.execute(p, force=20.0, v_lift=0.15, destination="box")
-    assert r.label in ("missed", "tipped", "dropped_low")   # the rim strips a 19.6 cm object out of the pads or it bridges the opening
+    # the 12 cm rim strips a 19.6 cm object out of the pads (about 11 cm above the box floor) or it bridges the opening
+    assert r.label in ("missed", "tipped", "dropped_low", "dropped_high")
+    assert r.loss_phase in (None, "lower")
 
 
 def test_unknown_destination_raises():
@@ -266,19 +268,25 @@ def test_trace_records_pad_forces_during_the_hold():
 
 
 
-def test_lift_trace_reads_the_weight_on_every_steady_step():
-    """The hand follows its mocap target in a jump per control step, so a force sampled at the end of a
-    step read 0.9 of the weight on every lift step. The trace's force is the mean over the step's
-    physics substeps: the weight, within 5 %, once the carried lift runs steadily."""
+def test_lift_trace_reads_the_weight_and_the_ramps():
+    """The trace's force is the mean over the step's physics substeps: the weight while the lift runs at
+    constant speed, and the weight times 1 ± a/g while it speeds up and brakes (a = v_lift / RAMP_S). While
+    the hand target jumped once per control step, a force sampled at the end of a step read 0.9 of the weight."""
+    from robots.mujoco_lab.adapter import RAMP_S
+
     env = _env()
     env.reset("ycb__brick", {"mu": 0.8, "mass_scale": 1.0, "com_s": None, "v_lift": 0.15}, seed=0)
     f_std = env.s["t3_make"].std_force(env.nominal_mass())
     r = env.execute(env.proposals()[1], force=2 * f_std, v_lift=0.15, v_transport=0.5, destination="table_centre")
-    lift = [x for x in r.trace if x["phase"] == "lift" and all(x["pads"]) and x["z"] > 0.012]
-    mg = env.truth()["mass"] * 9.81
-    steady = lift[3:]
+    hz, mg, ag = env.s["scene"].CTRL_HZ, env.truth()["mass"] * 9.81, 0.15 / RAMP_S / 9.81
+    lift = [x for x in r.trace if x["phase"] == "lift"]
+    assert all(all(x["pads"]) for x in lift)
+    v = [(b["hand_z"] - c["hand_z"]) * hz for c, b in zip(lift, lift[1:])]
+    steady = [x for x, v0, v1 in zip(lift[2:], v, v[1:]) if abs(v0 / 0.15 - 1) < 0.01 and abs(v1 / 0.15 - 1) < 0.01]
     assert len(steady) >= 20
-    assert max(abs(x["fz"] / mg - 1.0) for x in steady) <= 0.05
+    assert max(abs(x["fz"] / mg - 1.0) for x in steady) <= 0.02
+    fz = [x["fz"] / mg for x in lift]
+    assert abs(max(fz) - (1 + ag)) <= 0.01 and abs(min(fz) - (1 - ag)) <= 0.01
 
 
 def test_trace_records_the_pad_normals_the_hand_height_and_the_turn_since_the_lift():
