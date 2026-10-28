@@ -54,11 +54,11 @@ def _sides(x: dict[str, Any]) -> bool:
 
 
 def slide_force(trace: list[dict[str, Any]]) -> float | None:
-    """The largest net vertical pad force while the pads slide up a still object: the run of lift steps
-    from the first one with both pads on side faces, the object risen less than SLIDE_REL of the hand's
-    rise (plus SLIDE_SLACK_M) and turned at most SLIDE_DEG since the lift began. None when the run is
-    shorter than MIN_SLIDE_STEPS: the object rose with the hand or turned, a pad pressed a top face, or
-    the pads lost it."""
+    """The largest net vertical pad force while the pads slide up a still object. The run starts at the
+    first lift step and lasts while both pads touch side faces, the object has risen less than SLIDE_REL
+    of the hand's rise (plus SLIDE_SLACK_M) and it has turned at most SLIDE_DEG since the lift began.
+    None when the run is shorter than MIN_SLIDE_STEPS: the object rose with the hand or turned, a pad
+    pressed a top face, or the pads lost it."""
     i0 = next((i for i, x in enumerate(trace) if x["phase"] == "lift"), None)
     if not i0 or trace[i0 - 1].get("hand_z") is None:
         return None

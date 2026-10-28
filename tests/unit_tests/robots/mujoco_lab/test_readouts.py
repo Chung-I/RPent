@@ -103,6 +103,22 @@ def test_slip_reading_needs_two_sliding_steps():
     assert summarize(tr, _label("not_lifted"), v_lift=0.15)["fz_slip_max_n"] is None
 
 
+def test_slip_reading_counts_the_first_lift_step():
+    out = summarize(_slide_trace(lift_fz=(1.6, 1.5, 1.4)), _label("not_lifted"), v_lift=0.15)
+    assert out["fz_slip_max_n"] == pytest.approx(1.6)
+
+
+def test_slip_reading_starts_at_the_first_lift_step():
+    """A grasp that has lost a pad when the lift begins gives no reading, though the pads slide later."""
+    tr = _slide_trace(lift_fz=(1.3, 1.5, 1.4), pads_lift=[(True, False), (True, True), (True, True)])
+    assert summarize(tr, _label("not_lifted"), v_lift=0.15)["fz_slip_max_n"] is None
+
+
+def test_slip_reading_stops_at_the_first_step_that_fails():
+    tr = _slide_trace(lift_fz=(1.3, 1.5, 7.0, 9.0), rise=(0.0, 0.0, 0.0, 0.0), rot=(0.0, 0.0, 4.0, 0.0))
+    assert summarize(tr, _label("not_lifted"), v_lift=0.15)["fz_slip_max_n"] == pytest.approx(1.5)
+
+
 def test_loss_reading_is_the_mean_of_the_last_three_two_pad_steps():
     tr = _held_trace()
     t = tr[-1]["t"] + 0.02
@@ -116,6 +132,17 @@ def test_loss_reading_is_the_mean_of_the_last_three_two_pad_steps():
     assert out["fz_at_loss_n"] == pytest.approx((2.0 + 1.6 + 0.8) / 3)      # the mean of the last three two-pad steps
     assert out["loss_phase"] == "transport" and out["loss_t"] == pytest.approx(tr[k]["t"])
     assert out["loss_since_lift_s"] == pytest.approx(tr[k]["t"] - first_lift_t)
+
+
+def test_loss_reading_skips_steps_with_one_pad():
+    tr = _held_trace()
+    t = tr[-1]["t"] + 0.02
+    for fz, pads in ((2.0, (True, True)), (1.6, (True, True)), (9.0, (True, False)), (0.8, (True, True))):
+        tr.append(_s(t, "transport", 0.2, fz=fz, pads=pads)); t += 0.02
+    k = len(tr)
+    tr.append(_s(t, "transport", 0.19, pads=(False, False)))
+    out = summarize(tr, _label("dropped_low", "transport", k, tr[k]["t"]), v_lift=0.15)
+    assert out["fz_at_loss_n"] == pytest.approx((2.0 + 1.6 + 0.8) / 3)
 
 
 def test_summarize_heavy_side():
