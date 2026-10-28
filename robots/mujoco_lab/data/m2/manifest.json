@@ -7,8 +7,8 @@
  "hazard_model": "hazard_model.joblib",
  "metrics": "success_model_metrics.json",
  "corpus": [
-  "robots/mujoco_lab/data/corpus_v5.jsonl",
-  "robots/mujoco_lab/data/corpus_fixtures_v5.jsonl"
+  "robots/mujoco_lab/data/corpus_v6.jsonl",
+  "robots/mujoco_lab/data/corpus_fixtures_v6.jsonl"
  ],
  "split_seed": 0,
  "readout_model": "readout_model.json",
@@ -21,5 +21,5 @@
   "push": "probe_push.joblib"
  },
  "probe_metrics": "probe_metrics.json",
- "probe_corpus": "robots/mujoco_lab/data/probe_corpus_v4.jsonl"
+ "probe_corpus": "robots/mujoco_lab/data/probe_corpus_v5.jsonl"
 }
