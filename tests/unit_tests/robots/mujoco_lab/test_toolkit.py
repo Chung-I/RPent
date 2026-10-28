@@ -100,6 +100,26 @@ def test_system_prompt_names_the_fields():
         assert d in DESTINATIONS_TEXT, d
 
 
+def test_system_prompt_explains_probes_and_the_belief():
+    from robots.mujoco_lab.prompts.system import system_prompt
+
+    text = system_prompt()
+    for k in ("probe_push", "probe_weigh", "probe_first", "`probe`", "recommended_option", "evoi",
+              "expected_cost_after", "p_kind", "p_thrown", "`belief`", "`belief_before`", "`diagnosis`",
+              "`assessment`", "mass_80", "mu_80", "p_com_shifted"):
+        assert k in text, k
+    assert "retry" in text.lower()
+    assert "once per episode" in text
+
+
+def test_user_prompt_allows_probes_and_a_retry():
+    from robots.mujoco_lab.prompts.user import user_prompt
+
+    text = user_prompt({"object": "ycb__brick", "destination": "plate"})
+    assert "ycb__brick" in text and "plate" in text
+    assert "probe" in text and "diagnosis" in text and "retry" in text.lower()
+
+
 def test_finalize_run_writes_outcome(tmp_path):
     from robots.mujoco_lab.robot_spec import finalize_run
     from rpent.evaluation.result import RunFinalizationContext

@@ -17,9 +17,11 @@
 from __future__ import annotations
 
 TASK = """Task: pick up the `{object}` and set it down at `{destination}` (care: {care}).
-Look at the scene with `view_env_state`, assess the pick, choose a menu row, execute it, and
-report the outcome and the probabilities you were given. Finish when the object has been set
-down or when every row you are willing to run has been tried."""
+Look at the scene with `view_env_state` and assess the pick. If the recommendation is a probe,
+run it and read how the belief changed. Then choose a menu row, execute it, and report the
+outcome and the probabilities you were given. If an attempt fails, read its diagnosis; you can
+retry from the fresh assessment in its result. Finish when the object has been set down, when it
+is out of reach, or when every row you are willing to run has been tried."""
 
 
 def user_prompt(variables=None) -> str:

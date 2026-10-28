@@ -24,14 +24,19 @@ Rules:
 - Call `view_env_state` first to see the object's name and the fixtures in the scene.
 - Call `assess_pick` before `pick_and_place` unless you accept the default best row.
 - The scene holds hidden properties (mass, friction, centre of mass). The probabilities
-  the tools return come from a model trained on this lab, averaged over a prior on those
-  properties. They are not your guesses: do not replace them with your own estimates."""
+  the tools return come from a model trained on this lab, averaged over a belief on those
+  properties. The belief starts at a prior and every probe and attempt in this episode updates
+  it. The numbers are not your guesses: do not replace them with your own estimates.
+- After each probe or attempt, choose the next call from that result's `assessment`. It is
+  the menu under the updated belief and the object's current pose. Rows from an older menu are
+  stale."""
 
 TOOL_ACCESS = """Tools:
 - `view_env_state(step)`: the object's position, the hand, the gripper opening, the pad forces,
   the fixtures in the scene, and a camera image when rendering is on.
 - `assess_pick(object, destination, care)`: read-only; returns the menu and the best row's numbers.
-- `pick_and_place(object, destination, mode, option_id, care)`: executes one menu row."""
+- `pick_and_place(object, destination, mode, option_id, care)`: executes one menu row or runs a
+  probe. `mode` is `commit` (the default), `probe_first` or `assess_only`."""
 
 RESULT_FIELDS = """Result fields and their meaning. Every probability is conditional on the object and
 ONE menu row (a pinch point, a squeeze force, a lift and carry speed, a destination, a
@@ -49,11 +54,51 @@ release height). The top-level numbers repeat the best row's values; `best_optio
 - `inboard_place` sets the object down at `table_centre` instead of the requested place. It is
   never chosen by default; name it in `option_id` if you accept the trade. The result then reports
   `placed_at_requested: false`.
-- `recommendation`: `commit` when the best row's `p_success` is at least 0.7, else `decline`;
-  `decline_reason` says which outcome carries the cost. A decline recommendation with no
-  `option_id` executes nothing; pass an `option_id` to run a row anyway.
+- Probe rows (`kind` `probe`): `probe_push` pushes the object sideways at a quarter of its
+  height (up to 4 cm, about 2 s). `probe_weigh` squeezes the object, lifts it 2 cm, holds it and
+  sets it back (about 4 s). Nothing is placed. Each probe runs once per episode. A probe row's
+  `probe` field has `p_kind` (the probabilities of its result kinds), `p_thrown` (P(the probe
+  knocks the object off the table or more than 10 cm away)), `evoi` (the value of information:
+  the expected fall in the best row's expected cost after the probe) and `expected_cost_after`.
+  Its `expected_cost` is the probe's time, the push's tip risk and `expected_cost_after`.
+- `recommendation`: `probe` when the highest-ranked probe row ranks above the best row and has
+  `evoi` above 0; else `commit` when the best row's `p_success` is at least 0.7; else
+  `decline`. `recommended_option` names the row it means. `decline_reason` says which outcome
+  carries the cost. With no `option_id`, a `decline` recommendation executes nothing, and a
+  `probe` recommendation executes nothing while the best row's `p_success` is below 0.7. Pass
+  `option_id` `probe_push` or `probe_weigh`, or mode `probe_first`, to run the probe. Pass a
+  row's `option_id` to run that row anyway.
+- Mode `probe_first` runs the recommended probes (at most two, while the recommendation is
+  `probe`), then commits as above. Its result lists the probes in `probes`. It stops after a
+  probe that throws the object or leaves it out of reach.
 - `care`: `low`, `normal` or `high` scales the cost of the irreversible outcomes in the ranking.
-  Raise it for fragile objects or places."""
+  Raise it for fragile objects or places.
+
+A probe result has `probed`, `kind`, `reading`, `displacement_m`, `tilt_deg`, `thrown`,
+`seconds`, `declared` (the probe row's prediction), `belief_before`, `belief` and `assessment`.
+- Weigh kinds: `measured` (the object rose; `reading.m_hat` is the measured mass in kg),
+  `lower_bound` (it did not rise; `reading.mu_hat` is a friction estimate and `reading.m_lower`
+  a lower bound on the mass), `lost` (it rose, then slipped out before the hold ended).
+- Push kinds: `slid` (`reading.f_break` is the force in N at which it started to slide),
+  `tipped`, `no_breakaway` (it did not slide), `no_contact` (it moved with no hand contact force).
+
+An attempt result has `placed`, `placed_at_requested`, `outcome`, `option`, `declared` (the
+executed row's predicted numbers), `readouts`, `diagnosis`, `belief_before`, `belief` and
+`assessment`.
+- `readouts`: what the pads measured, for example `fz_slip_max_n` (the largest lift force
+  before the pads slipped), `fz_at_loss_n` (the lift force when the object was lost), `rot_deg`
+  (the object's rotation in the pads), `loss_phase` and `loss_since_lift_s`.
+- `diagnosis`: lines that say what went wrong and what the readouts imply about the friction,
+  the mass or the centre of mass, then how the belief changed.
+- `belief` (and `belief_before`): `mass_median` and `mass_80` (an 80 % interval, kg),
+  `mu_median` and `mu_80`, `com_frac_median` and `com_frac_80` (the CoM along the long axis),
+  `p_com_shifted`, `ess` (the effective number of particles), `n_observations` and `flags`.
+
+Retry after a failure: a failed attempt that leaves the object on the table (tipped, missed,
+dropped_low, not_lifted) can be followed by another attempt. Read the `diagnosis` and the
+`belief`, then choose the next row from the result's `assessment`, as with any other call. If
+`assessment` has `assessed: false` (for example the object is out of reach), report that and
+stop. An irreversible outcome (dropped_high, rolled_off) usually ends the task."""
 
 DESTINATIONS_TEXT = """Destinations:
 - `table_centre`: the middle of the table (friction 0.8).
