@@ -7,12 +7,12 @@
  "hazard_model": "hazard_model.joblib",
  "metrics": "success_model_metrics.json",
  "corpus": [
-  "robots/mujoco_lab/data/corpus_v2.jsonl",
-  "robots/mujoco_lab/data/corpus_fixtures_v2.jsonl"
+  "robots/mujoco_lab/data/corpus_v3.jsonl",
+  "robots/mujoco_lab/data/corpus_fixtures_v3.jsonl"
  ],
  "split_seed": 0,
  "readout_model": "readout_model.json",
  "tempers": {
-  "readout": 3.0
+  "readout": 1.0
  }
 }
