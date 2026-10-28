@@ -19,6 +19,11 @@ its predicted outcome vector under the belief and its expected cost. Rows that c
 the destination (``inboard_place``) are shown but never chosen by default. Predictions are
 made for every particle of the belief (the model is conditional on the CoM) and averaged
 with the belief's weights; each row keeps its per-particle costs for the probe values.
+
+Probe rows (push, weigh; when the substrate has probe models) are valued by preposterior analysis:
+the expected cost of the best continuation row after the probe's result, over results simulated
+from the belief (``probe_value``). A probe row's expected cost is its time, the push's tip risk and
+that expected cost after it; it competes with the other rows in the same ranking.
 """
 
 from __future__ import annotations
@@ -28,9 +33,10 @@ from typing import Any, Callable
 import numpy as np
 
 from rpent.skills.pick_place.belief import N_PARTICLES, Belief, ParticleBelief
-from rpent.skills.pick_place.costs import COST, expected_cost, particle_costs
+from rpent.skills.pick_place.costs import CARE_SCALE, COST, TIME_COST_PER_S, expected_cost, particle_costs
 from rpent.skills.pick_place.destinations import DESTINATIONS, edge_distance
 from rpent.skills.pick_place.features import Geometry, extract, particle_features, particle_matrix
+from rpent.skills.pick_place.probes import PROBE_SECONDS, weigh_force
 from rpent.skills.pick_place.protocol import Option, Prediction
 
 MAX_OPEN_WIDTH = 0.11
@@ -38,6 +44,10 @@ DEFAULT_THRESHOLD = 0.7
 EDGE_RISK_M = 0.08
 STD = {"v_lift": 0.15, "v_transport": 0.5}
 PLACEHOLDER = {"mass": 1.0, "mu": 0.5}       # base features carry these; every particle overwrites them
+PROBE_V_LIFT = 0.03                          # the probe features, as the probe corpus extracted them
+PROBE_DESTINATION = "table_centre"
+EVOI_K = 24
+EVOI_EPS = 1e-9
 
 
 def geometry_pose(geometry: Geometry, proposal: Any) -> dict[str, Any]:
@@ -71,6 +81,57 @@ def believed_com_world(belief: ParticleBelief, pose: dict[str, Any]) -> np.ndarr
     return belief.weights @ C
 
 
+def probe_value(belief: ParticleBelief, continuation_costs: list[np.ndarray], probe_model: Any, X_probe: np.ndarray, force: float,
+                care: str, rng: np.random.Generator, k: int = EVOI_K) -> dict[str, Any]:
+    """The preposterior value of one probe. For k particles drawn by weight: the probe throws the
+    object with that particle's risk (the case ends at the irreversible cost), else one result is
+    sampled from the probe model, the belief is reweighted by its likelihood and the cheapest
+    continuation row (per-particle costs ``continuation_costs``) is taken. Returns the belief's
+    P(kind) and P(thrown), ``expected_cost_after`` (the mean over the k draws) and ``evoi`` (the
+    cheapest row now minus the mean over the draws that kept the object, floored at 0)."""
+    C = np.asarray(continuation_costs, dtype=float).reshape(len(continuation_costs), -1)
+    w = belief.weights
+    now = float(np.min(C @ w))
+    risk = np.asarray(probe_model.risk(X_probe), dtype=float)
+    P = np.asarray(probe_model.p_kind(X_probe), dtype=float)
+    a = belief.arrays()
+    thrown_cost = COST["dropped_high"] * CARE_SCALE[care]
+    after, kept = [], []
+    for i in rng.choice(len(w), size=int(k), p=w):
+        if rng.random() < risk[i]:
+            after.append(thrown_cost)
+            continue
+        obs = probe_model.sample(X_probe[i], belief.particles[i], force, rng)
+        ll, _ = probe_model.loglik(obs, X_probe, a, force)
+        c = float(np.min(C @ belief.reweight(ll).weights))
+        after.append(c)
+        kept.append(c)
+    gain = now - float(np.mean(kept)) if kept else 0.0
+    return {"p_kind": dict(zip(probe_model.classes, (w @ P).tolist())), "p_thrown": float(w @ risk),
+            "evoi": gain if gain > EVOI_EPS else 0.0, "expected_cost_after": float(np.mean(after))}
+
+
+def _probe_rows(probe_models: dict[str, Any], belief: ParticleBelief, geometry: Geometry, mid: Any, pose: dict[str, Any],
+                f_std: float, care: str, continuation: list[Option], rng: np.random.Generator) -> list[Option]:
+    """One row per probe model, at the middle proposal with the weigh squeeze. The continuation costs
+    are those of the current pose (the push moves the object up to 4 cm, the weigh lifts it 2 cm;
+    both are treated as leaving the menu unchanged)."""
+    force = weigh_force(f_std)
+    base = extract(geometry, mid.point, mid.yaw, PLACEHOLDER["mass"], PLACEHOLDER["mu"], force, PROBE_V_LIFT, 0.0,
+                   PROBE_DESTINATION, None, belief.visibility)
+    X = particle_matrix(base, belief.arrays(), pose, force)
+    costs = [o._costs for o in continuation]
+    rows = []
+    for probe, pm in probe_models.items():
+        v = probe_value(belief, costs, pm, X, force, care, rng)
+        tip = v["p_kind"].get("tipped", 0.0) * COST["tipped"] if probe == "push" else 0.0
+        cost = TIME_COST_PER_S * PROBE_SECONDS[probe] + tip + v["expected_cost_after"]
+        reason = f"{probe} first: value of information {v['evoi']:.2f}, expected cost of the best row after it {v['expected_cost_after']:.2f}"
+        rows.append(Option(id=f"probe_{probe}", kind="probe", action={"probe": probe, "s": mid.s, "force": force}, pred=None,
+                           cost_s=PROBE_SECONDS[probe], expected_cost=cost, reason=reason, probe=v, _base=base, _pose=pose))
+    return rows
+
+
 def _rows(proposals: list[Any], f_std: float, destination: str, com_xy: np.ndarray):
     """Candidate rows: (id, kind, proposal, action, cost_s, reason)."""
     dest = DESTINATIONS[destination]
@@ -98,17 +159,22 @@ def _rows(proposals: list[Any], f_std: float, destination: str, com_xy: np.ndarr
 def build_menu(model: Any, belief: ParticleBelief | Belief, geometry: Geometry, proposals: list[Any], f_std: float, care: str,
                destination: str, plan_fn: Callable[..., list[Any]], rng: np.random.Generator,
                pose_fn: Callable[[Any], dict[str, Any]] | None = None, max_open: float = MAX_OPEN_WIDTH,
-               threshold: float | None = None, n: int = N_PARTICLES) -> tuple[list[Option], str]:
+               threshold: float | None = None, n: int = N_PARTICLES,
+               probe_models: dict[str, Any] | None = None) -> tuple[list[Option], str]:
     """The ranked menu and the recommendation. ``pose_fn(proposal)`` gives the pose the particles map
     through (default: ``geometry_pose``); a milestone 1 ``Belief`` becomes n particles at the
-    nominal CoM; ``threshold`` None reads DEFAULT_THRESHOLD now, not at import."""
+    nominal CoM; ``threshold`` None reads DEFAULT_THRESHOLD now, not at import; ``probe_models``
+    ({probe: model}) adds a probe row per model. The recommendation is "probe" when the first row
+    that is a probe or the best same-destination row is a probe with a positive value of information,
+    else "commit" when the best row reaches the threshold, else "decline"."""
     threshold = DEFAULT_THRESHOLD if threshold is None else float(threshold)
     pose_fn = pose_fn or (lambda prop: geometry_pose(geometry, prop))
     usable = [p for p in proposals if not (np.isfinite(p.width) and p.width > max_open)]
     skipped = len(proposals) - len(usable)
     options: list[Option] = []
     if usable:
-        mid_pose = pose_fn(min(usable, key=lambda p: abs(p.s - 0.5)))
+        mid = min(usable, key=lambda p: abs(p.s - 0.5))
+        mid_pose = pose_fn(mid)
         if isinstance(belief, Belief):
             belief = ParticleBelief.from_parametric(belief, mid_pose["com_obj_nominal"], n, rng)
         com_xy = believed_com_world(belief, mid_pose)[:2]
@@ -123,13 +189,19 @@ def build_menu(model: Any, belief: ParticleBelief | Belief, geometry: Geometry, 
             options.append(Option(id=rid, kind=kind, action=act, pred=pred, cost_s=cost_s,
                                   expected_cost=expected_cost(pred, cost_s, care), reason=reason,
                                   _costs=particle_costs(per, cost_s, care), _base=base, _pose=pose, _planned=planned))
+        continuation = [o for o in options if o.action["destination"] == destination and o.id != "inboard_place"]
+        if probe_models and continuation:
+            options += _probe_rows(probe_models, belief, geometry, mid, mid_pose, f_std, care, continuation, rng)
         options.sort(key=lambda o: o.expected_cost)
-    same = [o for o in options if o.action["destination"] == destination]
+    same = [o for o in options if o.kind in ("commit", "lower_risk") and o.action["destination"] == destination]
     if same:
         best = same[0]
         worst = max(((k, best.pred.p[k] * COST[k]) for k in best.pred.p), key=lambda kv: kv[1])
         reason = f"{worst[0]} carries the largest expected cost in the best row ({best.id})"
         recommendation = "commit" if best.pred.p["placed_stable"] >= threshold else "decline"
+        first = next(o for o in options if o.kind == "probe" or o is best)
+        if first.kind == "probe" and first.probe["evoi"] > 0:
+            recommendation = "probe"
     else:
         reason = "every proposal is too wide for the gripper" if skipped and not usable else "no row reaches the requested destination"
         recommendation = "decline"

@@ -27,7 +27,7 @@ from rpent.skills.pick_place.protocol import (
 EXPECTED_KEYS = {
     "assessed", "object", "destination", "best_option", "p_success", "p_held_to_release",
     "p_irreversible", "p_recoverable", "p_drop_height", "evidence", "options",
-    "recommendation", "decline_reason", "care", "visibility",
+    "recommendation", "recommended_option", "decline_reason", "care", "visibility",
 }
 
 
@@ -105,3 +105,30 @@ def test_prediction_mean_averages_and_drops_height_when_any_none():
     assert m.drop_height is None and m.expected_loss_t is None
     m2 = Prediction.mean([_pred(), _pred()])
     assert m2.drop_height == _pred().drop_height and m2.expected_loss_t == 1.2
+
+
+def _probe_row(id="probe_push", expected_cost=0.5, evoi=0.2):
+    return Option(id=id, kind="probe", action={"probe": id.split("_", 1)[1], "s": 0.5, "force": 20.0}, pred=None, cost_s=2.0,
+                  expected_cost=expected_cost, reason="push first",
+                  probe={"p_kind": {"slid": 0.9, "tipped": 0.1}, "p_thrown": 0.02, "evoi": evoi, "expected_cost_after": 0.4})
+
+
+def test_best_never_returns_a_probe():
+    rows = [_probe_row(), _row(id="slow_lift"), _decline()]
+    a = Assessment(object="mug", destination="plate", options=rows, evidence=[], recommendation="probe", care="normal",
+                   visibility=1.0, episode=0)
+    assert a.best().id == "slow_lift" and a.best_overall().id == "probe_push"
+    d = a.to_data()
+    assert d["best_option"] == "slow_lift" and d["p_success"] == 0.712            # the top-level numbers stay the commit row's
+    assert d["recommendation"] == "probe" and d["recommended_option"] == "probe_push"
+    probe = d["options"][0]
+    assert probe["kind"] == "probe" and probe["p"] is None
+    assert probe["probe"] == {"p_kind": {"slid": 0.9, "tipped": 0.1}, "p_thrown": 0.02, "evoi": 0.2, "expected_cost_after": 0.4}
+    assert d["options"][1]["probe"] is None
+    json.dumps(d)
+    commit = Assessment(object="mug", destination="plate", options=[_row(id="slow_lift"), _probe_row(), _decline()],
+                        evidence=[], recommendation="commit", care="normal", visibility=1.0, episode=0)
+    assert commit.best_overall().id == "slow_lift" and commit.to_data()["recommended_option"] == "slow_lift"
+    decline = Assessment(object="mug", destination="plate", options=[_row(id="slow_lift"), _decline()], evidence=[],
+                         recommendation="decline", care="normal", visibility=1.0, episode=0)
+    assert decline.to_data()["recommended_option"] is None

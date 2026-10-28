@@ -164,11 +164,11 @@ def test_declared_is_the_chosen_rows_snapshot():
     assert r["option"] == "slow_lift" and abs(r["declared"]["p_success"] - 0.7) < 1e-9
 
 
-def test_probe_first_is_not_available_and_assess_only_executes_nothing():
+def test_assess_only_executes_nothing():
     prims = _prims()
-    assert "error" in pick_and_place(object="mug", mode="probe_first", primitives=prims, store={}).data
     r = pick_and_place(object="mug", mode="assess_only", primitives=prims, store={}).data
     assert r["assessed"] is True and prims.env.calls == []
+    assert "error" in pick_and_place(object="mug", mode="teleport", primitives=prims, store={}).data
 
 
 def test_failed_outcome_reports_placed_false():
@@ -435,3 +435,112 @@ def test_probe_entry_updates_the_belief():
     post = tools_mod.update_belief(b, entry, prims)
     assert post.history[-1]["used_terms"] == ["kind", "reading"] and post.history[-1]["rejected_terms"] == []
     assert abs(post.quantile("mass", 0.5) - 0.5) < 0.03 and post.effective_size() >= 100
+
+
+# ---------------------------------------------------------------- probes and the threshold (milestone 2, task 7)
+from rpent.skills.pick_place.probes import ProbeResult  # noqa: E402
+from tests.unit_tests.skills.probe_stubs import FlatWeigh, MuGate, PerfectPush  # noqa: E402
+
+
+class _ProbeEnv(_ReadingEnv):
+    """A reading env with the two probes: each returns the next queued ProbeResult; a thrown probe puts
+    the object out of reach."""
+
+    def __init__(self, results=(), probes=()):
+        super().__init__(results)
+        self.probe_results = list(probes)
+        self.probe_calls = []
+        self.reachable = True
+
+    def locate(self, prompt):
+        loc = super().locate(prompt)
+        return None if loc is None else dict(loc, reachable=self.reachable)
+
+    def _probe(self, name):
+        self.probe_calls.append(name)
+        res = self.probe_results.pop(0)
+        assert res.probe == name
+        if res.thrown:
+            self.reachable = False
+        return res
+
+    def probe_push(self):
+        return self._probe("push")
+
+    def probe_weigh(self, proposal, force):
+        self.weigh_args = (proposal.s, force)
+        return self._probe("weigh")
+
+
+def _probe_prims(env, push=None, weigh=None, model=None):
+    pms = {k: v for k, v in (("push", push), ("weigh", weigh)) if v is not None}
+    return _bprims(env, probe_models=pms or None, model=model or MuGate(f_std=10.0))
+
+
+def _push(high=1.0, thrown=False):
+    return ProbeResult(probe="push", kind="slid", reading={"high": high}, displacement_m=0.03, tilt_deg=1.0, thrown=thrown, seconds=1.5)
+
+
+def test_threshold_reaches_the_menu():
+    prims = _prims(model=StubModel(ps=0.5))
+    assert assess_pick(object="mug", primitives=prims, store={}).data["recommendation"] == "decline"
+    prims.threshold = 0.0
+    assert assess_pick(object="mug", primitives=prims, store={}).data["recommendation"] == "commit"
+
+
+def test_probe_first_runs_probes_then_commits():
+    """The push tells mu is above 0.3; then firm_grip is the best row and it runs."""
+    env = _ProbeEnv(results=[("placed_stable", {})], probes=[_push(high=1.0)])
+    prims, store = _probe_prims(env, push=PerfectPush(), weigh=FlatWeigh()), {}
+    a = assess_pick(object="mug", destination="table_centre", primitives=prims, store=store).data
+    assert a["recommendation"] == "probe" and a["recommended_option"] == "probe_push" and a["best_option"] == "slow_lift"
+    r = pick_and_place(object="mug", destination="table_centre", mode="probe_first", primitives=prims, store=store).data
+    assert env.probe_calls == ["push"] and [(p["probed"], p["kind"], p["thrown"]) for p in r["probes"]] == [("push", "slid", False)]
+    assert r["option"] == "firm_grip" and r["outcome"] == "placed_stable" and env.calls[0]["force"] == 20.0
+    assert store["beliefs"]["ycb__mug"]["probes_run"] == {"push"}
+    assert r["belief"]["mu_80"][0] > 0.3                         # the posterior after the push and the attempt
+
+
+def test_probe_first_stops_after_a_thrown_probe():
+    env = _ProbeEnv(probes=[_push(thrown=True)])
+    prims = _probe_prims(env, push=PerfectPush())
+    r = pick_and_place(object="mug", destination="table_centre", mode="probe_first", primitives=prims, store={}).data
+    assert r["probed"] == "push" and r["thrown"] is True and r["placed"] is False and len(r["probes"]) == 1
+    assert r["assessment"] == OUT_OF_REACH and env.calls == []
+
+
+def test_probe_budget_persists_across_calls():
+    env = _ProbeEnv(results=[("placed_stable", {})], probes=[_push(high=1.0), _push(high=1.0)])
+    prims, store = _probe_prims(env, push=PerfectPush(), weigh=FlatWeigh()), {}
+    r = pick_and_place(object="mug", destination="table_centre", option_id="probe_push", primitives=prims, store=store).data
+    assert r["probed"] == "push" and r["placed"] is False and r["kind"] == "slid" and r["reading"] == {"high": 1.0}
+    assert r["displacement_m"] == 0.03 and r["belief"]["n_observations"] == 1 and r["assessment"]["assessed"] is True
+    assert all(o["id"] != "probe_push" for o in r["assessment"]["options"])            # a probe runs once per episode
+    again = pick_and_place(object="mug", destination="table_centre", option_id="probe_push", primitives=prims, store=store).data
+    assert "already ran" in again["error"] and env.probe_calls == ["push"]
+    r = pick_and_place(object="mug", destination="table_centre", mode="probe_first", primitives=prims, store=store).data
+    assert env.probe_calls == ["push"] and r["probes"] == [] and r["option"] == "firm_grip"
+    env.episode = 2
+    d = assess_pick(object="mug", destination="table_centre", primitives=prims, store=store).data
+    assert any(o["id"] == "probe_push" for o in d["options"]) and store["beliefs"]["ycb__mug"]["probes_run"] == set()
+
+
+def test_probe_option_without_models_returns_error():
+    prims = _bprims(_ReadingEnv([("placed_stable", {})]))
+    assert pick_and_place(object="mug", option_id="probe_weigh", primitives=prims, store={}).data == {"error": "probe models are not loaded"}
+    d = assess_pick(object="mug", destination="table_centre", primitives=prims, store={}).data
+    assert not any(o["kind"] == "probe" for o in d["options"])
+    r = pick_and_place(object="mug", destination="table_centre", mode="probe_first", primitives=prims, store={}).data
+    assert r["outcome"] == "placed_stable" and len(prims.env.calls) == 1               # probe_first acts as commit
+
+
+def test_commit_mode_with_a_probe_recommendation():
+    """mode commit never probes: it runs the best row when that reaches the threshold, else nothing runs
+    and the result points to the probe."""
+    env = _ProbeEnv(results=[("placed_stable", {})])
+    prims = _probe_prims(env, push=PerfectPush())
+    r = pick_and_place(object="mug", destination="table_centre", primitives=prims, store={}).data
+    assert r["option"] == "slow_lift" and env.probe_calls == [] and len(env.calls) == 1
+    prims.threshold = 1.01
+    r = pick_and_place(object="mug", destination="table_centre", primitives=prims, store={}).data
+    assert r["placed"] is False and r["recommendation"] == "probe" and "probe_push" in r["next"] and len(env.calls) == 1

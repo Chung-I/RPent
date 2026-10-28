@@ -219,3 +219,78 @@ def test_drop_release_only_for_rim_cavity_bin():
     drop = next(o for o in plate if o.id == "drop_release")
     assert abs(drop.action["release_height"] - 0.065) < 1e-9 and drop.cost_s < next(o for o in plate if o.id == "commit_std").cost_s
     assert all(o.id != "drop_release" for o in _menu(destination="table_centre")[0])
+
+
+# ---------------------------------------------------------------- probe rows and their value (milestone 2, task 7)
+import pytest  # noqa: E402
+
+from rpent.skills.pick_place.costs import CARE_SCALE as _CARE  # noqa: E402
+from rpent.skills.pick_place.menu import probe_value  # noqa: E402
+from rpent.skills.pick_place.probes import PROBE_SECONDS, weigh_force  # noqa: E402
+from tests.unit_tests.skills.probe_stubs import FlatWeigh, MuGate, PerfectPush  # noqa: E402
+
+
+def _pmenu(model=None, probe_models=None, destination="table_centre", belief=None, care="normal"):
+    belief = belief if belief is not None else _particles(np.random.default_rng(0).uniform(0.1, 0.9, 400), np.ones(400))
+    return build_menu(model or MuGate(f_std=20.0), belief, _geometry(), [P(0.3), P(0.5), P(0.7)], 20.0, care, destination,
+                      plan_fn, np.random.default_rng(1), threshold=0.7, probe_models=probe_models)
+
+
+def _by_id(options):
+    return {o.id: o for o in options}
+
+
+def test_probe_rows_present_when_models_exist():
+    options, _ = _pmenu(probe_models={"push": PerfectPush(p_tip=0.1), "weigh": FlatWeigh()})
+    rows = _by_id(options)
+    for pid, probe in (("probe_push", "push"), ("probe_weigh", "weigh")):
+        o = rows[pid]
+        assert o.kind == "probe" and o.pred is None and o.action == {"probe": probe, "s": 0.5, "force": weigh_force(20.0)}
+        assert set(o.probe) == {"p_kind", "p_thrown", "evoi", "expected_cost_after"}
+        tip = o.probe["p_kind"]["tipped"] * COST["tipped"] if probe == "push" else 0.0
+        assert o.expected_cost == pytest.approx(TIME_COST_PER_S * PROBE_SECONDS[probe] + tip + o.probe["expected_cost_after"])
+    assert rows["probe_push"].probe["p_kind"]["tipped"] == pytest.approx(0.1)
+    assert [o.expected_cost for o in options[:-1]] == sorted(o.expected_cost for o in options[:-1])
+
+
+def test_no_probe_rows_without_models():
+    options, _ = _pmenu()
+    assert not any(o.kind == "probe" for o in options)
+    options, _ = _pmenu(probe_models={})
+    assert not any(o.kind == "probe" for o in options)
+
+
+def test_evoi_is_zero_for_a_point_belief():
+    point = _particles(np.linspace(0.1, 0.9, 50), [1.0] + [0.0] * 49)
+    options, rec = _pmenu(probe_models={"push": PerfectPush(), "weigh": FlatWeigh()}, belief=point)
+    rows = _by_id(options)
+    assert rows["probe_push"].probe["evoi"] == 0.0 and rows["probe_weigh"].probe["evoi"] == 0.0 and rec != "probe"
+    C = [o._costs for o in options if o.kind in ("commit", "lower_risk")]
+    v = probe_value(point, C, PerfectPush(), np.zeros((50, 3)), 20.0, "normal", np.random.default_rng(0))
+    assert v["evoi"] == 0.0
+
+
+def test_evoi_positive_when_the_best_row_depends_on_mu():
+    """firm_grip places only above mu 0.3 and slow_lift always places at a higher time cost: a push that
+    tells the side of 0.3 is worth about 0.75 x (0.7 - 0.4) = 0.23, and its row ranks first."""
+    options, rec = _pmenu(probe_models={"push": PerfectPush(), "weigh": FlatWeigh()})
+    rows = _by_id(options)
+    assert rows["slow_lift"].expected_cost == pytest.approx(0.7) and options[0].id == "probe_push" and rec == "probe"
+    assert 0.1 < rows["probe_push"].probe["evoi"] < 0.35 and rows["probe_weigh"].probe["evoi"] == 0.0
+
+
+def test_evoi_ignores_a_cheaper_inboard_row():
+    """At the table edge an inboard row that always places is cheapest; it is not a continuation (it
+    changes the destination), so the push keeps its value."""
+    options, rec = _pmenu(model=MuGate(f_std=20.0, inboard=True), probe_models={"push": PerfectPush()}, destination="table_edge")
+    rows = _by_id(options)
+    assert options[0].id == "inboard_place" and rows["probe_push"].probe["evoi"] > 0.1 and rec == "probe"
+
+
+def test_thrown_probe_ends_the_case_in_the_preposterior():
+    b = _particles(np.linspace(0.1, 0.9, 40), np.ones(40))
+    C = [np.where(b.arrays()["mu"] > 0.3, 0.4, 5.4), np.full(40, 0.7)]
+    for care in ("normal", "high"):
+        v = probe_value(b, C, PerfectPush(p_thrown=1.0), np.zeros((40, 3)), 20.0, care, np.random.default_rng(0))
+        assert v["expected_cost_after"] == pytest.approx(COST["dropped_high"] * _CARE[care]) and v["evoi"] == 0.0
+        assert v["p_thrown"] == pytest.approx(1.0)

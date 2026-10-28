@@ -57,3 +57,12 @@ def test_threshold_override_does_not_leak(tmp_path, monkeypatch):
     main(["--metrics", METRICS, "--repeats", "1", "--out", str(tmp_path / "c.json"), "--objects", "ycb__banana", "--seed", "2",
           "--follow-recommendation", "--threshold", "1.01"])
     assert menu.DEFAULT_THRESHOLD == 0.7
+
+
+def test_threshold_reaches_the_menu(tmp_path):
+    """--threshold 0.0 reaches the menu: no case abstains on a decline."""
+    from robots.mujoco_lab.calibrate import main
+
+    res = main(["--metrics", METRICS, "--repeats", "1", "--out", str(tmp_path / "c.json"), "--objects", "ycb__banana", "--seed", "2",
+                "--follow-recommendation", "--threshold", "0.0"])
+    assert res["n"] == 1 and res["n_executed"] == 1 and res["abstained"] == 0 and res["recommendation_decline_rate"] == 0.0

@@ -83,17 +83,27 @@ class Prediction:
         return 1.0 - self.p["not_lifted"] - self.p["dropped_low"] - self.p["dropped_high"]
 
 
+def _probe_data(probe: dict[str, Any] | None) -> dict[str, Any] | None:
+    if probe is None:
+        return None
+    return {"p_kind": {k: _r(v) for k, v in probe["p_kind"].items()}, "p_thrown": _r(probe["p_thrown"]),
+            "evoi": _r(probe["evoi"]), "expected_cost_after": _r(probe["expected_cost_after"])}
+
+
 @dataclass
 class Option:
-    """One menu row: an action, its predicted outcomes and its expected cost."""
+    """One menu row: an action, its predicted outcomes and its expected cost. A probe row (kind
+    ``probe``) has no outcome prediction; ``probe`` holds its predicted kinds, its risk of throwing the
+    object, its value of information and the expected cost of the best row after it."""
 
     id: str
-    kind: Literal["commit", "lower_risk", "decline"]
+    kind: Literal["commit", "lower_risk", "decline", "probe"]
     action: dict[str, Any]
     pred: Prediction | None
     cost_s: float
     expected_cost: float | None
     reason: str = ""
+    probe: dict[str, Any] | None = None
     _costs: Any = field(default=None, repr=False, compare=False)       # per-particle expected costs (not serialised)
     _base: dict[str, Any] | None = field(default=None, repr=False, compare=False)
     _pose: dict[str, Any] | None = field(default=None, repr=False, compare=False)
@@ -112,6 +122,7 @@ class Option:
             "cost_s": _r(self.cost_s),
             "expected_cost": _r(self.expected_cost),
             "reason": self.reason,
+            "probe": _probe_data(self.probe),
         }
 
 
@@ -123,17 +134,32 @@ class Assessment:
     destination: str
     options: list[Option]
     evidence: list[str]
-    recommendation: Literal["commit", "decline"]
+    recommendation: Literal["commit", "decline", "probe"]
     care: str
     visibility: float
     episode: int
     extras: dict[str, Any] = field(default_factory=dict)
 
     def best(self) -> Option | None:
+        """The first commit or lower-risk row to the requested destination (never a probe, never decline)."""
         for row in self.options:
-            if row.kind != "decline" and row.action.get("destination") == self.destination:
+            if row.kind in ("commit", "lower_risk") and row.action.get("destination") == self.destination:
                 return row
         return None
+
+    def best_overall(self) -> Option | None:
+        """The first row that is a probe or the best() row."""
+        best = self.best()
+        for row in self.options:
+            if row.kind == "probe" or row is best:
+                return row
+        return None
+
+    def recommended(self) -> Option | None:
+        """The row the recommendation names: the best_overall() probe, the best() row on commit, none on decline."""
+        if self.recommendation == "probe":
+            return self.best_overall()
+        return self.best() if self.recommendation == "commit" else None
 
     def decline_reason(self) -> str:
         for row in self.options:
@@ -165,6 +191,7 @@ class Assessment:
             "evidence": list(self.evidence),
             "options": [row.to_data() for row in self.options],
             "recommendation": self.recommendation,
+            "recommended_option": None if self.recommended() is None else self.recommended().id,
             "decline_reason": self.decline_reason(),
             "care": self.care,
             "visibility": _r(self.visibility),

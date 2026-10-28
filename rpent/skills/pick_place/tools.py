@@ -43,7 +43,9 @@ from rpent.tools.base import ToolResult, tool
 
 G = 9.81
 MIN_FORCE_N = 10.0
-MODES = ("commit", "assess_only")
+MODES = ("commit", "assess_only", "probe_first")
+PROBE_OPTIONS = {"probe_push": "push", "probe_weigh": "weigh"}
+MAX_PROBES = 2                    # probe_first runs at most this many probes per call
 REFRESH_ESS = MIN_ESS             # update_belief refreshes when the effective particles fall below this
 FLOOR_P = 1e-4                    # the outcome term's floor without a readout model
 OUT_OF_REACH = {"assessed": False, "reason": "object is out of reach (floor or bin)", "next": "report it; the skill cannot reach it"}
@@ -159,11 +161,15 @@ def _assess(object: str, destination: str, care: str, primitives: Any, store: di
     proposals = env.proposals()
     pose_fn = getattr(env, "proposal_pose", None) or (lambda prop: geometry_pose(geometry, prop))
     belief = _belief_record(loc, env, primitives, store)["belief"]
+    rec = _belief_record(loc, env, primitives, store)
     f_std = standard_force(env.nominal_mass(loc["object_id"]))
+    probes = {p: m for p, m in (getattr(primitives, "probe_models", None) or {}).items() if p not in rec["probes_run"]}
     options, recommendation = build_menu(primitives.model, belief, geometry, proposals, f_std, care, destination,
                                          env.plan_trajectory, primitives.rng, pose_fn=pose_fn,
-                                         threshold=getattr(primitives, "threshold", None))
+                                         threshold=getattr(primitives, "threshold", None), probe_models=probes or None)
     evidence = belief.summary() + [f"standard squeeze {f_std:.0f} N per pad", f"{len(proposals)} pinch proposals along the long axis"]
+    if rec["probes_run"]:
+        evidence.append(f"probes run this episode: {', '.join(sorted(rec['probes_run']))}")
     a = Assessment(object=object, destination=destination, options=options, evidence=evidence,
                    recommendation=recommendation, care=care, visibility=belief.visibility, episode=key[3])
     cache[key] = {"assessment": a, "menu": {o.id: o for o in options}, "belief": belief}
@@ -190,53 +196,62 @@ def assess_pick(*, object: str, destination: str = "bin", care: str = "normal", 
     return ToolResult(data=a.to_data())
 
 
-@tool(readonly=False, exclude=("primitives", "store"))
-def pick_and_place(*, object: str, destination: str = "bin", mode: str = "commit", option_id: str | None = None,
-                   care: str = "normal", primitives, store) -> ToolResult:
-    """Pick the object and set it down at the destination, executing one menu row.
+def _threshold(primitives: Any) -> float:
+    """The commit threshold: ``primitives.threshold`` when set, else menu.DEFAULT_THRESHOLD, read now."""
+    from rpent.skills.pick_place import menu as menu_mod
 
-    With no option_id the best row for the requested destination runs, unless the
-    recommendation is decline (then nothing runs; pass an option_id to override). Rows that
-    change the destination (inboard_place) run only when named. mode "assess_only" returns
-    the assessment without moving. After an attempt the result carries the pad readouts, a
-    diagnosis of what went wrong, the belief before and after the update, and a fresh assessment
-    under the updated belief and the object's new pose.
+    t = getattr(primitives, "threshold", None)
+    return float(menu_mod.DEFAULT_THRESHOLD if t is None else t)
 
-    Args:
-        object: The object's name as shown by view_env_state.
-        destination: Where to set it down.
-        mode: commit or assess_only.
-        option_id: A row id from the last assessment's menu, or none for the best row.
-        care: low, normal or high.
-    """
-    if mode == "probe_first":
-        return ToolResult(data={"error": "probe_first is not available in milestone 1"})
-    if mode not in MODES:
-        return ToolResult(data={"error": f"mode must be one of {MODES}, not {mode!r}"})
-    err, a = _assess(object, destination, care, primitives, store)
-    if err is not None:
-        return ToolResult(data=err)
-    if mode == "assess_only":
-        return ToolResult(data=a.to_data())
-    menu: dict[str, Option] = {o.id: o for o in a.options}
-    if option_id is None:
-        if a.recommendation == "decline":
-            data = a.to_data()
-            data.update({"placed": False, "reason": f"recommendation is decline: {a.decline_reason()}",
-                         "next": "pass an option_id from the menu to execute anyway, or raise care"})
-            return ToolResult(data=data)
-        option = a.best()
-    elif option_id not in menu:
-        return ToolResult(data={"error": f"unknown option_id {option_id!r}; menu ids: {sorted(menu)}"})
-    else:
-        option = menu[option_id]
-    if option.kind == "decline":
-        return ToolResult(data={"placed": False, "reason": option.reason,
-                                "next": "pick another option_id or raise care"})
+
+def _reassess(object: str, destination: str, care: str, primitives: Any, store: dict[str, Any]) -> dict[str, Any]:
+    """The fresh assessment's payload after the scene and the belief changed (every cached one is stale)."""
+    _cache(store).clear()
+    try:
+        err, fresh = _assess(object, destination, care, primitives, store)
+    except Exception as exc:  # noqa: BLE001  the executed action's result must survive a failed reassessment
+        return {"error": f"reassessment failed: {exc}"}
+    return fresh.to_data() if fresh is not None else err
+
+
+def _update(rec: dict[str, Any], entry: dict[str, Any], loc: dict[str, Any], primitives: Any) -> tuple[ParticleBelief, ParticleBelief]:
+    """(before, after): the record's belief updated by one entry; a failed update keeps the belief, flagged."""
+    env, before = primitives.env, rec["belief"]
+    try:
+        after = update_belief(before, entry, primitives, prior_fn=lambda n, rng: _prior_belief(loc, env, primitives, n, rng))
+    except Exception as exc:  # noqa: BLE001  the executed action's result must survive a failed update
+        after = before._replace(flags=before.flags + [f"belief update failed: {exc}"])
+    rec["belief"] = after
+    return before, after
+
+
+def _run_probe(row: Option, object: str, destination: str, care: str, primitives: Any, store: dict[str, Any]) -> dict[str, Any]:
+    """Run one probe row, update the belief with its result, and return the probe payload."""
     env = primitives.env
     loc = env.locate(object)
     rec = _belief_record(loc, env, primitives, store)
-    before = rec["belief"]
+    probe, act = row.action["probe"], row.action
+    if probe == "weigh":
+        prop = next(p for p in env.proposals() if abs(p.s - act["s"]) < 1e-9)
+        res = env.probe_weigh(prop, act["force"])
+    else:
+        res = env.probe_push()
+    rec["probes_run"].add(probe)
+    entry = {"type": "probe", "option": row.id, "base": row._base, "pose": row._pose, "force": float(act["force"]), "planned": None,
+             "obs": {"probe": probe, "kind": res.kind, "reading": dict(res.reading)}}
+    before, after = _update(rec, entry, loc, primitives)
+    return {"probed": probe, "placed": False, "kind": res.kind, "reading": dict(res.reading),
+            "displacement_m": res.displacement_m, "tilt_deg": res.tilt_deg, "thrown": bool(res.thrown), "seconds": res.seconds,
+            "declared": row.to_data()["probe"], "belief_before": before.to_data(), "belief": after.to_data(),
+            "assessment": _reassess(object, destination, care, primitives, store)}
+
+
+def _attempt(option: Option, object: str, destination: str, care: str, primitives: Any, store: dict[str, Any]) -> dict[str, Any]:
+    """Execute one commit or lower-risk row, update the belief with the outcome and readouts, and
+    return the attempt payload."""
+    env = primitives.env
+    loc = env.locate(object)
+    rec = _belief_record(loc, env, primitives, store)
     prop = next(p for p in env.proposals() if abs(p.s - option.action["s"]) < 1e-9)
     act = option.action
     r = env.execute(prop, act["force"], act["v_lift"], act["v_transport"], act["destination"], act.get("release_height"))
@@ -244,18 +259,8 @@ def pick_and_place(*, object: str, destination: str = "bin", mode: str = "commit
     readouts = dict(getattr(r, "readouts", None) or {})
     entry = {"type": "attempt", "option": option.id, "base": option._base, "pose": option._pose, "force": float(act["force"]),
              "planned": option._planned, "obs": {"label": r.label, "readouts": readouts, "force": float(act["force"])}}
-    try:
-        after = update_belief(before, entry, primitives, prior_fn=lambda n, rng: _prior_belief(loc, env, primitives, n, rng))
-    except Exception as exc:  # noqa: BLE001  the executed outcome must survive a failed update
-        after = before._replace(flags=before.flags + [f"belief update failed: {exc}"])
-    rec["belief"] = after
-    cache = _cache(store)
-    cache.clear()                                   # the scene and the belief changed: every assessment is stale
-    try:
-        fresh_err, fresh = _assess(object, destination, care, primitives, store)
-    except Exception as exc:  # noqa: BLE001  the executed outcome must survive a failed reassessment
-        fresh_err, fresh = {"error": f"reassessment failed: {exc}"}, None
-    data = {
+    before, after = _update(rec, entry, loc, primitives)
+    return {
         "placed": r.label == "placed_stable",
         "placed_at_requested": r.label == "placed_stable" and act["destination"] == destination,
         "outcome": r.label,
@@ -273,6 +278,96 @@ def pick_and_place(*, object: str, destination: str = "bin", mode: str = "commit
         "diagnosis": diagnose(r.label, readouts, act, before.to_data(), after.to_data(), laws=_laws(primitives, r.label)),
         "belief_before": before.to_data(),
         "belief": after.to_data(),
-        "assessment": fresh.to_data() if fresh is not None else fresh_err,
+        "assessment": _reassess(object, destination, care, primitives, store),
     }
+
+
+def _commit(a: Assessment, option_id: str | None, object: str, destination: str, care: str, primitives: Any,
+            store: dict[str, Any]) -> dict[str, Any]:
+    """The commit path: the named row, or the best row unless the recommendation advises against it
+    (decline; probe while the best row is below the threshold)."""
+    menu: dict[str, Option] = {o.id: o for o in a.options}
+    if option_id is None:
+        best = a.best()
+        if a.recommendation == "decline" or best is None:
+            data = a.to_data()
+            data.update({"placed": False, "reason": f"recommendation is decline: {a.decline_reason()}",
+                         "next": "pass an option_id from the menu to execute anyway, or raise care"})
+            return data
+        if a.recommendation == "probe" and best.pred.p["placed_stable"] < _threshold(primitives):
+            probe = a.best_overall()
+            data = a.to_data()
+            data.update({"placed": False, "reason": f"recommendation is probe ({probe.id}): the best row ({best.id}) is below the threshold",
+                         "next": f"pass option_id {probe.id!r} or mode probe_first, or an option_id from the menu to execute anyway"})
+            return data
+        option = best
+    elif option_id not in menu:
+        return {"error": f"unknown option_id {option_id!r}; menu ids: {sorted(menu)}"}
+    else:
+        option = menu[option_id]
+    if option.kind == "decline":
+        return {"placed": False, "reason": option.reason, "next": "pick another option_id or raise care"}
+    return _attempt(option, object, destination, care, primitives, store)
+
+
+def _probe_brief(d: dict[str, Any]) -> dict[str, Any]:
+    return {k: d[k] for k in ("probed", "kind", "reading", "displacement_m", "thrown")}
+
+
+@tool(readonly=False, exclude=("primitives", "store"))
+def pick_and_place(*, object: str, destination: str = "bin", mode: str = "commit", option_id: str | None = None,
+                   care: str = "normal", primitives, store) -> ToolResult:
+    """Pick the object and set it down at the destination, executing one menu row, or run a probe.
+
+    With no option_id the best row for the requested destination runs, unless the
+    recommendation is decline, or is probe while the best row is below the threshold (then
+    nothing runs; pass an option_id to override). Rows that change the destination
+    (inboard_place) run only when named. option_id "probe_push" or "probe_weigh" runs that probe
+    (once per episode): the object is pushed or lifted 2 cm and set back, the belief is updated,
+    and nothing is placed. mode "probe_first" runs the recommended probes (at most two, while the
+    recommendation is probe), then commits as above; mode "assess_only" returns the assessment
+    without moving. After an attempt the result carries the pad readouts, a diagnosis of what
+    went wrong, the belief before and after the update, and a fresh assessment under the updated
+    belief and the object's new pose.
+
+    Args:
+        object: The object's name as shown by view_env_state.
+        destination: Where to set it down.
+        mode: commit, probe_first or assess_only.
+        option_id: A row id from the last assessment's menu (a probe id runs that probe), or none for the best row.
+        care: low, normal or high.
+    """
+    if mode not in MODES:
+        return ToolResult(data={"error": f"mode must be one of {MODES}, not {mode!r}"})
+    probe_models = getattr(primitives, "probe_models", None) or {}
+    if option_id in PROBE_OPTIONS and PROBE_OPTIONS[option_id] not in probe_models:
+        return ToolResult(data={"error": "probe models are not loaded"})
+    err, a = _assess(object, destination, care, primitives, store)
+    if err is not None:
+        return ToolResult(data=err)
+    if mode == "assess_only":
+        return ToolResult(data=a.to_data())
+    if option_id in PROBE_OPTIONS:
+        loc = primitives.env.locate(object)
+        if PROBE_OPTIONS[option_id] in _belief_record(loc, primitives.env, primitives, store)["probes_run"]:
+            return ToolResult(data={"error": f"{option_id} already ran this episode; the menu shows what is left"})
+        row = next((o for o in a.options if o.id == option_id), None)
+        if row is None:
+            return ToolResult(data={"error": f"{option_id} is not on the menu: no row to the requested destination to probe for"})
+        return ToolResult(data=_run_probe(row, object, destination, care, primitives, store))
+    probes: list[dict[str, Any]] = []
+    if mode == "probe_first" and probe_models:
+        for _ in range(MAX_PROBES):
+            if a.recommendation != "probe":
+                break
+            d = _run_probe(a.best_overall(), object, destination, care, primitives, store)
+            probes.append(_probe_brief(d))
+            if d["thrown"] or not d["assessment"].get("assessed", False):
+                return ToolResult(data=dict(d, probes=probes))
+            err, a = _assess(object, destination, care, primitives, store)
+            if err is not None:
+                return ToolResult(data=dict(err, probes=probes))
+    data = _commit(a, option_id, object, destination, care, primitives, store)
+    if mode == "probe_first":
+        data["probes"] = probes
     return ToolResult(data=data)
