@@ -1,5 +1,5 @@
 {
- "probe_corpus": "robots/mujoco_lab/data/probe_corpus_v3.jsonl",
+ "probe_corpus": "robots/mujoco_lab/data/probe_corpus_v4.jsonl",
  "split": {
   "train": [
    "fruits_veggies__avocado",
@@ -115,12 +115,12 @@
    "thrown_rate": 0.06963850077622533,
    "reading": {
     "measured": [
-     -8.712368309221326e-09,
+     -2.1899452713454553e-08,
      0.05
     ],
     "lower_bound": [
-     -0.31464535588699727,
-     0.4180562144722858
+     -0.13838764988225694,
+     0.22183105794666613
     ]
    },
    "stats": {
@@ -132,14 +132,18 @@
     },
     "n_reading": {
      "measured": 2453,
-     "lower_bound": 371,
+     "lower_bound": 248,
      "lost": 0
+    },
+    "reading_rate": {
+     "measured": 0.9979658258746948,
+     "lower_bound": 0.3415977961432507
     },
     "thrown": 176
    },
    "val": {
     "n": 671,
-    "brier": 0.20705345849269163,
+    "brier": 0.2068594211912595,
     "brier_const": 0.30460709830483484
    }
   },
@@ -173,11 +177,14 @@
      "no_breakaway": 0,
      "no_contact": 0
     },
+    "reading_rate": {
+     "slid": 1.0
+    },
     "thrown": 24
    },
    "val": {
     "n": 336,
-    "brier": 0.08290055402589232,
+    "brier": 0.08316894212042932,
     "brier_const": 0.16337439269537177
    }
   }
