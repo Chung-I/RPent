@@ -79,7 +79,8 @@ A probe result has `probed`, `kind`, `reading`, `displacement_m`, `tilt_deg`, `t
 `seconds`, `declared` (the probe row's prediction), `belief_before`, `belief` and `assessment`.
 - Weigh kinds: `measured` (the object rose; `reading.m_hat` is the measured mass in kg),
   `lower_bound` (it did not rise; `reading.mu_hat` is a friction estimate and `reading.m_lower`
-  a lower bound on the mass), `lost` (it rose, then slipped out before the hold ended).
+  a lower bound on the mass, both absent when the pads never slid up the still object), `lost`
+  (it rose, then slipped out before the hold ended).
 - Push kinds: `slid` (`reading.f_break` is the force in N at which it started to slide),
   `tipped`, `no_breakaway` (it did not slide), `no_contact` (it moved with no hand contact force).
 
@@ -87,8 +88,10 @@ An attempt result has `placed`, `placed_at_requested`, `outcome`, `option`, `dec
 executed row's predicted numbers), `readouts`, `diagnosis`, `belief_before`, `belief` and
 `assessment`.
 - `readouts`: what the pads measured, for example `fz_slip_max_n` (the largest lift force
-  before the pads slipped), `fz_at_loss_n` (the lift force when the object was lost), `rot_deg`
-  (the object's rotation in the pads), `loss_phase` and `loss_since_lift_s`.
+  while the pads slid up the still object; null when they did not slide: the object rose with
+  the hand or turned, or a pad was not on a side face), `fz_at_loss_n` (the mean lift force over
+  the last three steps before the object was lost), `rot_deg` (the object's rotation in the
+  pads), `loss_phase` and `loss_since_lift_s`.
 - `diagnosis`: lines that say what went wrong and what the readouts imply about the friction,
   the mass or the centre of mass, then how the belief changed.
 - `belief` (and `belief_before`): `mass_median` and `mass_80` (an 80 % interval, kg),

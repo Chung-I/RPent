@@ -20,8 +20,12 @@ import pytest
 from robots.mujoco_lab.readouts import summarize
 
 
-def _s(t, phase, z, pads=(True, True), fz=0.0, rot=0.0, pitch=0.0):
-    return {"t": t, "phase": phase, "z": z, "pads": list(pads), "fz": fz, "fn": 10.0, "rot_deg": rot, "pitch_ey": pitch}
+def _s(t, phase, z, pads=(True, True), fz=0.0, rot=0.0, pitch=0.0, hand_z=None, nz=(0.0, 0.0), rot_lift=None):
+    """One trace step; by default the hand carries the object (hand_z = 0.3 + z) and the pads press side faces."""
+    if rot_lift is None and phase not in ("approach", "close"):
+        rot_lift = 0.0
+    return {"t": t, "phase": phase, "z": z, "pads": list(pads), "fz": fz, "fn": 10.0, "rot_deg": rot, "pitch_ey": pitch,
+            "hand_z": 0.3 + z if hand_z is None else hand_z, "pad_nz": list(nz), "rot_lift_deg": rot_lift}
 
 
 def _label(label, loss_phase=None, loss_step=None, loss_t=None):
@@ -52,22 +56,54 @@ def test_summarize_hold_reading():
     assert summarize(_held_trace(hold_fz=(2.0, 2.0, 2.0, 2.0)), _label("placed_stable"), 0.15)["fz_hold_n"] is None  # under 5 steps
 
 
-def test_summarize_slip_reading():
+def _slide_trace(lift_fz=(1.3, 1.5, 1.4), close_fz=(0.0, 0.4, 0.8), rise=(0.0, 0.0, 0.0), nz=(0.0, 0.0), rot=(0.0, 0.0, 0.0),
+                 pads_lift=None):
+    """A not-lifted attempt: the hand rises 3 mm per lift step while the object stays (the pads slide up it)."""
     tr, t = [], 0.0
-    for k in range(4):
-        tr.append(_s(t, "close", 0.0, fz=0.4 * k)); t += 0.02
-    for k, fz in enumerate((1.3, 1.5, 1.1, 0.2)):
-        tr.append(_s(t, "lift", 0.003 * k, fz=fz, pads=(True, k < 3))); t += 0.02
+    for fz in close_fz:
+        tr.append(_s(t, "close", 0.0, fz=fz, hand_z=0.30)); t += 0.02
+    for k, fz in enumerate(lift_fz):
+        tr.append(_s(t, "lift", rise[k], fz=fz, hand_z=0.30 + 0.003 * (k + 1), nz=nz, rot_lift=rot[k],
+                     pads=(True, True) if pads_lift is None else pads_lift[k])); t += 0.02
     for _ in range(6):
-        tr.append(_s(t, "hold", 0.004, fz=0.1)); t += 0.02
-    out = summarize(tr, _label("not_lifted"), v_lift=0.15)
+        tr.append(_s(t, "hold", rise[-1], fz=0.1, hand_z=0.30 + 0.003 * len(lift_fz), pads=(False, False))); t += 0.02
+    return tr
+
+
+def test_slip_reading_is_the_largest_force_while_the_pads_slide_up_a_still_object():
+    out = summarize(_slide_trace(), _label("not_lifted"), v_lift=0.15)
     assert out["rose"] is False and out["fz_slip_max_n"] == pytest.approx(1.5)
     assert out["fz_hold_n"] is None and out["fz_at_loss_n"] is None
     held = summarize(_held_trace(), _label("placed_stable"), 0.15)
     assert held["fz_slip_max_n"] is None                                     # a slip reading only for not_lifted
 
 
-def test_summarize_loss_reading():
+def test_slip_reading_ignores_the_close_phase():
+    """The pads strike the object at several times the squeeze while the table still holds it."""
+    out = summarize(_slide_trace(close_fz=(0.0, 9.0, 4.0)), _label("not_lifted"), v_lift=0.15)
+    assert out["fz_slip_max_n"] == pytest.approx(1.5)
+
+
+def test_slip_reading_needs_the_pads_on_side_faces():
+    """Pads that land on the object's top press it into the table (their contact normals point down)."""
+    tr = _slide_trace(lift_fz=(-40.0, -35.0, -30.0), close_fz=(-50.0, -45.0, -42.0), nz=(-0.99, -0.98))
+    assert summarize(tr, _label("not_lifted"), v_lift=0.15)["fz_slip_max_n"] is None
+
+
+def test_slip_reading_needs_the_object_to_stay_while_the_hand_rises():
+    """A pivot: the grasp rises with the hand, or the object turns, so the force is a share of the weight."""
+    carried = _slide_trace(lift_fz=(16.5, 17.6, 18.5), rise=(0.0018, 0.0036, 0.0054))
+    assert summarize(carried, _label("not_lifted"), v_lift=0.15)["fz_slip_max_n"] is None
+    turned = _slide_trace(lift_fz=(16.5, 17.6, 18.5), rot=(2.0, 4.0, 6.0))
+    assert summarize(turned, _label("not_lifted"), v_lift=0.15)["fz_slip_max_n"] is None
+
+
+def test_slip_reading_needs_two_sliding_steps():
+    tr = _slide_trace(pads_lift=[(True, True), (True, False), (False, False)])
+    assert summarize(tr, _label("not_lifted"), v_lift=0.15)["fz_slip_max_n"] is None
+
+
+def test_loss_reading_is_the_mean_of_the_last_three_two_pad_steps():
     tr = _held_trace()
     t = tr[-1]["t"] + 0.02
     for fz in (2.0, 1.6, 0.8):
@@ -77,7 +113,7 @@ def test_summarize_loss_reading():
     tr.append(_s(t, "transport", 0.15, pads=(False, False)))
     first_lift_t = next(x["t"] for x in tr if x["phase"] == "lift")
     out = summarize(tr, _label("dropped_low", "transport", k, tr[k]["t"]), v_lift=0.15)
-    assert out["fz_at_loss_n"] == pytest.approx(0.8)
+    assert out["fz_at_loss_n"] == pytest.approx((2.0 + 1.6 + 0.8) / 3)      # the mean of the last three two-pad steps
     assert out["loss_phase"] == "transport" and out["loss_t"] == pytest.approx(tr[k]["t"])
     assert out["loss_since_lift_s"] == pytest.approx(tr[k]["t"] - first_lift_t)
 

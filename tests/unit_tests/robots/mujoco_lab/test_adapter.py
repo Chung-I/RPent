@@ -266,6 +266,35 @@ def test_trace_records_pad_forces_during_the_hold():
 
 
 
+def test_lift_trace_reads_the_weight_on_every_steady_step():
+    """The hand follows its mocap target in a jump per control step, so a force sampled at the end of a
+    step read 0.9 of the weight on every lift step. The trace's force is the mean over the step's
+    physics substeps: the weight, within 5 %, once the carried lift runs steadily."""
+    env = _env()
+    env.reset("ycb__brick", {"mu": 0.8, "mass_scale": 1.0, "com_s": None, "v_lift": 0.15}, seed=0)
+    f_std = env.s["t3_make"].std_force(env.nominal_mass())
+    r = env.execute(env.proposals()[1], force=2 * f_std, v_lift=0.15, v_transport=0.5, destination="table_centre")
+    lift = [x for x in r.trace if x["phase"] == "lift" and all(x["pads"]) and x["z"] > 0.012]
+    mg = env.truth()["mass"] * 9.81
+    steady = lift[3:]
+    assert len(steady) >= 20
+    assert max(abs(x["fz"] / mg - 1.0) for x in steady) <= 0.05
+
+
+def test_trace_records_the_pad_normals_the_hand_height_and_the_turn_since_the_lift():
+    env = _env()
+    env.reset("ycb__brick", {"mu": 0.8, "mass_scale": 1.0, "com_s": None, "v_lift": 0.15}, seed=0)
+    f_std = env.s["t3_make"].std_force(env.nominal_mass())
+    r = env.execute(env.proposals()[1], force=2 * f_std, v_lift=0.15, v_transport=0.5, destination="table_centre")
+    assert all({"hand_z", "pad_nz", "rot_lift_deg"} <= set(x) for x in r.trace)
+    assert all(x["rot_lift_deg"] is None for x in r.trace if x["phase"] in ("approach", "close"))
+    hold = [x for x in r.trace if x["phase"] == "hold"]
+    assert hold and all(n is not None and abs(n) < 0.2 for x in hold for n in x["pad_nz"])      # the brick's sides are vertical
+    assert all(x["rot_lift_deg"] < 3.0 for x in hold)
+    lift = [x for x in r.trace if x["phase"] == "lift"]
+    assert lift[-1]["hand_z"] - lift[0]["hand_z"] > 0.15
+
+
 @pytest.mark.parametrize("oid", ["ycb__spam_can", "hope__ketchup_bottle"])
 def test_hold_force_is_the_weight_under_a_firm_squeeze(oid):
     """The hold reading is the pads' net vertical force on the object: the weight, whatever the squeeze

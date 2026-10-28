@@ -59,6 +59,15 @@ def test_diagnose_rules():
     assert diagnose("placed_stable", _r(), ACT, BEFORE, AFTER)[:-1] == []
 
 
+def test_diagnose_says_when_the_pads_never_slid():
+    """A not-lifted attempt with readouts but no slip reading: the pads did not slide up a still object,
+    so the lift force tells no friction. Without readouts (the milestone 1 fakes) the line is absent."""
+    d = diagnose("not_lifted", _r(rose=False), ACT, BEFORE, AFTER)
+    assert any("did not slide up a still object" in s for s in d)
+    assert not any("friction about" in s for s in d)
+    assert not any("did not slide" in s for s in diagnose("not_lifted", {}, ACT, BEFORE, AFTER))
+
+
 def test_diagnose_tolerates_missing_readouts():
     """A substrate without readouts (the milestone 1 fakes) still gets the label rules and the belief line."""
     d = diagnose("not_lifted", {}, ACT, BEFORE, AFTER)
@@ -67,8 +76,8 @@ def test_diagnose_tolerates_missing_readouts():
 
 
 def test_diagnose_corrects_the_friction_reading_with_the_fitted_law():
-    """The lab's slip and loss forces read low (the fitted median log ratio is about -1 for slip, -2.3 for
-    a loss); with the readout model's laws the friction number is corrected by exp(-b)."""
+    """With the readout model's laws (b: the fitted median log ratio of the reading to 2 mu F) the friction
+    number is corrected by exp(-b)."""
     laws = {"slip": (-1.0, 1.0), "loss": (-2.0, 1.0)}
     d = diagnose("not_lifted", _r(rose=False, fz_slip_max_n=3.0), ACT, BEFORE, AFTER, laws=laws)
     assert any("friction about 0.41" in s and "fitted" in s for s in d)          # 0.15 x e^1.0

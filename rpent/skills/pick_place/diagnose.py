@@ -18,14 +18,14 @@ Rules over one attempt's label and readouts (see ``robots.mujoco_lab.readouts.su
 keys; a missing key is a missing reading):
 
 * not_lifted: never left the table (too heavy or too slippery for this squeeze), with the friction
-  the slip force reads;
+  the slip force reads, or a line that says the pads did not slide up a still object (no slip force:
+  the object rose with the hand or turned, or a pad was not on a side face);
 * a loss in lift or hold without rotation: rose then slid (slippery or heavy at this squeeze), with
   the friction the force before the loss reads;
 
   (both friction numbers are fz / 2F, corrected by exp(-b) when the readout model's fitted law
-  (b, sd) for the term is given: the lab's forces read low, b about -1 for slip and -2.3 for a loss;
-  the law's sd gives the 80 % range of that one reading. A force that is not positive, or a friction
-  outside the belief's range, gives no number: the line says why);
+  (b, sd) for the term is given; the law's sd gives the 80 % range of that one reading. A force that
+  is not positive, or a friction outside the belief's range, gives no number: the line says why);
 * a rotation of 10 degrees or more: the CoM is off the pinch, toward the side the readouts tell
   (before the fall, or in the hand when nothing fell);
 * a loss within 0.3 s of the lift start at a lift speed of 0.4 m/s or more: lift slower;
@@ -98,6 +98,9 @@ def diagnose(label: str, readouts: dict[str, Any], action: dict[str, Any], befor
     if label == "not_lifted":
         lines.append("never left the table: too heavy or too slippery for this squeeze")
         fz = r.get("fz_slip_max_n")
+        if fz is None and "fz_slip_max_n" in r:
+            lines.append("the pads did not slide up a still object (it rose with the hand or turned, or a pad was not on a "
+                         "side face), so the lift force gives no friction: the belief line carries the update")
         if fz is not None and force > 0:
             mu, note = _friction(fz, force, laws.get("slip"), mu_range)
             if mu is not None:

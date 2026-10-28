@@ -96,6 +96,25 @@ def test_probe_model_sample_is_in_support():
             assert set(s["reading"]) == want
 
 
+def test_probe_model_samples_a_missing_reading_at_its_rate():
+    """Some lower_bound results carry no reading (the pads never slid up a still object). The model keeps
+    the rate, and its simulated results lack the reading as often as the real ones."""
+    rows = _probe_rows()
+    lb = [r for r in rows if r["probe"] == "weigh" and r["kind"] == "lower_bound"]
+    for r in lb[::2]:
+        r["reading"] = {}
+    pm = fit_probe_models(rows)["weigh"]
+    rate = len(lb[1::2]) / len(lb)
+    assert pm.reading_rate["lower_bound"] == pytest.approx(rate) and pm.reading_rate["measured"] == 1.0
+    rng = np.random.default_rng(5)
+    b = _particles(1)
+    X = particle_matrix(rows[0]["base"], b.arrays(), rows[0]["pose"], rows[0]["force"])
+    p = np.array([0.0, 1.0, 0.0])                                           # always lower_bound
+    got = [pm.sample(X[0], b.particles[0], rows[0]["force"], rng, p=p)["reading"] for _ in range(2000)]
+    assert all(g == {} or set(g) == {"mu_hat", "m_lower"} for g in got)
+    assert np.mean([bool(g) for g in got]) == pytest.approx(rate, abs=0.04)
+
+
 def test_weigh_reading_concentrates_the_mass():
     rows = _probe_rows()
     pm = fit_probe_models(rows)["weigh"]

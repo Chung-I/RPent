@@ -34,7 +34,7 @@ import numpy as np
 
 from rpent.skills.pick_place.destinations import DESTINATIONS, OBJECT_REST_XY, PRIMITIVE_IDS, has_surface, is_mesh, release_height
 from robots.mujoco_lab.labels import RISE_M, Final, label_rollout
-from robots.mujoco_lab.readouts import RISEN_M, summarize
+from robots.mujoco_lab.readouts import RISEN_M, slide_force, summarize
 from rpent.skills.pick_place.features import G, Geometry
 from rpent.skills.pick_place.probes import ProbeResult
 from rpent.skills.pick_place.protocol import OUTCOMES  # noqa: F401  (label vocabulary)
@@ -268,6 +268,7 @@ class MuJoCoLabEnv:
         xml = sc.build_xml(o, props, mu=th["mu"], mass_scale=th["mass_scale"], com_shift=shift, obj_pos=pos,
                            obj_quat=quat, cam_k=1.0, fixtures=specs)
         self.sim = sc.Sim(xml)
+        self._install_meter()
         self.fixtures_in_scene = names
         self.fixture = fixture
         self._onto_table()
@@ -348,8 +349,10 @@ class MuJoCoLabEnv:
                     out[k] += float(abs(f[0]))
         return out
 
-    def _pad_hull_forces(self) -> tuple[float, float]:
-        """(net vertical force of both pads on the object, summed normal force), pad-hull contacts only.
+    def _pad_hull_sums(self) -> np.ndarray:
+        """Over the pad-hull contacts now: [the net vertical force of both pads on the object, the left
+        pad's normal force, the right pad's, and each pad's normal force times the vertical part of its
+        contact normal into the object (-1 for a pad that presses down on a top face, 0 on a vertical side)].
 
         The vertical force is signed (up is positive), so in a static two-pad hold it equals the
         weight whatever the squeeze; a per-contact absolute sum (t3_probes.pad_forces) also counts
@@ -360,18 +363,45 @@ class MuJoCoLabEnv:
         sim = self.sim
         f = np.zeros(6)
         hull = set(sim.hull_ids)
-        fz = fn = 0.0
+        pads = (sim.pad_l, sim.pad_r)
+        out = np.zeros(5)
         for i in range(sim.d.ncon):
             c = sim.d.contact[i]
-            pads = (sim.pad_l, sim.pad_r)
             if c.geom1 in pads or c.geom2 in pads:
+                k = 0 if sim.pad_l in (c.geom1, c.geom2) else 1
                 other = c.geom2 if c.geom1 in pads else c.geom1
                 if other in hull:
                     mujoco.mj_contactForce(sim.m, sim.d, i, f)
-                    fw = c.frame.reshape(3, 3).T @ f[:3]
-                    fz += float(fw[2]) if other == c.geom2 else -float(fw[2])
-                    fn += abs(float(f[0]))
-        return fz, fn
+                    frame = c.frame.reshape(3, 3)
+                    sign = 1.0 if other == c.geom2 else -1.0       # the force and the normal on the object
+                    out[0] += sign * float((frame.T @ f[:3])[2])
+                    out[1 + k] += abs(float(f[0]))
+                    out[3 + k] += abs(float(f[0])) * sign * float(frame[0, 2])
+        return out
+
+    def _install_meter(self) -> None:
+        """Wrap the sim's control step: while a trace records (``_metering``), each step also keeps the mean
+        of ``_pad_hull_sums`` over its physics substeps in ``_step_forces``. The hand follows its mocap
+        target in a jump per control step, so a force sampled at the end of a step misses most of it: a
+        carried lift read 0.9 of the weight, and a light object's lift step read below zero (the push
+        averages the same way, see _push_step)."""
+        import mujoco
+
+        sim, sub = self.sim, int(self.s["scene"].SUB)
+        plain = sim.step_ctrl
+        self._metering, self._step_forces = False, None
+
+        def step_ctrl() -> None:
+            if not self._metering:
+                plain()
+                return
+            acc = np.zeros(5)
+            for _ in range(sub):
+                mujoco.mj_step(sim.m, sim.d)
+                acc += self._pad_hull_sums()
+            self._step_forces = acc / sub
+
+        sim.step_ctrl = step_ctrl
 
     def locate(self, prompt: str) -> dict[str, Any] | None:
         self._need()
@@ -636,10 +666,15 @@ class MuJoCoLabEnv:
             for _ in range(int(RETREAT_SETTLE_S * hz)):
                 sim.step_ctrl()
                 on_step("retreat")
+        self._metering = False
         return self._label(trace, rose, dest, release, planned, v_lift)
 
     def _tracer(self, pt: np.ndarray, yaw: float):
-        """(trace, on_step): on_step(phase) appends one dict per control step (see execute's trace)."""
+        """(trace, on_step): on_step(phase) appends one dict per control step (see execute's trace). The pad
+        forces are means over the step's physics substeps (``_install_meter``): ``fz`` the pads' net
+        vertical force on the object, ``fn`` their normal force, ``pad_nz`` each pad's force-weighted
+        vertical part of its contact normal into the object (None without contact). ``hand_z`` is the
+        hand's height, ``rot_lift_deg`` the object's turn since the lift began (None before it)."""
         sim = self.sim
         hz = self.s["scene"].CTRL_HZ
         p0z = sim.obj_pos()[2]
@@ -647,6 +682,11 @@ class MuJoCoLabEnv:
         trace: list[dict[str, Any]] = []
         pitch_of = self._pitch_meter(pt, yaw)
         pitch0: list[float] = []
+        prev_R, lift_R = [R0], []
+        self._metering = True
+
+        def turn(A: np.ndarray, B: np.ndarray) -> float:
+            return float(np.degrees(np.arccos(np.clip(((A @ B.T).trace() - 1) / 2, -1, 1))))
 
         def on_step(phase: str) -> None:
             pos = sim.obj_pos()
@@ -654,15 +694,21 @@ class MuJoCoLabEnv:
             lin, _ = sim.obj_vel()
             touching, pads = sim.contacts()
             surf, has = self._surface_below(pos[:2])
-            ang = float(np.degrees(np.arccos(np.clip(((sim.obj_mat() @ R0.T).trace() - 1) / 2, -1, 1))))
-            fz, fn = self._pad_hull_forces()
+            R = sim.obj_mat().copy()
+            if phase == "lift" and not lift_R:
+                lift_R.append(prev_R[0])                         # the pose at the end of the close
+            prev_R[0] = R
+            acc = self._step_forces
+            pad_nz = [float(acc[3 + k] / acc[1 + k]) if acc[1 + k] > 0 else None for k in (0, 1)]
             pitch = pitch_of()
             if not pitch0:
                 pitch0.append(pitch)
             trace.append({"t": len(trace) / hz, "phase": phase, "z": float(pos[2] - p0z), "low_z": float(low),
                           "surface_z_below": surf, "has_surface": has, "speed": float(np.linalg.norm(lin)),
-                          "pads": list(pads), "zone": sim.zone_of(touching), "rot_deg": ang,
-                          "fz": fz, "fn": fn, "pitch_ey": float(pitch - pitch0[0])})
+                          "pads": list(pads), "zone": sim.zone_of(touching), "rot_deg": turn(R, R0),
+                          "fz": float(acc[0]), "fn": float(acc[1] + acc[2]), "pad_nz": pad_nz,
+                          "hand_z": float(sim.d.xpos[sim.hand][2]), "rot_lift_deg": turn(R, lift_R[0]) if lift_R else None,
+                          "pitch_ey": float(pitch - pitch0[0])})
         return trace, on_step
 
     # ---------------------------------------------------------------- probes
@@ -741,17 +787,18 @@ class MuJoCoLabEnv:
             held = [x["fz"] for x in trace[i0:] if x["phase"] == "hold" and x["z"] > RISEN_M and all(x["pads"])]
             seg = held or [trace[i]["fz"] for i in risen]
             return "measured", {"m_hat": float(np.median(seg)) / G}
-        both = [x["fz"] for x in trace if x["phase"] in ("close", "lift", "hold") and all(x["pads"])]
-        fmax = float(max(both)) if both else 0.0
+        fmax = slide_force(trace)
+        if fmax is None:
+            return "lower_bound", {}
         return "lower_bound", {"mu_hat": fmax / (2.0 * float(force)), "m_lower": fmax / G}
 
     def probe_weigh(self, proposal: Proposal, force: float) -> ProbeResult:
         """Close with ``force``, lift 2 cm at 3 cm/s, hold 0.5 s (the execute trace); then open, settle
         0.5 s, rise 10 cm, settle 1 s. Kinds: measured (rose 1.2 cm with both pads: m_hat = the median
-        net vertical pad force over the still hold, / g), lower_bound (never rose: mu_hat = max force /
-        2F, m_lower = max force / g), lost (rose, then both pads lost it). The hold, not the lift: the
-        hand follows its mocap target in jumps, so a force sampled at the end of a lift step reads
-        0.9 of the weight on every object."""
+        net vertical pad force over the still hold, / g), lower_bound (never rose: mu_hat = the largest
+        force while the pads slid up the still object (readouts.slide_force) / 2F, m_lower = that force
+        / g; no reading when the pads never did), lost (rose, then both pads lost it). The forces are
+        means over each step's physics substeps (the hand follows its mocap target in jumps)."""
         self._need()
         self._refresh_baselines()
         gr, sim, hz = self.s["grasp"], self.sim, self.s["scene"].CTRL_HZ
@@ -760,6 +807,7 @@ class MuJoCoLabEnv:
         trace, on_step = self._tracer(pt, proposal.yaw)
         gr.run_grasp(sim, pt, proposal.yaw, force=force, v_lift=WEIGH_V_LIFT, lift_h=WEIGH_LIFT_M, hold_s=WEIGH_HOLD_S,
                      on_step=on_step)
+        self._metering = False
         kind, reading = self.weigh_reading(trace, force)
         steps = [len(trace)]
         sim.grip(-20.0)

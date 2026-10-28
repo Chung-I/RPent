@@ -18,8 +18,9 @@ what each probe will show under each belief particle.
 
 * weigh: close with a firm squeeze, lift 2 cm slowly and hold; while the object is risen the pads'
   net vertical force is its weight (kind ``measured``, reading ``m_hat``). An object that never rises
-  tells the friction from the largest vertical pad force (``lower_bound``: ``mu_hat`` = fz / 2F and
-  ``m_lower`` = fz / g); one that rises and slips out is ``lost``.
+  tells the friction from the largest vertical pad force while the pads slide up it (``lower_bound``:
+  ``mu_hat`` = fz / 2F and ``m_lower`` = fz / g; no reading when they never slide up a still object);
+  one that rises and slips out is ``lost``.
 * push: slide the object with the open hand at 3 cm/s; at breakaway the push force is mu m g
   (``slid``, reading ``f_break``); the object may tip instead, not break away, or move without a
   hand force (``no_contact``).
@@ -142,6 +143,7 @@ class ProbeModel:
     temper: float = 1.0
     floor_p: float = 1e-4
     stats: dict[str, Any] = field(default_factory=dict)
+    reading_rate: dict[str, float] = field(default_factory=dict)
 
     def p_kind(self, X: np.ndarray) -> np.ndarray:
         """P(kind) per particle row of X, columns in ``classes`` order."""
@@ -193,13 +195,14 @@ class ProbeModel:
     def sample(self, x_row: np.ndarray, particle: dict[str, Any], force: float, rng: np.random.Generator,
                p: np.ndarray | None = None) -> dict[str, Any]:
         """One simulated result of the probe for one particle (its feature row and properties); ``p``:
-        the row's P(kind) when the caller has it already."""
+        the row's P(kind) when the caller has it already. A kind's reading is present at the rate the
+        training rows had a usable one (``reading_rate``)."""
         x = np.asarray(x_row, dtype=float).reshape(1, -1)
         p = self.p_kind(x)[0] if p is None else np.asarray(p, dtype=float)
         kind = self.classes[int(rng.choice(len(self.classes), p=p / p.sum()))]
         reading: dict[str, float] = {}
         law = self.reading.get(kind)
-        if law is not None:
+        if law is not None and rng.random() < float(getattr(self, "reading_rate", {}).get(kind, 1.0)):
             e = float(np.exp(law[0] + law[1] * rng.standard_normal()))
             m, mu = float(particle["mass"]), float(particle["mu"])
             if kind == "measured":
@@ -239,21 +242,23 @@ def fit_probe_model(rows: list[dict[str, Any]], probe: str, seed: int = 0) -> Pr
     y = np.array([r["kind"] for r in rows])
     groups = np.array([r["object"] for r in rows])
     clf = CalibratedClassifier.fit(X, y, groups, classes, seed)
-    reading, n_reading = {}, {}
+    reading, n_reading, rate = {}, {}, {}
     for kind in classes:
-        xs = [log_ratio(kind, r["reading"], r["truth"]["mass"], r["truth"]["mu"]) for r in rows if r["kind"] == kind]
+        of = [r for r in rows if r["kind"] == kind]
+        xs = [log_ratio(kind, r["reading"], r["truth"]["mass"], r["truth"]["mu"]) for r in of]
         xs = np.array([float(v) for v in xs if v is not None and np.isfinite(v)])
         n_reading[kind] = int(len(xs))
         if len(xs):
             reading[kind] = _law(xs)
+            rate[kind] = len(xs) / len(of)
     thrown = np.array([bool(r["thrown"]) for r in rows])
     if int(thrown.sum()) < MIN_CLASS_ROWS:
         p_thrown: Any = float(thrown.mean()) if len(thrown) else 0.0
     else:
         p_thrown = CalibratedClassifier.fit(X, np.where(thrown, "thrown", "kept"), groups, ("kept", "thrown"), seed)
     stats = {"n": len(rows), "kinds": {k: int((y == k).sum()) for k in classes}, "n_reading": n_reading,
-             "thrown": int(thrown.sum())}
-    return ProbeModel(probe=probe, classes=classes, clf=clf, reading=reading, p_thrown=p_thrown, stats=stats)
+             "reading_rate": rate, "thrown": int(thrown.sum())}
+    return ProbeModel(probe=probe, classes=classes, clf=clf, reading=reading, p_thrown=p_thrown, stats=stats, reading_rate=rate)
 
 
 def fit_probe_models(rows: list[dict[str, Any]], seed: int = 0) -> dict[str, ProbeModel]:
