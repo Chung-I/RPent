@@ -37,6 +37,46 @@ def _control(env, object_id=LONG, **theta):
     return env.proposals()[1]
 
 
+def test_at_rest_needs_a_still_window():
+    """At rest: over the last REST_WINDOW_S the object moved under 1 mm and turned under 1 deg."""
+    from robots.mujoco_lab.adapter import REST_WINDOW_S, at_rest
+
+    hz = 50
+    w = int(REST_WINDOW_S * hz)
+    eye = np.eye(3)
+    still = [(np.zeros(3), eye)] * (w + 1)
+    assert at_rest(still, hz)
+    assert not at_rest(still[:w], hz)                                                   # shorter than the window
+    assert not at_rest([(np.array([0.002 * k / hz, 0.0, 0.0]), eye) for k in range(w + 1)], hz)   # creeps 2 mm/s
+
+    def rz(deg):
+        c, s = np.cos(np.radians(deg)), np.sin(np.radians(deg))
+        return np.array([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]])
+
+    assert not at_rest([(np.zeros(3), rz(2.0 * k / w)) for k in range(w + 1)], hz)      # turns 2 deg in the window
+    rock = [(np.array([0.003 * np.sin(2 * np.pi * k / w), 0.0, 0.0]), eye) for k in range(w + 1)]
+    assert not at_rest(rock, hz)                                    # rocks 3 mm and is back where it was at the window's ends
+
+
+def test_reset_leaves_the_object_at_rest_near_the_rest_xy():
+    """Case (11, lizard, 5): the old reset placed the lizard at its default drop's 25 cm drift and returned
+    while it tumbled off the table edge."""
+    from robots.mujoco_lab.adapter import OBJECT_REST_XY, object_props
+    from robots.mujoco_lab.calibrate import case_draw
+
+    env = _env()
+    obj = "hot3d__lizard_figurine"
+    theta, com_end, _ = case_draw(11, obj, 5, object_props(obj)["mass"])
+    env.reset(obj, theta, seed=11005, com_end=com_end)
+    info = env.reset_info
+    assert info["at_rest"] and info["zone"] in ("table", *env.fixtures_in_scene) and 0.2 <= info["settle_s"] <= 3.0
+    p0 = env.sim.obj_pos().copy()
+    assert np.linalg.norm(p0[:2] - np.array(OBJECT_REST_XY)) < 0.05
+    for _ in range(50):
+        env.sim.step_ctrl()
+    assert np.linalg.norm(env.sim.obj_pos() - p0) < 0.002
+
+
 def test_control_grasp_on_banana_is_placed_in_bin():
     env = _env()
     p = _control(env)
@@ -61,7 +101,8 @@ def test_short_object_into_box_is_placed():
 
     assert object_length(SHORT) < 0.12
     p = _control(env, SHORT)
-    r = env.execute(p, force=20.0, v_lift=0.15, destination="box")
+    # 0.25 m/s: at 0.5 m/s the brick swings 30 deg in the pinch and the braking ejects it or not with a 5 mm start shift
+    r = env.execute(p, force=20.0, v_lift=0.15, v_transport=0.25, destination="box")
     assert r.label == "placed_stable" and r.zone == "box"
 
 

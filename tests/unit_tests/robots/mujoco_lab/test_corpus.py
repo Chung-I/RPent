@@ -26,6 +26,7 @@ ROW_KEYS = {
     "key", "object", "theta", "com_end", "truth", "seed", "destination", "s", "force", "v_lift",
     "v_transport", "release_height", "width", "label", "max_z", "drop_z", "loss_phase", "loss_step", "fixture",
     "loss_t", "loss_speed", "zone", "release", "planned", "geometry", "features", "pose", "com_obj_true", "readouts",
+    "reset",
 }
 
 
@@ -53,6 +54,7 @@ def test_corpus_two_objects_two_draws(tmp_path):
     rows = [json.loads(line) for line in out.open()]
     assert n == 4 and len(rows) == 4
     assert all(set(r) == ROW_KEYS for r in rows)
+    assert all(set(r["reset"]) == {"settle_s", "at_rest", "zone"} for r in rows)
     assert {r["label"] for r in rows} <= set(OUTCOMES)
     assert all(set(r["theta"]) == {"mu", "mass_scale", "com_s", "v_lift"} for r in rows)
     assert all(r["planned"] and r["truth"]["mass"] > 0 for r in rows)

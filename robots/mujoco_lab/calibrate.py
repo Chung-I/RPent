@@ -229,6 +229,7 @@ def run_case(prims: Any, object_id: str, idx: int, seed: int, protocol: str = "c
     env = prims.env
     theta, com_end, destination = case_draw(seed, object_id, idx, object_props(object_id)["mass"], use_fixtures)
     env.reset(object_id, theta, seed=seed * 1000 + idx, com_end=com_end, fixture=destination if destination in MESH_IDS else None)
+    reset_info = dict(getattr(env, "reset_info", None) or {})
     prims.rng = _stream(seed, object_id, idx, 1)
     truth = env.truth()
 
@@ -240,7 +241,7 @@ def run_case(prims: Any, object_id: str, idx: int, seed: int, protocol: str = "c
 
     case = run_protocol(prims, protocol, destination, _stream(seed, object_id, idx, 2), features_fn=features_fn, follow=follow)
     row = {"object": object_id, "idx": idx, "destination": destination, "theta": theta, "com_end": com_end,
-           "truth": {k: truth[k] for k in ("mass", "mu", "com_s")}, **case}
+           "truth": {k: truth[k] for k in ("mass", "mu", "com_s")}, "reset": reset_info, **case}
     first = case["attempts"][0] if case["attempts"] else None
     row.update(executed=first is not None, option=first and first["option"], outcome=first and first["outcome"],
                label=first and first["outcome"], placed_at_requested=first and first["placed_at_requested"],

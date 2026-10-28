@@ -126,6 +126,7 @@ def test_protocols_are_paired_by_case(tmp_path):
     assert len(a["rows"]) == 4 and [key(r) for r in a["rows"]] == [key(r) for r in b["rows"]]
     assert len({json.dumps(r["theta"], sort_keys=True) for r in a["rows"]}) == 4             # one draw per case
     assert all(r["executed"] for r in a["rows"])                                            # the best row runs whatever the recommendation
+    assert all(set(r["reset"]) == {"settle_s", "at_rest", "zone"} for r in a["rows"])
     first = [(r["attempts"][0]["option"], r["attempts"][0]["outcome"]) for r in a["rows"]]
     assert first == [(r["attempts"][0]["option"], r["attempts"][0]["outcome"]) for r in b["rows"]]
     assert a["protocol"] == "commit" and b["protocol"] == "repair"

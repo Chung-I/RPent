@@ -66,13 +66,14 @@ def probe_rows(env, object_id: str, idx: int, seed: int) -> list[dict[str, Any]]
     force = weigh_force(f_std)
     reset = {"seed": seed * 1000 + idx, "com_end": com_end, "fixture": None}
     env.reset(object_id, theta, **reset)
+    start = dict(env.reset_info)
     truth = env.truth()
     common = {"object": object_id, "draw": idx, "seed": seed, "theta": theta, "com_end": com_end, "force": force, "f_std": f_std,
               "com_obj_true": truth["com_obj"], "truth": {k: truth[k] for k in ("mass", "mu", "com_s")}}
 
     def row(tag: str, order: int, pose: dict[str, Any], base: dict[str, float], res) -> dict[str, Any]:
         return {"key": f"{object_id}__s{seed}__d{idx}__{tag}", **common, "scene": tag[0], "order": order, "pose": pose,
-                "base": base, **res.to_data()}
+                "base": base, **res.to_data(), "reset": start}
 
     _, pose, base = _state(env, force)
     push = env.probe_push()
@@ -81,6 +82,7 @@ def probe_rows(env, object_id: str, idx: int, seed: int) -> list[dict[str, Any]]
         prop, pose, base = _state(env, force)
         rows.append(row("Aweigh", 1, pose, base, env.probe_weigh(prop, force)))
     env.reset(object_id, theta, **reset)
+    start = dict(env.reset_info)
     prop, pose, base = _state(env, force)
     rows.append(row("Bweigh", 0, pose, base, env.probe_weigh(prop, force)))
     return rows

@@ -23,7 +23,7 @@ import pytest
 pytestmark = pytest.mark.skipif(not os.environ.get("RPENT_MUJOCO_SIM_DIR"), reason="sim dir not set")
 
 NEED = {"key", "object", "draw", "scene", "order", "probe", "pose", "base", "force", "f_std", "com_obj_true", "truth",
-        "kind", "reading", "displacement_m", "tilt_deg", "thrown", "seconds"}
+        "kind", "reading", "displacement_m", "tilt_deg", "thrown", "seconds", "reset"}
 
 
 def test_probe_corpus_rows(tmp_path):

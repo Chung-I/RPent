@@ -65,6 +65,26 @@ PUSH_WINDOW_S = 0.3
 PUSH_TIP_DEG = 8.0
 PUSH_MIN_FORCE_N = 0.05
 THROWN_M = 0.10              # a probe "throws" the object off the table top or this far from where it was
+REST_MIN_S = 0.2             # reset: settle at least this long, then until the object is at rest,
+REST_CAP_S = 3.0             # at most this long (an object still moving then starts flagged: reset_info at_rest False)
+REST_WINDOW_S = 0.5          # at rest: over the last 0.5 s it moved under 1 mm and turned under 1 deg
+REST_MOVE_M = 0.001
+REST_TURN_DEG = 1.0
+
+def at_rest(poses: list[tuple[np.ndarray, np.ndarray]], hz: int) -> bool:
+    """True when every (position, rotation matrix) of the history's last REST_WINDOW_S (one entry per
+    control step) lies within REST_MOVE_M and REST_TURN_DEG of the latest one: a rocking object that is
+    back where it was at the window's ends is still moving."""
+    w = int(round(REST_WINDOW_S * hz))
+    if len(poses) <= w:
+        return False
+    p1, R1 = np.asarray(poses[-1][0]), np.asarray(poses[-1][1])
+    for p, R in poses[-w - 1:-1]:
+        cos = (np.trace(np.asarray(R).T @ R1) - 1.0) / 2.0
+        if np.linalg.norm(np.asarray(p) - p1) >= REST_MOVE_M or math.degrees(math.acos(float(np.clip(cos, -1.0, 1.0)))) >= REST_TURN_DEG:
+            return False
+    return True
+
 
 # Primitive fixtures built into every scene (the registry gives the place; this gives the shape).
 PRIMITIVE_FIXTURES: list[dict[str, Any]] = [
@@ -239,20 +259,37 @@ class MuJoCoLabEnv:
         if th.get("com_s") is not None:
             shift = t3.com_shift_for(o, props, float(th["com_s"]), end=com_end)
         flat = not (o["hollow"] or o["liquid"])
-        pos, quat = gr.rest_pose(o, props, flat=flat)      # the default rest, as the t3/t3g corpora used
+        # the rest pose under the case's own friction, mass and CoM (the default drop's pose rolls or tips
+        # when the CoM moves); the drop's sideways drift is not kept: the object starts at the rest xy
+        pos, quat = gr.rest_pose(o, props, mu=th["mu"], mass_scale=th["mass_scale"], com_shift=shift, flat=flat)
         specs, names = self._fixture_specs(fixture)
         rest_xy = tuple(DESTINATIONS[fixture]["object_rest_xy"]) if fixture is not None else OBJECT_REST_XY
-        pos = np.array([pos[0] + rest_xy[0], pos[1] + rest_xy[1], pos[2]])
+        pos = np.array([rest_xy[0], rest_xy[1], pos[2]])
         xml = sc.build_xml(o, props, mu=th["mu"], mass_scale=th["mass_scale"], com_shift=shift, obj_pos=pos,
                            obj_quat=quat, cam_k=1.0, fixtures=specs)
         self.sim = sc.Sim(xml)
         self.fixtures_in_scene = names
         self.fixture = fixture
-        self.sim.settle(0.2)
+        self.reset_info = self._settle_to_rest()
         self.obj, self.props, self.theta, self.com_end = o, props, th, com_end
         self.rng = np.random.default_rng(seed)
         self._refresh_baselines()
         self.episode += 1
+
+    def _settle_to_rest(self) -> dict[str, Any]:
+        """Step at least REST_MIN_S, then until at_rest, at most REST_CAP_S; the seconds taken, whether the
+        object came to rest, and the zone it rests in."""
+        sim, hz = self.sim, self.s["scene"].CTRL_HZ
+        poses = [(sim.obj_pos().copy(), sim.obj_mat().copy())]
+        k, rest = 0, False
+        while k < int(round(REST_CAP_S * hz)):
+            sim.step_ctrl()
+            k += 1
+            poses.append((sim.obj_pos().copy(), sim.obj_mat().copy()))
+            if k >= int(round(REST_MIN_S * hz)) and at_rest(poses, hz):
+                rest = True
+                break
+        return {"settle_s": k / hz, "at_rest": rest, "zone": sim.zone_of(sim.contacts()[0])}
 
     def _refresh_baselines(self) -> None:
         """The rest pose an attempt is planned and labelled against: the up axis, the lowest point

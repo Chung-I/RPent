@@ -49,4 +49,6 @@ def test_parity_with_t3_features(key):
             assert np.isnan(f[k]), (k, f[k], row[k])     # no face under the pads in both (the 10 cm wood block)
         else:
             tol = 5e-4 if k in ("lever", "com_h") else 1e-5     # the nominal CoM (props.json) and MuJoCo's subtree CoM differ by ~1e-4
+            if k == "slope_deg":
+                tol = 0.05      # the reset settles until at rest (at least 0.5 s), t3 settled 0.2 s: the pose tilts up to 0.013 deg more
             assert abs(f[k] - row[k]) < tol, (k, f[k], row[k])

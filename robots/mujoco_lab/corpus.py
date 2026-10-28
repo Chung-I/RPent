@@ -104,6 +104,7 @@ def rollout_row(env, object_id: str, idx: int, seed: int, use_fixtures: bool = F
     act = draw_action(rng, f_std, use_fixtures)
     fixture = act["destination"] if act["destination"] in MESH_IDS else None
     env.reset(object_id, theta, seed=seed * 1000 + idx, com_end=com_end, fixture=fixture)
+    reset_info = dict(env.reset_info)
     props_list = env.proposals()
     prop = next(p for p in props_list if abs(p.s - act["s"]) < 1e-9)
     truth = env.truth()
@@ -145,6 +146,7 @@ def rollout_row(env, object_id: str, idx: int, seed: int, use_fixtures: bool = F
         "pose": pose,
         "com_obj_true": truth["com_obj"],
         "readouts": r.readouts,
+        "reset": reset_info,
     }
 
 
