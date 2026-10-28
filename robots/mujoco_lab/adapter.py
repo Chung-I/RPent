@@ -681,8 +681,11 @@ class MuJoCoLabEnv:
         return self._label(trace, rose, dest, release, planned, v_lift)
 
     def _tracer(self, pt: np.ndarray, yaw: float):
-        """(trace, on_step): on_step(phase) appends one dict per control step (see execute's trace). The pad
-        forces are means over the step's physics substeps (``_install_meter``): ``fz`` the pads' net
+        """(trace, on_step): on_step(phase) appends one dict per control step (see execute's trace). ``pads``
+        tells whether each pad pressed on the object in any physics substep of the step: the contact at the end
+        of a step flickers while an object chatters in the pads (wood_block d78 showed no pad at the end of a
+        step over which the pads carried 13.8 N). The pad forces are means over the step's physics substeps
+        (``_install_meter``): ``fz`` the pads' net
         vertical force on the object, ``fn`` their normal force, ``pad_nz`` each pad's force-weighted
         vertical part of its contact normal into the object (None without contact). ``hand_z`` is the
         hand's height, ``rot_lift_deg`` the object's turn since the lift began and ``grip_dz`` the rise since
@@ -708,7 +711,7 @@ class MuJoCoLabEnv:
             pos = sim.obj_pos()
             low = sim.obj_low_z()
             lin, _ = sim.obj_vel()
-            touching, pads = sim.contacts()
+            touching, _ = sim.contacts()
             surf, has = self._surface_below(pos[:2])
             R = sim.obj_mat().copy()
             if phase == "lift" and not lift_R:
@@ -723,7 +726,7 @@ class MuJoCoLabEnv:
                 pitch0.append(pitch)
             trace.append({"t": len(trace) / hz, "phase": phase, "z": float(pos[2] - p0z), "low_z": float(low),
                           "surface_z_below": surf, "has_surface": has, "speed": float(np.linalg.norm(lin)),
-                          "pads": list(pads), "zone": sim.zone_of(touching), "rot_deg": turn(R, R0),
+                          "pads": [bool(acc[1 + k] > 0) for k in (0, 1)], "zone": sim.zone_of(touching), "rot_deg": turn(R, R0),
                           "fz": float(acc[0]), "fn": float(acc[1] + acc[2]), "pad_nz": pad_nz,
                           "hand_z": float(sim.d.xpos[sim.hand][2]), "rot_lift_deg": turn(R, lift_R[0]) if lift_R else None,
                           "grip_dz": float((R @ grip[0] + pos)[2] - grip[1]) if grip else None,

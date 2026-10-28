@@ -32,10 +32,25 @@ def env():
 
 
 def _row(env, key: str) -> dict:
+    return _row_and_trace(env, key)[0]
+
+
+def _row_and_trace(env, key: str) -> tuple[dict, list[dict]]:
     from robots.mujoco_lab import corpus
 
-    obj, idx = key.rsplit("__d", 1)
-    return corpus.rollout_row(env, obj, int(idx), 0, False)
+    got, plain = {}, env.execute
+
+    def execute(*a, **k):
+        got["r"] = plain(*a, **k)
+        return got["r"]
+
+    env.execute = execute
+    try:
+        obj, idx = key.rsplit("__d", 1)
+        row = corpus.rollout_row(env, obj, int(idx), 0, False)
+    finally:
+        env.execute = plain
+    return row, got["r"].trace
 
 
 def test_pads_on_top_give_no_slip_reading(env):
@@ -64,6 +79,13 @@ def test_a_drop_in_the_lift_reads_the_carried_weight(env):
     r = _row(env, "fruits_veggies__lemon1__d36")
     assert r["loss_phase"] == "lift"
     assert 0.7 <= r["readouts"]["fz_at_loss_n"] / (r["truth"]["mass"] * G) <= 1.3
+
+
+def test_a_loss_is_a_step_in_which_no_pad_pressed(env):
+    """wood_block d78: the block turns in the pads and chatters. At the end of lift step 105 neither pad touched
+    it, but over that step the pads pressed with 25 N and carried 13.8 N, and a pad held it at step 106."""
+    r, tr = _row_and_trace(env, "ycb__wood_block__d78")
+    assert r["loss_step"] is None or tr[r["loss_step"]]["fn"] == 0.0
 
 
 def test_weigh_probe_gives_no_friction_when_the_pads_never_slid_on_the_sides(env):
