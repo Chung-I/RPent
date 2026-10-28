@@ -270,11 +270,24 @@ class MuJoCoLabEnv:
         self.sim = sc.Sim(xml)
         self.fixtures_in_scene = names
         self.fixture = fixture
+        self._onto_table()
         self.reset_info = self._settle_to_rest()
         self.obj, self.props, self.theta, self.com_end = o, props, th, com_end
         self.rng = np.random.default_rng(seed)
         self._refresh_baselines()
         self.episode += 1
+
+    def _onto_table(self) -> None:
+        """An object that left the table in its rest-pose drop (it toppled and rolled off) comes back with
+        the drop's orientation and its lowest point on the table top: the drop's height was the floor's."""
+        import mujoco
+
+        sim, top = self.sim, float(self.s["scene"].TABLE_TOP)
+        low = sim.obj_low_z()
+        if low < top - 0.01:
+            qa = sim.m.joint("obj_free").qposadr[0]
+            sim.d.qpos[qa + 2] += top - low + 0.001
+            mujoco.mj_forward(sim.m, sim.d)
 
     def _settle_to_rest(self) -> dict[str, Any]:
         """Step at least REST_MIN_S, then until at_rest, at most REST_CAP_S; the seconds taken, whether the

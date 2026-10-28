@@ -77,6 +77,20 @@ def test_reset_leaves_the_object_at_rest_near_the_rest_xy():
     assert np.linalg.norm(env.sim.obj_pos() - p0) < 0.002
 
 
+def test_reset_puts_an_object_that_left_the_table_in_its_drop_on_the_table():
+    """Corpus draw (0, pitcher, 9): under its own shifted CoM the pitcher topples in the rest-pose drop
+    and rolls off the drop's table, so the drop's height is the floor's."""
+    from robots.mujoco_lab.adapter import object_props
+    from robots.mujoco_lab.corpus import case_rng, draw_theta
+
+    env = _env()
+    obj = "ycb__pitcher"
+    theta, com_end = draw_theta(case_rng(0, obj, 9), object_props(obj)["mass"])
+    env.reset(obj, theta, seed=9, com_end=com_end)
+    assert env.reset_info["zone"] in ("table", *env.fixtures_in_scene)
+    assert env.sim.obj_low_z() > env.s["scene"].TABLE_TOP - 0.01
+
+
 def test_control_grasp_on_banana_is_placed_in_bin():
     env = _env()
     p = _control(env)
