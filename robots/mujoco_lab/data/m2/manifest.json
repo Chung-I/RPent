@@ -10,5 +10,9 @@
   "robots/mujoco_lab/data/corpus_v2.jsonl",
   "robots/mujoco_lab/data/corpus_fixtures_v2.jsonl"
  ],
- "split_seed": 0
+ "split_seed": 0,
+ "readout_model": "readout_model.json",
+ "tempers": {
+  "readout": 3.0
+ }
 }
