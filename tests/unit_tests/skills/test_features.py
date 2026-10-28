@@ -88,3 +88,37 @@ def test_stability_and_destination_features():
 def test_visibility_passes_through():
     g = _box_geometry()
     assert extract(g, point=np.zeros(3), yaw=0.0, destination="bin", visibility=0.4, **COMMON)["visibility"] == 0.4
+
+
+# ---------------------------------------------------------------- per-particle features (milestone 2)
+import pytest  # noqa: E402
+
+from rpent.skills.pick_place.features import particle_features, particle_matrix, particle_sides  # noqa: E402
+
+
+def _pose(th=0.4, yaw=0.3):
+    R = np.array([[np.cos(th), -np.sin(th), 0.0], [np.sin(th), np.cos(th), 0.0], [0.0, 0.0, 1.0]])
+    return {"R": R.ravel().tolist(), "p": [0.10, -0.05, 0.78], "low_z": 0.75, "base_extent": 0.02, "length": 0.10,
+            "pt": [0.12, -0.04, 0.765], "yaw": yaw}
+
+
+def test_particle_matrix_equals_particle_features():
+    rng = np.random.default_rng(0)
+    base = extract(_box_geometry(), [0.0, 0.0, 0.0], 0.0, destination="plate", **COMMON)
+    arrays = {"mass": rng.uniform(0.05, 1.0, 50), "mu": rng.uniform(0.1, 0.9, 50), "com_obj": rng.normal(0.0, 0.03, (50, 3))}
+    pose = _pose()
+    M = particle_matrix(base, arrays, pose, 20.0)
+    assert M.shape == (50, len(FEATURES))
+    for i in range(50):
+        part = {"mass": arrays["mass"][i], "mu": arrays["mu"][i], "com_obj": arrays["com_obj"][i]}
+        f = particle_features(base, part, pose, 20.0)
+        assert np.allclose(M[i], as_vector(f), atol=1e-12)
+        assert f["load_ratio"] == pytest.approx(part["mass"] * 9.81 / (2 * part["mu"] * 20.0))
+        assert f["width"] == base["width"] and f["dest_rim_height"] == base["dest_rim_height"]
+
+
+def test_particle_sides_has_a_dead_zone():
+    pose = _pose(th=0.0, yaw=0.0)                    # ey = world +y; the object frame equals the world frame shifted by p
+    pt = np.asarray(pose["pt"]) - np.asarray(pose["p"])
+    com = np.array([pt + [0.0, 0.03, 0.0], pt + [0.0, -0.03, 0.0], pt + [0.05, 0.001, 0.0]])
+    assert particle_sides({"mass": np.ones(3), "mu": np.ones(3), "com_obj": com}, pose).tolist() == [1, -1, 0]

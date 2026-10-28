@@ -72,3 +72,56 @@ def test_densities_mirror_the_sim(monkeypatch):
 
     for k, v in MATERIAL.items():
         assert RHO[k] == v, k
+
+
+# ---------------------------------------------------------------- particle belief (milestone 2)
+import pytest  # noqa: E402
+
+from rpent.skills.pick_place.belief import ParticleBelief  # noqa: E402
+
+
+def _pb(weights, mus=None):
+    n = len(weights)
+    mus = np.linspace(0.1, 0.9, n) if mus is None else mus
+    parts = [{"mass": 0.2 + 0.01 * i, "mu": float(mus[i]), "com_obj": [0.0, 0.0, 0.01 * i], "ancestor": i} for i in range(n)]
+    return ParticleBelief(parts, np.asarray(weights, dtype=float))
+
+
+def test_reweight_normalises_and_flags_non_finite():
+    b = _pb(np.ones(4))
+    nb = b.reweight(np.log([1.0, 2.0, 3.0, 4.0]))
+    assert nb is not b and np.allclose(nb.weights, [0.1, 0.2, 0.3, 0.4]) and np.allclose(b.weights, 0.25)
+    assert np.allclose(b.reweight(np.array([0.0, -np.inf, np.nan, 0.0])).weights, [0.5, 0.0, 0.0, 0.5])
+    none = b.reweight(np.full(4, -np.inf))
+    assert np.allclose(none.weights, 0.25) and any("likelihood" in f for f in none.flags)
+    big = b.reweight(np.array([-1e6, -1e6 + 1.0, -1e6, -1e6]))           # log-space: no underflow
+    assert np.isfinite(big.weights).all() and big.weights[1] == pytest.approx(np.e / (3 + np.e))
+
+
+def test_resample_follows_weights():
+    b = _pb([0.9, 0.1])
+    draws = b.resample(10000, np.random.default_rng(0))
+    assert len(draws) == 10000 and abs(np.mean([d["ancestor"] == 0 for d in draws]) - 0.9) < 0.02
+    assert {d["ancestor"] for d in draws} == {0, 1}
+
+
+def test_ess_of_uniform_and_point_weights():
+    assert _pb(np.ones(100)).ess() == pytest.approx(100)
+    assert _pb([1.0] + [0.0] * 99).ess() == pytest.approx(1)
+
+
+def test_weighted_quantiles_and_data():
+    b = _pb([0.0, 0.0, 1.0, 0.0])
+    assert b.quantile("mu", 0.5) == pytest.approx(b.particles[2]["mu"]) and b.quantile("mass", 0.1) == pytest.approx(0.22)
+    d = _pb(np.ones(10)).to_data()
+    assert {"mass_median", "mass_80", "mu_median", "mu_80", "p_com_shifted", "ess", "n_ancestors", "n_observations",
+            "flags", "degenerate"} <= set(d)
+    assert d["p_com_shifted"] is None and d["n_ancestors"] == 10 and d["ess"] == pytest.approx(10)
+    assert any("mass" in line for line in _pb(np.ones(10)).summary())
+
+
+def test_from_parametric_keeps_the_nominal_com():
+    pb = ParticleBelief.from_parametric(Belief.prior(1e-4, "wood"), [0.01, 0.0, 0.02], 500, np.random.default_rng(0))
+    a = pb.arrays()
+    assert a["mass"].shape == (500,) and a["com_obj"].shape == (500, 3)
+    assert np.allclose(a["com_obj"], [0.01, 0.0, 0.02]) and 0.1 <= a["mu"].min() and a["mu"].max() <= 0.9

@@ -27,22 +27,50 @@ from typing import Any
 
 import numpy as np
 
+from robots.mujoco_lab.corpus import COM_S_RANGE, MASS_SCALE_RANGE, MU_RANGE, P_COM_SHIFT
+from rpent.skills.pick_place.belief import ParticleBelief
+
 END_FRACTION = 0.97
+
+
+def _com_hypotheses(pivot: dict[str, Any], com_obj_nominal, target: np.ndarray, end: np.ndarray,
+                    branch: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Vectorised hypotheses: (CoM in the object frame (n, 3), f (n,), CoM fraction along the pivot (n,))."""
+    com_nom = np.asarray(com_obj_nominal, dtype=float)
+    c, ax = np.asarray(pivot["centre"], dtype=float), np.asarray(pivot["axis"], dtype=float)
+    lo, L = float(pivot["lo"]), float(pivot["L"])
+    s_nom = float(((com_nom - c) @ ax - lo) / L)
+    t = np.asarray(target, dtype=float)
+    plus = np.asarray(end) >= 0
+    end_pt = np.where(plus[:, None], c + ax * (lo + END_FRACTION * L), c + ax * (lo + (1.0 - END_FRACTION) * L))
+    with np.errstate(invalid="ignore"):
+        f = np.where(plus, (t - s_nom) / (END_FRACTION - t), (t - (1.0 - s_nom)) / (END_FRACTION - t))
+    f = np.where(np.asarray(branch, dtype=bool), np.maximum(0.0, np.nan_to_num(f, nan=0.0)), 0.0)
+    com = (com_nom + f[:, None] * end_pt) / (1.0 + f)[:, None]
+    return com, f, ((com - c) @ ax - lo) / L
 
 
 def com_hypothesis(pivot: dict[str, Any], com_obj_nominal, target_s: float | None, end: int) -> tuple[list[float], float]:
     """(CoM in the object frame, point-mass fraction f) of one generator hypothesis."""
-    com_nom = np.asarray(com_obj_nominal, dtype=float)
-    if target_s is None:
-        return com_nom.tolist(), 0.0
-    c, ax = np.asarray(pivot["centre"], dtype=float), np.asarray(pivot["axis"], dtype=float)
-    lo, L = float(pivot["lo"]), float(pivot["L"])
-    s_nom = float(((com_nom - c) @ ax - lo) / L)
-    t = float(target_s)
-    if end >= 0:
-        end_pt = c + ax * (lo + END_FRACTION * L)
-        f = max(0.0, (t - s_nom) / (END_FRACTION - t))
-    else:
-        end_pt = c + ax * (lo + (1.0 - END_FRACTION) * L)
-        f = max(0.0, (t - (1.0 - s_nom)) / (END_FRACTION - t))
-    return ((com_nom + f * end_pt) / (1.0 + f)).tolist(), float(f)
+    branch = target_s is not None
+    com, f, _ = _com_hypotheses(pivot, com_obj_nominal, np.array([target_s if branch else 0.5]), np.array([end]), np.array([branch]))
+    return com[0].tolist(), float(f[0])
+
+
+def lab_prior(pose: dict[str, Any], n: int, rng: np.random.Generator) -> ParticleBelief:
+    """n draws of the corpus generator (``corpus.draw_theta``) as equally weighted particles: mass scale
+    log-uniform, friction uniform, with p 0.5 the CoM-shift branch (a target fraction and an end),
+    mass = nominal x scale x (1 + f)."""
+    rng = rng if rng is not None else np.random.default_rng(0)
+    lo, hi = MASS_SCALE_RANGE
+    scale = np.exp(rng.uniform(np.log(lo), np.log(hi), n))
+    mu = rng.uniform(*MU_RANGE, n)
+    branch = rng.random(n) >= P_COM_SHIFT                     # draw_theta: com_s is None with p P_COM_SHIFT
+    target = rng.uniform(*COM_S_RANGE, n)
+    end = np.where(rng.random(n) < 0.5, 1, -1)
+    com, f, frac = _com_hypotheses(pose["pivot"], pose["com_obj_nominal"], target, end, branch)
+    mass = float(pose["nominal_mass"]) * scale * (1.0 + f)
+    parts = [{"mass": float(mass[i]), "mu": float(mu[i]), "com_obj": com[i].tolist(), "mass_scale": float(scale[i]),
+              "com_branch": bool(branch[i]), "com_s": float(target[i]) if branch[i] else None, "com_end": int(end[i]),
+              "f": float(f[i]), "com_frac": float(frac[i]), "ancestor": i} for i in range(n)]
+    return ParticleBelief(parts, np.ones(n))

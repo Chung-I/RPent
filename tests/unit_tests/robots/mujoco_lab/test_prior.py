@@ -43,3 +43,47 @@ def test_com_hypothesis_matches_the_sim():
     assert f == 0.0 and np.allclose(com, pose["com_obj_nominal"])
     com, f = com_hypothesis(piv, pose["com_obj_nominal"], None, +1)
     assert f == 0.0 and np.allclose(com, pose["com_obj_nominal"])
+
+
+def test_lab_prior_matches_the_generator():
+    from scipy.stats import ks_2samp
+
+    from robots.mujoco_lab.adapter import MuJoCoLabEnv
+    from robots.mujoco_lab.corpus import draw_theta
+    from robots.mujoco_lab.prior import lab_prior
+
+    env = MuJoCoLabEnv()
+    env.reset(LONG, seed=0)
+    pose = env.pose_info()
+    b = lab_prior(pose, 20000, np.random.default_rng(1))
+    A = b.arrays()
+    rng = np.random.default_rng(2)
+    draws = [draw_theta(rng, pose["nominal_mass"])[0] for _ in range(20000)]
+    assert ks_2samp(np.log(A["mass_scale"]), np.log([t["mass_scale"] for t in draws])).pvalue > 0.01
+    assert ks_2samp(A["mu"], [t["mu"] for t in draws]).pvalue > 0.01
+    assert abs(A["com_branch"].mean() - 0.5) < 0.02
+    assert b.p_com_shifted() == pytest.approx(float((A["f"] > 0).mean()))
+    assert b.p_com_shifted() < A["com_branch"].mean()                      # some banana targets lie below the nominal CoM
+    assert np.allclose(A["mass"], pose["nominal_mass"] * A["mass_scale"] * (1 + A["f"]), rtol=0, atol=1e-9)
+    assert b.ess() == pytest.approx(20000) and b.n_ancestors() == 20000
+
+
+def test_particle_features_match_extract_with_the_true_com():
+    from dataclasses import replace
+
+    from robots.mujoco_lab.adapter import MuJoCoLabEnv
+    from rpent.skills.pick_place.features import extract, particle_features
+
+    env = MuJoCoLabEnv()
+    env.reset(LONG, {"mu": 0.6, "mass_scale": 1.4, "com_s": 0.8, "v_lift": 0.15}, seed=0, com_end=-1)
+    p = env.proposals()[1]
+    pose, truth, g = env.proposal_pose(p), env.truth(), env.geometry()
+    F = 15.0
+    base = extract(g, np.asarray(p.point), p.yaw, 0.1, 0.5, F, 0.15, 0.5, "plate")      # placeholder mass and friction
+    got = particle_features(base, {"mass": truth["mass"], "mu": truth["mu"], "com_obj": truth["com_obj"]}, pose, F)
+    com = np.asarray(truth["com"])
+    g_true = replace(g, com=com, com_height=float(com[2] - env.sim.obj_low_z()))
+    want = extract(g_true, np.asarray(p.point), p.yaw, truth["mass"], truth["mu"], F, 0.15, 0.5, "plate")
+    for k in ("lever", "com_h", "base_ratio", "com_height_ratio", "mass", "mu", "load_ratio"):
+        assert got[k] == pytest.approx(want[k], abs=1e-6), k
+    assert abs(got["lever"] - base["lever"]) > 0.005                        # the shift moved the lever

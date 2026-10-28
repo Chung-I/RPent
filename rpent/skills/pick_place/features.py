@@ -110,3 +110,65 @@ def as_vector(f: dict[str, float]) -> np.ndarray:
     v = np.array([float(f.get(k, float("nan"))) for k in FEATURES], dtype=float)
     v[~np.isfinite(v)] = 0.0
     return v
+
+
+# ---------------------------------------------------------------- per-particle features (milestone 2)
+_IDX = {k: i for i, k in enumerate(FEATURES)}
+SIDE_DEADBAND_M = 0.002
+
+
+def _pose_arrays(pose: dict) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    R = np.asarray(pose["R"], dtype=float).reshape(3, 3)
+    p = np.asarray(pose["p"], dtype=float)
+    pt = np.asarray(pose["pt"], dtype=float)
+    yaw = float(pose["yaw"])
+    return R, p, pt, np.array([-np.sin(yaw), np.cos(yaw), 0.0])
+
+
+def particle_features(base: dict[str, float], particle: dict, pose: dict, force: float) -> dict[str, float]:
+    """``base`` (the action's ``extract`` features) with one particle's mass, friction and CoM:
+    the CoM maps from the object frame through the pose (R, p); lever, CoM height, base ratio and
+    CoM height ratio follow it."""
+    R, p, pt, ey = _pose_arrays(pose)
+    c = R @ np.asarray(particle["com_obj"], dtype=float) + p
+    m, mu = float(particle["mass"]), float(particle["mu"])
+    h = float(c[2] - float(pose["low_z"]))
+    length = float(pose["length"])
+    out = dict(base)
+    out.update({
+        "mass": m,
+        "mu": mu,
+        "load_ratio": float(m * G / (2 * mu * force)),
+        "lever": float(abs((c - pt) @ ey)),
+        "com_h": float(c[2] - pt[2]),
+        "base_ratio": float(pose["base_extent"]) / h if h > 0 else float("nan"),
+        "com_height_ratio": h / length if length > 0 else float("nan"),
+    })
+    return out
+
+
+def particle_matrix(base: dict[str, float], arrays: dict[str, np.ndarray], pose: dict, force: float) -> np.ndarray:
+    """``particle_features`` for every particle, as rows in FEATURES order (non-finite becomes 0, as in as_vector)."""
+    R, p, pt, ey = _pose_arrays(pose)
+    m, mu = np.asarray(arrays["mass"], dtype=float), np.asarray(arrays["mu"], dtype=float)
+    C = np.asarray(arrays["com_obj"], dtype=float).reshape(-1, 3) @ R.T + p
+    X = np.tile(as_vector(base), (len(m), 1))
+    h = C[:, 2] - float(pose["low_z"])
+    length = float(pose["length"])
+    with np.errstate(divide="ignore", invalid="ignore"):
+        X[:, _IDX["mass"]] = m
+        X[:, _IDX["mu"]] = mu
+        X[:, _IDX["load_ratio"]] = m * G / (2 * mu * force)
+        X[:, _IDX["lever"]] = np.abs((C - pt) @ ey)
+        X[:, _IDX["com_h"]] = C[:, 2] - pt[2]
+        X[:, _IDX["base_ratio"]] = np.where(h > 0, float(pose["base_extent"]) / h, np.nan)
+        X[:, _IDX["com_height_ratio"]] = h / length if length > 0 else np.nan
+    X[~np.isfinite(X)] = 0.0
+    return X
+
+
+def particle_sides(arrays: dict[str, np.ndarray], pose: dict) -> np.ndarray:
+    """Which side of the pinch each particle's CoM lies on along the hand's ey (+1, -1; 0 within 2 mm)."""
+    R, p, pt, ey = _pose_arrays(pose)
+    s = (np.asarray(arrays["com_obj"], dtype=float).reshape(-1, 3) @ R.T + p - pt) @ ey
+    return np.where(np.abs(s) < SIDE_DEADBAND_M, 0, np.sign(s)).astype(int)

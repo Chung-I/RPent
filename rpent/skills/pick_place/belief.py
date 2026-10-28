@@ -12,16 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Belief over the hidden properties: a prior from what can be seen (volume, material).
+"""Belief over the hidden properties (mass, friction, centre of mass).
 
-Milestone 1 holds the prior only. Milestone 2 adds the updates from probes and
-failed attempts. The prior's ranges match the corpus draws, so a model calibrated
-under this belief is calibrated for the population it is deployed on.
+``ParticleBelief`` is the belief the skill holds: weighted particles, each a full hypothesis
+(mass in kg, friction, CoM in the object frame, and the generator's keys when the prior is the
+lab's corpus generator). Attempts and probes reweight it; see ``tools.update_belief``.
+``Belief`` is the milestone 1 parametric prior (volume times material density, uniform
+friction), kept as the fallback for substrates without a generator
+(``ParticleBelief.from_parametric``).
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Any
 
 import numpy as np
 
@@ -47,6 +51,7 @@ MASS_LOG_SIGMA = 0.5
 MU_RANGE = (0.1, 0.9)
 LEVER_SIGMA = 0.02
 LEVER_SIGMA_PER_LENGTH = 0.15     # the corpus shifts the CoM to 0.3 to 0.8 of the extent with p 0.5
+N_PARTICLES = 2000
 
 
 @dataclass
@@ -83,3 +88,136 @@ class Belief:
             f"prior CoM lever noise sd {self.lever_sigma * 100:.0f} cm",
             f"visibility {self.visibility:.2f}",
         ]
+
+
+ARRAY_KEYS = ("mass_scale", "f", "com_frac", "com_end", "ancestor")
+
+
+@dataclass
+class ParticleBelief:
+    """Weighted particles over (mass, friction, CoM in the object frame)."""
+
+    particles: list[dict[str, Any]]
+    weights: np.ndarray
+    visibility: float = 1.0
+    history: list[dict[str, Any]] = field(default_factory=list)
+    flags: list[str] = field(default_factory=list)
+    degenerate: bool = False
+    _arrays: dict[str, np.ndarray] | None = field(default=None, init=False, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        w = np.asarray(self.weights, dtype=float).reshape(-1)
+        if len(w) != len(self.particles) or len(w) == 0:
+            raise ValueError(f"{len(w)} weights for {len(self.particles)} particles")
+        total = float(w.sum())
+        self.weights = w / total if total > 0 and np.isfinite(total) else np.full(len(w), 1.0 / len(w))
+
+    def __len__(self) -> int:
+        return len(self.particles)
+
+    def ess(self) -> float:
+        """Effective sample size of the weights, 1 / sum(w^2)."""
+        return float(1.0 / np.sum(self.weights ** 2))
+
+    def reweight(self, loglik: np.ndarray) -> ParticleBelief:
+        """A new belief with weights times exp(loglik); non-finite entries get weight 0, and when no
+        entry is finite the weights stay and a flag says so."""
+        ll = np.asarray(loglik, dtype=float).reshape(-1)
+        if len(ll) != len(self.particles):
+            raise ValueError(f"{len(ll)} log-likelihoods for {len(self.particles)} particles")
+        ok = np.isfinite(ll) & (self.weights > 0)
+        if not ok.any():
+            return self._replace(weights=self.weights.copy(), flags=self.flags + ["no finite likelihood: weights kept"])
+        logw = np.full(len(ll), -np.inf)
+        logw[ok] = np.log(self.weights[ok]) + ll[ok]
+        logw -= logw[ok].max()
+        return self._replace(weights=np.exp(logw))
+
+    def resample(self, n: int, rng: np.random.Generator) -> list[dict[str, Any]]:
+        """Systematic resampling: n particle copies (the ``ancestor`` key travels with them)."""
+        cw = np.cumsum(self.weights)
+        cw[-1] = 1.0
+        idx = np.searchsorted(cw, (rng.random() + np.arange(n)) / n, side="left")
+        return [dict(self.particles[int(i)]) for i in np.minimum(idx, len(self.particles) - 1)]
+
+    def arrays(self) -> dict[str, np.ndarray]:
+        """The particles as arrays: mass, mu (n,), com_obj (n, 3), and the generator keys present in all."""
+        if self._arrays is None:
+            P = self.particles
+            out = {"mass": np.array([p["mass"] for p in P], dtype=float), "mu": np.array([p["mu"] for p in P], dtype=float),
+                   "com_obj": np.array([p["com_obj"] for p in P], dtype=float).reshape(-1, 3)}
+            for k in ARRAY_KEYS:
+                if all(k in p for p in P):
+                    out[k] = np.array([p[k] for p in P], dtype=float)
+            if all("com_branch" in p for p in P):
+                out["com_branch"] = np.array([bool(p["com_branch"]) for p in P])
+            if all("com_s" in p for p in P):
+                out["com_s"] = np.array([np.nan if p["com_s"] is None else p["com_s"] for p in P], dtype=float)
+            self._arrays = out
+        return self._arrays
+
+    def quantile(self, key: str, q: float) -> float:
+        """Weighted quantile of a scalar key (mass, mu, com_frac, ...)."""
+        v = self.arrays()[key]
+        order = np.argsort(v, kind="stable")
+        cw = np.cumsum(self.weights[order])
+        i = int(np.searchsorted(cw, q - 1e-12, side="left"))
+        return float(v[order][min(i, len(v) - 1)])
+
+    def p_com_shifted(self) -> float | None:
+        """Weight of the particles whose CoM the hidden point mass moved (f > 0); None without generator keys."""
+        a = self.arrays()
+        return None if "f" not in a else float(self.weights[a["f"] > 0].sum())
+
+    def n_ancestors(self) -> int:
+        a = self.arrays()
+        if "ancestor" not in a:
+            return int((self.weights > 0).sum())
+        return int(len(np.unique(a["ancestor"][self.weights > 0])))
+
+    def _interval(self, key: str) -> list[float]:
+        return [round(self.quantile(key, 0.1), 4), round(self.quantile(key, 0.9), 4)]
+
+    def to_data(self) -> dict[str, Any]:
+        a = self.arrays()
+        has_frac = "com_frac" in a
+        return {
+            "mass_median": round(self.quantile("mass", 0.5), 4), "mass_80": self._interval("mass"),
+            "mu_median": round(self.quantile("mu", 0.5), 3), "mu_80": self._interval("mu"),
+            "com_frac_median": round(self.quantile("com_frac", 0.5), 3) if has_frac else None,
+            "com_frac_80": self._interval("com_frac") if has_frac else None,
+            "p_com_shifted": None if self.p_com_shifted() is None else round(self.p_com_shifted(), 3),
+            "ess": round(self.ess(), 1), "n_ancestors": self.n_ancestors(), "n_observations": len(self.history),
+            "flags": list(self.flags), "degenerate": bool(self.degenerate),
+        }
+
+    def summary(self) -> list[str]:
+        d = self.to_data()
+        lines = [
+            f"mass median {d['mass_median']:.3f} kg, 80 % interval {d['mass_80'][0]:.3f} to {d['mass_80'][1]:.3f} kg",
+            f"friction median {d['mu_median']:.2f}, 80 % interval {d['mu_80'][0]:.2f} to {d['mu_80'][1]:.2f}",
+        ]
+        if d["p_com_shifted"] is not None:
+            lines.append(f"P(CoM shifted toward one end) {d['p_com_shifted']:.2f}")
+        lines.append(f"{d['ess']:.0f} effective particles of {len(self)}, {d['n_observations']} observations")
+        lines += [f"belief flag: {f}" for f in self.flags]
+        if self.degenerate:
+            lines.append("belief degenerate: fewer than 100 effective particles after a refresh")
+        return lines
+
+    def _replace(self, **kw: Any) -> ParticleBelief:
+        args = {"particles": self.particles, "weights": self.weights, "visibility": self.visibility,
+                "history": list(self.history), "flags": list(self.flags), "degenerate": self.degenerate}
+        args.update(kw)
+        out = ParticleBelief(**args)
+        if args["particles"] is self.particles:
+            out._arrays = self._arrays
+        return out
+
+    @staticmethod
+    def from_parametric(belief: Belief, com_obj, n: int, rng: np.random.Generator) -> ParticleBelief:
+        """The fallback for substrates without a generator: mass and friction from the milestone 1
+        prior, the CoM at the nominal point."""
+        com = [float(x) for x in com_obj]
+        parts = [{"mass": s["mass"], "mu": s["mu"], "com_obj": list(com), "ancestor": i} for i, s in enumerate(belief.sample(n, rng))]
+        return ParticleBelief(parts, np.ones(n), visibility=belief.visibility)
