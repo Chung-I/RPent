@@ -33,7 +33,7 @@ from typing import Any
 import numpy as np
 
 from rpent.skills.pick_place.destinations import DESTINATIONS, OBJECT_REST_XY, PRIMITIVE_IDS, has_surface, is_mesh, release_height
-from robots.mujoco_lab.labels import RISE_M, Final, label_rollout
+from robots.mujoco_lab.labels import Final, first_lifted, label_rollout, lifted
 from robots.mujoco_lab.readouts import RISEN_M, slide_force, summarize
 from rpent.skills.pick_place.features import G, Geometry
 from rpent.skills.pick_place.probes import ProbeResult
@@ -646,7 +646,7 @@ class MuJoCoLabEnv:
         trace, on_step = self._tracer(pt, proposal.yaw)
         out, _, _ = gr.run_grasp(sim, pt, proposal.yaw, force=force, v_lift=v_lift, lift_h=LIFT_H, hold_s=HOLD_S,
                                  on_step=on_step, lift_profile=ramp_profile(LIFT_H, v_lift, hz))
-        rose = any(x["z"] > RISE_M and all(x["pads"]) and x["phase"] in ("lift", "hold") for x in trace)
+        rose = first_lifted(trace, ("lift", "hold")) is not None
         release = None
         if rose:
             hand_z0 = gr.hand_start_z(pt)
@@ -667,18 +667,25 @@ class MuJoCoLabEnv:
                 sim.set_hand([goal[0], goal[1], z], proposal.yaw)
                 sim.step_ctrl()
                 on_step("lower")
-            release = gr.run_release(sim, None, 1, [], [], len(trace), seconds=RELEASE_S, on_step=on_step, up0=self.up0)
-            z0 = z                                      # the open hand moves away; a wedged object comes with it
-            for frac in ramp_profile(RETREAT_M, V_LOWER, hz):
-                z = z0 + RETREAT_M * frac
-                sim.set_hand([goal[0], goal[1], z], proposal.yaw)
-                sim.step_ctrl()
-                on_step("retreat")
-            for _ in range(int(RETREAT_SETTLE_S * hz)):
-                sim.step_ctrl()
-                on_step("retreat")
+            release = self._open_and_rise(goal[0], goal[1], z, proposal.yaw, trace, on_step)
+        else:           # not lifted (a pivot holds one end up): let it down where it is and carry nothing off
+            self._open_and_rise(pt[0], pt[1], gr.hand_start_z(pt) + LIFT_H, proposal.yaw, trace, on_step)
         self._metering = False
         return self._label(trace, rose, dest, release, planned, v_lift)
+
+    def _open_and_rise(self, x: float, y: float, z: float, yaw: float, trace: list[dict[str, Any]], on_step) -> dict[str, Any]:
+        """Open the gripper with the hand at (x, y, z) for RELEASE_S, then rise RETREAT_M and settle; the release
+        record. The open hand moves away; a wedged object comes with it."""
+        sim, gr, hz = self.sim, self.s["grasp"], self.s["scene"].CTRL_HZ
+        release = gr.run_release(sim, None, 1, [], [], len(trace), seconds=RELEASE_S, on_step=on_step, up0=self.up0)
+        for frac in ramp_profile(RETREAT_M, V_LOWER, hz):
+            sim.set_hand([x, y, z + RETREAT_M * frac], yaw)
+            sim.step_ctrl()
+            on_step("retreat")
+        for _ in range(int(RETREAT_SETTLE_S * hz)):
+            sim.step_ctrl()
+            on_step("retreat")
+        return release
 
     def _tracer(self, pt: np.ndarray, yaw: float):
         """(trace, on_step): on_step(phase) appends one dict per control step (see execute's trace). ``pads``
@@ -797,12 +804,13 @@ class MuJoCoLabEnv:
     @staticmethod
     def weigh_reading(trace: list[dict[str, Any]], force: float) -> tuple[str, dict[str, float]]:
         """The weigh probe's kind and reading from its trace (see probe_weigh)."""
-        risen = [i for i, x in enumerate(trace) if x["phase"] in ("lift", "hold") and x["z"] > RISEN_M and all(x["pads"])]
+        rest = float(trace[0]["low_z"]) if trace else 0.0
+        risen = [i for i, x in enumerate(trace) if x["phase"] in ("lift", "hold") and lifted(x, rest, RISEN_M)]
         if risen:
             i0 = risen[0]
             if any(not any(x["pads"]) for x in trace[i0:] if x["phase"] in ("lift", "hold")):
                 return "lost", {}
-            held = [x["fz"] for x in trace[i0:] if x["phase"] == "hold" and x["z"] > RISEN_M and all(x["pads"])]
+            held = [x["fz"] for x in trace[i0:] if x["phase"] == "hold" and lifted(x, rest, RISEN_M)]
             seg = held or [trace[i]["fz"] for i in risen]
             return "measured", {"m_hat": float(np.median(seg)) / G}
         fmax = slide_force(trace)
@@ -812,10 +820,11 @@ class MuJoCoLabEnv:
 
     def probe_weigh(self, proposal: Proposal, force: float) -> ProbeResult:
         """Close with ``force``, lift 2 cm at 3 cm/s, hold 0.5 s (the execute trace); then open, settle
-        0.5 s, rise 10 cm, settle 1 s. Kinds: measured (rose 1.2 cm with both pads: m_hat = the median
-        net vertical pad force over the still hold, / g), lower_bound (never rose: mu_hat = the largest
+        0.5 s, rise 10 cm, settle 1 s. Kinds: measured (lifted off the table, labels.lifted with a 1.2 cm rise:
+        m_hat = the median net vertical pad force over the still hold while lifted, / g; a pivot keeps one end
+        on the table, which carries part of the weight), lower_bound (never lifted: mu_hat = the largest
         force while the pads slid up the still object (readouts.slide_force) / 2F, m_lower = that force
-        / g; no reading when the pads never did), lost (rose, then both pads lost it). The forces are
+        / g; no reading when the pads never did), lost (lifted, then both pads lost it). The forces are
         means over each step's physics substeps (the hand follows its mocap target in jumps)."""
         self._need()
         self._refresh_baselines()

@@ -20,14 +20,16 @@ import pytest
 from robots.mujoco_lab.readouts import summarize
 
 
-def _s(t, phase, z, pads=(True, True), fz=0.0, rot=0.0, pitch=0.0, hand_z=None, nz=(0.0, 0.0), rot_lift=None, grip=None):
-    """One trace step; by default the hand carries the object (hand_z = 0.3 + z), the pads press side faces and the
-    object point between them rises with the object (grip_dz = z)."""
+def _s(t, phase, z, pads=(True, True), fz=0.0, rot=0.0, pitch=0.0, hand_z=None, nz=(0.0, 0.0), rot_lift=None, grip=None,
+       low=None):
+    """One trace step; by default the hand carries the object (hand_z = 0.3 + z), the pads press side faces, the
+    object point between them rises with the object (grip_dz = z) and so does its lowest point (low_z = z)."""
     if phase not in ("approach", "close"):
         rot_lift = 0.0 if rot_lift is None else rot_lift
         grip = z if grip is None else grip
     return {"t": t, "phase": phase, "z": z, "pads": list(pads), "fz": fz, "fn": 10.0, "rot_deg": rot, "pitch_ey": pitch,
-            "hand_z": 0.3 + z if hand_z is None else hand_z, "pad_nz": list(nz), "rot_lift_deg": rot_lift, "grip_dz": grip}
+            "hand_z": 0.3 + z if hand_z is None else hand_z, "pad_nz": list(nz), "rot_lift_deg": rot_lift, "grip_dz": grip,
+            "low_z": z if low is None else low}
 
 
 def _label(label, loss_phase=None, loss_step=None, loss_t=None):
@@ -185,3 +187,45 @@ def test_summarize_heavy_side():
     tr[-1].update(rot_deg=12.0, pitch_ey=0.2)                                # no loss: the last hold step
     out = summarize(tr, _label("placed_stable"), 0.15)
     assert out["rot_deg"] == pytest.approx(12.0) and out["heavy_side"] == -1
+
+
+def test_hold_reading_needs_the_object_off_the_table():
+    """A hammer turning about its head through the hold: its origin is 20 cm up but its lowest point stays on the
+    table, which carries part of the weight, so the pads' force is no weight reading (75 rows of corpus v6 read
+    under 0.8 m g)."""
+    tr = _held_trace(hold_fz=(1.2,) * 6)
+    for x in tr:
+        x["low_z"] = 0.0002
+    assert summarize(tr, _label("tipped"), 0.15)["fz_hold_n"] is None
+
+
+def _weigh_trace(low_rises: bool, fz: float = 2.943):
+    """The weigh probe: close, lift 2 cm at 3 cm/s, hold 0.5 s; the pads push up fz. With low_rises the whole
+    object rises with the pads, else its lowest point stays on the table (a pivot)."""
+    tr, t = [], 0.0
+    for _ in range(3):
+        tr.append(_s(t, "approach", 0.0, pads=(False, False), low=0.0)); t += 0.02
+    for _ in range(3):
+        tr.append(_s(t, "close", 0.0, fz=0.5, low=0.0)); t += 0.02
+    for k in range(33):
+        z = 0.02 * (k + 1) / 33
+        tr.append(_s(t, "lift", z, fz=fz, low=z if low_rises else 0.0001)); t += 0.02
+    for _ in range(25):
+        tr.append(_s(t, "hold", 0.02, fz=fz, low=0.02 if low_rises else 0.0001)); t += 0.02
+    return tr
+
+
+def test_weigh_reading_measures_an_object_off_the_table():
+    from robots.mujoco_lab.adapter import MuJoCoLabEnv
+
+    kind, reading = MuJoCoLabEnv.weigh_reading(_weigh_trace(True), 20.0)
+    assert kind == "measured" and reading["m_hat"] == pytest.approx(0.3)
+
+
+def test_weigh_reading_does_not_weigh_a_pivot():
+    """The pads raise a hammer's handle 2 cm while its head stays on the table: the pads carry 0.6 of its weight
+    (163 weigh rows of probe corpus v5 read m_hat under 0.8 m, 118 of them hammers)."""
+    from robots.mujoco_lab.adapter import MuJoCoLabEnv
+
+    kind, _ = MuJoCoLabEnv.weigh_reading(_weigh_trace(False), 20.0)
+    assert kind == "lower_bound"

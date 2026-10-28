@@ -99,3 +99,21 @@ def test_weigh_probe_gives_no_friction_when_the_pads_never_slid_on_the_sides(env
 
     b = next(r for r in probe_rows(env, "ycb__pitcher", 15, 7) if r["key"].endswith("__Bweigh"))
     assert b["kind"] == "lower_bound" and b["reading"] == {}
+
+
+def test_a_pivot_is_not_lifted_and_the_hand_sets_it_back(env):
+    """hammer_7 d55: the hammer turns about its head on the table while the pads raise the handle, and its
+    origin rises 12.8 cm; the head never leaves the table. The hand does not carry it off (corpus v6 dragged
+    it to the table centre and read tipped): it opens where it is and rises."""
+    r, tr = _row_and_trace(env, "handal__hammer_7__d55")
+    assert r["label"] == "not_lifted" and r["release"] is None
+    assert not any(x["phase"] in ("transport", "lower") for x in tr)
+    assert not any(env.sim.contacts()[1]) and r["zone"] not in (None, "floor")       # it lies on the table top
+    assert abs(env.sim.obj_low_z() - 0.75) < 0.01
+
+
+def test_a_set_down_on_the_box_wall_is_judged_by_the_release_rules(env):
+    """wood_block d10: lowered into the box, the block lands on the box wall and the pads slide off it. It stays
+    on the wall top, so it missed the box; corpus v6 read a 12 cm drop."""
+    r = _row(env, "ycb__wood_block__d10")
+    assert r["label"] == "missed" and r["loss_phase"] is None

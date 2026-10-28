@@ -33,6 +33,8 @@ from typing import Any
 
 import numpy as np
 
+from robots.mujoco_lab.labels import lifted
+
 RISEN_M = 0.012              # the weigh probe's "risen" height: the pads carry the object above it
 MIN_HOLD_STEPS = 5
 ROT_SIDE_DEG = 10.0          # a rotation this large tells the heavy side
@@ -84,8 +86,9 @@ def slide_force(trace: list[dict[str, Any]]) -> float | None:
 def summarize(trace: list[dict[str, Any]], label_out: dict[str, Any], v_lift: float) -> dict[str, Any]:
     """The readouts of one rollout (see the keys below); None where a reading does not exist."""
     label = label_out["label"]
-    lifted = [x for x in trace if x["phase"] in ("lift", "hold")]
-    hold = [x["fz"] for x in trace if x["phase"] == "hold" and _both(x) and x["z"] > RISEN_M]
+    up = [x for x in trace if x["phase"] in ("lift", "hold")]
+    rest = float(trace[0]["low_z"]) if trace else 0.0
+    hold = [x["fz"] for x in trace if x["phase"] == "hold" and lifted(x, rest, RISEN_M)]   # off the table: the weight
     slip = slide_force(trace) if label == "not_lifted" else None
     loss_step, loss_phase = label_out.get("loss_step"), label_out.get("loss_phase")
     fz_loss = None
@@ -104,7 +107,7 @@ def summarize(trace: list[dict[str, Any]], label_out: dict[str, Any], v_lift: fl
     loss_t = label_out.get("loss_t")
     return {
         "rose": label != "not_lifted",
-        "max_rise_m": float(max((x["z"] for x in lifted), default=0.0)),
+        "max_rise_m": float(max((x["z"] for x in up), default=0.0)),
         "fz_hold_n": float(np.median(hold)) if len(hold) >= MIN_HOLD_STEPS else None,
         "fz_slip_max_n": slip,
         "fz_at_loss_n": fz_loss,
