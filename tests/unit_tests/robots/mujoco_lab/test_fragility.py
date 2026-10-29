@@ -241,3 +241,18 @@ def test_thresholds_read_the_optional_slosh_scale(tmp_path):
         json.dump(d, open(p, "w"))
         with pytest.raises(ValueError, match="slosh_scale"):
             Thresholds.from_json(str(p))
+
+
+def test_thresholds_v1_values():
+    """Plan 2b Task 8's laws: crush and fruit keep v0's values (no fit; the fruit's Genesis checks failed), ceramic
+    and glass come from drop tests in the literature, and the slosh model gets the annex's factors per class and fill."""
+    from robots.mujoco_lab.fragility import DATA, Thresholds
+
+    th, v0 = Thresholds.from_json(os.path.join(DATA, "thresholds_v1.json")), _th()
+    for law in ("cardboard", "thin_plastic", "fruit", "ceramic"):
+        assert {k: v for k, v in th.laws[law].items() if k in v0.laws[law] and k != "source"} == \
+            {k: v for k, v in v0.laws[law].items() if k != "source"}
+    assert th.laws["glass"]["v_break_ms"] == {"median": 5.057, "log_sd": 0.30} and th.slosh_zeta == 0.01
+    assert all(th.laws[law]["fallback"] == "v0" and th.laws[law]["literature_check"] for law in ("cardboard", "thin_plastic", "fruit"))
+    assert set(th.slosh_scale) == {"carry", "jolt"} and all(set(f) == {"0.3", "0.6", "0.9"} for f in th.slosh_scale.values())
+    assert all(0.85 < v < 1.05 for f in th.slosh_scale.values() for v in f.values())

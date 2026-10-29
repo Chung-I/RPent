@@ -1,0 +1,356 @@
+{
+  "version": "v1",
+  "units": {
+    "f_damage_n": "N",
+    "k_n_per_mm": "N/mm",
+    "v_bruise_ms": "m/s",
+    "v_break_ms": "m/s"
+  },
+  "slosh_zeta": 0.01,
+  "laws": {
+    "cardboard": {
+      "f_damage_n": {
+        "median": 25.0,
+        "log_sd": 0.35
+      },
+      "k_n_per_mm": {
+        "median": 2.0,
+        "log_sd": 0.35
+      },
+      "rho": 0.8,
+      "source": "thresholds_v0: the provisional values of plan 2b (Task 4), not fitted (see reason)",
+      "n_runs": 0,
+      "n_configs": 0,
+      "n_censored": 0,
+      "censored_warning": false,
+      "checks": {},
+      "rule_accuracy": null,
+      "rule_n": 0,
+      "fallback": "v0",
+      "reason": "fewer than 8 fit configs (0); missing similarity or particle_size check",
+      "literature_check": {
+        "source": [
+          "Eriksson 2017, How Small Is a Point Load? ..., Packaging Technology and Science, doi:10.1002/pts.2300"
+        ],
+        "note": "A folding carton (78 x 50 x 110 mm, 290 g/m^2 board) collapses locally at 20 to 25 N under a rigid sphere of radius 15 mm and 25 to 30 N at 55 mm; v0's median is 25 N."
+      }
+    },
+    "thin_plastic": {
+      "f_damage_n": {
+        "median": 20.0,
+        "log_sd": 0.4
+      },
+      "k_n_per_mm": {
+        "median": 1.5,
+        "log_sd": 0.4
+      },
+      "rho": 0.8,
+      "source": "thresholds_v0: the provisional values of plan 2b (Task 4), not fitted (see reason)",
+      "n_runs": 0,
+      "n_configs": 0,
+      "n_censored": 0,
+      "censored_warning": false,
+      "checks": {},
+      "rule_accuracy": null,
+      "rule_n": 0,
+      "fallback": "v0",
+      "reason": "fewer than 8 fit configs (0); missing similarity or particle_size check",
+      "literature_check": {
+        "source": [
+          "Kashiwagi 2019, Wide Variation of Squeezing Force and Dispensing Time Interval among Eyedropper Bottles, J Ophthalmol, doi:10.1155/2019/7250563",
+          "Connor 2011, Force requirements in topical medicine use - the squeezability factor, Eye, doi:10.1038/eye.2011.5",
+          "Le 2020, Safe Grasping with a Force Controlled Soft Robotic Hand, IEEE SMC, arXiv:1909.06756"
+        ],
+        "note": "No peer-reviewed PET, HDPE or PP bottle sidewall damage value was found. Eye-drop bottles need 3.1 to 41.1 N only to dispense (an elastic squeeze); empty plastic cups deform in 90 % of grasps at 2 N. v0's median 20 N stays, unconfirmed."
+      }
+    },
+    "fruit": {
+      "f_damage_n": {
+        "median": 30.0,
+        "log_sd": 0.4
+      },
+      "k_n_per_mm": {
+        "median": 5.0,
+        "log_sd": 0.4
+      },
+      "rho": 0.7,
+      "v_bruise_ms": {
+        "median": 1.0,
+        "log_sd": 0.3
+      },
+      "source": "thresholds_v0: the provisional values of plan 2b (Task 4), not fitted (see reason)",
+      "n_runs": 34,
+      "n_configs": 0,
+      "n_censored": 0,
+      "censored_warning": false,
+      "checks": {
+        "particle_size": {
+          "pass": false,
+          "pairs": {
+            "0:fruits_veggies__orange1:256:384": {
+              "pass": false,
+              "variants": [
+                "grid256",
+                "grid384"
+              ],
+              "f_onset_n": [
+                10.189034303785505,
+                51.6202362429745
+              ],
+              "v_bruise_ms": [
+                3.2819699130738194,
+                2.975847847625795
+              ]
+            },
+            "1:ycb__banana:256:384": {
+              "pass": false,
+              "variants": [
+                "grid256",
+                "grid384"
+              ],
+              "f_onset_n": [
+                18.20033885044984,
+                42.92726479219982
+              ],
+              "v_bruise_ms": [
+                null,
+                null
+              ]
+            }
+          }
+        },
+        "rate": {
+          "pass": false,
+          "pairs": {
+            "0:fruits_veggies__orange1": {
+              "pass": false,
+              "variants": [
+                "ramp0.2",
+                "ramp0.4"
+              ],
+              "f_onset_n": [
+                10.189085934932956,
+                6.970903735920428
+              ]
+            }
+          }
+        }
+      },
+      "rule_accuracy": null,
+      "rule_n": 0,
+      "n_drop_configs": 0,
+      "n_drop_censored": 0,
+      "rho_v_f": null,
+      "fallback": "v0",
+      "reason": "fewer than 8 fit configs (0); failed checks: particle_size, rate; fewer than 2 bracketed fit drop onsets",
+      "literature_check": {
+        "source": [
+          "Afkari-Sayyah 2018, The Effect of Temperature and Type of Impact Surface on Critical Drop Height of Apple, Kufa J Agric Sci",
+          "Shock 2003 and 2005, Effect of Onion Bulb Temperature and Handling on Bruising, OSU Malheur Experiment Station reports (grey literature)",
+          "Bauyon 2017, Bruising of Avocado (Persea americana Mill.) as Affected by Impact Energy, Fruit Temperature ..., DOAJ 8c52bc4122d7448889f830cf29d269b6",
+          "Li 2013, Fruit biomechanics based on anatomy: a review, Int Agrophys, doi:10.2478/v10247-012-0073-z"
+        ],
+        "note": "Drop onsets: apple critical drop heights 26 to 130 mm (0.71 to 1.60 m/s); onion 10 of 15 bulbs damaged at 0.8 m (3.96 m/s); avocado safe below 0.61 m (3.46 m/s) for a 100 mm^2 bruise. No citrus or banana drop threshold was found. Rupture between plates: orange 220 N, apple 44 N (8 mm probe). v0's v_bruise median 1.0 m/s is apple-like."
+      }
+    },
+    "ceramic": {
+      "v_break_ms": {
+        "median": 3.0,
+        "log_sd": 0.25
+      },
+      "source": [
+        "NITE 2001, Accident Information Special News No.33 (tableware drop tests), www.nite.go.jp/en/jiko/chuikanki/special/news033.html: porcelain dish 162 g and tempered porcelain bowl 211 g broke edge-first at 0.70 m and 1.10 m onto P-tile over concrete; bottom-first the dish broke, the bowl did not (Tables 5 and 7)",
+        "Kamochi 2009, Rim impact testing of alumina reinforced porcelain, J Ceram Soc Jpn, 10.2109/jcersj2.117.724: rim fracture energy 0.14-0.77 J (Table 1)"
+      ],
+      "note": "v0's law kept: it gives P(break | 3.71 m/s, the 0.70 m drop) = 0.80, consistent with breaks in every edge-first and half the bottom-first drops; no paper gives break probability against drop height"
+    },
+    "glass": {
+      "v_break_ms": {
+        "median": 5.057,
+        "log_sd": 0.3
+      },
+      "source": [
+        "NITE 2001, Accident Information Special News No.33 (tableware drop tests), www.nite.go.jp/en/jiko/chuikanki/special/news033.html: laminated tempered glass bowl, 3 of 10 broke edge-first and 0 of 10 bottom-first at 0.70 m onto P-tile over concrete (Table 2)",
+        "Corning cover-glass drop claims reported in press (Android Authority 2016, VentureBeat 2018, XDA 2022; not peer-reviewed): up to 80 % survive 1.6 m face-down, Victus 2 survives 1 m on concrete"
+      ],
+      "note": "the lab's only glass object is hot3d__smartphone (strengthened cover glass). Median from the pooled break share 3/20 at 3.71 m/s (random orientation) with v0's log_sd 0.30: 3.71 x exp(0.30 x 1.0364) = 5.06 m/s; the press claims imply a higher median (about 7.2 m/s). v0's 2.5 m/s gave P(break | 2 m/s) = 0.23, which neither source supports"
+    }
+  },
+  "slosh_scale": {
+    "carry": {
+      "0.3": 0.9100716914364291,
+      "0.6": 0.8886462187109112,
+      "0.9": 0.9089722189961162
+    },
+    "jolt": {
+      "0.3": 1.0161065848785755,
+      "0.6": 0.9943399160556712,
+      "0.9": 0.9216227303874853
+    }
+  },
+  "rigid_cross_check": {
+    "n_settings": 20,
+    "n_agree": 19,
+    "pass": true
+  },
+  "inputs": {
+    "v0": {
+      "path": "/home/chungyili/Codes/RPent/robots/mujoco_lab/data/thresholds_v0.json",
+      "sha256": "9ab9b5d5d07448b6cf1e5e88f6cef0c43bbd7b9c6d2e9d606a479ab85e0aa620"
+    },
+    "literature": {
+      "path": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-10-27-vlm-grasp-limits/annex_genesis/break_literature.json",
+      "sha256": "d7a1455ae85e708b18c10b8bc444f628ce64cef47411529cecf639487c00aa56"
+    },
+    "slosh": {
+      "path": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-10-27-vlm-grasp-limits/annex_genesis/runs_v1/slosh/rule/slosh_rule.json",
+      "sha256": "cf0b6ca43eb166850cd8205670078bd6194f17e72418293b433848f8d4d95e9d"
+    },
+    "rigid": {
+      "path": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-10-27-vlm-grasp-limits/annex_genesis/rigid_check/summary.json",
+      "sha256": "83833e350e20811e42797e9978f55c9deb67437d92e5da4e7234c03956085af8"
+    },
+    "runs": {
+      "path": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-10-27-vlm-grasp-limits/annex_genesis/runs_v1/fruit/runs",
+      "files": [
+        {
+          "path": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-10-27-vlm-grasp-limits/annex_genesis/runs_v1/fruit/runs/fruits_veggies__orange1-particle-size-000-grid256-drop0.json",
+          "sha256": "aaea3d1b9fdf4a8b42639bacdd2a88aa44cc6cd1df54a46aa7dd745dd031661f"
+        },
+        {
+          "path": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-10-27-vlm-grasp-limits/annex_genesis/runs_v1/fruit/runs/fruits_veggies__orange1-particle-size-000-grid256-drop1.json",
+          "sha256": "c7bec5bc719fe6cc6d7e243e91a88b6d6cee6af66180ffb33855d8e297c267f6"
+        },
+        {
+          "path": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-10-27-vlm-grasp-limits/annex_genesis/runs_v1/fruit/runs/fruits_veggies__orange1-particle-size-000-grid256-drop2.json",
+          "sha256": "1fa2c1bcea2a9126a572835149b0d5b502a8b1037f66142087dd0b374ba3e1a6"
+        },
+        {
+          "path": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-10-27-vlm-grasp-limits/annex_genesis/runs_v1/fruit/runs/fruits_veggies__orange1-particle-size-000-grid256-drop3.json",
+          "sha256": "bbd1d10ebf1343a1ba5d48f16e54bbbe7ec295a0bed00dc19a28822874d48b81"
+        },
+        {
+          "path": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-10-27-vlm-grasp-limits/annex_genesis/runs_v1/fruit/runs/fruits_veggies__orange1-particle-size-000-grid256-drop4.json",
+          "sha256": "006f8f5715a402b9f555a93583df5e96099e04a755b74abf482e4ff283824d60"
+        },
+        {
+          "path": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-10-27-vlm-grasp-limits/annex_genesis/runs_v1/fruit/runs/fruits_veggies__orange1-particle-size-000-grid256-drop5.json",
+          "sha256": "23aa782e119d4767480197af6f800c9ffcaed678979d2701e13923bda7e2a953"
+        },
+        {
+          "path": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-10-27-vlm-grasp-limits/annex_genesis/runs_v1/fruit/runs/fruits_veggies__orange1-particle-size-000-grid256-drop6.json",
+          "sha256": "4b155b32a01a6c23c497ded58d596b2b65a2076100bdcf46fcc7dbd8590bf067"
+        },
+        {
+          "path": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-10-27-vlm-grasp-limits/annex_genesis/runs_v1/fruit/runs/fruits_veggies__orange1-particle-size-000-grid256-ladder.json",
+          "sha256": "a874aed5d4eb5578e08bdca399e5d18a4d6fa1c9d5a132db715dbca022e44e9e"
+        },
+        {
+          "path": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-10-27-vlm-grasp-limits/annex_genesis/runs_v1/fruit/runs/fruits_veggies__orange1-particle-size-000-grid384-drop0.json",
+          "sha256": "b7c1150412cb6ca2c12f13bff097cc2aa6a940c14c2bfbdd936a5ff2c4ea471b"
+        },
+        {
+          "path": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-10-27-vlm-grasp-limits/annex_genesis/runs_v1/fruit/runs/fruits_veggies__orange1-particle-size-000-grid384-drop1.json",
+          "sha256": "a9012f47b0f15de94f191cedfb0a4b02f5ac1670e41be02204271a9916d2fbca"
+        },
+        {
+          "path": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-10-27-vlm-grasp-limits/annex_genesis/runs_v1/fruit/runs/fruits_veggies__orange1-particle-size-000-grid384-drop2.json",
+          "sha256": "507f90181ebd51ceb9cffe208437d5f6ec0b38f5abffbd12b9432394c33e2ab4"
+        },
+        {
+          "path": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-10-27-vlm-grasp-limits/annex_genesis/runs_v1/fruit/runs/fruits_veggies__orange1-particle-size-000-grid384-drop3.json",
+          "sha256": "18f2161433ec82958c03de2c363ee71662dcb9c2e5c32ee863137765bfb105c2"
+        },
+        {
+          "path": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-10-27-vlm-grasp-limits/annex_genesis/runs_v1/fruit/runs/fruits_veggies__orange1-particle-size-000-grid384-drop4.json",
+          "sha256": "504626abdd38f3bd548ec2894a8a0dd4f455fcce456467ddbaf9c4fcb493596e"
+        },
+        {
+          "path": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-10-27-vlm-grasp-limits/annex_genesis/runs_v1/fruit/runs/fruits_veggies__orange1-particle-size-000-grid384-drop5.json",
+          "sha256": "7cb4711b6d4527ed8385bcafc3f57d3f9a38092c8f4119b73cf56451671f2c9f"
+        },
+        {
+          "path": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-10-27-vlm-grasp-limits/annex_genesis/runs_v1/fruit/runs/fruits_veggies__orange1-particle-size-000-grid384-drop6.json",
+          "sha256": "26e0993bfe8396f9e03dc806a2d176ad8cc962d934b58853a139a69d9147653d"
+        },
+        {
+          "path": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-10-27-vlm-grasp-limits/annex_genesis/runs_v1/fruit/runs/fruits_veggies__orange1-particle-size-000-grid384-ladder.json",
+          "sha256": "f96755d10f3984c6a78b1419aa407b0c80dcef3ac9324530d0f6c09949d3a5ab"
+        },
+        {
+          "path": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-10-27-vlm-grasp-limits/annex_genesis/runs_v1/fruit/runs/fruits_veggies__orange1-rate-000-ramp0.2-ladder.json",
+          "sha256": "141c01d4f4a413bab0f789841c580779cf548211cc53658fa6b32421b7de83bc"
+        },
+        {
+          "path": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-10-27-vlm-grasp-limits/annex_genesis/runs_v1/fruit/runs/fruits_veggies__orange1-rate-000-ramp0.4-ladder.json",
+          "sha256": "50cb5b4b58846273ad387ccc3a2fac3e7a55150c479ae0c0492afd369b9aee70"
+        },
+        {
+          "path": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-10-27-vlm-grasp-limits/annex_genesis/runs_v1/fruit/runs/ycb__banana-particle-size-001-grid256-drop0.json",
+          "sha256": "227f465bdd58499a6642696eb5ece9ce3c286a70ba4fbe6fc59b0dd0d018b1d5"
+        },
+        {
+          "path": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-10-27-vlm-grasp-limits/annex_genesis/runs_v1/fruit/runs/ycb__banana-particle-size-001-grid256-drop1.json",
+          "sha256": "dcc4202ee872fcf13c9c26c96333cd3c31917ea5228e2c17ed0c28d445bddfd9"
+        },
+        {
+          "path": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-10-27-vlm-grasp-limits/annex_genesis/runs_v1/fruit/runs/ycb__banana-particle-size-001-grid256-drop2.json",
+          "sha256": "c45acb63dcf2587881f62f4555b337a16a5623bfd4aab00f4afe67f58b59881b"
+        },
+        {
+          "path": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-10-27-vlm-grasp-limits/annex_genesis/runs_v1/fruit/runs/ycb__banana-particle-size-001-grid256-drop3.json",
+          "sha256": "1083426287d23054913ba6893d33faa03c13fd8a3fc47bceb5e17ded3a66c47c"
+        },
+        {
+          "path": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-10-27-vlm-grasp-limits/annex_genesis/runs_v1/fruit/runs/ycb__banana-particle-size-001-grid256-drop4.json",
+          "sha256": "1b7e1fbe4a4d68104201fc3ea2860cb1a8f4d361b6aab49665290e4928d006ec"
+        },
+        {
+          "path": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-10-27-vlm-grasp-limits/annex_genesis/runs_v1/fruit/runs/ycb__banana-particle-size-001-grid256-drop5.json",
+          "sha256": "f965f64a6c8688816ea8c9389ce31427326728e32cd547e40a056cb5e474d980"
+        },
+        {
+          "path": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-10-27-vlm-grasp-limits/annex_genesis/runs_v1/fruit/runs/ycb__banana-particle-size-001-grid256-drop6.json",
+          "sha256": "17a90f0f9a2eeae79bca6861819c689d205f48478f156375d80c4714ced8d3f8"
+        },
+        {
+          "path": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-10-27-vlm-grasp-limits/annex_genesis/runs_v1/fruit/runs/ycb__banana-particle-size-001-grid256-ladder.json",
+          "sha256": "8046eb2a573cffb8328e1fb16b41bc3fb4602482fb81dc4599fa5f5887750c80"
+        },
+        {
+          "path": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-10-27-vlm-grasp-limits/annex_genesis/runs_v1/fruit/runs/ycb__banana-particle-size-001-grid384-drop0.json",
+          "sha256": "6cdf4cbd38bf1d92d7217f5cbbf3e9750f0713b4d87cff5c22238c3823a64c6b"
+        },
+        {
+          "path": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-10-27-vlm-grasp-limits/annex_genesis/runs_v1/fruit/runs/ycb__banana-particle-size-001-grid384-drop1.json",
+          "sha256": "0d0ce0a2486c066876effa37c0d5732953ef4e6c426945e90ea8c7f02c62d5f8"
+        },
+        {
+          "path": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-10-27-vlm-grasp-limits/annex_genesis/runs_v1/fruit/runs/ycb__banana-particle-size-001-grid384-drop2.json",
+          "sha256": "9500d52e668d002de91146558f6a061fb5b18dd34a4541e3f9515edd63ed1213"
+        },
+        {
+          "path": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-10-27-vlm-grasp-limits/annex_genesis/runs_v1/fruit/runs/ycb__banana-particle-size-001-grid384-drop3.json",
+          "sha256": "fb24c577e4e46fadd59fecf72a390ed2569cf372078f2c9a47f5c2fb432d2e40"
+        },
+        {
+          "path": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-10-27-vlm-grasp-limits/annex_genesis/runs_v1/fruit/runs/ycb__banana-particle-size-001-grid384-drop4.json",
+          "sha256": "b3e4687fcc5c4dcf4c6d57f6609e61629b04914eac1970fac9aae4be54f8dc4b"
+        },
+        {
+          "path": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-10-27-vlm-grasp-limits/annex_genesis/runs_v1/fruit/runs/ycb__banana-particle-size-001-grid384-drop5.json",
+          "sha256": "8f4a1ef5816b0748ddcd9f204a6258925b337197f228b6af56eb3ec2ad2f190c"
+        },
+        {
+          "path": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-10-27-vlm-grasp-limits/annex_genesis/runs_v1/fruit/runs/ycb__banana-particle-size-001-grid384-drop6.json",
+          "sha256": "769a1a37e7477218d71e7cd930f7229fa804fa436867a58f07e6ad57e6d5e80f"
+        },
+        {
+          "path": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-10-27-vlm-grasp-limits/annex_genesis/runs_v1/fruit/runs/ycb__banana-particle-size-001-grid384-ladder.json",
+          "sha256": "354f0d5b54d3c632a6358a09db7b1d976e6dfc01ef337d627e9488489bb1d292"
+        }
+      ]
+    }
+  },
+  "status": "cardboard=v0; thin_plastic=v0; fruit=v0; ceramic=literature; glass=literature"
+}
