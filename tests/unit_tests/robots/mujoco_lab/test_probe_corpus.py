@@ -22,7 +22,7 @@ import pytest
 
 pytestmark = pytest.mark.skipif(not os.environ.get("RPENT_MUJOCO_SIM_DIR"), reason="sim dir not set")
 
-NEED = {"key", "object", "draw", "scene", "order", "probe", "pose", "base", "force", "f_std", "com_obj_true", "truth",
+NEED = {"key", "object", "draw", "scene", "order", "probe", "s", "pose", "base", "force", "f_std", "com_obj_true", "truth",
         "kind", "reading", "displacement_m", "tilt_deg", "thrown", "seconds", "reset"}
 
 
@@ -52,3 +52,30 @@ def test_probe_corpus_resume_skips_done_draws(tmp_path):
     assert main(["--out", str(out), "--draws", "2", "--workers", "1", "--objects", "ycb__brick", "--seed", "7", "--resume"]) == 3
     keys = [json.loads(line)["key"] for line in open(out)]
     assert len(keys) == len(set(keys)) == 6
+
+
+def test_the_probes_use_the_fitting_proposal_nearest_the_middle():
+    """ceramic_mug d0: the s 0.3 and 0.5 pinches are 9.2 and 9.1 cm, over the 9.0 cm limit; the menu would
+    probe at s 0.7 (6.8 cm), so the corpus does."""
+    from robots.mujoco_lab.adapter import MuJoCoLabEnv
+    from robots.mujoco_lab.probe_corpus import probe_rows
+
+    rows = probe_rows(MuJoCoLabEnv(), "hot3d__ceramic_mug", 0, 7)
+    assert {r["key"].rsplit("__", 1)[1] for r in rows} <= {"Apush", "Aweigh", "Bweigh"} and len(rows) >= 2
+    assert all(r["s"] == 0.7 and r["base"]["width"] < 0.090 for r in rows)
+
+
+def test_a_draw_with_no_fitting_proposal_is_declined():
+    """macaroni_and_cheese: every pinch is 12.5 cm across the box. The skill declines before any probe, so the
+    draw gets one declined row and runs no probe."""
+    from robots.mujoco_lab.adapter import MuJoCoLabEnv
+    from robots.mujoco_lab.probe_corpus import probe_rows
+
+    env = MuJoCoLabEnv()
+
+    def probe(*a, **k):
+        raise AssertionError("no probe may run")
+    env.probe_push = env.probe_weigh = probe
+    rows = probe_rows(env, "hope__macaroni_and_cheese", 2, 7)
+    assert len(rows) == 1 and rows[0]["key"] == "hope__macaroni_and_cheese__s7__d2" and rows[0]["draw"] == 2
+    assert rows[0]["declined"] == "every proposal is wider than the gripper opening" and "probe" not in rows[0]

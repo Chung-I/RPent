@@ -37,7 +37,7 @@ from rpent.skills.pick_place.costs import prediction_matrix
 from rpent.skills.pick_place.destinations import DESTINATIONS
 from rpent.skills.pick_place.diagnose import diagnose
 from rpent.skills.pick_place.features import particle_matrix, particle_sides
-from rpent.skills.pick_place.menu import build_menu, estimate, geometry_pose
+from rpent.skills.pick_place.menu import build_menu, estimate, geometry_pose, pinch_limit
 from rpent.skills.pick_place.protocol import OUTCOMES, Assessment, Option
 from rpent.tools.base import ToolResult, tool
 
@@ -165,7 +165,7 @@ def _assess(object: str, destination: str, care: str, primitives: Any, store: di
     f_std = standard_force(env.nominal_mass(loc["object_id"]))
     probes = {p: m for p, m in (getattr(primitives, "probe_models", None) or {}).items() if p not in rec["probes_run"]}
     options, recommendation = build_menu(primitives.model, belief, geometry, proposals, f_std, care, destination,
-                                         env.plan_trajectory, primitives.rng, pose_fn=pose_fn,
+                                         env.plan_trajectory, primitives.rng, pose_fn=pose_fn, max_open=pinch_limit(env),
                                          threshold=getattr(primitives, "threshold", None), probe_models=probes or None)
     evidence = belief.summary() + [f"standard squeeze {f_std:.0f} N per pad", f"{len(proposals)} pinch proposals along the long axis"]
     if rec["probes_run"]:

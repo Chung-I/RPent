@@ -47,6 +47,7 @@ import time
 import numpy as np
 
 from robots.mujoco_lab import tracking
+from robots.mujoco_lab.corpus import trainable
 from rpent.skills.pick_place.evaluate import rows_of, split_objects
 from rpent.skills.pick_place.hazard_model import train_hazard
 from rpent.skills.pick_place.success_model import train
@@ -63,12 +64,8 @@ TEMPER_GRID = "0.7,0.85,1,1.25,1.5,2,3"
 
 
 def load_rows(path: str) -> list[dict]:
-    rows = []
-    for line in open(path):
-        r = json.loads(line)
-        if "error" not in r:
-            rows.append(r)
-    return rows
+    """The trainable rows of a corpus or probe corpus (corpus.trainable)."""
+    return [r for r in map(json.loads, open(path)) if trainable(r)]
 
 
 def write_manifest(out_dir: str, **fields) -> dict:

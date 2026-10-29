@@ -233,3 +233,13 @@ def test_probe_all_runs_both_probes_then_the_best_row():
     env = _ProbeEnv(probes=[_push(thrown=True)])
     thrown = run_protocol(_probe_prims(env, push=PerfectPush(), weigh=FlatWeigh()), "probe_all", "table_centre", np.random.default_rng(0))
     assert env.probe_calls == ["push"] and thrown["ended"] == "thrown" and thrown["attempts"] == []
+
+
+def test_the_class_rates_come_from_trainable_rows_only(tmp_path):
+    from robots.mujoco_lab.calibrate import _corpus_labels
+
+    path = tmp_path / "c.jsonl"
+    path.write_text("\n".join(json.dumps(r) for r in ({"object": "a", "error": "boom"},
+                                                       {"object": "b", "declined": "wider than the gripper opening"},
+                                                       {"object": "c", "label": "tipped"})) + "\n")
+    assert _corpus_labels(str(path)) == [("c", "tipped")]

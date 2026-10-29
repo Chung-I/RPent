@@ -19,6 +19,10 @@
 One row per rollout (JSON lines): the hidden draw, the action, the measured
 geometry, the features (true-θ, see features.extract), the planned trajectory
 and the outcome label with the loss record. One worker process per object.
+A drawn pinch the skill never offers (menu.unusable_reason: wider than the
+gripper opening, or off the object) does not run: its row says why
+("declined") and carries no outcome. ``trainable`` says which rows the models
+may learn from.
 """
 
 from __future__ import annotations
@@ -44,6 +48,11 @@ S_CHOICES = (0.3, 0.5, 0.7)
 P_COM_SHIFT = 0.5
 P_DROP_RELEASE = 0.3
 RELEASE_KEYS = ("tilt_deg", "displacement_xy_m", "drop_height_m", "final_zone", "final_speed")
+
+
+def trainable(row: dict[str, Any]) -> bool:
+    """A row the models may learn from: it ran (no error) and the skill would have offered its pinch."""
+    return "error" not in row and "declined" not in row
 
 
 def case_rng(seed: int, object_id: str, idx: int) -> np.random.Generator:
@@ -96,6 +105,7 @@ def rollout_row(env, object_id: str, idx: int, seed: int, use_fixtures: bool = F
     """One rollout of `object_id` under a fresh hidden draw; returns the corpus row."""
     from robots.mujoco_lab.adapter import object_props
     from rpent.skills.pick_place.features import extract
+    from rpent.skills.pick_place.menu import pinch_limit, unusable_reason
 
     rng = case_rng(seed, object_id, idx)
     props = object_props(object_id)
@@ -113,9 +123,8 @@ def rollout_row(env, object_id: str, idx: int, seed: int, use_fixtures: bool = F
     pose = env.proposal_pose(prop)                      # before the move: the pose the action was planned in
     feats = extract(g, np.asarray(prop.point), prop.yaw, truth["mass"], truth["mu"], act["force"], theta["v_lift"],
                     act["v_transport"], act["destination"], act["release_height"])
-    r = env.execute(prop, act["force"], theta["v_lift"], act["v_transport"], act["destination"], act["release_height"])
     dest = DESTINATIONS[act["destination"]]
-    return {
+    row = {
         "key": f"{object_id}__d{idx}",
         "object": object_id,
         "theta": theta,
@@ -130,6 +139,19 @@ def rollout_row(env, object_id: str, idx: int, seed: int, use_fixtures: bool = F
         "v_transport": act["v_transport"],
         "release_height": act["release_height"] if act["release_height"] is not None else release_height(dest),
         "width": prop.width,
+        "geometry": {"base_extent": g.base_extent, "com_height": g.com_height, "footprint_half_width": g.footprint_half_width,
+                     "length": g.length, "volume": loc["volume"], "material": loc["material"], "hollow": loc["hollow"]},
+        "features": feats,
+        "pose": pose,
+        "com_obj_true": truth["com_obj"],
+        "reset": reset_info,
+    }
+    declined = unusable_reason(prop.width, pinch_limit(env))
+    if declined is not None:                            # the menu never offers this pinch: no rollout
+        return {**row, "declined": declined}
+    r = env.execute(prop, act["force"], theta["v_lift"], act["v_transport"], act["destination"], act["release_height"])
+    return {
+        **row,
         "label": r.label,
         "max_z": r.max_z,
         "drop_z": r.drop_z,
@@ -140,13 +162,7 @@ def rollout_row(env, object_id: str, idx: int, seed: int, use_fixtures: bool = F
         "zone": r.zone,
         "release": _release_summary(r.release),
         "planned": [s.to_dict() for s in r.planned],
-        "geometry": {"base_extent": g.base_extent, "com_height": g.com_height, "footprint_half_width": g.footprint_half_width,
-                     "length": g.length, "volume": loc["volume"], "material": loc["material"], "hollow": loc["hollow"]},
-        "features": feats,
-        "pose": pose,
-        "com_obj_true": truth["com_obj"],
         "readouts": r.readouts,
-        "reset": reset_info,
     }
 
 

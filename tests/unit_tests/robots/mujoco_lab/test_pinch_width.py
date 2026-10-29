@@ -59,3 +59,20 @@ def test_the_features_see_the_proposal_width():
     for p in env.proposals():
         f = extract(g, np.asarray(p.point), p.yaw, 0.4, 0.5, 20.0, 0.15, 0.5, "bin")
         assert f["width"] == pytest.approx(p.width, abs=1e-12)
+
+
+def test_the_pinch_limit_is_the_open_gap_less_4_mm():
+    """The pads' inner faces are 9.4 cm apart at the joints' open end (q = 0); the skill keeps 2 mm a side."""
+    import mujoco
+
+    from robots.mujoco_lab.adapter import MuJoCoLabEnv
+
+    env = MuJoCoLabEnv()
+    env.reset("ycb__brick", {"mu": 0.8, "mass_scale": 1.0, "com_s": None, "v_lift": 0.15}, seed=0)
+    s = env.sim
+    for j in ("jl", "jr"):
+        s.d.qpos[s.m.joint(j).qposadr[0]] = 0.0
+    mujoco.mj_forward(s.m, s.d)
+    xh = s.d.xmat[s.hand].reshape(3, 3)[:, 0]
+    gap = (s.d.geom_xpos[s.pad_r] @ xh - s.m.geom_size[s.pad_r][0]) - (s.d.geom_xpos[s.pad_l] @ xh + s.m.geom_size[s.pad_l][0])
+    assert abs(gap - 0.094) < 1e-6 and abs(env.max_pinch_width - (gap - 0.004)) < 1e-9

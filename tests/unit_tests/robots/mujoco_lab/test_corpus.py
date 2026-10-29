@@ -28,6 +28,8 @@ ROW_KEYS = {
     "loss_t", "loss_speed", "zone", "release", "planned", "geometry", "features", "pose", "com_obj_true", "readouts",
     "reset",
 }
+OUTCOME_KEYS = {"label", "max_z", "drop_z", "loss_phase", "loss_step", "loss_t", "loss_speed", "zone", "release", "planned", "readouts"}
+DECLINED_KEYS = (ROW_KEYS - OUTCOME_KEYS) | {"declined"}       # a pinch the skill never offers: no rollout
 
 
 def test_draw_theta_ranges():
@@ -53,11 +55,13 @@ def test_corpus_two_objects_two_draws(tmp_path):
     n = main(["--out", str(out), "--draws", "2", "--workers", "1", "--objects", "ycb__banana,ycb__mug"])
     rows = [json.loads(line) for line in out.open()]
     assert n == 4 and len(rows) == 4
-    assert all(set(r) == ROW_KEYS for r in rows)
+    ran = [r for r in rows if "declined" not in r]
+    assert [r["key"] for r in rows if "declined" in r] == ["ycb__mug__d0"]          # its s 0.3 pinch is 9.09 cm
+    assert all(set(r) == ROW_KEYS for r in ran) and all(set(r) == DECLINED_KEYS for r in rows if "declined" in r)
     assert all(set(r["reset"]) == {"settle_s", "at_rest", "zone"} for r in rows)
-    assert {r["label"] for r in rows} <= set(OUTCOMES)
+    assert {r["label"] for r in ran} <= set(OUTCOMES)
     assert all(set(r["theta"]) == {"mu", "mass_scale", "com_s", "v_lift"} for r in rows)
-    assert all(r["planned"] and r["truth"]["mass"] > 0 for r in rows)
+    assert all(r["planned"] for r in ran) and all(r["truth"]["mass"] > 0 for r in rows)
     assert all(r["destination"] in ("table_centre", "table_edge", "table_gap", "mouse_pad", "plate", "box", "bin") for r in rows)
     # resume: nothing new is written
     assert main(["--out", str(out), "--draws", "2", "--workers", "1", "--objects", "ycb__banana,ycb__mug", "--resume"]) == 0
@@ -87,3 +91,26 @@ def test_corpus_row_has_pose_readouts_and_true_com():
     prop = next(p for p in env.proposals() if abs(p.s - row["s"]) < 1e-9)
     assert np.allclose(row["pose"]["pt"], prop.point) and abs(row["pose"]["yaw"] - prop.yaw) < 1e-9
     assert np.allclose(row["com_obj_true"], env.truth()["com_obj"])
+
+
+def test_a_pinch_wider_than_the_gripper_is_declined_without_a_rollout():
+    """cheez_it d0: the drawn s 0.7 pinch is 17 cm across the box, the pads open 9.4 cm. The row keeps the draw,
+    the geometry and the features, and says why it did not run."""
+    from robots.mujoco_lab.adapter import MuJoCoLabEnv
+    from robots.mujoco_lab.corpus import rollout_row
+
+    env = MuJoCoLabEnv()
+
+    def execute(*a, **k):
+        raise AssertionError("a declined pinch must not run")
+    env.execute = execute
+    row = rollout_row(env, "ycb__cheez_it", 0, 0)
+    assert set(row) == DECLINED_KEYS and row["declined"] == "wider than the gripper opening"
+    assert row["s"] == 0.7 and row["width"] > env.max_pinch_width and row["features"]["width"] == row["width"]
+
+
+def test_trainable_rows_ran_and_were_offered():
+    from robots.mujoco_lab.corpus import trainable
+
+    assert [trainable(r) for r in ({"error": "boom"}, {"declined": "wider than the gripper opening"}, {"label": "placed_stable"})] \
+        == [False, False, True]

@@ -91,3 +91,13 @@ def test_train_models_folds_hold_out_each_fold(tmp_path):
         assert set(split["train"]) | set(split["val"]) | held == objects and not set(split["train"]) & set(split["val"])
         assert man["fold"] == k and len(split["val"]) >= 1
     assert out["folds"] == folds
+
+
+def test_load_rows_keeps_only_trainable_rows(tmp_path):
+    """An error row and a declined row (a pinch the skill never offers) do not reach the fit."""
+    from robots.mujoco_lab.train_models import load_rows
+
+    path = tmp_path / "c.jsonl"
+    _write([{"key": "a__d0", "error": "boom"}, {"key": "b__d0", "declined": "wider than the gripper opening"},
+            {"key": "c__d0", "label": "placed_stable"}], path)
+    assert [r["key"] for r in load_rows(str(path))] == ["c__d0"]

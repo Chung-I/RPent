@@ -64,7 +64,7 @@ from typing import Any
 import numpy as np
 
 from robots.mujoco_lab import tracking
-from robots.mujoco_lab.corpus import case_rng, draw_theta
+from robots.mujoco_lab.corpus import case_rng, draw_theta, trainable
 from rpent.skills.pick_place.costs import CARE_SCALE, COST, TIME_COST_PER_S
 from rpent.skills.pick_place.destinations import MESH_IDS, PRIMITIVE_IDS
 from rpent.skills.pick_place.evaluate import (_ece, coverage_design, ece_ci, ece_from_sums, ece_iid_floor,
@@ -301,7 +301,7 @@ def _corpus_labels(path: str) -> list[tuple[str, str]]:
         if os.path.exists(path):
             for line in open(path):
                 r = json.loads(line)
-                if "error" not in r:
+                if trainable(r):
                     out.append((r["object"], r["label"]))
         _LABELS[path] = out
     return _LABELS[path]

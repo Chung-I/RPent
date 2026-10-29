@@ -32,6 +32,13 @@ def env():
     return MuJoCoLabEnv()
 
 
+@pytest.fixture
+def any_width(env, monkeypatch):
+    """Run pinches wider than the 9.0 cm limit, which the corpora decline since v8: a substrate may still run
+    one, and its readouts must still be right."""
+    monkeypatch.setattr(type(env), "max_pinch_width", float("inf"))
+
+
 def _row(env, key: str) -> dict:
     return _row_and_trace(env, key)[0]
 
@@ -54,9 +61,9 @@ def _row_and_trace(env, key: str) -> tuple[dict, list[dict]]:
     return row, got["r"].trace
 
 
-def test_pads_on_top_give_no_slip_reading(env):
-    """cheez_it d33 (pinch width 0): the open pads land on the box's top and press it into the table
-    (the end-of-step reading was -9,597 N)."""
+def test_pads_on_top_give_no_slip_reading(env, any_width):
+    """cheez_it d33 (17 cm across the box; the face-centre width read 0): the open pads land on the box's top and
+    press it into the table (the end-of-step reading was -9,597 N)."""
     r = _row(env, "ycb__cheez_it__d33")
     assert r["label"] == "not_lifted" and r["readouts"]["fz_slip_max_n"] is None
 
@@ -86,14 +93,14 @@ def test_a_slide_out_in_the_lift_reads_the_pads_friction(env):
     assert 0.6 <= r["readouts"]["fz_at_loss_n"] / (2 * r["truth"]["mu"] * r["force"]) <= 1.1
 
 
-def test_a_loss_is_a_step_in_which_no_pad_pressed(env):
+def test_a_loss_is_a_step_in_which_no_pad_pressed(env, any_width):
     """wood_block d78: the block turns in the pads and chatters. At the end of lift step 105 neither pad touched
     it, but over that step the pads pressed with 25 N and carried 13.8 N, and a pad held it at step 106."""
     r, tr = _row_and_trace(env, "ycb__wood_block__d78")
     assert r["loss_step"] is None or tr[r["loss_step"]]["fn"] == 0.0
 
 
-def test_weigh_probe_gives_no_friction_when_the_pads_never_slid_on_the_sides(env):
+def test_weigh_probe_gives_no_friction_when_the_pads_never_slid_on_the_sides(env, any_width):
     """pitcher d15 (probe corpus v3, scene B): the pads did not pinch the sides and read mu_hat -11.97."""
     from robots.mujoco_lab.probe_corpus import probe_rows
 

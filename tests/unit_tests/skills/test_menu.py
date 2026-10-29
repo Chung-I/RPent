@@ -19,7 +19,8 @@ import numpy as np
 from rpent.skills.pick_place.belief import Belief
 from rpent.skills.pick_place.costs import CARE_SCALE, COST, TIME_COST_PER_S, expected_cost
 from rpent.skills.pick_place.features import Geometry
-from rpent.skills.pick_place.menu import build_menu, estimate
+from rpent.skills.pick_place.menu import (MAX_OPEN_WIDTH, OFF_OBJECT, TOO_WIDE, build_menu, decline_reason, estimate, mid_proposal,
+                                         unusable_reason, usable_proposals)
 from rpent.skills.pick_place.protocol import IRREVERSIBLE, OUTCOMES, Prediction
 
 
@@ -190,7 +191,38 @@ def test_menu_order_and_decline_last():
 def test_too_wide_everything_gives_decline_only():
     options, rec = _menu(proposals=[P(0.3, width=0.12), P(0.5, width=0.13), P(0.7, width=0.12)])
     assert [o.id for o in options] == ["decline"] and rec == "decline"
-    assert "too wide" in options[0].reason
+    assert options[0].reason == "every proposal is wider than the gripper opening"
+
+
+def test_a_pinch_is_usable_when_its_exact_width_fits_the_opening():
+    """The pads are 9.4 cm apart when open; the skill keeps 2 mm a side, so it pinches at most 9.0 cm. A nan width
+    means no hull lies between the pads."""
+    assert MAX_OPEN_WIDTH == 0.090
+    assert unusable_reason(0.090) is None and unusable_reason(0.0901) == TOO_WIDE == "wider than the gripper opening"
+    assert unusable_reason(float("nan")) == OFF_OBJECT and unusable_reason(0.05, max_open=0.04) == TOO_WIDE
+    assert decline_reason([P(0.3, width=0.12), P(0.5, width=float("nan"))], MAX_OPEN_WIDTH) == \
+        "every proposal is off the object or wider than the gripper opening"
+
+
+def test_a_pinch_wider_than_the_limit_is_not_offered():
+    options, _ = _menu(proposals=[P(0.3, width=0.095), P(0.5, width=0.04), P(0.7, width=0.091)])
+    assert {o.action["s"] for o in options if o.kind != "decline"} == {0.5}
+
+
+def test_a_pinch_that_closes_on_nothing_is_not_offered():
+    options, _ = _menu(proposals=[P(0.3, width=float("nan")), P(0.5, width=0.04), P(0.7, width=float("nan"))])
+    assert {o.action["s"] for o in options if o.kind != "decline"} == {0.5}
+
+
+def test_the_decline_names_every_reason():
+    options, rec = _menu(proposals=[P(0.3, width=float("nan")), P(0.5, width=0.12), P(0.7, width=float("nan"))])
+    assert [o.id for o in options] == ["decline"] and rec == "decline"
+    assert options[0].reason == "every proposal is off the object or wider than the gripper opening"
+
+
+def test_the_mid_proposal_is_the_usable_one_nearest_the_middle():
+    assert mid_proposal(usable_proposals([P(0.3), P(0.5), P(0.7)])).s == 0.5
+    assert mid_proposal(usable_proposals([P(0.3, width=0.12), P(0.5, width=0.12), P(0.7)])).s == 0.7
 
 
 def test_recommendation_threshold():

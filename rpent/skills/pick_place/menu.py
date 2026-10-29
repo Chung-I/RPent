@@ -18,7 +18,10 @@ Each row is one concrete action (pinch, force, speeds, destination, release heig
 its predicted outcome vector under the belief and its expected cost. Rows that change
 the destination (``inboard_place``) are shown but never chosen by default. Predictions are
 made for every particle of the belief (the model is conditional on the CoM) and averaged
-with the belief's weights; each row keeps its per-particle costs for the probe values.
+with the belief's weights; each row keeps its per-particle costs for the probe values. A proposal
+whose exact pinch width is over the substrate's opening (``env.max_pinch_width``, else
+MAX_OPEN_WIDTH) or nan (the pads close on nothing) gets no row; when no proposal is left the
+menu declines and says why ("every proposal is wider than the gripper opening").
 
 Probe rows (push, weigh; when the substrate has probe models) are valued by preposterior analysis:
 the expected cost of the best continuation row after the probe's result, over results simulated
@@ -42,7 +45,10 @@ from rpent.skills.pick_place.features import Geometry, extract, particle_feature
 from rpent.skills.pick_place.probes import PROBE_SECONDS, weigh_force
 from rpent.skills.pick_place.protocol import Option, Prediction
 
-MAX_OPEN_WIDTH = 0.11
+MAX_OPEN_WIDTH = 0.090                       # m: the widest exact pinch (a 9.4 cm open gap less 2 mm a side); a substrate
+                                             # with another gripper sets env.max_pinch_width
+TOO_WIDE = "wider than the gripper opening"  # a wider pinch lands the pads on the object (the wedge)
+OFF_OBJECT = "off the object"                # a nan width: no hull lies between the pads
 DEFAULT_THRESHOLD = 0.7
 EDGE_RISK_M = 0.08
 STD = {"v_lift": 0.15, "v_transport": 0.5}
@@ -52,6 +58,33 @@ PROBE_DESTINATION = "table_centre"
 EVOI_K = 200                                 # simulated probe results per probe row
 EVOI_Z = 2.0                                 # a probe is recommended when it beats the best row by more than this many errors
 EVOI_EPS = 1e-9
+
+
+def unusable_reason(width: float, max_open: float = MAX_OPEN_WIDTH) -> str | None:
+    """Why the skill will not pinch a proposal of this exact width (features.pinch_width), or None."""
+    if not np.isfinite(width):
+        return OFF_OBJECT
+    return TOO_WIDE if width > max_open else None
+
+
+def usable_proposals(proposals: list[Any], max_open: float = MAX_OPEN_WIDTH) -> list[Any]:
+    return [p for p in proposals if unusable_reason(p.width, max_open) is None]
+
+
+def mid_proposal(usable: list[Any]) -> Any:
+    """The usable proposal nearest the middle (s 0.5): the pose the belief maps through and the probes' grasp."""
+    return min(usable, key=lambda p: abs(p.s - 0.5))
+
+
+def decline_reason(proposals: list[Any], max_open: float = MAX_OPEN_WIDTH) -> str:
+    """The decline when no proposal is usable, e.g. "every proposal is wider than the gripper opening"."""
+    why = sorted({r for r in (unusable_reason(p.width, max_open) for p in proposals) if r})
+    return "every proposal is " + " or ".join(why)
+
+
+def pinch_limit(env: Any) -> float:
+    """The substrate's widest exact pinch (env.max_pinch_width), else MAX_OPEN_WIDTH."""
+    return float(getattr(env, "max_pinch_width", MAX_OPEN_WIDTH))
 
 
 def geometry_pose(geometry: Geometry, proposal: Any) -> dict[str, Any]:
@@ -142,7 +175,7 @@ def _probe_rows(probe_models: dict[str, Any], belief: ParticleBelief, geometry: 
 def _rows(proposals: list[Any], f_std: float, destination: str, com_xy: np.ndarray):
     """Candidate rows: (id, kind, proposal, action, cost_s, reason)."""
     dest = DESTINATIONS[destination]
-    mid = min(proposals, key=lambda p: abs(p.s - 0.5))
+    mid = mid_proposal(proposals)
     base = {"force": f_std, "v_lift": STD["v_lift"], "v_transport": STD["v_transport"], "destination": destination, "release_height": None}
     rows = [
         ("commit_std", "commit", mid, dict(base), 8.0, ""),
@@ -177,11 +210,10 @@ def build_menu(model: Any, belief: ParticleBelief | Belief, geometry: Geometry, 
     time), else "commit" when the best row reaches the threshold, else "decline"."""
     threshold = DEFAULT_THRESHOLD if threshold is None else float(threshold)
     pose_fn = pose_fn or (lambda prop: geometry_pose(geometry, prop))
-    usable = [p for p in proposals if not (np.isfinite(p.width) and p.width > max_open)]
-    skipped = len(proposals) - len(usable)
+    usable = usable_proposals(proposals, max_open)
     options: list[Option] = []
     if usable:
-        mid = min(usable, key=lambda p: abs(p.s - 0.5))
+        mid = mid_proposal(usable)
         mid_pose = pose_fn(mid)
         if isinstance(belief, Belief):
             belief = ParticleBelief.from_parametric(belief, mid_pose["com_obj_nominal"], n, rng)
@@ -212,7 +244,7 @@ def build_menu(model: Any, belief: ParticleBelief | Belief, geometry: Geometry, 
                 and best.expected_cost - first.expected_cost > EVOI_Z * first.probe["evoi_se"]):
             recommendation = "probe"
     else:
-        reason = "every proposal is too wide for the gripper" if skipped and not usable else "no row reaches the requested destination"
+        reason = decline_reason(proposals, max_open) if proposals and not usable else "no row reaches the requested destination"
         recommendation = "decline"
     options.append(Option(id="decline", kind="decline", action={}, pred=None, cost_s=0.0, expected_cost=None, reason=reason))
     return options, recommendation

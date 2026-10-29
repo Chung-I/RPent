@@ -66,6 +66,7 @@ PUSH_WINDOW_S = 0.3
 PUSH_TIP_DEG = 8.0
 PUSH_MIN_FORCE_N = 0.05
 THROWN_M = 0.10              # a probe "throws" the object off the table top or this far from where it was
+PINCH_MARGIN_M = 0.004       # the skill pinches at most the pads' open gap less 2 mm a side (see max_pinch_width)
 REST_MIN_S = 0.2             # reset: settle at least this long, then until the object is at rest,
 REST_CAP_S = 3.0             # at most this long (an object still moving then starts flagged: reset_info at_rest False)
 REST_WINDOW_S = 0.5          # at rest: over the last 0.5 s it moved under 1 mm and turned under 1 deg
@@ -535,6 +536,14 @@ class MuJoCoLabEnv:
         ex = np.array([np.cos(yaw), np.sin(yaw), 0.0])
         ey = np.array([-ex[1], ex[0], 0.0])
         return yaw, ex, ey
+
+    @property
+    def max_pinch_width(self) -> float:
+        """The widest exact pinch the skill may plan: the pads' gap at the joints' open end (two fingers at
+        MAX_OPEN less two pad thicknesses: 9.4 cm) less PINCH_MARGIN_M. A wider pinch lands the pads on the
+        object; the menu (and the corpora) leave it out."""
+        sc = self.s["scene"]
+        return 2 * (float(sc.MAX_OPEN) - 2 * float(sc.PAD_HALF[0])) - PINCH_MARGIN_M
 
     def pinch_width(self, point: np.ndarray, yaw: float) -> float:
         """The hulls' extent between the pads (features.pinch_width); nan when the pads close on nothing."""

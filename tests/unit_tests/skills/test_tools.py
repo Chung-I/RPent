@@ -489,6 +489,16 @@ def _push(high=1.0, thrown=False):
     return ProbeResult(probe="push", kind="slid", reading={"high": high}, displacement_m=0.03, tilt_deg=1.0, thrown=thrown, seconds=1.5)
 
 
+def test_the_substrate_pinch_limit_reaches_the_menu():
+    """The substrate's max_pinch_width replaces the menu's default: FakeEnv's 8 cm pinches are wider than a 7 cm
+    opening, so the skill declines and says why."""
+    env = FakeEnv()
+    env.max_pinch_width = 0.07
+    d = assess_pick(object="mug", primitives=_prims(env), store={}).data
+    assert d["recommendation"] == "decline" and [o["id"] for o in d["options"]] == ["decline"]
+    assert d["options"][0]["reason"] == "every proposal is wider than the gripper opening"
+
+
 def test_threshold_reaches_the_menu():
     prims = _prims(model=StubModel(ps=0.5))
     assert assess_pick(object="mug", primitives=prims, store={}).data["recommendation"] == "decline"

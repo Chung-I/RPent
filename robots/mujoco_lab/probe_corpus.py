@@ -20,9 +20,12 @@
 Per object and draw (theta from ``case_rng(seed, object, idx)``, as in the corpus): scene A pushes,
 then weighs from the state the push left; scene B, a fresh reset under the same theta, weighs alone.
 One row per probe run, key ``<object>__s<seed>__d<idx>__<scene><probe>`` (Apush, Aweigh, Bweigh),
-with the pose before the probe and the base features (``extract`` at the s 0.5 proposal with the
-weigh squeeze, v_lift 0.03, no transport, table centre). A push that throws the object (off the
-table top or more than 10 cm away) ends scene A: no Aweigh row.
+with the pose before the probe and the base features (``extract`` with the weigh squeeze, v_lift 0.03,
+no transport, table centre) at the proposal the menu would probe at: the usable one nearest s 0.5
+(``menu.mid_proposal``), whose s the row carries. A push that throws the object (off the table top or
+more than 10 cm away) ends scene A: no Aweigh row. When no proposal fits the gripper the skill declines
+before any probe: the draw gets one row ``<object>__s<seed>__d<idx>`` that says why ("declined"), and an
+Aweigh after a push that leaves no fitting proposal gets a declined row in place of its run.
 """
 
 from __future__ import annotations
@@ -39,16 +42,21 @@ import numpy as np
 from robots.mujoco_lab.corpus import case_rng, draw_theta
 from rpent.skills.pick_place.probes import weigh_force
 
-PROBE_S = 0.5
 PROBE_V_LIFT = 0.03
 PROBE_DESTINATION = "table_centre"
 
 
-def _state(env, force: float) -> tuple[Any, dict[str, Any], dict[str, float]]:
-    """(the s 0.5 proposal, its pose, the base features) of the current state."""
+def _state(env, force: float) -> tuple[Any, dict[str, Any], dict[str, float]] | str:
+    """(the proposal the menu would probe at, its pose, the base features) of the current state, or the
+    menu's decline reason when no proposal fits the gripper."""
     from rpent.skills.pick_place.features import extract
+    from rpent.skills.pick_place.menu import decline_reason, mid_proposal, pinch_limit, usable_proposals
 
-    prop = next(p for p in env.proposals() if abs(p.s - PROBE_S) < 1e-9)
+    props, lim = env.proposals(), pinch_limit(env)
+    usable = usable_proposals(props, lim)
+    if not usable:
+        return decline_reason(props, lim)
+    prop = mid_proposal(usable)
     truth = env.truth()
     base = extract(env.geometry(), np.asarray(prop.point), prop.yaw, truth["mass"], truth["mu"], force, PROBE_V_LIFT, 0.0,
                    PROBE_DESTINATION)
@@ -71,20 +79,27 @@ def probe_rows(env, object_id: str, idx: int, seed: int) -> list[dict[str, Any]]
     common = {"object": object_id, "draw": idx, "seed": seed, "theta": theta, "com_end": com_end, "force": force, "f_std": f_std,
               "com_obj_true": truth["com_obj"], "truth": {k: truth[k] for k in ("mass", "mu", "com_s")}}
 
-    def row(tag: str, order: int, pose: dict[str, Any], base: dict[str, float], res) -> dict[str, Any]:
-        return {"key": f"{object_id}__s{seed}__d{idx}__{tag}", **common, "scene": tag[0], "order": order, "pose": pose,
-                "base": base, **res.to_data(), "reset": start}
+    def row(tag: str, order: int, st: tuple[Any, dict[str, Any], dict[str, float]], res) -> dict[str, Any]:
+        prop, pose, base = st
+        return {"key": f"{object_id}__s{seed}__d{idx}__{tag}", **common, "scene": tag[0], "order": order, "s": prop.s,
+                "pose": pose, "base": base, **res.to_data(), "reset": start}
 
-    _, pose, base = _state(env, force)
+    def declined(tag: str, order: int, why: str) -> dict[str, Any]:
+        return {"key": f"{object_id}__s{seed}__d{idx}__{tag}", **common, "scene": tag[0], "order": order, "declined": why,
+                "reset": start}
+
+    st = _state(env, force)
+    if isinstance(st, str):                     # no proposal fits: the skill declines before any probe
+        return [{"key": f"{object_id}__s{seed}__d{idx}", **common, "declined": st, "reset": start}]
     push = env.probe_push()
-    rows = [row("Apush", 0, pose, base, push)]
+    rows = [row("Apush", 0, st, push)]
     if not push.thrown:
-        prop, pose, base = _state(env, force)
-        rows.append(row("Aweigh", 1, pose, base, env.probe_weigh(prop, force)))
+        st = _state(env, force)
+        rows.append(declined("Aweigh", 1, st) if isinstance(st, str) else row("Aweigh", 1, st, env.probe_weigh(st[0], force)))
     env.reset(object_id, theta, **reset)
     start = dict(env.reset_info)
-    prop, pose, base = _state(env, force)
-    rows.append(row("Bweigh", 0, pose, base, env.probe_weigh(prop, force)))
+    st = _state(env, force)
+    rows.append(declined("Bweigh", 0, st) if isinstance(st, str) else row("Bweigh", 0, st, env.probe_weigh(st[0], force)))
     return rows
 
 
