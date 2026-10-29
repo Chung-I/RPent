@@ -26,8 +26,9 @@ what each probe will show under each belief particle.
   hand force (``no_contact``).
 
 A ProbeModel gives, per particle, the probability of each kind (gradient boosting with out-of-fold
-calibration by object), the law of the reading's log ratio to its physics (median and MAD per kind,
-fitted at the truth on training rows), and the risk that the probe throws the object.
+calibration by object), the law of the reading's log ratio to its physics (per kind, fitted at the truth on
+training rows: a normal law, or a narrow core with a wide tail when that predicts held-out objects better;
+likelihood.fit_law), and the risk that the probe throws the object.
 """
 
 from __future__ import annotations
@@ -41,13 +42,12 @@ from sklearn.model_selection import GroupKFold
 
 from rpent.skills.pick_place.evaluate import MIN_CLASS_ROWS
 from rpent.skills.pick_place.features import FEATURES_M2, G, particle_matrix
-from rpent.skills.pick_place.likelihood import MAD_TO_SD, REJECT_Z, SD_FLOOR
+from rpent.skills.pick_place.likelihood import Law, as_law, fit_law
 from rpent.skills.pick_place.success_model import N_FOLDS, _Calibrator, _fit_gbm
 
 PROBE_SECONDS = {"weigh": 4.0, "push": 2.0}
 PROBE_KINDS = {"weigh": ("measured", "lower_bound", "lost"), "push": ("slid", "tipped", "no_breakaway", "no_contact")}
 READING = {"measured": "m_hat", "lower_bound": "mu_hat", "slid": "f_break"}     # the reading each kind's law is on
-_LOG_SQRT_2PI = 0.5 * float(np.log(2.0 * np.pi))
 
 
 def weigh_force(f_std: float) -> float:
@@ -141,7 +141,7 @@ class ProbeModel:
     probe: str
     classes: tuple[str, ...]
     clf: Any
-    reading: dict[str, tuple[float, float]]
+    reading: dict[str, Law]                                 # a model pickled before the mixture laws holds (b, sd) pairs
     p_thrown: Any
     temper: float = 1.0
     floor_p: float = 1e-4
@@ -164,8 +164,9 @@ class ProbeModel:
                temper: float | None = None, terms: list[str] | None = None,
                P: np.ndarray | None = None) -> tuple[np.ndarray, dict[str, list[str]]]:
         """Per-particle log-likelihood of one probe result ``{"kind", "reading"}``: the kind term
-        log max(floor_p, P(kind)) / temper, and the reading term log N(ratio; b, sd * temper), rejected
-        (listed, not used) when the reading is not positive or its best particle lies 5 sd off.
+        log max(floor_p, P(kind)) / temper, and the reading term log p(ratio), p the kind's reading law with
+        every sd times temper, rejected (listed, not used) when the reading is not positive or its best particle
+        lies 5 sd from the centre of every component of the law.
         ``temper`` overrides the model's (the posterior check's grid). ``terms`` (an entry's recorded
         used terms) replays exactly those terms, without the rejection rule (a belief refresh). ``P``:
         ``p_kind(X)`` when the caller has it already (the preposterior loop)."""
@@ -178,21 +179,18 @@ class ProbeModel:
             P = self.p_kind(X) if P is None else np.asarray(P, dtype=float)
             ll = np.log(np.maximum(self.floor_p, P[:, self.classes.index(kind)])) / t
             used.append("kind")
-        law = self.reading.get(kind)
+        law = as_law(self.reading.get(kind))
         key = READING.get(kind)
         value = (obs.get("reading") or {}).get(key) if key else None
         if law is not None and value is not None and want("reading"):
             if terms is None and not float(value) > 0:
                 rejected.append("reading")
             else:
-                b, sd = law
-                z = (log_ratio(kind, obs["reading"], arrays["mass"], arrays["mu"]) - b) / sd
-                z = np.where(np.isfinite(z), z, np.inf)
-                if terms is None and (not np.isfinite(z).any() or float(np.min(np.abs(z))) > REJECT_Z):
+                x = log_ratio(kind, obs["reading"], arrays["mass"], arrays["mu"])
+                if terms is None and law.outside(x).all():
                     rejected.append("reading")
                 else:
-                    with np.errstate(invalid="ignore", over="ignore"):
-                        ll = ll - 0.5 * (z / t) ** 2 - np.log(sd * t) - _LOG_SQRT_2PI
+                    ll = ll + law.logpdf(x, t)
                     used.append("reading")
         return ll, {"used": used, "rejected": rejected}
 
@@ -205,9 +203,9 @@ class ProbeModel:
         p = self.p_kind(x)[0] if p is None else np.asarray(p, dtype=float)
         kind = self.classes[int(rng.choice(len(self.classes), p=p / p.sum()))]
         reading: dict[str, float] = {}
-        law = self.reading.get(kind)
+        law = as_law(self.reading.get(kind))
         if law is not None and rng.random() < float(getattr(self, "reading_rate", {}).get(kind, 1.0)):
-            e = float(np.exp(law[0] + law[1] * rng.standard_normal()))
+            e = float(np.exp(law.sample(rng)))
             m, mu = float(particle["mass"]), float(particle["mu"])
             if kind == "measured":
                 reading = {"m_hat": m * e}
@@ -225,11 +223,6 @@ class ProbeModel:
         return joblib.load(path)
 
 
-def _law(x: np.ndarray) -> tuple[float, float]:
-    b = float(np.median(x))
-    return b, float(max(SD_FLOOR, MAD_TO_SD * np.median(np.abs(x - b))))
-
-
 def true_matrix(rows: list[dict[str, Any]], names=FEATURES_M2) -> np.ndarray:
     """Probe features of each row at its truth: particle_matrix of the stored base, pose and force, in ``names`` order."""
     out = []
@@ -240,8 +233,11 @@ def true_matrix(rows: list[dict[str, Any]], names=FEATURES_M2) -> np.ndarray:
     return np.array(out)
 
 
-def fit_probe_model(rows: list[dict[str, Any]], probe: str, seed: int = 0, names=FEATURES_M2) -> ProbeModel:
+def fit_probe_model(rows: list[dict[str, Any]], probe: str, seed: int = 0, names=FEATURES_M2, val_objects=None) -> ProbeModel:
+    """The kind classifier, the reading law per kind and the thrown model of one probe. The rows of ``val_objects``
+    are the held-out readings that choose each reading law's kind (fit_law); every row enters the kept law."""
     classes = PROBE_KINDS[probe]
+    val = set(val_objects or ())
     X = true_matrix(rows, names)
     y = np.array([r["kind"] for r in rows])
     groups = np.array([r["object"] for r in rows])
@@ -249,11 +245,12 @@ def fit_probe_model(rows: list[dict[str, Any]], probe: str, seed: int = 0, names
     reading, n_reading, rate = {}, {}, {}
     for kind in classes:
         of = [r for r in rows if r["kind"] == kind]
-        xs = [log_ratio(kind, r["reading"], r["truth"]["mass"], r["truth"]["mu"]) for r in of]
-        xs = np.array([float(v) for v in xs if v is not None and np.isfinite(v)])
+        pairs = [(log_ratio(kind, r["reading"], r["truth"]["mass"], r["truth"]["mu"]), r["object"] in val) for r in of]
+        pairs = [(float(v), h) for v, h in pairs if v is not None and np.isfinite(v)]
+        xs, held = np.array([v for v, _ in pairs]), np.array([h for _, h in pairs], dtype=bool)
         n_reading[kind] = int(len(xs))
         if len(xs):
-            reading[kind] = _law(xs)
+            reading[kind] = fit_law(xs[~held], xs[held], seed)
             rate[kind] = len(xs) / len(of)
     thrown = np.array([bool(r["thrown"]) for r in rows])
     if int(thrown.sum()) < MIN_CLASS_ROWS:
@@ -266,7 +263,8 @@ def fit_probe_model(rows: list[dict[str, Any]], probe: str, seed: int = 0, names
                       feature_names=tuple(names))
 
 
-def fit_probe_models(rows: list[dict[str, Any]], seed: int = 0, names=FEATURES_M2) -> dict[str, ProbeModel]:
-    """One ProbeModel per probe present in the (training) probe-corpus rows, on ``names``."""
-    return {probe: fit_probe_model([r for r in rows if r["probe"] == probe], probe, seed, names)
+def fit_probe_models(rows: list[dict[str, Any]], seed: int = 0, names=FEATURES_M2, val_objects=None) -> dict[str, ProbeModel]:
+    """One ProbeModel per probe present in the (training) probe-corpus rows, on ``names``; ``val_objects`` as in
+    fit_probe_model."""
+    return {probe: fit_probe_model([r for r in rows if r["probe"] == probe], probe, seed, names, val_objects)
             for probe in PROBE_KINDS if any(r["probe"] == probe for r in rows)}

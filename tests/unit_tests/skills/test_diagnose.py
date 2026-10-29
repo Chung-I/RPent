@@ -105,3 +105,27 @@ def test_friction_number_carries_its_one_reading_range():
                  mu_range=(0.1, 0.9))
     line = next(s for s in d if "friction about" in s)
     assert "friction about 0.41" in line and "0.11 to 1.47" in line
+
+
+def test_diagnosis_range_from_a_mixture_law():
+    """A mixture law corrects the reading by exp(-median) and takes the 80 % range from its 10 % and 90 % quantiles:
+    3 N over 2 x 10 N is 0.15; the quantiles q of 0.7 N(-1, 0.05) + 0.3 N(0, 0.5) give 0.15 exp(-q), found here by root
+    finding on the mixture's CDF. A tuple law keeps the normal note."""
+    import numpy as np
+    from scipy.optimize import brentq
+    from scipy.stats import norm
+
+    from rpent.skills.pick_place.likelihood import Law
+
+    def cdf(x):
+        return 0.7 * norm.cdf(x, -1.0, 0.05) + 0.3 * norm.cdf(x, 0.0, 0.5)
+
+    q = {p: brentq(lambda x: cdf(x) - p, -10.0, 10.0) for p in (0.1, 0.5, 0.9)}
+    law = Law("mix2", 0.7, -1.0, 0.05, 0.0, 0.5)
+    d = diagnose("not_lifted", _r(rose=False, fz_slip_max_n=3.0), ACT, BEFORE, AFTER, laws={"slip": law}, mu_range=(0.1, 0.9))
+    line = next(s for s in d if "friction about" in s)
+    assert f"friction about {0.15 * np.exp(-q[0.5]):.2f}" in line
+    assert f"{0.15 * np.exp(-q[0.9]):.2f} to {0.15 * np.exp(-q[0.1]):.2f}" in line          # 0.12 to 0.43
+    d = diagnose("not_lifted", _r(rose=False, fz_slip_max_n=3.0), ACT, BEFORE, AFTER, laws={"slip": Law.normal(-1.0, 1.0)},
+                 mu_range=(0.1, 0.9))
+    assert any("friction about 0.41" in s and "0.11 to 1.47" in s for s in d)

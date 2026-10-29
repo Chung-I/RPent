@@ -143,9 +143,9 @@ def _readout_rows() -> list[dict]:
 
 def test_residuals_are_fitted_per_label():
     m = ReadoutModel.fit(_readout_rows())
-    assert m.terms["hold"]["placed_stable"][0] == pytest.approx(0.2, abs=0.03)
-    assert m.terms["hold"]["dropped_low"][0] == pytest.approx(-0.1, abs=0.03)
-    assert m.terms["hold"]["placed_stable"][1] == pytest.approx(0.05, rel=0.35)
+    assert m.terms["hold"]["placed_stable"].b1 == pytest.approx(0.2, abs=0.03)
+    assert m.terms["hold"]["dropped_low"].b1 == pytest.approx(-0.1, abs=0.03)
+    assert m.terms["hold"]["placed_stable"].sd1 == pytest.approx(0.05, rel=0.35)
     assert "tipped" not in m.terms["hold"] and m.law("hold", "tipped") == m.terms["hold"]["_pooled"]
     assert "slip" not in m.terms                                   # no slip readings in these rows
     assert m.rot_clf is not None
@@ -200,3 +200,108 @@ def test_rotation_classifier_stores_its_names_and_label_classes():
     m = ReadoutModel.fit(rows, names=FEATURES_M2B)
     assert m.rot_clf.feature_names == FEATURES_M2B and m.rot_clf.label_classes == OUTCOMES
     assert m.rot_clf.predict(np.zeros((4, len(FEATURES_M2B))), "crushed").shape == (4,)
+
+
+def _mix_draws(n: int, seed: int, w: float = 0.8, sd1: float = 0.05, sd2: float = 0.4) -> np.ndarray:
+    rng = np.random.default_rng(seed)
+    core = rng.random(n) < w
+    return np.where(core, rng.normal(0.0, sd1, n), rng.normal(0.0, sd2, n))
+
+
+def test_fit_law_recovers_a_core_and_a_tail():
+    from rpent.skills.pick_place.likelihood import fit_law
+
+    law = fit_law(_mix_draws(1000, 0), _mix_draws(1000, 1))
+    assert law.kind == "mix2" and abs(law.w - 0.8) < 0.05 and law.sd1 == pytest.approx(0.05, rel=0.2)
+    assert law.sd2 > 0.2
+
+
+def test_fit_law_keeps_normal_on_gaussian_data():
+    from rpent.skills.pick_place.likelihood import fit_law
+
+    rng = np.random.default_rng(2)
+    x, x_val = rng.normal(0.1, 0.2, 1000), rng.normal(0.1, 0.2, 500)
+    law = fit_law(x, x_val)
+    assert law.kind == "normal" and law.b1 == pytest.approx(0.1, abs=0.03) and law.sd1 == pytest.approx(0.2, rel=0.1)
+    assert fit_law(_mix_draws(1000, 0)).kind == "normal"             # no validation readings: normal
+
+
+def test_mixture_logpdf_matches_the_formula():
+    from scipy.stats import norm
+
+    from rpent.skills.pick_place.likelihood import Law
+
+    x = np.linspace(-1.0, 1.0, 41)
+    law = Law("mix2", 0.7, 0.1, 0.05, -0.2, 0.3)
+    want = np.log(0.7 * norm.pdf(x, 0.1, 0.05) + 0.3 * norm.pdf(x, -0.2, 0.3))
+    assert np.allclose(law.logpdf(x), want)
+    assert np.allclose(Law.normal(0.1, 0.2).logpdf(x), norm.logpdf(x, 0.1, 0.2))
+    assert Law.normal(0.1, 0.2).logpdf(np.array([np.nan, np.inf])).tolist() == [-np.inf, -np.inf]
+
+
+def test_tempering_widens_both_components():
+    from scipy.stats import norm
+
+    from rpent.skills.pick_place.likelihood import Law
+
+    x = np.linspace(-1.0, 1.0, 41)
+    law = Law("mix2", 0.7, 0.1, 0.05, -0.2, 0.3)
+    want = np.log(0.7 * norm.pdf(x, 0.1, 0.1) + 0.3 * norm.pdf(x, -0.2, 0.6))
+    assert np.allclose(law.logpdf(x, temper=2.0), want)
+
+
+def test_mixture_sample_matches_logpdf():
+    from scipy.stats import kstest
+
+    from rpent.skills.pick_place.likelihood import Law
+
+    law = Law("mix2", 0.7, 0.1, 0.05, -0.2, 0.3)
+    rng = np.random.default_rng(3)
+    s = np.array([law.sample(rng) for _ in range(5000)])
+    assert kstest(s, law.cdf).pvalue > 0.01
+    assert law.sample(np.random.default_rng(4), size=7).shape == (7,)
+    a, b = np.random.default_rng(5), np.random.default_rng(5)
+    assert Law.normal(0.2, 0.1).sample(a) == 0.2 + 0.1 * b.standard_normal()        # the m2 streams: one draw per value
+    lo, hi = law.interval(0.8)
+    assert np.mean((s >= lo) & (s <= hi)) == pytest.approx(0.8, abs=0.02)
+    assert law.cdf(law.median()) == pytest.approx(0.5, abs=1e-9)
+
+
+def test_outside_matches_the_normal_rule_and_rejects_far_readings():
+    from rpent.skills.pick_place.likelihood import REJECT_Z, Law
+
+    n = Law.normal(0.2, 0.1)
+    x = np.array([0.2 + (REJECT_Z - 0.1) * 0.1, 0.2 + (REJECT_Z + 0.1) * 0.1, 0.2 - (REJECT_Z + 0.1) * 0.1, np.nan])
+    assert n.outside(x).tolist() == [False, True, True, True]
+    m = Law("mix2", 0.8, 0.0, 0.05, 0.0, 0.4)
+    assert m.outside(np.array([0.5, 2.5])).tolist() == [False, True]      # 10 core sd off but inside the tail; off both
+
+
+def test_old_json_loads_as_normal_laws():
+    from rpent.skills.pick_place.likelihood import Law
+
+    assert Law.from_json([0.2, 0.1]) == Law.normal(0.2, 0.1) and Law.normal(0.2, 0.1).to_json() == [0.2, 0.1]
+    m = Law("mix2", 0.7, 0.1, 0.05, -0.2, 0.3)
+    assert Law.from_json(m.to_json()) == m and m.to_json()["kind"] == "mix2"
+    rm = ReadoutModel.from_json({"version": 1, "terms": {"hold": {"_pooled": [0.1, 0.2]}}, "side_error": 0.2})
+    assert rm.law("hold", "placed_stable") == Law.normal(0.1, 0.2)
+    back = ReadoutModel.from_json(rm.to_json())
+    assert back.terms == rm.terms and back.to_json()["terms"] == {"hold": {"_pooled": [0.1, 0.2]}}
+
+
+def test_readout_laws_select_a_mixture_on_validation_objects():
+    """A heavy-tailed hold residual: with validation objects the pooled law is a mixture, without them it is normal,
+    and the components and combine use it."""
+    from rpent.skills.pick_place.likelihood import Law
+
+    base = _readout_rows()
+    rng = np.random.default_rng(7)
+    rows = [dict(r, object=f"{r['object']}_{i // len(base)}", readouts=dict(r["readouts"], fz_hold_n=r["truth"]["mass"] * G * float(
+        np.exp(rng.normal(0.0, 0.05) if rng.random() < 0.8 else rng.normal(0.0, 0.5))))) for i, r in enumerate(base * 4)]
+    val = sorted({r["object"] for r in rows})[::4]
+    m = ReadoutModel.fit(rows, val_objects=val)
+    assert m.terms["hold"]["_pooled"].kind == "mix2"
+    assert ReadoutModel.fit(rows).terms["hold"]["_pooled"].kind == "normal"
+    b = _belief(200)
+    comp, info = m.components(_obs(fz_hold_n=0.3 * G), _flat(200), None, b.arrays(), None)
+    assert "hold" in info["used"] and isinstance(comp["norm"]["hold"][1], Law) and np.isfinite(m.combine(comp)).any()

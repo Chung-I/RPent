@@ -31,6 +31,10 @@ the probe rows of the bundle's training objects, scores each kind classifier on 
 objects (Brier against the training kind rates), and writes the models, ``probe_metrics.json`` and
 the manifest's ``probe_models``; without ``--corpus`` the split is the bundle's.
 
+Each reading law (the readout model's per term and label, the probe models' per kind) is a normal law or a
+narrow core with a wide tail (likelihood.fit_law); the readings of an inner split of the training objects
+(``law_val_objects``, recorded in the metrics) choose the kind, and the kept kind is fitted on every training row.
+
 ``--feature-schema m2b`` (milestone 2b; default m2) fits every model on features.FEATURES_M2B (the m2 features and
 the damage features) and writes ``feature_schema``, ``outcome_schema`` and the cost rule's ``decision``
 ({"abstain_cost": 1.0}) into the manifest; damage labels need it. The hazard model models motion labels only
@@ -76,6 +80,7 @@ PROBE_MODEL = "probe_{}.joblib"
 FOLDS = "folds.json"
 GUARD = "knn_guard.npz"
 INNER_VAL = 0.15 / 0.85           # the deployed bundle's validation share of its training objects (split_objects 0.70 / 0.15)
+LAW_SPLIT_SEED = 1000             # the inner split of the training objects that picks each reading law's kind
 TEMPER_GRID = "0.7,0.85,1,1.25,1.5,2,3"
 
 
@@ -109,6 +114,11 @@ def bundle_schema(out_dir: str, schema: str | None = None) -> str:
     return found
 
 
+def law_val_objects(split: dict, seed: int) -> list[str]:
+    """The training objects whose readings choose each reading law's kind (likelihood.fit_law): an inner split."""
+    return inner_split(split["train"], seed=[seed, LAW_SPLIT_SEED])["val"]
+
+
 def fit_probes(path: str, out_dir: str, split: dict, seed: int = 0, schema: str | None = None) -> dict:
     """Probe models on the training objects' probe rows, on the bundle's feature schema; per probe the kind rates,
     the thrown rate, the reading laws and the validation Brier of the kind classifier against the training kind rates."""
@@ -116,8 +126,9 @@ def fit_probes(path: str, out_dir: str, split: dict, seed: int = 0, schema: str 
 
     rows = load_rows(path)
     tr, va = rows_of(rows, split["train"]), rows_of(rows, split["val"])
-    models = fit_probe_models(tr, seed=seed, names=FEATURE_SCHEMAS[bundle_schema(out_dir, schema)])
-    out: dict = {"probe_corpus": path, "split": split, "probes": {}}
+    law_val = law_val_objects(split, seed)
+    models = fit_probe_models(tr, seed=seed, names=FEATURE_SCHEMAS[bundle_schema(out_dir, schema)], val_objects=law_val)
+    out: dict = {"probe_corpus": path, "split": split, "law_val_objects": law_val, "probes": {}}
     for probe, pm in models.items():
         every = [r for r in rows if r["probe"] == probe]
         tr_p, va_p = [r for r in tr if r["probe"] == probe], [r for r in va if r["probe"] == probe]
@@ -129,7 +140,7 @@ def fit_probes(path: str, out_dir: str, split: dict, seed: int = 0, schema: str 
             val.update(brier=float(np.mean(np.sum((P - Y) ** 2, axis=1))), brier_const=float(np.mean(np.sum((const - Y) ** 2, axis=1))))
         out["probes"][probe] = {"n": len(every), "n_train": len(tr_p), "kind_rates": {k: sum(r["kind"] == k for r in every) / len(every) for k in pm.classes},
                                 "thrown_rate": sum(bool(r["thrown"]) for r in every) / len(every),
-                                "reading": {k: list(v) for k, v in pm.reading.items()}, "stats": pm.stats, "val": val}
+                                "reading": {k: law.to_json() for k, law in pm.reading.items()}, "stats": pm.stats, "val": val}
         pm.save(os.path.join(out_dir, PROBE_MODEL.format(probe)))
     with open(os.path.join(out_dir, PROBE_METRICS), "w") as f:
         json.dump(out, f, indent=1)
@@ -308,9 +319,10 @@ def train_bundle(a: argparse.Namespace, split: dict | None = None, rows: list[di
     if any(r.get("readouts") for r in tr):
         from rpent.skills.pick_place.likelihood import ReadoutModel
 
-        rm = ReadoutModel.fit(tr, seed=a.seed, names=names)
+        law_val = law_val_objects(split, a.seed)
+        rm = ReadoutModel.fit(tr, seed=a.seed, names=names, val_objects=law_val)
         rm.save(os.path.join(a.out_dir, READOUT_MODEL), os.path.join(a.out_dir, READOUT_ROT))
-        readout = {"terms": rm.to_json()["terms"], "side_error": rm.side_error, "stats": rm.stats}
+        readout = {"terms": rm.to_json()["terms"], "side_error": rm.side_error, "stats": rm.stats, "law_val_objects": law_val}
     t3 = time.time()
     guard = fit_bundle_guard(tr, a.out_dir, a.features, a.seed, names)
     t4 = time.time()

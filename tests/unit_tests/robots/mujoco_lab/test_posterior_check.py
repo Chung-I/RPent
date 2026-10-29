@@ -59,6 +59,9 @@ def test_posterior_check_reports_coverage(tiny_bundle, tmp_path):
     assert prims.readout_model is not None and prims.readout_model.temper == out["temper"]
     assert out["truth"] == "generator" and {"cov80", "prior_cov80"} <= set(out["sim_truth"])
     assert all(0.0 <= out["sim_truth"]["cov80"][k] <= 1.0 for k in ("mass", "mu", "com"))
+    laws = out["laws"]                                         # term -> label -> the law's kind, core weight and widths
+    assert "hold" in laws and all(set(v) == {"kind", "w", "sd1", "sd2"} for t in laws.values() for v in t.values())
+    assert all(v["kind"] in ("normal", "mix2") for t in laws.values() for v in t.values())
 
 
 def _row(com_s, end, offset=0.0005):
@@ -152,6 +155,7 @@ def test_posterior_check_after_the_probes(probe_bundle, tmp_path, probes):
     assert {"mass_cov80", "mu_cov80", "com_cov80", "prior_cov80", "by_kind", "grid", "sim_truth", "terms"} <= set(out)
     if probes == "A":
         assert out["n_with_weigh"] == tags.count("Aweigh")
+    assert set(out["laws"]) == {"weigh", "push"} and "measured" in out["laws"]["weigh"]       # probe -> kind -> law summary
 
 
 def test_probe_temper_reaches_the_probe_models(probe_bundle, tmp_path):

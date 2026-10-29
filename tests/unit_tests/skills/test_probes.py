@@ -68,10 +68,10 @@ def _probe_rows(n: int = 400, bias: float = 0.2, sd: float = 0.1, seed: int = 0)
 def test_probe_model_recovers_a_planted_bias():
     models = fit_probe_models(_probe_rows())
     assert set(models) == {"weigh", "push"}
-    assert models["weigh"].reading["measured"][0] == pytest.approx(0.2, abs=0.03)
-    assert models["weigh"].reading["lower_bound"][0] == pytest.approx(-0.2, abs=0.03)
-    assert models["push"].reading["slid"][0] == pytest.approx(0.2, abs=0.03)
-    assert models["weigh"].reading["measured"][1] == pytest.approx(0.1, rel=0.3)
+    assert models["weigh"].reading["measured"].b1 == pytest.approx(0.2, abs=0.03)
+    assert models["weigh"].reading["lower_bound"].b1 == pytest.approx(-0.2, abs=0.03)
+    assert models["push"].reading["slid"].b1 == pytest.approx(0.2, abs=0.03)
+    assert models["weigh"].reading["measured"].sd1 == pytest.approx(0.1, rel=0.3)
 
 
 def _particles(n: int = 2000, seed: int = 1) -> ParticleBelief:
@@ -199,3 +199,60 @@ def test_probe_models_store_their_feature_names():
     assert models and all(pm.feature_names == FEATURES_M2B for pm in models.values())
     X = np.zeros((3, len(FEATURES_M2B)))
     assert all(pm.p_kind(X).shape == (3, len(pm.classes)) for pm in models.values())
+
+
+def test_preposterior_sampling_with_a_mixture_law():
+    """A weigh reading law with a narrow core and a wide tail: the sampled readings follow the mixture (about 14 % lie
+    beyond 3 core sd, against 0.3 % under the core alone), and probe_value gives a finite, positive EVOI when the
+    best row depends on the mass."""
+    from rpent.skills.pick_place.likelihood import Law
+    from rpent.skills.pick_place.menu import probe_value
+
+    rows = _probe_rows()
+    pm = fit_probe_models(rows)["weigh"]
+    pm.reading["measured"] = Law("mix2", 0.8, 0.0, 0.05, 0.0, 0.4)
+    b = _particles(400)
+    X = particle_matrix(rows[0]["base"], b.arrays(), rows[0]["pose"], rows[0]["force"])
+    rng = np.random.default_rng(2)
+    p = np.array([1.0, 0.0, 0.0])                                           # always measured
+    m = float(b.particles[0]["mass"])
+    x = np.array([np.log(pm.sample(X[0], b.particles[0], rows[0]["force"], rng, p=p)["reading"]["m_hat"] / m) for _ in range(4000)])
+    assert np.mean(np.abs(x) > 0.15) == pytest.approx(0.2 * 0.7077 + 0.8 * 0.0027, abs=0.025)
+    mass = b.arrays()["mass"]
+    C = [np.where(mass < 0.3, 0.2, 5.2), np.full(len(mass), 0.9)]
+    v = probe_value(b, C, pm, X, rows[0]["force"], "normal", np.random.default_rng(0), k=300)
+    assert np.isfinite(v["evoi"]) and np.isfinite(v["evoi_se"]) and v["evoi"] > 0.0
+
+
+def test_an_old_tuple_law_reads_as_a_normal_law():
+    """A probe model pickled before the mixture laws holds (b, sd) tuples: loglik and sample read them as normal laws,
+    with the same random stream."""
+    from rpent.skills.pick_place.likelihood import Law
+
+    rows = _probe_rows()
+    pm = fit_probe_models(rows)["weigh"]
+    b = _particles(300)
+    X = particle_matrix(rows[0]["base"], b.arrays(), rows[0]["pose"], rows[0]["force"])
+    obs = {"probe": "weigh", "kind": "measured", "reading": {"m_hat": 0.3}}
+    pm.reading["measured"] = Law.normal(0.2, 0.1)
+    new, _ = pm.loglik(obs, X, b.arrays(), rows[0]["force"])
+    s_new = pm.sample(X[0], b.particles[0], rows[0]["force"], np.random.default_rng(9), p=np.array([1.0, 0.0, 0.0]))
+    pm.reading["measured"] = (0.2, 0.1)
+    old, _ = pm.loglik(obs, X, b.arrays(), rows[0]["force"])
+    s_old = pm.sample(X[0], b.particles[0], rows[0]["force"], np.random.default_rng(9), p=np.array([1.0, 0.0, 0.0]))
+    np.testing.assert_array_equal(new, old)
+    assert s_new == s_old
+
+
+def test_probe_reading_laws_select_a_mixture_on_validation_objects():
+    """Weigh readings with a 25 % wide tail: with validation objects the measured law is a mixture, without them it is
+    normal; the push readings, without a tail, stay normal."""
+    rng = np.random.default_rng(11)
+    rows = _probe_rows(1200, sd=0.05)
+    for r in rows:
+        if r["kind"] == "measured" and rng.random() < 0.25:
+            r["reading"] = {"m_hat": r["reading"]["m_hat"] * float(np.exp(rng.normal(0.0, 0.6)))}
+    val = sorted({r["object"] for r in rows})[::5]
+    models = fit_probe_models(rows, val_objects=val)
+    assert models["weigh"].reading["measured"].kind == "mix2" and models["push"].reading["slid"].kind == "normal"
+    assert fit_probe_models(rows)["weigh"].reading["measured"].kind == "normal"

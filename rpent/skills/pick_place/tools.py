@@ -77,7 +77,7 @@ def _prior_belief(loc: dict[str, Any], env: Any, primitives: Any, n: int = N_PAR
     return ParticleBelief.from_parametric(parametric, com, n, rng)
 
 
-def _laws(primitives: Any, label: str) -> dict[str, tuple[float, float] | None] | None:
+def _laws(primitives: Any, label: str) -> dict[str, Any] | None:
     """The readout model's fitted laws of the slip and loss terms for a label (the diagnosis corrects its
     friction numbers with them); None without a readout model."""
     rm = getattr(primitives, "readout_model", None)

@@ -19,17 +19,20 @@ belief particle.
 A composite likelihood, validated by posterior coverage, not assumed exact. Terms of particle i:
 
 * outcome: log max(floor_p, P_i[label]) / temper;
-* hold (a hold reading): log N(log(fz / (m_i g)); b, sd * temper);
+* hold (a hold reading): log p(log(fz / (m_i g))), p the term's residual law with every sd times temper;
 * slip (a slip reading, not lifted) and loss (the force just before a loss):
-  log N(log(fz / (2 mu_i F)); b, sd * temper), F the squeeze per pad;
+  log p(log(fz / (2 mu_i F))), F the squeeze per pad;
 * rot (always, with a rotation classifier): log P(rotated or not | X_i, label) / temper;
 * side (when the readouts tell a heavy side): log(1 - eps) on that side, log eps on the other,
   log 0.5 for a CoM on the pinch; divided by temper like the other discrete terms.
 
-The residual laws (b, sd) are fitted per label on training rows at the true mass and friction;
-a label with fewer than 30 rows uses the pooled law of all rows. A continuous term is rejected
-(listed, not used) when its best particle lies more than 5 sd off, or when the reading is not
-positive; the outcome, rot and side terms are never rejected.
+The residual laws are fitted per label on training rows at the true mass and friction; a label with
+fewer than 30 rows uses the pooled law of all rows. A law is a normal law (median and MAD) or a
+two-component mixture, a narrow core and a wide tail (``Law``); ``fit_law`` takes the mixture only
+when it predicts readings of validation objects better (an inner object split of the training
+objects). A continuous term is rejected (listed, not used) when its best particle lies more than
+5 sd from the centre of every component of the law, or when the reading is not positive; the
+outcome, rot and side terms are never rejected.
 """
 
 from __future__ import annotations
@@ -41,6 +44,9 @@ from typing import Any
 
 import joblib
 import numpy as np
+from scipy.optimize import brentq
+from scipy.special import ndtr, ndtri
+from sklearn.mixture import GaussianMixture
 from sklearn.model_selection import GroupKFold
 
 from rpent.skills.pick_place.costs import prediction_matrix
@@ -58,7 +64,139 @@ MAD_TO_SD = 1.4826
 POOLED = "_pooled"
 CONTINUOUS = ("hold", "slip", "loss")
 READING = {"hold": "fz_hold_n", "slip": "fz_slip_max_n", "loss": "fz_at_loss_n"}
+MIX_MIN_FIT = 50                    # readings the mixture is fitted on, and held-out readings it is judged on, at least
+MIX_MIN_VAL = 20
+MIX_GAIN = 0.02                     # nats per held-out reading the mixture must gain over the normal law
 _LOG_SQRT_2PI = 0.5 * float(np.log(2.0 * np.pi))
+
+
+@dataclass(frozen=True)
+class Law:
+    """A residual law: ``normal`` (N(b1, sd1), w 1) or ``mix2``, a narrow core w N(b1, sd1) and a wide tail
+    (1 - w) N(b2, sd2) with sd1 <= sd2."""
+
+    kind: str
+    w: float
+    b1: float
+    sd1: float
+    b2: float | None = None
+    sd2: float | None = None
+
+    @staticmethod
+    def normal(b: float, sd: float) -> Law:
+        return Law("normal", 1.0, float(b), float(sd))
+
+    def _parts(self) -> tuple[tuple[float, float, float], ...]:
+        if self.kind == "normal":
+            return ((1.0, self.b1, self.sd1),)
+        return ((self.w, self.b1, self.sd1), (1.0 - self.w, self.b2, self.sd2))
+
+    def logpdf(self, x, temper: float = 1.0) -> np.ndarray:
+        """Log density at x with every sd times ``temper``; -inf where x is not finite."""
+        x = np.asarray(x, dtype=float)
+        t = float(temper)
+        with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+            if self.kind == "normal":
+                z = (x - self.b1) / self.sd1
+                z = np.where(np.isfinite(z), z, np.inf)
+                return -0.5 * (z / t) ** 2 - np.log(self.sd1 * t) - _LOG_SQRT_2PI
+            core, tail = (np.log(w) - 0.5 * ((x - b) / (sd * t)) ** 2 - np.log(sd * t) - _LOG_SQRT_2PI for w, b, sd in self._parts())
+            return np.where(np.isfinite(x), np.logaddexp(core, tail), -np.inf)
+
+    def sample(self, rng: np.random.Generator, size=None):
+        """Draws from the law. A normal law takes one standard normal per value (the m2 random streams)."""
+        if self.kind == "normal":
+            return self.b1 + self.sd1 * rng.standard_normal(size)
+        core = rng.random(size) < self.w
+        z = rng.standard_normal(size)
+        return np.where(core, self.b1 + self.sd1 * z, self.b2 + self.sd2 * z) if size is not None else \
+            float(self.b1 + self.sd1 * z if core else self.b2 + self.sd2 * z)
+
+    def cdf(self, x):
+        return sum(w * ndtr((np.asarray(x, dtype=float) - b) / sd) for w, b, sd in self._parts())
+
+    def quantile(self, p: float) -> float:
+        if self.kind == "normal":
+            return float(self.b1 + self.sd1 * ndtri(p))
+        lo = min(b - 40.0 * sd for _, b, sd in self._parts())
+        hi = max(b + 40.0 * sd for _, b, sd in self._parts())
+        return float(brentq(lambda x: float(self.cdf(x)) - p, lo, hi, xtol=1e-12))
+
+    def median(self) -> float:
+        return self.quantile(0.5)
+
+    def interval(self, q: float) -> tuple[float, float]:
+        """The central q interval: the (1 - q) / 2 and (1 + q) / 2 quantiles."""
+        return self.quantile((1.0 - q) / 2.0), self.quantile((1.0 + q) / 2.0)
+
+    def outside(self, x) -> np.ndarray:
+        """True where x is not finite or lies more than REJECT_Z sd from the centre of every component."""
+        x = np.asarray(x, dtype=float)
+        near = np.zeros(x.shape, dtype=bool)
+        with np.errstate(invalid="ignore"):
+            for _, b, sd in self._parts():
+                near |= np.abs((x - b) / sd) <= REJECT_Z
+        return ~near
+
+    def summary(self) -> dict[str, Any]:
+        return {"kind": self.kind, "w": self.w, "sd1": self.sd1, "sd2": self.sd2}
+
+    def to_json(self):
+        """A normal law as [b, sd] (the format of the m2 bundles); a mixture as an object."""
+        if self.kind == "normal":
+            return [float(self.b1), float(self.sd1)]
+        return {"kind": self.kind, "w": float(self.w), "b1": float(self.b1), "sd1": float(self.sd1), "b2": float(self.b2),
+                "sd2": float(self.sd2)}
+
+    @staticmethod
+    def from_json(v) -> Law:
+        if isinstance(v, dict):
+            return Law(str(v["kind"]), float(v["w"]), float(v["b1"]), float(v["sd1"]), float(v["b2"]), float(v["sd2"]))
+        return Law.normal(float(v[0]), float(v[1]))
+
+
+def as_law(v) -> Law | None:
+    """A Law from a Law, a saved (b, sd) pair (the m2 models) or a JSON object; None stays None."""
+    if v is None or isinstance(v, Law):
+        return v
+    return Law.from_json(v)
+
+
+def _normal_law(x: np.ndarray) -> Law:
+    b = float(np.median(x))
+    return Law.normal(b, max(SD_FLOOR, MAD_TO_SD * float(np.median(np.abs(x - b)))))
+
+
+def _mixture_law(x: np.ndarray, seed: int) -> Law:
+    """EM from two starts, keeping the higher training likelihood: the k-means start, and a scale start (both
+    centres at the median, the MAD sd and 4 times it), which finds a narrow core inside a wide tail on one centre
+    where k-means splits the readings into a left and a right half."""
+    X = np.asarray(x, dtype=float)[:, None]
+    n = _normal_law(X[:, 0])
+    scale = {"weights_init": [0.8, 0.2], "means_init": [[n.b1], [n.b1]],
+             "precisions_init": np.array([n.sd1 ** -2, (4.0 * n.sd1) ** -2]).reshape(2, 1, 1)}
+    gm = max((GaussianMixture(2, random_state=seed, **kw).fit(X) for kw in ({}, scale)), key=lambda g: g.score(X))
+    sd = np.sqrt(gm.covariances_.reshape(2))
+    core, tail = (0, 1) if sd[0] <= sd[1] else (1, 0)
+    mean = gm.means_.reshape(2)
+    return Law("mix2", float(gm.weights_[core]), float(mean[core]), max(SD_FLOOR, float(sd[core])), float(mean[tail]),
+               max(SD_FLOOR, float(sd[tail])))
+
+
+def fit_law(x, x_val=None, seed: int = 0) -> Law:
+    """The residual law of readings x, with held-out readings x_val of other objects: both kinds are fitted on x
+    and the mixture is kept only when its mean log density on x_val beats the normal law's by more than MIX_GAIN
+    nats (and x has MIX_MIN_FIT, x_val MIX_MIN_VAL readings). The kept kind is refitted on x and x_val together,
+    so without x_val, or when normal wins, the law is the median and MAD of every reading."""
+    x = np.asarray(x, dtype=float).ravel()
+    x = x[np.isfinite(x)]
+    v = np.asarray([] if x_val is None else x_val, dtype=float).ravel()
+    v = v[np.isfinite(v)]
+    every = np.concatenate([x, v])
+    if len(x) < MIX_MIN_FIT or len(v) < MIX_MIN_VAL:
+        return _normal_law(every)
+    gain = float(np.mean(_mixture_law(x, seed).logpdf(v)) - np.mean(_normal_law(x).logpdf(v)))
+    return _mixture_law(every, seed) if gain > MIX_GAIN else _normal_law(every)
 
 
 def _log_ratio(term: str, fz: float, mass, mu, force: float):
@@ -67,11 +205,6 @@ def _log_ratio(term: str, fz: float, mass, mu, force: float):
         if term == "hold":
             return np.log(fz / (np.asarray(mass, dtype=float) * G))
         return np.log(fz / (2.0 * np.asarray(mu, dtype=float) * force))
-
-
-def _law(x: np.ndarray) -> tuple[float, float]:
-    b = float(np.median(x))
-    return b, float(max(SD_FLOOR, MAD_TO_SD * np.median(np.abs(x - b))))
 
 
 def _onehot(labels, n: int, classes=OUTCOMES) -> np.ndarray:
@@ -133,14 +266,17 @@ class RotClassifier:
 
 @dataclass
 class ReadoutModel:
-    terms: dict[str, dict[str, tuple[float, float]]]
+    terms: dict[str, dict[str, Law]]
     side_error: float
     rot_clf: Any = None
     temper: float = 1.0
     floor_p: float = 1e-4
     stats: dict[str, Any] = field(default_factory=dict)
 
-    def law(self, term: str, label: str) -> tuple[float, float] | None:
+    def __post_init__(self):
+        self.terms = {t: {g: as_law(v) for g, v in laws.items()} for t, laws in self.terms.items()}
+
+    def law(self, term: str, label: str) -> Law | None:
         laws = self.terms.get(term)
         if not laws:
             return None
@@ -148,15 +284,15 @@ class ReadoutModel:
 
     def components(self, obs: dict[str, Any], preds, X: np.ndarray | None, arrays: dict[str, np.ndarray],
                    sides: np.ndarray | None, terms: list[str] | None = None) -> tuple[dict[str, Any], dict[str, list[str]]]:
-        """The untempered terms: discrete log-likelihoods and standardised residuals, plus which terms
-        were used and rejected. ``combine`` applies a temper. ``terms`` (an entry's recorded used terms)
+        """The untempered terms: discrete log-likelihoods and (residual, law) per continuous term, plus which
+        terms were used and rejected. ``combine`` applies a temper. ``terms`` (an entry's recorded used terms)
         replays exactly those terms, without the rejection rule (a belief refresh)."""
         want = (lambda term: True) if terms is None else (lambda term: term in terms)
         label, r = obs["label"], obs.get("readouts") or {}
         force = float(obs.get("force", np.nan))
         m, mu = np.asarray(arrays["mass"], dtype=float), np.asarray(arrays["mu"], dtype=float)
         cat: dict[str, np.ndarray] = {}
-        norm: dict[str, tuple[np.ndarray, float]] = {}
+        norm: dict[str, tuple[np.ndarray, Law]] = {}
         used: list[str] = []
         rejected: list[str] = []
         if preds is not None and want("outcome"):
@@ -170,13 +306,11 @@ class ReadoutModel:
             if terms is None and not float(fz) > 0:
                 rejected.append(term)
                 continue
-            b, sd = law
-            z = (_log_ratio(term, float(fz), m, mu, force) - b) / sd
-            z = np.where(np.isfinite(z), z, np.inf)
-            if terms is None and (not np.isfinite(z).any() or float(np.min(np.abs(z))) > REJECT_Z):
+            x = _log_ratio(term, float(fz), m, mu, force)
+            if terms is None and law.outside(x).all():
                 rejected.append(term)
                 continue
-            norm[term] = (z, float(sd))
+            norm[term] = (x, law)
             used.append(term)
         if self.rot_clf is not None and X is not None and want("rot"):
             p = self.rot_clf.predict(X, label)
@@ -196,9 +330,8 @@ class ReadoutModel:
         ll = np.zeros(comp["n"])
         for v in comp["cat"].values():
             ll += v / t
-        for z, sd in comp["norm"].values():
-            with np.errstate(invalid="ignore", over="ignore"):
-                ll += -0.5 * (z / t) ** 2 - np.log(sd * t) - _LOG_SQRT_2PI
+        for x, law in comp["norm"].values():
+            ll += law.logpdf(x, t)
         return ll
 
     def loglik(self, obs: dict[str, Any], preds, X: np.ndarray | None, arrays: dict[str, np.ndarray],
@@ -211,14 +344,16 @@ class ReadoutModel:
         return self.combine(comp), info
 
     @classmethod
-    def fit(cls, rows: list[dict[str, Any]], seed: int = 0, names=FEATURES_M2) -> ReadoutModel:
+    def fit(cls, rows: list[dict[str, Any]], seed: int = 0, names=FEATURES_M2, val_objects=None) -> ReadoutModel:
         """Fit the residual laws, the side error and the rotation classifier (on ``names``) on (training) corpus
-        rows with readouts, at each row's true mass, friction and CoM."""
+        rows with readouts, at each row's true mass, friction and CoM. The rows of ``val_objects`` are the held-out
+        readings that choose each law's kind (fit_law); every row enters the kept law."""
         rows = [r for r in rows if r.get("readouts")]
-        terms: dict[str, dict[str, tuple[float, float]]] = {}
+        val = set(val_objects or ())
+        terms: dict[str, dict[str, Law]] = {}
         stats: dict[str, Any] = {"n_rows": len(rows), "terms": {}}
         for term in CONTINUOUS:
-            xs, labels = [], []
+            xs, labels, held = [], [], []
             for r in rows:
                 fz = r["readouts"].get(READING[term])
                 if fz is None or not float(fz) > 0:
@@ -227,15 +362,18 @@ class ReadoutModel:
                 if np.isfinite(x):
                     xs.append(x)
                     labels.append(r["label"])
+                    held.append(r["object"] in val)
             if not xs:
                 continue
-            x_arr, lab = np.array(xs), np.array(labels)
-            laws = {POOLED: _law(x_arr)}
+            x_arr, lab, h = np.array(xs), np.array(labels), np.array(held, dtype=bool)
+            laws = {POOLED: fit_law(x_arr[~h], x_arr[h], seed)}
             for lbl in sorted(set(labels)):
-                if int((lab == lbl).sum()) >= MIN_LABEL_ROWS:
-                    laws[lbl] = _law(x_arr[lab == lbl])
+                k = lab == lbl
+                if int(k.sum()) >= MIN_LABEL_ROWS:
+                    laws[lbl] = fit_law(x_arr[k & ~h], x_arr[k & h], seed)
             terms[term] = laws
-            stats["terms"][term] = {"n": len(xs), "by_label": {lbl: int((lab == lbl).sum()) for lbl in sorted(set(labels))}}
+            stats["terms"][term] = {"n": len(xs), "by_label": {lbl: int((lab == lbl).sum()) for lbl in sorted(set(labels))},
+                                    "n_val": int(h.sum()), "kinds": {g: law.kind for g, law in laws.items()}}
         seen, truth = [], []
         for r in rows:
             heavy = int(r["readouts"].get("heavy_side") or 0)
@@ -259,12 +397,12 @@ class ReadoutModel:
         return cls(terms=terms, side_error=side_error, rot_clf=rot_clf, stats=stats)
 
     def to_json(self) -> dict[str, Any]:
-        return {"version": 1, "terms": {t: {g: [float(v[0]), float(v[1])] for g, v in laws.items()} for t, laws in self.terms.items()},
+        return {"version": 1, "terms": {t: {g: law.to_json() for g, law in laws.items()} for t, laws in self.terms.items()},
                 "side_error": float(self.side_error), "temper": float(self.temper), "floor_p": float(self.floor_p), "stats": self.stats}
 
     @staticmethod
     def from_json(d: dict[str, Any], rot_clf: Any = None) -> ReadoutModel:
-        terms = {t: {g: (float(v[0]), float(v[1])) for g, v in laws.items()} for t, laws in d["terms"].items()}
+        terms = {t: {g: Law.from_json(v) for g, v in laws.items()} for t, laws in d["terms"].items()}
         return ReadoutModel(terms=terms, side_error=float(d["side_error"]), rot_clf=rot_clf, temper=float(d.get("temper", 1.0)),
                             floor_p=float(d.get("floor_p", 1e-4)), stats=dict(d.get("stats", {})))
 

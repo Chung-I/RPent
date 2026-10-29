@@ -23,9 +23,9 @@ keys; a missing key is a missing reading):
 * a loss in lift or hold without rotation: rose then slid (slippery or heavy at this squeeze), with
   the friction the force before the loss reads;
 
-  (both friction numbers are fz / 2F, corrected by exp(-b) when the readout model's fitted law
-  (b, sd) for the term is given; the law's sd gives the 80 % range of that one reading. A force that
-  is not positive, or a friction outside the belief's range, gives no number: the line says why);
+  (both friction numbers are fz / 2F, corrected by exp(-median) when the readout model's fitted law
+  for the term is given; the law's central 80 % interval gives the range of that one reading. A force
+  that is not positive, or a friction outside the belief's range, gives no number: the line says why);
 * a rotation of 10 degrees or more: the CoM is off the pinch, toward the side the readouts tell
   (before the fall, or in the hand when nothing fell);
 * a loss within 0.3 s of the lift start at a lift speed of 0.4 m/s or more: lift slower;
@@ -41,27 +41,30 @@ from typing import Any
 
 import numpy as np
 
+from rpent.skills.pick_place.likelihood import Law, as_law
+
 ROT_DEG = 10.0
 FAST_LIFT = 0.4               # m/s
 EARLY_LOSS_S = 0.3
-Z80 = 1.2816                  # the two-sided 80 % normal quantile
 UNUSABLE = "not usable"
 
 
-def _friction(fz: float, force: float, law: tuple[float, float] | None,
+def _friction(fz: float, force: float, law: Law | tuple[float, float] | None,
               mu_range: tuple[float, float] | None = None) -> tuple[float | None, str]:
-    """(friction read from a vertical pad force, the note that goes with it). The fitted law (b, sd)
-    corrects the reading by exp(-b), and its sd gives the 80 % range of this one reading. (None,
-    UNUSABLE) when the force is not positive; (None, "outside the belief's range ...") when the
-    friction lies outside ``mu_range``."""
+    """(friction read from a vertical pad force, the note that goes with it). The fitted law of the
+    reading's log ratio corrects the reading by exp(-median), and its central 80 % interval [lo, hi]
+    gives the range of this one reading, exp(-hi) to exp(-lo) times the reading. (None, UNUSABLE) when
+    the force is not positive; (None, "outside the belief's range ...") when the friction lies outside
+    ``mu_range``."""
     if not float(fz) > 0:
         return None, UNUSABLE
     mu = float(fz) / (2.0 * float(force))
     note = ""
     if law is not None:
-        mu *= float(np.exp(-float(law[0])))
-        f = float(np.exp(Z80 * float(law[1])))
-        note = f" (corrected by the fitted readout law; 80 % range from this one reading: {mu / f:.2f} to {mu * f:.2f})"
+        law = as_law(law)
+        lo, hi = law.interval(0.8)
+        read, mu = mu, mu * float(np.exp(-law.median()))
+        note = f" (corrected by the fitted readout law; 80 % range from this one reading: {read * np.exp(-hi):.2f} to {read * np.exp(-lo):.2f})"
     if mu_range is not None and not float(mu_range[0]) <= mu <= float(mu_range[1]):
         return None, f"outside the belief's range {float(mu_range[0]):.2f} to {float(mu_range[1]):.2f}"
     return mu, note
@@ -83,11 +86,11 @@ def belief_line(before: dict[str, Any], after: dict[str, Any]) -> str:
 
 
 def diagnose(label: str, readouts: dict[str, Any], action: dict[str, Any], before: dict[str, Any], after: dict[str, Any],
-             laws: dict[str, tuple[float, float] | None] | None = None,
+             laws: dict[str, Law | tuple[float, float] | None] | None = None,
              mu_range: tuple[float, float] | None = None) -> list[str]:
     """The rule table's lines for one attempt (label, readouts, the executed action with ``force`` and
     ``v_lift``), then the belief line (``ParticleBelief.to_data`` before and after the update).
-    ``laws``: the readout model's fitted (b, sd) per term ("slip", "loss") for this label, if any.
+    ``laws``: the readout model's fitted law per term ("slip", "loss") for this label, if any.
     ``mu_range``: the friction range the belief holds; a friction reading outside it gives no number."""
     r = readouts or {}
     laws = laws or {}

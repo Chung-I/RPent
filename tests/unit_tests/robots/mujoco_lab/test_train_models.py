@@ -243,3 +243,31 @@ def test_the_m2_bundle_reads_the_m2_schema():
     rot = B["readout_model"].rot_clf
     assert rot.feature_names == FEATURES_M2 and rot.label_classes == MOTION_OUTCOMES
     assert rot.predict(np.zeros((2, len(FEATURES_M2))), "placed_stable").shape == (2,)
+
+
+def test_probe_metrics_serialise_mixture_laws(tmp_path):
+    """Weigh readings with a 25 % wide tail: fit_probes selects the measured law's kind on an inner split of the
+    training objects, writes a mixture as a JSON object and a normal law as [b, sd], and the saved model holds the Law."""
+    import numpy as np
+
+    from robots.mujoco_lab.train_models import fit_probes
+    from rpent.skills.pick_place.likelihood import Law
+    from rpent.skills.pick_place.probes import ProbeModel
+    from tests.unit_tests.skills.test_probes import _probe_rows
+
+    rng = np.random.default_rng(11)
+    rows = _probe_rows(1200, sd=0.05)
+    for r in rows:
+        if r["kind"] == "measured" and rng.random() < 0.25:
+            r["reading"] = {"m_hat": r["reading"]["m_hat"] * float(np.exp(rng.normal(0.0, 0.6)))}
+    _write(rows, tmp_path / "p.jsonl")
+    objects = sorted({r["object"] for r in rows})
+    os.makedirs(tmp_path / "b")
+    out = fit_probes(str(tmp_path / "p.jsonl"), str(tmp_path / "b"), {"train": objects[:17], "val": objects[17:]})
+    metrics = json.load(open(tmp_path / "b" / "probe_metrics.json"))
+    measured = metrics["probes"]["weigh"]["reading"]["measured"]
+    assert measured["kind"] == "mix2" and set(measured) == {"kind", "w", "b1", "sd1", "b2", "sd2"}
+    assert out["probes"]["weigh"]["reading"]["measured"] == measured
+    assert Law.from_json(measured) == ProbeModel.load(str(tmp_path / "b" / "probe_weigh.joblib")).reading["measured"]
+    slid = metrics["probes"]["push"]["reading"]["slid"]
+    assert isinstance(slid, list) and len(slid) == 2

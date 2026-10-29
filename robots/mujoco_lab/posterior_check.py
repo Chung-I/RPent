@@ -57,6 +57,7 @@ from robots.mujoco_lab.train_models import load_rows, write_manifest
 from rpent.skills.pick_place.belief import ParticleBelief
 from rpent.skills.pick_place.evaluate import rows_of
 from rpent.skills.pick_place.features import model_names, particle_matrix, particle_sides
+from rpent.skills.pick_place.likelihood import as_law
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 COVER = (0.75, 0.85)
@@ -160,6 +161,13 @@ def check_probe_cases(cases: list[list[dict[str, Any]]], bundle: dict[str, Any],
     return out
 
 
+def laws_of(bundle: dict[str, Any], probes: str | None) -> dict[str, dict[str, dict[str, Any]]]:
+    """The reading laws the check used: term -> label -> (kind, core weight, sd1, sd2), or probe -> kind -> the same."""
+    if probes:
+        return {p: {k: as_law(law).summary() for k, law in pm.reading.items()} for p, pm in bundle["probe_models"].items()}
+    return {t: {g: law.summary() for g, law in laws.items()} for t, laws in bundle["readout_model"].terms.items()}
+
+
 def coverage(hits: list[dict[str, bool]]) -> dict[str, float | None]:
     return {k: (float(np.mean([h[k] for h in hits])) if hits else None) for k, _ in KEYS}
 
@@ -247,6 +255,7 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
                            "posterior": {k: float(np.median([c["post_width"][temper][k] for c in cases])) for k, _ in KEYS}},
         "terms": {"used": dict(Counter(t for c in cases for t in c["info"]["used"])),
                   "rejected": dict(Counter(t for c in cases for t in c["info"]["rejected"]))},
+        "laws": laws_of(B, a.probes),
         "seconds": round(time.time() - t0, 1),
     }
     if a.probes == "A":
