@@ -1,15 +1,19 @@
 {
  "protocol_a": "probe_first",
  "protocol_b": "commit",
- "n_paired": 1008,
+ "n_paired": 966,
  "n_objects": 14,
  "unpaired": {
   "a_only": 0,
   "b_only": 0
  },
+ "artifacts": {
+  "a": 42,
+  "b": 42
+ },
  "realized_cost": {
-  "a": 1.1310515873015874,
-  "b": 1.1310515873015874,
+  "a": 1.0321946169772258,
+  "b": 1.0321946169772258,
   "diff": 0.0,
   "ci95_object_bootstrap": [
    0.0,
@@ -17,10 +21,10 @@
   ]
  },
  "ece_first_attempt": {
-  "a": 0.03759424603174603,
-  "b": 0.03759424603174603,
-  "n_a": 1008,
-  "n_b": 1008,
+  "a": 0.08825000000000004,
+  "b": 0.08825000000000004,
+  "n_a": 820,
+  "n_b": 820,
   "diff": 0.0,
   "ci95_object_bootstrap": [
    0.0,

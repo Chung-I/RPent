@@ -1,5 +1,5 @@
 {
- "probe_corpus": "robots/mujoco_lab/data/probe_corpus_v6.jsonl",
+ "probe_corpus": "robots/mujoco_lab/data/probe_corpus_v7.jsonl",
  "split": {
   "train": [
    "fruits_veggies__avocado",
@@ -105,74 +105,74 @@
  },
  "probes": {
   "weigh": {
-   "n": 4479,
-   "n_train": 3174,
+   "n": 3639,
+   "n_train": 2566,
    "kind_rates": {
-    "measured": 0.7729403884795714,
-    "lower_bound": 0.22638981915606163,
-    "lost": 0.0006697923643670462
+    "measured": 0.7353668590272052,
+    "lower_bound": 0.26380873866446825,
+    "lost": 0.0008244023083264633
    },
-   "thrown_rate": 0.07501674480910918,
+   "thrown_rate": 0.0016488046166529267,
    "reading": {
     "measured": [
-     -9.394374167514814e-12,
+     -1.217914658013871e-13,
      0.05
     ],
     "lower_bound": [
-     -0.03768015469698745,
-     0.1193318895298117
+     -0.07877766353504362,
+     0.10014045636037187
     ]
    },
    "stats": {
-    "n": 3174,
+    "n": 2566,
     "kinds": {
-     "measured": 2397,
-     "lower_bound": 774,
-     "lost": 3
+     "measured": 1850,
+     "lower_bound": 715,
+     "lost": 1
     },
     "n_reading": {
-     "measured": 2397,
-     "lower_bound": 119,
+     "measured": 1850,
+     "lower_bound": 104,
      "lost": 0
     },
     "reading_rate": {
      "measured": 1.0,
-     "lower_bound": 0.15374677002583978
+     "lower_bound": 0.14545454545454545
     },
-    "thrown": 202
+    "thrown": 4
    },
    "val": {
-    "n": 664,
-    "brier": 0.20426362181442123,
-    "brier_const": 0.2826544294537651
+    "n": 526,
+    "brier": 0.12558825772166884,
+    "brier_const": 0.3421859409229908
    }
   },
   "push": {
-   "n": 2280,
-   "n_train": 1608,
+   "n": 1848,
+   "n_train": 1306,
    "kind_rates": {
-    "slid": 0.9114035087719298,
-    "tipped": 0.041666666666666664,
-    "no_breakaway": 0.029385964912280703,
-    "no_contact": 0.017543859649122806
+    "slid": 0.895021645021645,
+    "tipped": 0.049783549783549784,
+    "no_breakaway": 0.03354978354978355,
+    "no_contact": 0.021645021645021644
    },
-   "thrown_rate": 0.035526315789473684,
+   "thrown_rate": 0.020562770562770564,
    "reading": {
     "slid": [
-     0.24160778838309516,
-     0.27934179777056206
+     0.21589951839415153,
+     0.3057557989167368
     ]
    },
    "stats": {
-    "n": 1608,
+    "n": 1306,
     "kinds": {
-     "slid": 1458,
-     "tipped": 86,
-     "no_breakaway": 29,
-     "no_contact": 35
+     "slid": 1164,
+     "tipped": 82,
+     "no_breakaway": 26,
+     "no_contact": 34
     },
     "n_reading": {
-     "slid": 1458,
+     "slid": 1164,
      "tipped": 0,
      "no_breakaway": 0,
      "no_contact": 0
@@ -180,12 +180,12 @@
     "reading_rate": {
      "slid": 1.0
     },
-    "thrown": 42
+    "thrown": 29
    },
    "val": {
-    "n": 336,
-    "brier": 0.12804305285441483,
-    "brier_const": 0.2061171576375408
+    "n": 265,
+    "brier": 0.21932858587120346,
+    "brier_const": 0.25021111584913364
    }
   }
  }
