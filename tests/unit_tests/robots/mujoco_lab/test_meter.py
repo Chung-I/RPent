@@ -113,3 +113,18 @@ def test_a_tilt_past_the_spill_angle_is_a_spill():
     label, channel, t_spill = damage_event(meter, {"v_break_ms": 3.0}, entry, 0.8)
     assert (label, channel) == ("spilled", "surface") and t_spill == pytest.approx(spill / 10.0, abs=0.02)
     assert final_label("placed_stable", {"label": label, "channel": channel, "t": t_spill}) == "spilled"
+
+
+def test_meter_keeps_the_pad_force_above_the_drive():
+    """jam_n: the largest excess of the 10 ms pad force over the largest drive so far. An open grip (drive 0) pressed
+    at 60 N gives 60; a squeeze read at 25 N under a drive of 20 N gives 5."""
+    from robots.mujoco_lab.meter import DamageMeter
+
+    m = DamageMeter(DT)
+    for _ in range(10):
+        m.substep((60.0, 0.0), set(), (0.0, 0.0, 0.0))
+    assert abs(m.jam_n - 60.0) < 1e-9
+    s = DamageMeter(DT)
+    for _ in range(10):
+        s.substep((25.0, 24.0), set(), (0.0, 0.0, 0.0), drive=20.0)
+    assert abs(s.jam_n - 5.0) < 1e-9

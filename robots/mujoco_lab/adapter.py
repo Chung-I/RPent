@@ -20,6 +20,7 @@ needs: reset an object with hidden properties, locate it, propose pinches, measu
 geometry, plan the hand trajectory, execute pinch → lift → transport → set-down →
 release, and label the outcome. A contact monitor flags the runs whose pad contacts
 were not physical, and those after a reset that did not reach rest (``artifact``).
+A damaged run with a jam is an artifact too (JAM_N).
 
 Milestone 2b: a fillable object may hold a liquid (``reset(fill=...)``: a point mass at the liquid's centroid,
 fragility.liquid), the object may carry a hidden fragility (``reset(frag=...)``), and the damage meter
@@ -85,6 +86,10 @@ REV_COS = -0.5               # the contact monitor (artifact): a pad-hull contac
 REV_N = 1.0                  # object points against the pad's closing direction (cosine below REV_COS) with more than
 REV_STEPS = 5                # REV_N newtons; a run is an artifact with reversed contacts in REV_STEPS squeeze substeps
 DEEP_M = 0.003               # or more, a pad penetration over DEEP_M, or a reset that did not reach rest
+JAM_N = 50.0                 # a jam: the meter's 10 ms pad force above the run's largest grip drive by more than JAM_N.
+                             # The position-driven hand has no force limit: a pad that wedged the carton against the
+                             # table pressed 7,373 N with the grip open. No grip drive or force-limited arm gives that,
+                             # so a damaged run with a jam is an artifact
 SQUEEZE_F0 = 1.0             # the squeeze probe: close with 1 N a pad, ramp to its force over 2 s, hold 0.3 s, open
 SQUEEZE_RAMP_S = 2.0
 SQUEEZE_HOLD_S = 0.3
@@ -269,6 +274,7 @@ class MuJoCoLabEnv:
         self.entry: dict[str, Any] = {"class": "none", "law": None, "fillable": False, "cavity": None}
         self.fill, self.frag, self.liquid, self.spill_deg = 0.0, None, None, None
         self._dmeter: DamageMeter | None = None
+        self._jam = False
         self.episode = 0
         self.sim = None
         self.obj: dict[str, Any] | None = None
@@ -480,7 +486,7 @@ class MuJoCoLabEnv:
         """The contact monitor's record of the run since the last trace began, and the artifact flag."""
         w = self._watch
         return {"rev_steps": int(w["rev_steps"]), "deepest_mm": float(w["deepest_mm"]),
-                "artifact": artifact(w["rev_steps"], w["deepest_mm"], bool(self.reset_info["at_rest"]))}
+                "artifact": artifact(w["rev_steps"], w["deepest_mm"], bool(self.reset_info["at_rest"])) or self._jam}
 
     def _install_meter(self) -> None:
         """Wrap the sim's control step: while a trace records (``_metering``), each step also keeps the mean
@@ -544,19 +550,20 @@ class MuJoCoLabEnv:
             else:
                 touching.add((h, other))
         ctrl = float(sim.d.ctrl[0]) if sim.m.nu else 0.0
+        hi = float(sim.m.actuator_ctrlrange[0, 1]) if sim.m.nu and sim.m.actuator_ctrllimited[0] else np.inf
         self._squeezed = self._squeezed or ctrl > 0.0
         self._held = self._held or (touch[0] and touch[1] and not touching)
         if not self._armed and ((self._squeezed and ctrl <= 0.0) or (self._held and not (touch[0] or touch[1]))):
             self._armed = True
         m = self._dmeter
         axis = sim.obj_mat() @ self._cavity_axis if m.slosh is not None else None
-        m.substep(pad_n, touching, sim.obj_vel()[0], axis, self._armed)
+        m.substep(pad_n, touching, sim.obj_vel()[0], axis, self._armed, drive=min(max(ctrl, 0.0), hi))
 
     def _meter_begin(self) -> None:
         """Start the damage meter for an attempt or a probe (its times count from here); off: no meter."""
         from robots.mujoco_lab.slosh import Slosh
 
-        self._squeezed = self._held = self._armed = False
+        self._squeezed = self._held = self._armed = self._jam = False
         self._dmeter = None
         if self.damage_meter:
             slosh = Slosh(self.entry["cavity"], self.fill, self.slosh_zeta) if self.liquid is not None else None
@@ -569,6 +576,7 @@ class MuJoCoLabEnv:
             return {}, None
         data = m.to_data()
         ev = damage_event(data, self.frag or {}, self.entry, self.fill, spill_deg=self.spill_deg)
+        self._jam = ev is not None and m.jam_n > JAM_N
         return data, (None if ev is None else {"label": ev[0], "channel": ev[1], "t": round(float(ev[2]), 4)})
 
     def locate(self, prompt: str) -> dict[str, Any] | None:

@@ -538,10 +538,33 @@ def test_weigh_probe_can_crush():
     _crushable(env, 5.0)
     res = env.probe_weigh(_mid(env), weigh_force(10.0))
     assert res.kind == "damaged" and res.damage["label"] == "crushed" and res.damage["channel"] == "force"
+    assert not res.artifact                                # the drive crushed it, not a jam
     _crushable(env, 60.0)
     res = env.probe_weigh(_mid(env), weigh_force(10.0))
     assert res.kind != "damaged" and res.damage is None and res.meter["fn_pad_max"][-1][1] > 15.0
 
+
+def test_a_crush_by_a_strong_drive_is_not_a_jam():
+    """The jello box with f_damage_n 40 N under a 60 N weigh squeeze: the drive crushes it. The pad force exceeds 50 N,
+    but not the drive by 50 N, so the run is no artifact."""
+    env = _env()
+    _crushable(env, 40.0)
+    res = env.probe_weigh(_mid(env), 60.0)
+    assert res.damage and res.damage["label"] == "crushed" and res.meter["fn_pad_max"][-1][1] > 55.0
+    assert not res.artifact
+
+def test_a_jam_makes_the_damage_an_artifact():
+    """Probe corpus v8_t0, the carton's draw 14 (seed 7): the open hand's push wedges the carton under a pad at
+    thousands of newtons, far above any drive (the position-driven hand has no force limit). The crush is the jam's,
+    not a grip's, so the run is an artifact."""
+    env = _env()
+    theta = {"mass_scale": 0.983188789301263, "mu": 0.6498445278095558, "com_s": 0.3995646448976271, "v_lift": 0.4}
+    frag = {"k_n_per_mm": 1.7798343355862833, "f_damage_n": 19.128204436226216, "v_bruise_ms": None, "v_break_ms": None,
+            "z": [-0.7648911627712235, 0.46448873853987255, -0.9416817358216752]}
+    env.reset("hope__orange_juice_carton", theta, seed=7014, com_end=-1, fixture=None, fill=0.0, frag=frag)
+    res = env.probe_push()
+    assert res.damage and res.damage["label"] == "crushed" and res.meter["fn_pad_max"][-1][1] > 1000.0
+    assert res.artifact
 
 def test_push_meters_the_surface_angle():
     """The push moves a mug filled to 0.6: the surface channel records the slosh it starts."""

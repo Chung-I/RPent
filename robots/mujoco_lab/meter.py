@@ -97,19 +97,24 @@ class DamageMeter:
         self.impacts: list[list[float]] = []
         self._touching: set | None = None
         self._speed = 0.0
+        self._drive = 0.0
+        self.jam_n = 0.0          # the largest excess of the window's pad force over the largest drive so far
 
     @property
     def t(self) -> float:
         return self.n * self.dt
 
-    def substep(self, pad_n, touching: set, com_vel, axis_world=None, armed: bool = False) -> None:
+    def substep(self, pad_n, touching: set, com_vel, axis_world=None, armed: bool = False, drive: float = 0.0) -> None:
         """One physics substep: the pads' normal forces on the object (left, right), the set of (hull, geom) contacts
-        with non-pad geoms, the CoM velocity, the cavity axis in the world (None: no surface channel), and whether a
-        release or a loss has armed the impact channel."""
+        with non-pad geoms, the CoM velocity, the cavity axis in the world (None: no surface channel), whether a
+        release or a loss has armed the impact channel, and the grip drive's squeeze per pad (0 for an open grip)."""
         self.n += 1
         t = self.t
         self._pads.append((float(pad_n[0]), float(pad_n[1])))
-        self.force.add(t, max(np.mean(self._pads, axis=0)))
+        fn = float(max(np.mean(self._pads, axis=0)))
+        self.force.add(t, fn)
+        self._drive = max(self._drive, float(drive))
+        self.jam_n = max(self.jam_n, fn - self._drive)
         v = np.asarray(com_vel, dtype=float)
         self._vel.append(v)
         if self.slosh is not None and axis_world is not None:
