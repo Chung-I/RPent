@@ -83,7 +83,7 @@ def _stub_fold(root, k, train, val, test):
     d.mkdir()
     man = json.load(open(os.path.join(BUNDLE, "manifest.json")))
     for f in os.listdir(BUNDLE):
-        if f.endswith(".joblib") or f == man.get("readout_model"):
+        if f.endswith(".joblib") or f in (man.get("readout_model"), man.get("guard")):
             os.symlink(os.path.join(BUNDLE, f), d / f)
     metrics = json.load(open(os.path.join(BUNDLE, man["metrics"])))
     metrics["split"] = {"train": train, "val": val, "test": test}

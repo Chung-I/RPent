@@ -21,5 +21,6 @@
   "push": "probe_push.joblib"
  },
  "probe_metrics": "probe_metrics.json",
- "probe_corpus": "robots/mujoco_lab/data/probe_corpus_v7.jsonl"
+ "probe_corpus": "robots/mujoco_lab/data/probe_corpus_v7.jsonl",
+ "guard": "knn_guard.npz"
 }
