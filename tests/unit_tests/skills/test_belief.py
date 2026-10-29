@@ -207,3 +207,15 @@ def test_summary_names_readings_outside_the_belief():
         {"type": "probe", "obs": {"probe": "weigh"}, "used_terms": ["kind"], "rejected_terms": ["reading"]}])
     lines = b.summary()
     assert "reading outside the belief: hold" in lines and "reading outside the belief: weigh reading" in lines
+
+
+def test_arrays_carry_the_fragility_keys():
+    """arrays() returns theta_frag's keys, the fill and the spill angle when every particle has them, NaN where one is None."""
+    parts = [{"mass": 0.3, "mu": 0.5, "com_obj": [0.0, 0.0, 0.0], "k_n_per_mm": 1.0, "f_damage_n": 20.0, "v_bruise_ms": None,
+              "v_break_ms": None, "fill": 0.4, "spill_angle_deg": 30.0},
+             {"mass": 0.3, "mu": 0.5, "com_obj": [0.0, 0.0, 0.0], "k_n_per_mm": None, "f_damage_n": None, "v_bruise_ms": None,
+              "v_break_ms": None, "fill": 0.0, "spill_angle_deg": None}]
+    a = ParticleBelief(parts, np.ones(2)).arrays()
+    assert a["f_damage_n"][0] == 20.0 and np.isnan(a["f_damage_n"][1]) and np.isnan(a["v_bruise_ms"]).all()
+    assert list(a["fill"]) == [0.4, 0.0] and a["spill_angle_deg"][0] == 30.0 and np.isnan(a["spill_angle_deg"][1])
+    assert "f_damage_n" not in _pb([1.0, 1.0]).arrays()                     # milestone 2a particles: no fragility keys

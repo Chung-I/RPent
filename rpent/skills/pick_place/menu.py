@@ -53,7 +53,8 @@ import numpy as np
 from rpent.skills.pick_place.belief import N_PARTICLES, Belief, ParticleBelief
 from rpent.skills.pick_place.costs import COST, TIME_COST_PER_S, care_scale, expected_cost, particle_costs
 from rpent.skills.pick_place.destinations import DESTINATIONS, edge_distance
-from rpent.skills.pick_place.features import FEATURES_M2, Geometry, extract, model_names, particle_features, particle_matrix
+from rpent.skills.pick_place.features import (A_TRANSPORT, DAMAGE_FEATURES, FEATURES_M2, Geometry, extract, model_names,
+                                              particle_features, particle_matrix)
 from rpent.skills.pick_place.guard import flag_reason
 from rpent.skills.pick_place.probes import PROBE_SECONDS, weigh_force
 from rpent.skills.pick_place.protocol import IRREVERSIBLE, Option, Prediction
@@ -64,7 +65,8 @@ TOO_WIDE = "wider than the gripper opening"  # a wider pinch lands the pads on t
 OFF_OBJECT = "off the object"                # a nan width: no hull lies between the pads
 DEFAULT_THRESHOLD = 0.7
 EDGE_RISK_M = 0.08
-STD = {"v_lift": 0.15, "v_transport": 0.5}
+STD = {"v_lift": 0.15, "v_transport": 0.5, "a_transport": A_TRANSPORT}
+A_GENTLE = 0.5                               # m/s^2: the gentle carry (milestone 2b)
 PLACEHOLDER = {"mass": 1.0, "mu": 0.5}       # base features carry these; every particle overwrites them
 PROBE_V_LIFT = 0.03                          # the probe features, as the probe corpus extracted them
 PROBE_DESTINATION = "table_centre"
@@ -201,16 +203,23 @@ def guard_queries(options: list[Option], belief: ParticleBelief, names=FEATURES_
     return X, np.tile(w / w.sum(), len(rows)) / len(rows)
 
 
-def _rows(proposals: list[Any], f_std: float, destination: str, com_xy: np.ndarray):
-    """Candidate rows: (id, kind, proposal, action, cost_s, reason)."""
+def _rows(proposals: list[Any], f_std: float, destination: str, com_xy: np.ndarray, damage: bool = False):
+    """Candidate rows: (id, kind, proposal, action, cost_s, reason). ``damage`` (a model on the damage features) adds
+    the rows that lower a damage risk: light_grip and gentle_carry."""
     dest = DESTINATIONS[destination]
     mid = mid_proposal(proposals)
-    base = {"force": f_std, "v_lift": STD["v_lift"], "v_transport": STD["v_transport"], "destination": destination, "release_height": None}
+    base = {"force": f_std, "v_lift": STD["v_lift"], "v_transport": STD["v_transport"], "a_transport": STD["a_transport"],
+            "destination": destination, "release_height": None}
     rows = [
         ("commit_std", "commit", mid, dict(base), 8.0, ""),
         ("slow_lift", "lower_risk", mid, dict(base, v_lift=0.05, v_transport=0.2), 14.0, "slower lift and carry"),
         ("firm_grip", "lower_risk", mid, dict(base, force=2 * f_std), 8.0, "twice the squeeze"),
     ]
+    if damage:
+        rows += [
+            ("light_grip", "lower_risk", mid, dict(base, force=0.5 * f_std), 8.0, "half the squeeze: less crush and bruise risk, more slip"),
+            ("gentle_carry", "lower_risk", mid, dict(base, a_transport=A_GENTLE), 9.0, "a gentle carry: less spill risk, slower"),
+        ]
     nearest = min(proposals, key=lambda p: float(np.linalg.norm(np.asarray(p.point[:2]) - com_xy)))
     if nearest is not mid:
         rows.append(("regrasp_com", "lower_risk", nearest, dict(base), 10.0, "pinch nearer the believed centre of mass"))
@@ -249,12 +258,15 @@ def build_menu(model: Any, belief: ParticleBelief | Belief, geometry: Geometry, 
         if isinstance(belief, Belief):
             belief = ParticleBelief.from_parametric(belief, mid_pose["com_obj_nominal"], n, rng)
         com_xy = believed_com_world(belief, mid_pose)[:2]
-        for rid, kind, prop, action, cost_s, reason in _rows(usable, f_std, destination, com_xy):
-            planned = plan_fn(prop, action["v_lift"], action["v_transport"], action["destination"], action.get("release_height"))
+        damage = bool(set(DAMAGE_FEATURES) & set(model_names(model)))
+        for rid, kind, prop, action, cost_s, reason in _rows(usable, f_std, destination, com_xy, damage):
+            planned = plan_fn(prop, action["v_lift"], action["v_transport"], action["destination"], action.get("release_height"),
+                              a_transport=action["a_transport"])
             planned = [s.to_dict() if hasattr(s, "to_dict") else s for s in planned]
             pose = pose_fn(prop)
             base = extract(geometry, prop.point, prop.yaw, PLACEHOLDER["mass"], PLACEHOLDER["mu"], action["force"], action["v_lift"],
-                           action["v_transport"], action["destination"], action.get("release_height"), belief.visibility)
+                           action["v_transport"], action["destination"], action.get("release_height"), belief.visibility,
+                           a_transport=action["a_transport"])
             pred, per = estimate(model, belief, base, pose, action["force"], planned, rng)
             act = dict(action, s=prop.s)
             options.append(Option(id=rid, kind=kind, action=act, pred=pred, cost_s=cost_s,

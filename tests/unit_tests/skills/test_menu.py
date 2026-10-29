@@ -58,7 +58,7 @@ class P:
         self.s, self.point, self.yaw, self.width = s, [0.0, 0.0, 0.76], 0.0, width
 
 
-def plan_fn(proposal, v_lift, v_transport, destination, release_height=None):
+def plan_fn(proposal, v_lift, v_transport, destination, release_height=None, a_transport=2.0):
     return [{"phase": "lift", "n_steps": int(0.2 / v_lift * 50), "z_start": 0.0, "z_end": 0.2, "has_surface": True, "speed": v_lift}]
 
 
@@ -557,3 +557,110 @@ def test_probe_terminal_risk_costs_irreversible_plus_abstain():
     v = probe_value(b, [np.full(20, 2.0)], _RiskyFlat(), np.zeros((20, 3)), 20.0, 10.0, np.random.default_rng(0),
                     abstain_cost=1.0)
     assert v["expected_cost_after"] == pytest.approx(0.1 * (50.0 + 1.0) + 0.9 * 1.0)
+
+
+# ---------------------------------------------------------------- milestone 2b: the damage rows
+CRUSHABLE = {"class": "crushable", "law": "cardboard", "fillable": False}
+FILLABLE = {"class": "breakable", "law": "ceramic", "fillable": True}
+
+
+def _damage_rows(feature, label, lo=-1.5, hi=1.5, flag="frag_crush", n=400):
+    """Synthetic m2b rows: ``label`` when ``feature`` is above 0 (crush_margin) or below 0 (spill_margin), else placed."""
+    from rpent.skills.pick_place.features import FEATURES_M2B
+    from tests.unit_tests.skills.synthetic import synthetic_rows
+
+    rng = np.random.default_rng(3)
+    rows = []
+    for i, r in enumerate(synthetic_rows(n, n_objects=20)):
+        x = float(rng.uniform(lo, hi))
+        f = {k: r["features"].get(k, 0.0) for k in FEATURES_M2B}
+        f.update({flag: 1.0, feature: x})
+        hit = x > 0 if feature == "crush_margin" else x < 0
+        rows.append(dict(r, features=f, label=label if hit else "placed_stable"))
+    return rows
+
+
+def _frag_belief(n=64, f_damage=None, spill=None, fill=0.0):
+    from rpent.skills.pick_place.belief import ParticleBelief
+
+    f_damage = np.full(n, np.nan) if f_damage is None else np.asarray(f_damage, dtype=float)
+    spill = np.full(n, np.nan) if spill is None else np.asarray(spill, dtype=float)
+    parts = [{"mass": 0.2, "mu": 0.6, "com_obj": [0.0, 0.0, 0.02], "k_n_per_mm": 2.0, "v_bruise_ms": None, "v_break_ms": None,
+              "f_damage_n": None if not np.isfinite(f_damage[i]) else float(f_damage[i]),
+              "fill": float(fill), "spill_angle_deg": None if not np.isfinite(spill[i]) else float(spill[i])} for i in range(n)]
+    return ParticleBelief(parts, np.ones(n))
+
+
+def _dmenu(model, belief, entry, care="normal", abstain_cost=None, threshold=0.7):
+    from rpent.skills.pick_place.menu import geometry_pose
+
+    g = _geometry()
+    return build_menu(model, belief, g, [P(0.3), P(0.5), P(0.7)], 20.0, care, "table_centre", plan_fn, np.random.default_rng(0),
+                      pose_fn=lambda prop: dict(geometry_pose(g, prop), entry=entry), threshold=threshold, abstain_cost=abstain_cost)
+
+
+def test_light_grip_lowers_crush_risk_on_a_toy_model():
+    """A gbm on synthetic rows, crushed iff crush_margin > 0; the belief's f_damage_n spans 0.7 to 1.5 f_std: P(crushed) of
+    light_grip (0.5 f_std) < commit_std < firm_grip (2 f_std)."""
+    from rpent.skills.pick_place.features import FEATURES_M2B
+    from rpent.skills.pick_place.success_model import fit_success_model
+
+    model = fit_success_model(_damage_rows("crush_margin", "crushed"), names=FEATURES_M2B)
+    options, _ = _dmenu(model, _frag_belief(f_damage=np.linspace(14.0, 30.0, 64)), CRUSHABLE)
+    o = _by_id(options)
+    assert o["light_grip"].kind == "lower_risk" and o["light_grip"].action["force"] == 10.0
+    assert o["light_grip"].reason == "half the squeeze: less crush and bruise risk, more slip"
+    assert o["light_grip"].pred.p["crushed"] < o["commit_std"].pred.p["crushed"] < o["firm_grip"].pred.p["crushed"]
+
+
+def test_gentle_carry_lowers_spill_risk_on_a_toy_model():
+    """A gbm on synthetic rows, spilled iff spill_margin < 0; a mug filled to 0.6 with spill angles of 10 to 40 deg: the
+    standard carry (2.0 m/s^2, 23.05 deg) spills some, the gentle carry (0.5 m/s^2, 5.83 deg) none."""
+    from rpent.skills.pick_place.features import FEATURES_M2B
+    from rpent.skills.pick_place.success_model import fit_success_model
+
+    model = fit_success_model(_damage_rows("spill_margin", "spilled", flag="fillable"), names=FEATURES_M2B)
+    options, _ = _dmenu(model, _frag_belief(spill=np.linspace(10.0, 40.0, 64), fill=0.6), FILLABLE)
+    o = _by_id(options)
+    assert o["gentle_carry"].kind == "lower_risk" and o["gentle_carry"].action["a_transport"] == 0.5
+    assert o["gentle_carry"].reason == "a gentle carry: less spill risk, slower"
+    assert all(r.action["a_transport"] == 2.0 for k, r in o.items() if k not in ("gentle_carry", "decline"))
+    assert o["gentle_carry"].pred.p["spilled"] < o["commit_std"].pred.p["spilled"]
+
+
+class WindowModel:
+    """An empty force window: a squeeze that holds (crush_margin above log 0.75) crushes with P 0.15; a lighter one
+    does not lift (P(not_lifted) 0.8) and still crushes with P 0.02."""
+
+    kind = "classifier"
+
+    def __init__(self):
+        from rpent.skills.pick_place.features import FEATURES_M2B
+
+        self.feature_names = FEATURES_M2B
+
+    def predict_matrix(self, X):
+        j = list(self.feature_names).index("crush_margin")
+        P = np.zeros((len(X), len(OUTCOMES)))
+        col = {k: i for i, k in enumerate(OUTCOMES)}
+        holds = X[:, j] > np.log(0.75)
+        P[holds, col["placed_stable"]], P[holds, col["crushed"]] = 0.85, 0.15
+        P[~holds, col["placed_stable"]], P[~holds, col["not_lifted"]], P[~holds, col["crushed"]] = 0.18, 0.8, 0.02
+        return P, None, None
+
+
+def test_empty_window_declines_at_high_care():
+    """Review Focus 1: every squeeze that holds crushes sometimes, every lighter one fails to lift. At care 30 the best row
+    costs more than abstaining and the reason names crushed; at care 0.5 the rule commits."""
+    belief = _frag_belief(f_damage=np.full(64, 20.0))
+    options, rec = _dmenu(WindowModel(), belief, CRUSHABLE, care=30.0, abstain_cost=1.0)
+    assert rec == "decline" and "crushed carries the largest expected cost" in options[-1].reason
+    _, rec = _dmenu(WindowModel(), belief, CRUSHABLE, care=0.5, abstain_cost=1.0)
+    assert rec == "commit"
+
+
+def test_m2_models_get_no_damage_rows():
+    """A model without the damage features (the m2 bundle) gets the milestone 2a rows only: the m2 menus stay as recorded."""
+    options, _ = _menu()
+    ids = {o.id for o in options}
+    assert "light_grip" not in ids and "gentle_carry" not in ids and "commit_std" in ids

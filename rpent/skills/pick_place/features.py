@@ -51,6 +51,10 @@ DAMAGE_SENTINELS: dict[str, float] = {
 DAMAGE_FEATURES: tuple[str, ...] = tuple(DAMAGE_SENTINELS)
 FEATURES_M2B: tuple[str, ...] = FEATURES_M2 + DAMAGE_FEATURES
 FEATURE_SCHEMAS: dict[str, tuple[str, ...]] = {"m2": FEATURES_M2, "m2b": FEATURES_M2B}
+A_TRANSPORT = DAMAGE_SENTINELS["a_transport"]          # m/s^2: the standard carry's acceleration
+FRAG_KEYS: tuple[str, ...] = ("k_n_per_mm", "f_damage_n", "v_bruise_ms", "v_break_ms")   # a particle's hidden fragility
+DAMAGE_PARTICLE_KEYS: tuple[str, ...] = FRAG_KEYS + ("fill", "spill_angle_deg")          # what the damage features read
+FLAG_CLASS = {"frag_crush": "crushable", "frag_bruise": "bruisable", "frag_break": "breakable"}
 
 
 def model_names(model: Any) -> tuple[str, ...]:
@@ -132,9 +136,9 @@ def pinch_width(hulls: Sequence[np.ndarray], point, yaw: float, pad_half=PAD_HAL
 
 def extract(geometry: Geometry, point, yaw: float, mass: float, mu: float, force: float, v_lift: float,
             v_transport: float, destination: str, release_height: float | None = None, visibility: float = 1.0,
-            pad_half=PAD_HALF) -> dict[str, float]:
+            pad_half=PAD_HALF, a_transport: float = A_TRANSPORT) -> dict[str, float]:
     """Features of pinching `geometry` at `point` with the hand yaw `yaw`, squeezing `force` N per
-    pad, lifting at `v_lift`, carrying at `v_transport` to `destination`."""
+    pad, lifting at `v_lift`, carrying at `v_transport` (accelerating at `a_transport`) to `destination`."""
     C, N = np.asarray(geometry.centres), np.asarray(geometry.normals)
     pt = np.asarray(point, dtype=float)
     ex = np.array([np.cos(yaw), np.sin(yaw), 0.0])
@@ -180,6 +184,7 @@ def extract(geometry: Geometry, point, yaw: float, mass: float, mu: float, force
         "dest_edge_dist": float(edge_distance(dest)),
         "dest_has_surface": 1.0 if has_surface(dest) else 0.0,
         "dest_release_height": float(default_release_height(dest) if release_height is None else release_height),
+        "a_transport": float(a_transport),
     }
 
 
@@ -205,10 +210,53 @@ def _pose_arrays(pose: dict) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.nda
     return R, p, pt, np.array([-np.sin(yaw), np.cos(yaw), 0.0])
 
 
+def carry_deg(a_transport: float) -> float:
+    """The carry's surface step overshoot (decision 8): 2 atan(a_transport / g), in degrees."""
+    return float(np.degrees(2.0 * np.arctan(float(a_transport) / G)))
+
+
+def entry_flags(entry: dict | None) -> dict[str, float] | None:
+    """The four public flags of a fragility entry ({class, law, fillable}), or None without an entry."""
+    if not entry:
+        return None
+    out = {k: 1.0 if entry.get("class") == c else 0.0 for k, c in FLAG_CLASS.items()}
+    out["fillable"] = 1.0 if entry.get("fillable") else 0.0
+    return out
+
+
+def damage_columns(arrays: dict[str, np.ndarray], force: float, a_transport: float, n: int) -> dict[str, np.ndarray]:
+    """The damage margins (milestone 2b) that the particles' keys determine: crush_margin log(F / f_damage_n) from
+    ``f_damage_n``, log_v_damage log(min(v_bruise, v_break)) from either speed, the fill, and spill_margin
+    log(spill_angle_deg / carry_deg) from the spill angle (for a filled particle). A value that is NaN (None) gets the
+    sentinel; a column whose keys the particles lack is not returned (the base's value stands)."""
+    S = DAMAGE_SENTINELS
+
+    def col(k: str) -> np.ndarray:
+        return np.asarray(arrays[k], dtype=float).reshape(-1) if k in arrays else np.full(n, np.nan)
+
+    out: dict[str, np.ndarray] = {}
+    with np.errstate(divide="ignore", invalid="ignore"):
+        if "f_damage_n" in arrays:
+            f_d = col("f_damage_n")
+            out["crush_margin"] = np.where(np.isfinite(f_d) & (f_d > 0), np.log(float(force) / f_d), S["crush_margin"])
+        if "v_bruise_ms" in arrays or "v_break_ms" in arrays:
+            vb, vk = col("v_bruise_ms"), col("v_break_ms")
+            v = np.fmin(np.where(vb > 0, vb, np.nan), np.where(vk > 0, vk, np.nan))
+            out["log_v_damage"] = np.where(np.isfinite(v), np.log(v), S["log_v_damage"])
+        if "fill" in arrays:
+            out["fill"] = np.nan_to_num(col("fill"), nan=0.0)
+        if "spill_angle_deg" in arrays:
+            spill, cd = col("spill_angle_deg"), carry_deg(a_transport)
+            filled = out["fill"] > 0 if "fill" in out else np.isfinite(spill)
+            out["spill_margin"] = np.where(filled & np.isfinite(spill) & (spill > 0) & (cd > 0), np.log(spill / cd), S["spill_margin"])
+    return out
+
+
 def particle_features(base: dict[str, float], particle: dict, pose: dict, force: float) -> dict[str, float]:
     """``base`` (the action's ``extract`` features) with one particle's mass, friction and CoM:
     the CoM maps from the object frame through the pose (R, p); lever, CoM height, base ratio and
-    CoM height ratio follow it."""
+    CoM height ratio follow it. The damage features come from the pose's ``entry`` (the public flags; without one
+    the base's stand), the particle's fragility, fill and spill angle, the squeeze and the base's ``a_transport``."""
     R, p, pt, ey = _pose_arrays(pose)
     c = R @ np.asarray(particle["com_obj"], dtype=float) + p
     m, mu = float(particle["mass"]), float(particle["mu"])
@@ -224,13 +272,19 @@ def particle_features(base: dict[str, float], particle: dict, pose: dict, force:
         "base_ratio": float(pose["base_extent"]) / h if h > 0 else float("nan"),
         "com_height_ratio": h / length if length > 0 else float("nan"),
     })
+    out.update(entry_flags(pose.get("entry")) or {})
+    one = {k: np.array([np.nan if particle[k] is None else particle[k]], dtype=float) for k in DAMAGE_PARTICLE_KEYS if k in particle}
+    out.update({k: float(v[0]) for k, v in damage_columns(one, force, float(base.get("a_transport", A_TRANSPORT)), 1).items()})
+    for k, v in DAMAGE_SENTINELS.items():              # a damage feature nothing determines reads its sentinel
+        if not np.isfinite(float(out.get(k, float("nan")))):
+            out[k] = v
     return out
 
 
 def particle_matrix(base: dict[str, float], arrays: dict[str, np.ndarray], pose: dict, force: float,
                     names: Sequence[str] = FEATURES_M2) -> np.ndarray:
-    """``particle_features`` for every particle, as rows in ``names`` order (non-finite becomes 0, as in as_vector);
-    the damage features are the base's."""
+    """``particle_features`` for every particle, as rows in ``names`` order (a non-finite damage feature reads its
+    sentinel, any other becomes 0, as in as_vector)."""
     R, p, pt, ey = _pose_arrays(pose)
     m, mu = np.asarray(arrays["mass"], dtype=float), np.asarray(arrays["mu"], dtype=float)
     C = np.asarray(arrays["com_obj"], dtype=float).reshape(-1, 3) @ R.T + p
@@ -246,6 +300,12 @@ def particle_matrix(base: dict[str, float], arrays: dict[str, np.ndarray], pose:
         X[:, idx["com_h"]] = C[:, 2] - pt[2]
         X[:, idx["base_ratio"]] = np.where(h > 0, float(pose["base_extent"]) / h, np.nan)
         X[:, idx["com_height_ratio"]] = h / length if length > 0 else np.nan
+    if any(k in idx for k in DAMAGE_FEATURES):
+        flags = entry_flags(pose.get("entry")) or {}
+        cols = damage_columns(arrays, force, float(base.get("a_transport", A_TRANSPORT)), len(m))
+        for k, v in list(flags.items()) + list(cols.items()):      # the rest are the base's (as_vector: or the sentinels)
+            if k in idx:
+                X[:, idx[k]] = v
     X[~np.isfinite(X)] = 0.0
     return X
 

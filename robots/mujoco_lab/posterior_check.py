@@ -55,7 +55,7 @@ from robots.mujoco_lab.prior import com_hypothesis, lab_prior
 from robots.mujoco_lab.robot_spec import load_bundle
 from robots.mujoco_lab.train_models import load_rows, write_manifest
 from rpent.skills.pick_place.belief import ParticleBelief
-from rpent.skills.pick_place.evaluate import rows_of
+from rpent.skills.pick_place.evaluate import row_base, row_pose, rows_of
 from rpent.skills.pick_place.features import model_names, particle_matrix, particle_sides
 from rpent.skills.pick_place.likelihood import as_law
 
@@ -104,7 +104,7 @@ def check_rows(rows: list[dict[str, Any]], bundle: dict[str, Any], grid: list[fl
     for r in rows:
         b = prior(r["pose"], n, rng)
         a = b.arrays()
-        X = particle_matrix(r["features"], a, r["pose"], r["force"], model_names(model))
+        X = particle_matrix(row_base(r), a, row_pose(r), r["force"], model_names(model))
         P = model.predict_matrix(X, r.get("planned"))[0]
         obs = {"label": r["label"], "readouts": r["readouts"], "force": r["force"]}
         comp, info = readout.components(obs, P, X, a, particle_sides(a, r["pose"]))

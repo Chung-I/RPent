@@ -296,3 +296,51 @@ def test_load_bundle_takes_the_prior_from_the_manifest(tmp_path):
     json.dump({**man, "thresholds": {"path": THRESHOLDS_V0, "sha256": "0" * 64}}, open(path, "w"))
     with pytest.raises(ValueError, match="sha256"):
         load_bundle(str(tmp_path / "b"))
+
+
+def _m2b_rows(n=300):
+    """Synthetic rows with corpus v9 fields: a tenth crushed on a crushable entry with a low f_damage_n, a tenth spilled on
+    a fillable entry at fill 0.6, the rest on class none."""
+    from tests.unit_tests.skills.synthetic import synthetic_rows, with_pose
+
+    none = {"class": "none", "law": None, "fillable": False}
+    out = []
+    for i, r in enumerate(with_pose(synthetic_rows(n))):
+        r = dict(r, entry=none, theta_frag=None, fill=0.0, spill_angle_deg=None, a_transport=2.0)
+        if i % 10 == 0:
+            r.update(label="crushed", entry={"class": "crushable", "law": "cardboard", "fillable": False},
+                     theta_frag={"k_n_per_mm": 1.0, "f_damage_n": 0.5 * r["force"], "v_bruise_ms": None, "v_break_ms": None,
+                                 "z": [0.0, 0.0, 0.0]})
+        elif i % 10 == 1:
+            r.update(label="spilled", entry={"class": "breakable", "law": "ceramic", "fillable": True}, fill=0.6,
+                     spill_angle_deg=15.0, theta_frag={"k_n_per_mm": None, "f_damage_n": None, "v_bruise_ms": None,
+                                                       "v_break_ms": 1.5, "z": [0.0, 0.0, 0.0]})
+        out.append(r)
+    return out
+
+
+def test_steel_object_has_no_damage_mass_end_to_end(tmp_path):
+    """Review Focus 4: an m2b bundle trained on rows with damage labels writes the m2b manifest (the m2b prior, the class and
+    threshold files with their sha256); a steel object (class none) through assess_pick gets probability exactly 0 for
+    every damage class in every row."""
+    from robots.mujoco_lab.fragility import CLASSES, THRESHOLDS_V0
+    from robots.mujoco_lab.prior import M2B_PRIOR, sha256_of
+    from robots.mujoco_lab.robot_spec import build_lab
+    from robots.mujoco_lab.train_models import main
+    from rpent.skills.pick_place.protocol import DAMAGE
+    from rpent.skills.pick_place.tools import _assess
+
+    corpus = tmp_path / "c.jsonl"
+    _write(_m2b_rows(), corpus)
+    main(["--corpus", str(corpus), "--out-dir", str(tmp_path / "b"), "--n-belief", "4", "--feature-schema", "m2b",
+          "--classes", CLASSES, "--thresholds", THRESHOLDS_V0])
+    man = json.load(open(tmp_path / "b" / "manifest.json"))
+    assert man["prior"] == M2B_PRIOR and man["feature_schema"] == "m2b" and man["decision"] == {"abstain_cost": 1.0}
+    assert man["classes"]["sha256"] == sha256_of(CLASSES) and man["thresholds"]["sha256"] == sha256_of(THRESHOLDS_V0)
+    prims = build_lab(bundle=str(tmp_path / "b"))
+    prims.env.reset("handal__hammer", seed=0)
+    err, a = _assess("object", "table_centre", "normal", prims, {})
+    assert err is None, err
+    rows = [o for o in a.options if o.pred is not None]
+    assert rows and {"light_grip", "gentle_carry"} <= {o.id for o in rows}
+    assert all(o.pred.p[k] == 0.0 for o in rows for k in DAMAGE)

@@ -30,6 +30,8 @@ from typing import Any, Callable
 
 import numpy as np
 
+from rpent.skills.pick_place.features import DAMAGE_PARTICLE_KEYS
+
 # kg/m^3, a copy of the sim's MATERIAL table (sim/objects.py; a test checks they agree);
 # hollow objects are shells at a quarter of the density, as prepare.py applies it
 RHO: dict[str, float] = {
@@ -152,7 +154,8 @@ class ParticleBelief:
         return [dict(self.particles[int(i)]) for i in np.minimum(idx, len(self.particles) - 1)]
 
     def arrays(self) -> dict[str, np.ndarray]:
-        """The particles as arrays: mass, mu (n,), com_obj (n, 3), and the generator keys present in all."""
+        """The particles as arrays: mass, mu (n,), com_obj (n, 3), and the generator keys present in all (the fragility
+        keys, the fill and the spill angle among them, NaN where a particle's value is None)."""
         if self._arrays is None:
             P = self.particles
             out = {"mass": np.array([p["mass"] for p in P], dtype=float), "mu": np.array([p["mu"] for p in P], dtype=float),
@@ -164,6 +167,9 @@ class ParticleBelief:
                 out["com_branch"] = np.array([bool(p["com_branch"]) for p in P])
             if all("com_s" in p for p in P):
                 out["com_s"] = np.array([np.nan if p["com_s"] is None else p["com_s"] for p in P], dtype=float)
+            for k in DAMAGE_PARTICLE_KEYS:              # milestone 2b: the fragility, the fill and the spill angle
+                if all(k in p for p in P):
+                    out[k] = np.array([np.nan if p[k] is None else p[k] for p in P], dtype=float)
             self._arrays = out
         return self._arrays
 

@@ -231,3 +231,50 @@ def test_particle_matrix_follows_the_names():
     X = particle_matrix(base, arrays, synthetic_pose(), 20.0, FEATURES_M2B)
     assert X.shape == (2, len(FEATURES_M2B)) and np.array_equal(X[:, :19], X2)
     assert X[:, FEATURES_M2B.index("fill")].tolist() == [0.6, 0.6] and X[:, FEATURES_M2B.index("crush_margin")].tolist() == [-5.0, -5.0]
+
+
+def _frag_particle(f_damage_n=None, v_bruise=None, v_break=None, fill=0.0, spill=None, mass=0.3):
+    return {"mass": mass, "mu": 0.5, "com_obj": [0.0, 0.0, 0.03], "k_n_per_mm": None if f_damage_n is None else 2.0,
+            "f_damage_n": f_damage_n, "v_bruise_ms": v_bruise, "v_break_ms": v_break, "fill": fill, "spill_angle_deg": spill}
+
+
+def test_damage_features_per_particle():
+    """f_damage_n 20 and 40 N at a 30 N squeeze: crush_margin log(30 / 20) = 0.405 and log(30 / 40) = -0.288; a spill
+    angle of 20 deg at 2.0 m/s^2 (carry 2 atan(2.0 / 9.81) = 23.05 deg): spill_margin log(20 / 23.05) = -0.142; an empty
+    particle reads 5. The flags come from the pose's entry, and particle_matrix agrees with particle_features."""
+    from rpent.skills.pick_place.belief import ParticleBelief
+    from rpent.skills.pick_place.features import FEATURES_M2B
+    from tests.unit_tests.skills.synthetic import synthetic_pose
+
+    pose = dict(synthetic_pose(), entry={"class": "crushable", "law": "cardboard", "fillable": True})
+    base = extract(_box_geometry(), [0.0, 0.0, 0.0], 0.0, 0.3, 0.5, 30.0, 0.15, 0.5, "table_centre", a_transport=2.0)
+    parts = [_frag_particle(20.0, v_bruise=1.2, v_break=2.0, fill=0.5, spill=20.0), _frag_particle(40.0)]
+    f = [particle_features(base, p, pose, 30.0) for p in parts]
+    assert f[0]["crush_margin"] == pytest.approx(0.405, abs=1e-3) and f[1]["crush_margin"] == pytest.approx(-0.288, abs=1e-3)
+    assert f[0]["spill_margin"] == pytest.approx(-0.142, abs=1e-3) and f[1]["spill_margin"] == 5.0
+    assert f[0]["log_v_damage"] == pytest.approx(np.log(1.2)) and f[1]["log_v_damage"] == 5.0
+    assert (f[0]["frag_crush"], f[0]["frag_bruise"], f[0]["frag_break"], f[0]["fillable"]) == (1.0, 0.0, 0.0, 1.0)
+    assert (f[0]["fill"], f[1]["fill"], f[0]["a_transport"]) == (0.5, 0.0, 2.0)
+    X = particle_matrix(base, ParticleBelief(parts, np.ones(2)).arrays(), pose, 30.0, FEATURES_M2B)
+    for j, k in enumerate(FEATURES_M2B):
+        assert X[:, j] == pytest.approx([f[0][k] if np.isfinite(f[0][k]) else 0.0, f[1][k] if np.isfinite(f[1][k]) else 0.0]), k
+
+
+def test_true_features_fill_the_damage_features():
+    """A corpus v9 row: true_features reads its entry, theta_frag, fill, spill angle, force and carry acceleration; a v8
+    row (none of them) reads the sentinels."""
+    from rpent.skills.pick_place.evaluate import true_features
+    from tests.unit_tests.skills.synthetic import synthetic_pose
+
+    base = extract(_box_geometry(), [0.0, 0.0, 0.0], 0.0, 0.3, 0.5, 30.0, 0.15, 0.5, "table_centre")
+    row = {"features": base, "truth": {"mass": 0.3, "mu": 0.5}, "com_obj_true": [0.0, 0.0, 0.03], "pose": synthetic_pose(),
+           "force": 30.0, "a_transport": 0.5, "entry": {"class": "bruisable", "law": "fruit", "fillable": False},
+           "theta_frag": {"k_n_per_mm": 2.0, "f_damage_n": 20.0, "v_bruise_ms": 1.2, "v_break_ms": None, "z": [0.0, 0.0, 0.0]},
+           "fill": 0.0, "spill_angle_deg": None}
+    f = true_features(row)
+    assert (f["frag_bruise"], f["frag_crush"], f["fillable"]) == (1.0, 0.0, 0.0)
+    assert f["crush_margin"] == pytest.approx(np.log(30 / 20)) and f["log_v_damage"] == pytest.approx(np.log(1.2))
+    assert (f["a_transport"], f["spill_margin"], f["fill"]) == (0.5, 5.0, 0.0)
+    v8 = {k: v for k, v in row.items() if k not in ("a_transport", "entry", "theta_frag", "fill", "spill_angle_deg")}
+    g = true_features(v8)
+    assert (g["crush_margin"], g["log_v_damage"], g["spill_margin"], g["a_transport"], g["frag_bruise"]) == (-5.0, 5.0, 5.0, 2.0, 0.0)

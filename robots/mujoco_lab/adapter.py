@@ -41,7 +41,7 @@ from typing import Any
 import numpy as np
 
 from rpent.skills.pick_place.destinations import DESTINATIONS, OBJECT_REST_XY, PRIMITIVE_IDS, has_surface, is_mesh, release_height
-from robots.mujoco_lab.fragility import THRESHOLDS_V0, Thresholds, damage_event, entry_of, liquid, load_classes, spill_angle
+from robots.mujoco_lab.fragility import FLAGS, THRESHOLDS_V0, Thresholds, damage_event, entry_of, liquid, load_classes, spill_angle
 from robots.mujoco_lab.labels import Final, final_label, first_lifted, label_rollout, lifted
 from robots.mujoco_lab.meter import DamageMeter
 from robots.mujoco_lab.readouts import RISEN_M, slide_force, summarize
@@ -634,6 +634,7 @@ class MuJoCoLabEnv:
             "com_obj_nominal": [float(x) for x in self.props["com"]],
             "pivot": {"centre": [float(x) for x in self.props["centre"]], "axis": [float(x) for x in ax], "lo": float(lo), "L": float(L)},
             "nominal_mass": float(self.props["mass"]),
+            "entry": {k: self.entry.get(k) for k in FLAGS},          # the public fragility flags (milestone 2b)
         }
 
     def proposal_pose(self, proposal: Proposal) -> dict[str, Any]:

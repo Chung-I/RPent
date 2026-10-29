@@ -36,9 +36,9 @@ from rpent.skills.pick_place.belief import MIN_ESS, N_PARTICLES, REFRESH_DRAWS, 
 from rpent.skills.pick_place.costs import care_scale, prediction_matrix
 from rpent.skills.pick_place.destinations import DESTINATIONS
 from rpent.skills.pick_place.diagnose import diagnose
-from rpent.skills.pick_place.features import model_names, particle_matrix, particle_sides
+from rpent.skills.pick_place.features import A_TRANSPORT, model_names, particle_matrix, particle_sides
 from rpent.skills.pick_place.menu import build_menu, estimate, geometry_pose, pinch_limit
-from rpent.skills.pick_place.protocol import OUTCOMES, Assessment, Option
+from rpent.skills.pick_place.protocol import IRREVERSIBLE, OUTCOMES, RECOVERABLE, Assessment, Option
 from rpent.tools.base import ToolResult, tool
 
 G = 9.81
@@ -271,7 +271,8 @@ def _attempt(option: Option, object: str, destination: str, care: str, primitive
     rec = _belief_record(loc, env, primitives, store)
     prop = next(p for p in env.proposals() if abs(p.s - option.action["s"]) < 1e-9)
     act = option.action
-    r = env.execute(prop, act["force"], act["v_lift"], act["v_transport"], act["destination"], act.get("release_height"))
+    r = env.execute(prop, act["force"], act["v_lift"], act["v_transport"], act["destination"], act.get("release_height"),
+                    a_transport=act.get("a_transport", A_TRANSPORT))
     declared = option.to_data()
     readouts = dict(getattr(r, "readouts", None) or {})
     entry = {"type": "attempt", "option": option.id, "base": option._base, "pose": option._pose, "force": float(act["force"]),
@@ -291,8 +292,8 @@ def _attempt(option: Option, object: str, destination: str, care: str, primitive
         "damage": getattr(r, "damage", None),                  # the damage meter's first threshold crossing, if any
         "meter_max": _meter_max(getattr(r, "meter", None)),
         "declared": {"p_success": declared["p"]["placed_stable"],
-                     "p_irreversible": {k: declared["p"][k] for k in ("dropped_high", "rolled_off")},
-                     "p_recoverable": {k: declared["p"][k] for k in ("tipped", "missed", "dropped_low", "not_lifted")},
+                     "p_irreversible": {k: declared["p"][k] for k in IRREVERSIBLE},
+                     "p_recoverable": {k: declared["p"][k] for k in RECOVERABLE},
                      "p_drop_height": declared["p_drop_height"], "expected_cost": declared["expected_cost"]},
         "readouts": readouts,
         "diagnosis": diagnose(r.label, readouts, act, before.to_data(), after.to_data(), laws=_laws(primitives, r.label),

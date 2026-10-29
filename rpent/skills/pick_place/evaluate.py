@@ -33,7 +33,7 @@ from typing import Any
 import numpy as np
 
 from rpent.skills.pick_place.belief import Belief
-from rpent.skills.pick_place.features import particle_features
+from rpent.skills.pick_place.features import A_TRANSPORT, FRAG_KEYS, particle_features
 from rpent.skills.pick_place.protocol import MOTION_OUTCOMES, OUTCOMES, Prediction
 
 G = 9.81
@@ -61,10 +61,25 @@ def rows_of(rows: list[dict[str, Any]], object_ids) -> list[dict[str, Any]]:
     return [r for r in rows if r["object"] in ids]
 
 
+def row_base(row: dict[str, Any]) -> dict[str, float]:
+    """The row's action features with its carry acceleration (corpus v9: ``a_transport``; earlier rows: the standard)."""
+    return dict(row["features"], a_transport=float(row.get("a_transport", row["features"].get("a_transport", A_TRANSPORT))))
+
+
+def row_pose(row: dict[str, Any]) -> dict[str, Any]:
+    """The row's pose with its public fragility entry (corpus v9: ``entry``), when the pose has none."""
+    pose = row["pose"]
+    return dict(pose, entry=row["entry"]) if row.get("entry") and "entry" not in pose else pose
+
+
 def true_features(row: dict[str, Any]) -> dict[str, float]:
-    """The row's features at its true mass, friction and CoM (corpus v2: ``pose`` and ``com_obj_true``)."""
-    truth = {"mass": row["truth"]["mass"], "mu": row["truth"]["mu"], "com_obj": row["com_obj_true"]}
-    return particle_features(row["features"], truth, row["pose"], row["force"])
+    """The row's features at its true mass, friction and CoM (corpus v2: ``pose`` and ``com_obj_true``) and, for corpus
+    v9, its true fragility, fill and spill angle."""
+    frag = row.get("theta_frag") or {}
+    truth = {"mass": row["truth"]["mass"], "mu": row["truth"]["mu"], "com_obj": row["com_obj_true"],
+             **{k: frag.get(k) for k in FRAG_KEYS}, "fill": float(row.get("fill") or 0.0),
+             "spill_angle_deg": row.get("spill_angle_deg")}
+    return particle_features(row_base(row), truth, row_pose(row), row["force"])
 
 
 def belief_features(row: dict[str, Any], rng: np.random.Generator, n: int = 64, prior_fn=None) -> list[dict[str, float]]:
@@ -73,7 +88,8 @@ def belief_features(row: dict[str, Any], rng: np.random.Generator, n: int = 64, 
     (mass, friction, lever noise)."""
     if prior_fn is not None:
         b = prior_fn(row["pose"], n, rng)
-        return [particle_features(row["features"], part, row["pose"], row["force"]) for part in b.particles]
+        base, pose = row_base(row), row_pose(row)
+        return [particle_features(base, part, pose, row["force"]) for part in b.particles]
     g = row["geometry"]
     belief = Belief.prior(g["volume"], g["material"], g.get("hollow", False), row["features"].get("visibility", 1.0),
                           length=g.get("length"))

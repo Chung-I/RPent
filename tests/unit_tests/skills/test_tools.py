@@ -51,12 +51,12 @@ class FakeEnv:
         return Geometry(centres=np.zeros((2, 3)), normals=np.array([[1.0, 0, 0], [-1.0, 0, 0]]), com=np.array([0.0, 0.0, 0.81]),
                         length=0.1, base_extent=0.03, com_height=0.04, footprint_half_width=0.05)
 
-    def plan_trajectory(self, proposal, v_lift, v_transport, destination, release_height=None):
+    def plan_trajectory(self, proposal, v_lift, v_transport, destination, release_height=None, a_transport=2.0):
         return [{"phase": "lift", "n_steps": 10, "z_start": 0.0, "z_end": 0.2, "has_surface": True, "speed": v_lift}]
 
-    def execute(self, proposal, force, v_lift, v_transport=0.5, destination="bin", release_height=None):
+    def execute(self, proposal, force, v_lift, v_transport=0.5, destination="bin", release_height=None, a_transport=2.0):
         self.calls.append({"s": proposal.s, "force": force, "v_lift": v_lift, "v_transport": v_transport,
-                           "destination": destination, "release_height": release_height})
+                           "destination": destination, "release_height": release_height, "a_transport": a_transport})
         return FakeRollout(self.label)
 
     def nominal_mass(self, object_id):
@@ -267,8 +267,8 @@ class _ReadingEnv(_PoseEnv):
     def proposal_pose(self, prop):
         return {**self.pose_info(), "pt": [float(x) for x in prop.point], "yaw": float(prop.yaw)}
 
-    def execute(self, proposal, force, v_lift, v_transport=0.5, destination="bin", release_height=None):
-        super().execute(proposal, force, v_lift, v_transport, destination, release_height)
+    def execute(self, proposal, force, v_lift, v_transport=0.5, destination="bin", release_height=None, a_transport=2.0):
+        super().execute(proposal, force, v_lift, v_transport, destination, release_height, a_transport)
         label, readouts = self.results.pop(0)
         return _ReadoutRollout(label, readouts)
 
@@ -305,6 +305,15 @@ def test_attempt_payload_carries_the_damage_and_the_meter_maxima():
     assert r["meter_max"] == {"fn_pad_max": 7.5, "surface_max": 31.0, "impacts": 0.0}
     plain = _commit(_bprims(_ReadingEnv([("placed_stable", {"rot_deg": 0.0, "heavy_side": 0})])), {})
     assert plain["damage"] is None and plain["meter_max"] == {}
+
+
+def test_attempt_declares_every_irreversible_class():
+    """The attempt's declared probabilities split the outcomes as the menu does: the damage classes are
+    irreversible, next to dropped_high and rolled_off."""
+    from rpent.skills.pick_place.protocol import IRREVERSIBLE, RECOVERABLE
+    r = _commit(_bprims(_ReadingEnv([("placed_stable", {"rot_deg": 0.0, "heavy_side": 0})])), {})
+    assert tuple(r["declared"]["p_irreversible"]) == IRREVERSIBLE
+    assert tuple(r["declared"]["p_recoverable"]) == RECOVERABLE
 
 
 def test_pick_payload_carries_readouts_diagnosis_and_beliefs():
@@ -674,3 +683,25 @@ def test_pick_and_place_executes_only_a_commit_recommendation():
     prims = _aprims(StubModel(ps=0.95))
     r = pick_and_place(object="mug", destination="table_centre", primitives=prims, store={}).data
     assert r["outcome"] == "placed_stable" and len(prims.env.calls) == 1
+
+
+class _M2BStub(StubModel):
+    """The stub on the m2b features: the menu offers light_grip and gentle_carry."""
+
+    def __init__(self, ps=0.8):
+        from rpent.skills.pick_place.features import FEATURES_M2B
+
+        super().__init__(ps)
+        self.feature_names = FEATURES_M2B
+
+
+def test_pick_passes_the_carry_acceleration_to_execute():
+    """Every action carries a_transport; pick_and_place hands it to execute (2.0 for commit_std, 0.5 for gentle_carry)."""
+    env = FakeEnv()
+    prims = _prims(env, model=_M2BStub())
+    d = assess_pick(object="mug", destination="table_centre", primitives=prims, store={}).data
+    assert {o["id"] for o in d["options"]} >= {"light_grip", "gentle_carry"}
+    assert all(o["action"]["a_transport"] in (0.5, 2.0) for o in d["options"] if o["kind"] in ("commit", "lower_risk"))
+    pick_and_place(object="mug", destination="table_centre", option_id="commit_std", primitives=prims, store={})
+    pick_and_place(object="mug", destination="table_centre", option_id="gentle_carry", primitives=prims, store={})
+    assert [c["a_transport"] for c in env.calls] == [2.0, 0.5]

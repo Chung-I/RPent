@@ -39,7 +39,8 @@ narrow core with a wide tail (likelihood.fit_law); the readings of an inner spli
 the damage features) and writes ``feature_schema``, ``outcome_schema`` and the cost rule's ``decision``
 ({"abstain_cost": 1.0}) into the manifest; damage labels need it. The hazard model models motion labels only
 (HazardModel.supports): with damage labels it is not fitted ("not eligible") and the classifier is the kind.
-Probe models and the guard follow the bundle's manifest schema.
+Probe models and the guard follow the bundle's manifest schema. Under true features its prior is the m2b generator
+(prior.make_prior) on ``--classes`` and ``--thresholds``, which the manifest names with their sha256.
 
 Every bundle carries the novelty guard (guard.KnnGuard, ``knn_guard.npz``, manifest key ``guard``), fit on its
 training rows. ``--guard`` alone fits it into an existing bundle (its manifest's corpus, features and split), or into
@@ -59,6 +60,7 @@ import json
 import os
 import sys
 import time
+from typing import Any
 
 import numpy as np
 
@@ -103,6 +105,22 @@ def write_manifest(out_dir: str, **fields) -> dict:
     with open(path, "w") as f:
         json.dump(man, f, indent=1)
     return man
+
+
+def m2b_world(classes: str | None, thresholds: str | None) -> tuple[Any, str, dict[str, Any]]:
+    """The m2b prior on a fragility world: (prior_fn, the manifest's prior name, the manifest's ``classes`` and
+    ``thresholds`` entries {path, sha256}). The files default to data/fragility_classes.json and data/thresholds_v0.json;
+    a path under robots/mujoco_lab/data is stored relative to it."""
+    from robots.mujoco_lab.fragility import CLASSES, DATA, THRESHOLDS_V0, Thresholds, load_classes
+    from robots.mujoco_lab.prior import M2B_PRIOR, make_prior, sha256_of
+
+    def entry(path: str) -> dict[str, str]:
+        rel = os.path.relpath(os.path.abspath(path), DATA)
+        return {"path": os.path.abspath(path) if rel.startswith("..") else rel, "sha256": sha256_of(path)}
+
+    cpath, tpath = classes or CLASSES, thresholds or THRESHOLDS_V0
+    return (make_prior(load_classes(cpath), Thresholds.from_json(tpath)), M2B_PRIOR,
+            {"classes": entry(cpath), "thresholds": entry(tpath)})
 
 
 def bundle_schema(out_dir: str, schema: str | None = None) -> str:
@@ -211,6 +229,8 @@ def main(argv: list[str] | None = None) -> dict:
     ap.add_argument("--guard", action="store_true", help="alone: fit the novelty guard into the existing bundle or folds directory")
     ap.add_argument("--feature-schema", choices=tuple(FEATURE_SCHEMAS), default=None,
                     help="the models' features: m2 (default) or m2b (with the damage features); probes follow the bundle's")
+    ap.add_argument("--classes", default=None, help="m2b: the fragility classes file (default data/fragility_classes.json)")
+    ap.add_argument("--thresholds", default=None, help="m2b: the damage thresholds file (default data/thresholds_v0.json)")
     a = ap.parse_args(argv)
     if a.guard and not a.corpus and not a.probe_corpus:
         return {"guard": add_guard(a.out_dir, a.seed)}
@@ -299,8 +319,10 @@ def train_bundle(a: argparse.Namespace, split: dict | None = None, rows: list[di
         if missing:
             raise SystemExit(f"{missing} rows have no pose or true CoM: --features true needs the corpus v2 fields "
                              "(regenerate the corpus, or pass --features nominal)")
-    prior_fn, prior = (None, "m1_parametric")
-    if a.features == "true":
+    prior_fn, prior, world = None, "m1_parametric", {}
+    if a.features == "true" and schema == "m2b":
+        prior_fn, prior, world = m2b_world(getattr(a, "classes", None), getattr(a, "thresholds", None))
+    elif a.features == "true":
         from robots.mujoco_lab.prior import lab_prior
 
         prior_fn, prior = lab_prior, "lab_generator"
@@ -348,7 +370,7 @@ def train_bundle(a: argparse.Namespace, split: dict | None = None, rows: list[di
                    feature_schema=schema, outcome_schema=schema,
                    decision={"abstain_cost": ABSTAIN_COST} if schema == "m2b" else None,
                    readout_model=READOUT_MODEL if readout else None, guard=GUARD if guard else None,
-                   tempers={})                                                         # new models: tempers are re-chosen
+                   tempers={}, **world)                                                # new models: tempers are re-chosen
     out["wandb"] = tracking.log_run("train_models", {"corpus": out["corpus"], "features": a.features, "prior": prior,
                                                      "seed": a.seed, "n_belief": a.n_belief, "out_dir": a.out_dir},
                                     {"acceptance_val_belief": out["acceptance_val_belief"], "kind_hazard": kind == "hazard",
