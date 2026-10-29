@@ -55,11 +55,12 @@ def _lift(env, key: str):
     return row, [(x["hand_z"] - tr[i0 - 1]["hand_z"], x["grip_dz"]) for x in lift]
 
 
-@pytest.mark.parametrize("key", ["hope__yogurt_cup__d34", "ycb__scissors__d91"])
+@pytest.mark.parametrize("key", ["hope__yogurt_cup__d34", "hope__ranch_dressing__d14"])
 def test_a_firm_grip_does_not_creep(env, key):
     """yogurt_cup d34: 2 mu F is 154 times the weight. In the 4 s lift at 0.05 m/s the tapered cup crept 5 mm
-    up and 15 mm sideways out of the pads (dropped_high). scissors d91: 2 mu F is 6.3 times the weight. They
-    crept along the pads for 1.4 s, then slid 35 mm (dropped_low)."""
+    up and 15 mm sideways out of the pads (dropped_high). ranch_dressing d14: 2 mu F is 8.0 times the weight.
+    Without noslip the bottle creeps 4.6 mm along the pads in the lift and tips at the set-down. (scissors
+    d91, the earlier case, turns in its off-centre pinch under the calibrated torsion: that is not creep.)"""
     row, lift = _lift(env, key)
     assert len(lift) >= 200 and max(abs(g - h) for h, g in lift) < 0.001
     assert row["label"] == "placed_stable"

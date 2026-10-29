@@ -59,15 +59,16 @@ def test_at_rest_needs_a_still_window():
 
 
 def test_reset_leaves_the_object_at_rest_near_the_rest_xy():
-    """Case (11, lizard, 5): the old reset placed the lizard at its default drop's 25 cm drift and returned
-    while it tumbled off the table edge."""
+    """Case (11, lizard, 0): the lizard's rest-pose drop drifts 26 cm. The old reset placed it at that drift and
+    returned while it tumbled off the table edge (case (11, lizard, 5) until the calibrated torsion, which
+    now rocks: see the next test)."""
     from robots.mujoco_lab.adapter import OBJECT_REST_XY, object_props
     from robots.mujoco_lab.calibrate import case_draw
 
     env = _env()
     obj = "hot3d__lizard_figurine"
-    theta, com_end, _ = case_draw(11, obj, 5, object_props(obj)["mass"])
-    env.reset(obj, theta, seed=11005, com_end=com_end)
+    theta, com_end, _ = case_draw(11, obj, 0, object_props(obj)["mass"])
+    env.reset(obj, theta, seed=11000, com_end=com_end)
     info = env.reset_info
     assert info["at_rest"] and info["zone"] in ("table", *env.fixtures_in_scene) and 0.2 <= info["settle_s"] <= 3.0
     p0 = env.sim.obj_pos().copy()
@@ -76,6 +77,19 @@ def test_reset_leaves_the_object_at_rest_near_the_rest_xy():
         env.sim.step_ctrl()
     assert np.linalg.norm(env.sim.obj_pos() - p0) < 0.002
 
+
+
+def test_a_reset_that_does_not_reach_rest_says_so():
+    """Case (11, lizard, 5): with the hulls' torsional friction at 3 mm times mu the lizard rocks on the table and
+    does not settle (an at-rest artifact of the native collider; the corpus leaves such rows out)."""
+    from robots.mujoco_lab.adapter import REST_CAP_S, object_props
+    from robots.mujoco_lab.calibrate import case_draw
+
+    env = _env()
+    obj = "hot3d__lizard_figurine"
+    theta, com_end, _ = case_draw(11, obj, 5, object_props(obj)["mass"])
+    env.reset(obj, theta, seed=11005, com_end=com_end)
+    assert env.reset_info == {"settle_s": REST_CAP_S, "at_rest": False, "zone": "table"}
 
 def test_reset_puts_an_object_that_left_the_table_in_its_drop_on_the_table():
     """Corpus draw (0, pitcher, 9): under its own shifted CoM the pitcher topples in the rest-pose drop

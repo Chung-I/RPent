@@ -113,7 +113,8 @@ def test_a_pivot_is_not_lifted_and_the_hand_sets_it_back(env):
 
 
 def test_a_set_down_on_the_box_wall_is_judged_by_the_release_rules(env):
-    """wood_block d10: lowered into the box, the block lands on the box wall and the pads slide off it. It stays
-    on the wall top, so it missed the box; corpus v6 read a 12 cm drop."""
-    r = _row(env, "ycb__wood_block__d10")
+    """green_serving_spoon d91: lowered into the box, the 31 cm spoon lands across the walls and stays on the wall
+    tops, 12 cm above the box floor, so it missed the box. (wood_block d10, the earlier case, which corpus v6
+    read as a 12 cm drop, is declined since corpus v8: its pinch is 9.1 cm.)"""
+    r = _row(env, "handal__green_serving_spoon__d91")
     assert r["label"] == "missed" and r["loss_phase"] is None

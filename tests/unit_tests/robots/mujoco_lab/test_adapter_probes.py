@@ -111,11 +111,26 @@ def test_push_reads_a_slippery_brick():
 
 
 def test_a_probe_that_leaves_the_object_off_the_table_throws_it():
-    """macaroni_and_cheese, probe corpus seed 7, draw 2, scene B: the pinch across the box is 12.5 cm and the
-    pads open 10.2 cm. The descending pads push the fingers 1.5 cm past their soft limits, the open cannot
-    free the wedged box, and the rising hand carries it 12 cm up. It rests on nothing the skill can reach,
-    so the probe threw it."""
+    """macaroni_and_cheese, probe corpus seed 7, draw 19, scene B: the pinch across the box is 12.5 cm and the
+    pads open 10.2 cm. The descending pads push the fingers past their soft limits, the open cannot free the
+    wedged box, and the rising hand carries it 12 cm up. It rests on nothing the skill can reach, so the probe
+    threw it. (The skill never offers this pinch: it is wider than the gripper opening.)"""
     from robots.mujoco_lab.adapter import object_props
+    from robots.mujoco_lab.corpus import case_rng, draw_theta
+
+    env = _env()
+    oid = "hope__macaroni_and_cheese"
+    theta, com_end = draw_theta(case_rng(7, oid, 19), object_props(oid)["mass"])
+    env.reset(oid, theta, seed=7019, com_end=com_end)
+    res = _weigh(env)
+    assert not env.locate("object")["reachable"]               # the case: the object hangs on the hand
+    assert res.thrown
+
+
+def test_a_probe_that_moves_the_object_more_than_10_cm_throws_it():
+    """macaroni_and_cheese, seed 7, draw 2, scene B: the wedged box twists out of the pads and lands 27 cm away,
+    still on the table."""
+    from robots.mujoco_lab.adapter import THROWN_M, object_props
     from robots.mujoco_lab.corpus import case_rng, draw_theta
 
     env = _env()
@@ -123,5 +138,5 @@ def test_a_probe_that_leaves_the_object_off_the_table_throws_it():
     theta, com_end = draw_theta(case_rng(7, oid, 2), object_props(oid)["mass"])
     env.reset(oid, theta, seed=7002, com_end=com_end)
     res = _weigh(env)
-    assert not env.locate("object")["reachable"]               # the case: the object hangs on the hand
+    assert env.locate("object")["reachable"] and res.displacement_m > THROWN_M
     assert res.thrown
