@@ -33,7 +33,7 @@ from typing import Any, Callable
 import numpy as np
 
 from rpent.skills.pick_place.belief import MIN_ESS, N_PARTICLES, REFRESH_DRAWS, Belief, ParticleBelief, refresh
-from rpent.skills.pick_place.costs import prediction_matrix
+from rpent.skills.pick_place.costs import care_scale, prediction_matrix
 from rpent.skills.pick_place.destinations import DESTINATIONS
 from rpent.skills.pick_place.diagnose import diagnose
 from rpent.skills.pick_place.features import particle_matrix, particle_sides
@@ -140,12 +140,17 @@ def update_belief(belief: ParticleBelief, entry: dict[str, Any], primitives: Any
     return refresh(post, prior_fn, replay, primitives.rng, n_draws=refresh_draws, n_keep=len(belief))
 
 
-def _assess(object: str, destination: str, care: str, primitives: Any, store: dict[str, Any]) -> tuple[dict[str, Any] | None, Assessment | None]:
-    """Build (or reuse) the assessment. Returns (error-or-semantic payload, None) or (None, assessment)."""
+def _assess(object: str, destination: str, care: str | float, primitives: Any,
+            store: dict[str, Any]) -> tuple[dict[str, Any] | None, Assessment | None]:
+    """Build (or reuse) the assessment. Returns (error-or-semantic payload, None) or (None, assessment).
+    ``primitives.abstain_cost`` (when set) selects the cost rule (menu.build_menu)."""
     if destination not in DESTINATIONS:
         return {"error": f"unknown destination {destination!r}; known: {sorted(DESTINATIONS)}"}, None
-    if care not in ("low", "normal", "high"):
-        return {"error": f"care must be low, normal or high, not {care!r}"}, None
+    try:
+        scale = care_scale(care)
+    except ValueError as exc:
+        return {"error": str(exc)}, None
+    abstain = getattr(primitives, "abstain_cost", None)
     env = primitives.env
     loc = env.locate(object)
     if loc is None:
@@ -167,18 +172,19 @@ def _assess(object: str, destination: str, care: str, primitives: Any, store: di
     options, recommendation = build_menu(primitives.model, belief, geometry, proposals, f_std, care, destination,
                                          env.plan_trajectory, primitives.rng, pose_fn=pose_fn, max_open=pinch_limit(env),
                                          threshold=getattr(primitives, "threshold", None), probe_models=probes or None,
-                                         guard=getattr(primitives, "guard", None))
+                                         guard=getattr(primitives, "guard", None), abstain_cost=abstain)
     evidence = belief.summary() + [f"standard squeeze {f_std:.0f} N per pad", f"{len(proposals)} pinch proposals along the long axis"]
     if rec["probes_run"]:
         evidence.append(f"probes run this episode: {', '.join(sorted(rec['probes_run']))}")
     a = Assessment(object=object, destination=destination, options=options, evidence=evidence,
-                   recommendation=recommendation, care=care, visibility=belief.visibility, episode=key[3])
+                   recommendation=recommendation, care=care, visibility=belief.visibility, episode=key[3], care_scale=scale,
+                   abstain_cost=None if abstain is None else float(abstain))
     cache[key] = {"assessment": a, "menu": {o.id: o for o in options}, "belief": belief}
     return None, a
 
 
 @tool(readonly=True, exclude=("primitives", "store"))
-def assess_pick(*, object: str, destination: str = "bin", care: str = "normal", primitives, store) -> ToolResult:
+def assess_pick(*, object: str, destination: str = "bin", care: str | float = "normal", primitives, store) -> ToolResult:
     """Estimate the outcomes of picking an object and setting it down, without moving.
 
     Returns the best menu row's probabilities (success, held to release, irreversible and
@@ -190,7 +196,8 @@ def assess_pick(*, object: str, destination: str = "bin", care: str = "normal", 
     Args:
         object: The object's name as shown by view_env_state.
         destination: Where to set it down (table_centre, table_edge, table_gap, mouse_pad, plate, box, bin).
-        care: low, normal or high; scales the cost of irreversible outcomes in the ranking.
+        care: low, normal, high, or a number above 0 (0.5, 1, 3 for the names); scales the cost of irreversible
+            outcomes in the ranking and in the recommendation.
     """
     err, a = _assess(object, destination, care, primitives, store)
     if err is not None:
@@ -289,7 +296,7 @@ def _attempt(option: Option, object: str, destination: str, care: str, primitive
 def _commit(a: Assessment, option_id: str | None, object: str, destination: str, care: str, primitives: Any,
             store: dict[str, Any]) -> dict[str, Any]:
     """The commit path: the named row, or the best row unless the recommendation advises against it
-    (decline; probe while the best row is below the threshold)."""
+    (decline; probe while the best row is below the threshold, or any probe under the cost rule)."""
     menu: dict[str, Option] = {o.id: o for o in a.options}
     if option_id is None:
         best = a.best()
@@ -297,12 +304,16 @@ def _commit(a: Assessment, option_id: str | None, object: str, destination: str,
             data = a.to_data()
             flagged = bool((a.guard() or {}).get("flag"))
             data.update({"placed": False, "reason": f"recommendation is decline: {a.decline_reason()}",
-                         "next": "pass an option_id from the menu to execute anyway" + ("" if flagged else ", or raise care")})
+                         "next": "pass an option_id from the menu to execute anyway" + ("" if flagged else (
+                             ", or lower care" if getattr(primitives, "abstain_cost", None) is not None else ", or raise care"))})
             return data
-        if a.recommendation == "probe" and best.pred.p["placed_stable"] < _threshold(primitives):
+        if a.recommendation == "probe" and (getattr(primitives, "abstain_cost", None) is not None
+                                            or best.pred.p["placed_stable"] < _threshold(primitives)):
             probe = a.best_overall()
             data = a.to_data()
-            data.update({"placed": False, "reason": f"recommendation is probe ({probe.id}): the best row ({best.id}) is below the threshold",
+            why = ("a probe first costs less" if getattr(primitives, "abstain_cost", None) is not None
+                   else f"the best row ({best.id}) is below the threshold")
+            data.update({"placed": False, "reason": f"recommendation is probe ({probe.id}): {why}",
                          "next": f"pass option_id {probe.id!r} or mode probe_first, or an option_id from the menu to execute anyway"})
             return data
         option = best
@@ -321,12 +332,11 @@ def _probe_brief(d: dict[str, Any]) -> dict[str, Any]:
 
 @tool(readonly=False, exclude=("primitives", "store"))
 def pick_and_place(*, object: str, destination: str = "bin", mode: str = "commit", option_id: str | None = None,
-                   care: str = "normal", primitives, store) -> ToolResult:
+                   care: str | float = "normal", primitives, store) -> ToolResult:
     """Pick the object and set it down at the destination, executing one menu row, or run a probe.
 
     With no option_id the best row for the requested destination runs, unless the
-    recommendation is decline, or is probe while the best row is below the threshold (then
-    nothing runs; pass an option_id to override). Rows that change the destination
+    recommendation is decline or probe (then nothing runs; pass an option_id to override). Rows that change the destination
     (inboard_place) run only when named. option_id "probe_push" or "probe_weigh" runs that probe
     (once per episode): the object is pushed or lifted 2 cm and set back, the belief is updated,
     and nothing is placed. mode "probe_first" runs the recommended probes (at most two, while the
@@ -340,7 +350,7 @@ def pick_and_place(*, object: str, destination: str = "bin", mode: str = "commit
         destination: Where to set it down.
         mode: commit, probe_first or assess_only.
         option_id: A row id from the last assessment's menu (a probe id runs that probe), or none for the best row.
-        care: low, normal or high.
+        care: low, normal, high, or a number above 0.
     """
     if mode not in MODES:
         return ToolResult(data={"error": f"mode must be one of {MODES}, not {mode!r}"})

@@ -290,3 +290,165 @@ def test_an_artifact_case_is_left_out_of_the_metrics_and_counted():
     assert s["n"] == 3 and s["n_executed"] == 1 and s["errors"] == 1 and s["artifacts"] == 1
     c = compare({"rows": rows}, {"rows": rows[:1] + [dict(bad, object="b", **ctx, artifact=False)]}, np.random.default_rng(0))
     assert c["n_paired"] == 1 and c["artifacts"] == {"a": 1, "b": 0}
+
+
+# ---------------------------------------------------------------- the cost rule and the policy protocol (milestone 2b)
+from types import SimpleNamespace  # noqa: E402
+
+
+def _row(rid="commit_std", cost_s=8.0):
+    return {"id": rid, "kind": "commit", "action": {"destination": "table_centre", "s": 0.5, "force": 20.0}, "p": {"placed_stable": 0.9},
+            "p_drop_height": None, "expected_cost": 0.6, "cost_s": cost_s}
+
+
+def _assessment(rec, probe=False):
+    opts = [_row()] + ([{"id": "probe_push", "kind": "probe", "action": {"probe": "push"}}] if probe else [])
+    return {"assessed": True, "recommendation": rec, "best_option": "commit_std",
+            "recommended_option": "probe_push" if rec == "probe" else ("commit_std" if rec == "commit" else None),
+            "guard": None, "options": opts}
+
+
+class _Script:
+    """Scripted assess_pick and pick_and_place: assessments in order, and the attempt outcomes in order."""
+
+    def __init__(self, assessments, outcomes):
+        self.assessments, self.outcomes, self.calls = list(assessments), list(outcomes), []
+
+    def assess(self, **kw):
+        return SimpleNamespace(data=self.assessments.pop(0))
+
+    def pick(self, **kw):
+        self.calls.append(kw.get("option_id"))
+        nxt = self.assessments.pop(0) if self.assessments else _assessment("decline")
+        if str(kw.get("option_id")).startswith("probe_"):
+            return SimpleNamespace(data={"probed": "push", "kind": "slid", "reading": {"f_break": 1.0}, "thrown": False,
+                                         "assessment": nxt})
+        return SimpleNamespace(data={"option": kw.get("option_id"), "outcome": self.outcomes.pop(0), "placed_at_requested": True,
+                                     "diagnosis": None, "assessment": nxt})
+
+
+def _scripted(monkeypatch, assessments, outcomes):
+    from robots.mujoco_lab import calibrate
+
+    sc = _Script(assessments, outcomes)
+    monkeypatch.setattr(calibrate, "assess_pick", sc.assess)
+    monkeypatch.setattr(calibrate, "pick_and_place", sc.pick)
+    return sc
+
+
+def test_policy_protocol_abstains_after_a_probe(monkeypatch):
+    from robots.mujoco_lab.calibrate import probe_cost, run_protocol
+
+    sc = _scripted(monkeypatch, [_assessment("probe", probe=True), _assessment("decline")], [])
+    case = run_protocol(SimpleNamespace(abstain_cost=1.0), "policy", "table_centre", np.random.default_rng(0))
+    assert sc.calls == ["probe_push"] and case["ended"] == "abstained" and case["attempts"] == []
+    assert case["cost"] == pytest.approx(probe_cost("push", "slid", False, "normal") + 1.0)
+
+
+def test_policy_protocol_retries_after_a_recoverable_failure(monkeypatch):
+    from robots.mujoco_lab.calibrate import attempt_cost, run_protocol
+
+    sc = _scripted(monkeypatch, [_assessment("commit"), _assessment("commit"), _assessment("commit")], ["missed", "placed_stable"])
+    case = run_protocol(SimpleNamespace(abstain_cost=1.0), "policy", "table_centre", np.random.default_rng(0))
+    assert sc.calls == ["commit_std", "commit_std"] and case["ended"] == "placed"
+    assert case["cost"] == pytest.approx(attempt_cost("missed", 8.0) + attempt_cost("placed_stable", 8.0))
+
+
+def test_policy_protocol_abstains_at_once_on_a_decline(monkeypatch):
+    from robots.mujoco_lab.calibrate import run_protocol
+
+    sc = _scripted(monkeypatch, [_assessment("decline")], [])
+    case = run_protocol(SimpleNamespace(abstain_cost=1.0), "policy", "table_centre", np.random.default_rng(0))
+    assert sc.calls == [] and case["ended"] == "abstained" and case["cost"] == pytest.approx(1.0)
+
+
+def test_case_cost_charges_the_abstain_cost_when_unfinished(monkeypatch):
+    from robots.mujoco_lab.calibrate import attempt_cost, run_protocol
+
+    _scripted(monkeypatch, [_assessment("commit")], ["missed"])
+    case = run_protocol(SimpleNamespace(abstain_cost=1.0), "commit", "table_centre", np.random.default_rng(0))
+    assert case["ended"] == "failed" and case["cost"] == pytest.approx(attempt_cost("missed", 8.0) + 1.0)
+    _scripted(monkeypatch, [_assessment("commit")], ["missed"])
+    case = run_protocol(SimpleNamespace(abstain_cost=None), "commit", "table_centre", np.random.default_rng(0))
+    assert case["cost"] == pytest.approx(attempt_cost("missed", 8.0))
+    _scripted(monkeypatch, [_assessment("commit")], ["dropped_high"])
+    case = run_protocol(SimpleNamespace(abstain_cost=1.0), "commit", "table_centre", np.random.default_rng(0), care=10.0)
+    assert case["cost"] == pytest.approx(5.0 * 10.0 + 0.4 + 1.0)
+
+
+def test_care_and_abstain_cost_reach_the_workers(tmp_path):
+    from robots.mujoco_lab.calibrate import attempt_cost, main
+
+    out = tmp_path / "c.json"
+    main(["--metrics", METRICS, "--repeats", "1", "--out", str(out), "--objects", "ycb__banana", "--seed", "2",
+          "--care", "10", "--abstain-cost", "2"])
+    saved = json.load(open(out))
+    assert saved["care_scale"] == 10.0 and saved["abstain_cost"] == 2.0
+    row = saved["rows"][0]
+    t = row["attempts"][0]
+    assert t["cost"] == pytest.approx(attempt_cost(t["outcome"], t["cost_s"], 10.0))
+    assert row["cost"] == pytest.approx(t["cost"] + (0.0 if row["ended"] == "placed" else 2.0))
+
+
+def test_a_bundle_decision_sets_the_abstain_cost(tmp_path):
+    """load_bundle reads the manifest's decision (None when absent, as in m2), and the factories put it on the primitives."""
+    import os
+
+    from robots.mujoco_lab.calibrate import _primitives
+    from robots.mujoco_lab.robot_spec import DEFAULT_BUNDLE, build_lab, load_bundle
+
+    assert load_bundle(str(DEFAULT_BUNDLE))["abstain_cost"] is None
+    b = tmp_path / "b"
+    b.mkdir()
+    for f in os.listdir(DEFAULT_BUNDLE):
+        if f != "manifest.json":
+            (b / f).symlink_to(DEFAULT_BUNDLE / f)
+    man = json.load(open(DEFAULT_BUNDLE / "manifest.json"))
+    json.dump(dict(man, decision={"abstain_cost": 1.0}), open(b / "manifest.json", "w"))
+    assert load_bundle(str(b))["abstain_cost"] == 1.0
+    assert build_lab(bundle=str(b)).abstain_cost == 1.0
+    assert _primitives(str(b), None, None).abstain_cost == 1.0
+    assert build_lab(bundle=str(DEFAULT_BUNDLE)).abstain_cost is None
+
+
+def test_compare_refuses_runs_with_different_costs():
+    from robots.mujoco_lab.calibrate import compare
+
+    row = {"object": "o", "idx": 0, "cost": 1.0, "attempts": []}
+    a = {"protocol": "policy", "care_scale": 1.0, "abstain_cost": 1.0, "rows": [row]}
+    with pytest.raises(ValueError, match="different costs"):
+        compare(a, dict(a, abstain_cost=None), np.random.default_rng(0))
+    with pytest.raises(ValueError, match="different costs"):
+        compare(a, dict(a, care_scale=10.0), np.random.default_rng(0))
+    assert compare(a, dict(a, protocol="commit"), np.random.default_rng(0))["n_paired"] == 1
+
+
+def test_policy_protocol_without_probes_left_follows_the_cost_rule(monkeypatch):
+    """Past max_probes a probe recommendation falls back to the menu's rule on the best row alone."""
+    from robots.mujoco_lab.calibrate import run_protocol
+
+    cheap = _assessment("probe", probe=True)
+    sc = _scripted(monkeypatch, [cheap, cheap, _assessment("commit")], ["placed_stable"])
+    case = run_protocol(SimpleNamespace(abstain_cost=1.0), "policy", "table_centre", np.random.default_rng(0), max_probes=1)
+    assert sc.calls == ["probe_push", "commit_std"] and case["ended"] == "placed"
+    dear = dict(cheap, options=[dict(_row(), expected_cost=1.5)] + cheap["options"][1:])
+    sc = _scripted(monkeypatch, [cheap, dear], [])
+    case = run_protocol(SimpleNamespace(abstain_cost=1.0), "policy", "table_centre", np.random.default_rng(0), max_probes=1)
+    assert sc.calls == ["probe_push"] and case["ended"] == "abstained"
+
+
+def test_policy_protocol_ends_after_an_irreversible_outcome(monkeypatch):
+    from robots.mujoco_lab.calibrate import attempt_cost, run_protocol
+
+    sc = _scripted(monkeypatch, [_assessment("commit"), _assessment("commit")], ["dropped_high"])
+    case = run_protocol(SimpleNamespace(abstain_cost=1.0), "policy", "table_centre", np.random.default_rng(0))
+    assert sc.calls == ["commit_std"] and case["ended"] == "failed"
+    assert case["cost"] == pytest.approx(attempt_cost("dropped_high", 8.0) + 1.0)
+
+
+def test_policy_protocol_stops_at_three_attempts(monkeypatch):
+    from robots.mujoco_lab.calibrate import POLICY_ATTEMPTS, run_protocol
+
+    sc = _scripted(monkeypatch, [_assessment("commit")] * 4, ["missed"] * 3)
+    case = run_protocol(SimpleNamespace(abstain_cost=1.0), "policy", "table_centre", np.random.default_rng(0))
+    assert POLICY_ATTEMPTS == 3 and len(sc.calls) == 3 and case["ended"] == "failed" and case["abstain_part"] == 1.0

@@ -142,9 +142,11 @@ class Assessment:
     options: list[Option]
     evidence: list[str]
     recommendation: Literal["commit", "decline", "probe"]
-    care: str
+    care: str | float
     visibility: float
     episode: int
+    care_scale: float = 1.0                      # the factor on the irreversible costs (costs.care_scale)
+    abstain_cost: float | None = None            # the cost rule's A; None: the milestone 2a rule
     extras: dict[str, Any] = field(default_factory=dict)
 
     def best(self) -> Option | None:
@@ -208,6 +210,8 @@ class Assessment:
             "recommended_option": None if self.recommended() is None else self.recommended().id,
             "decline_reason": self.decline_reason(),
             "care": self.care,
+            "care_scale": self.care_scale,
+            "abstain_cost": self.abstain_cost,
             "visibility": _r(self.visibility),
             "guard": _guard_data(self.guard()),
         }

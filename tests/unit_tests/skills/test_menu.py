@@ -470,3 +470,90 @@ def test_a_fitted_guard_checks_the_menu():
     rec = options[-1].guard
     assert set(rec) == {"guard", "score", "p", "flag", "alpha", "k", "n_calibration"} and np.isfinite(rec["score"])
     assert 0.0 < rec["p"] <= 1.0 and rec["n_calibration"] == 30
+
+
+# ---------------------------------------------------------------- the cost rule (milestone 2b)
+class FixedModel:
+    """The same outcome vector for every row, so the best row is the fastest one (8 s)."""
+
+    kind = "classifier"
+
+    def __init__(self, **p):
+        self.p = {k: 0.0 for k in OUTCOMES}
+        self.p.update(p)
+
+    def predict_many(self, feats):
+        return [Prediction(p=dict(self.p)) for _ in feats]
+
+
+def _cmenu(care="normal", abstain_cost=1.0, threshold=None, **p):
+    return build_menu(FixedModel(**p), Belief.prior(1e-4, "wood"), _geometry(), [P(0.3), P(0.5), P(0.7)], 20.0, care,
+                      "table_centre", plan_fn, np.random.default_rng(0), threshold=threshold, abstain_cost=abstain_cost)
+
+
+def _best(options):
+    return min((o for o in options if o.kind in ("commit", "lower_risk")), key=lambda o: o.expected_cost)
+
+
+def test_certain_harmless_failure_declines():
+    options, rec = _cmenu(not_lifted=1.0)
+    assert _best(options).expected_cost == pytest.approx(0.5 + 0.4 + 1.0) and rec == "decline"
+    assert options[-1].kind == "decline" and options[-1].expected_cost == pytest.approx(1.0)
+
+
+def test_commit_when_the_best_row_costs_less_than_abstain():
+    options, rec = _cmenu(placed_stable=0.9, not_lifted=0.1)
+    assert _best(options).expected_cost == pytest.approx(0.05 + 0.4 + 0.1) and rec == "commit"
+
+
+def test_threshold_is_a_floor_when_set():
+    options, rec = _cmenu(placed_stable=0.65, not_lifted=0.35)
+    assert _best(options).expected_cost == pytest.approx(0.925) and rec == "commit"
+    assert _cmenu(threshold=0.7, placed_stable=0.65, not_lifted=0.35)[1] == "decline"
+
+
+def test_numeric_care_changes_the_recommendation():
+    p = {"placed_stable": 0.85, "not_lifted": 0.10, "dropped_high": 0.05}
+    options, rec = _cmenu(care=1.0, **p)
+    assert _best(options).expected_cost == pytest.approx(0.85) and rec == "commit"
+    options, rec = _cmenu(care=30.0, **p)
+    assert _best(options).expected_cost == pytest.approx(8.10) and rec == "decline"
+    reason = options[-1].reason
+    assert reason.startswith("best row costs 8.10 > abstain 1.00") and "dropped_high" in reason
+
+
+def test_abstain_cost_none_keeps_the_2a_rule():
+    p = {"placed_stable": 0.75, "dropped_high": 0.25}
+    options, rec = _cmenu(abstain_cost=None, **p)
+    assert rec == "commit" and options[-1].expected_cost is None
+    assert _cmenu(abstain_cost=1.0, **p)[1] == "decline"
+
+
+def test_probe_preposterior_counts_abstain_after_the_probe():
+    """mu 0.2 (row cost 3.0) or 0.5 (row cost 0.2), half each, and a push that tells which. Now the cheapest
+    choice is to abstain (1.0 against 1.6). After a high reading the row (0.2) beats abstaining, after a low one
+    abstaining stays: cost after the probe 0.5 x 1.0 + 0.5 x 0.2 = 0.6, value 0.4. Without an abstain cost the row
+    is the only choice, and no reading changes it."""
+    b = _particles([0.2, 0.5], [0.5, 0.5])
+    C = [np.array([3.0, 0.2])]
+    v = probe_value(b, C, PerfectPush(), np.zeros((2, 3)), 20.0, "normal", np.random.default_rng(0), k=400, abstain_cost=1.0)
+    assert v["expected_cost_after"] == pytest.approx(0.6, abs=0.1) and v["evoi"] == pytest.approx(0.4, abs=0.1)
+    v = probe_value(b, C, PerfectPush(), np.zeros((2, 3)), 20.0, "normal", np.random.default_rng(0), k=400, abstain_cost=None)
+    assert v["evoi"] == 0.0
+
+
+class _RiskyFlat(FlatWeigh):
+    """A weigh that tells nothing and throws the object with P 0.1."""
+
+    def risk(self, X):
+        return np.full(len(X), 0.1)
+
+
+def test_probe_terminal_risk_costs_irreversible_plus_abstain():
+    b = _particles(np.linspace(0.1, 0.9, 20), np.ones(20))
+    v = probe_value(b, [np.full(20, 2.0)], _RiskyFlat(), np.zeros((20, 3)), 20.0, "normal", np.random.default_rng(0),
+                    abstain_cost=1.0)
+    assert v["expected_cost_after"] == pytest.approx(0.1 * (5.0 + 1.0) + 0.9 * 1.0) and v["evoi"] == 0.0
+    v = probe_value(b, [np.full(20, 2.0)], _RiskyFlat(), np.zeros((20, 3)), 20.0, 10.0, np.random.default_rng(0),
+                    abstain_cost=1.0)
+    assert v["expected_cost_after"] == pytest.approx(0.1 * (50.0 + 1.0) + 0.9 * 1.0)

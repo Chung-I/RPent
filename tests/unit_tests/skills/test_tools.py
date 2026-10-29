@@ -628,3 +628,29 @@ def test_the_payloads_say_when_a_run_was_an_artifact():
     d = pick_and_place(object="mug", destination="table_centre", option_id="probe_push", primitives=_probe_prims(penv, push=PerfectPush()),
                        store={}).data
     assert d["probed"] == "push" and d["artifact"] is True
+
+
+# ---------------------------------------------------------------- the cost rule (milestone 2b)
+def _aprims(model=None, abstain_cost=1.0):
+    prims = _prims(model=model)
+    prims.abstain_cost = abstain_cost
+    return prims
+
+
+def test_numeric_care_reaches_the_menu():
+    d = assess_pick(object="mug", destination="table_centre", care=10, primitives=_aprims(), store={}).data
+    row = next(o for o in d["options"] if o["id"] == "commit_std")
+    assert row["expected_cost"] == pytest.approx(0.1 * 50 + 0.1 * 1 + 0.4 + 1.0 * 0.2, abs=1e-3)
+    assert d["care_scale"] == 10.0 and d["abstain_cost"] == 1.0
+    for bad in ("extreme", 0, -2):
+        e = assess_pick(object="mug", care=bad, primitives=_aprims(), store={}).data
+        assert "error" in e and "a number above 0" in e["error"]
+
+
+def test_pick_and_place_executes_only_a_commit_recommendation():
+    prims = _aprims(StubModel(ps=0.8))                      # every row costs more than abstaining
+    r = pick_and_place(object="mug", destination="table_centre", primitives=prims, store={}).data
+    assert r["placed"] is False and r["recommendation"] == "decline" and "abstain 1.00" in r["reason"] and prims.env.calls == []
+    prims = _aprims(StubModel(ps=0.95))
+    r = pick_and_place(object="mug", destination="table_centre", primitives=prims, store={}).data
+    assert r["outcome"] == "placed_stable" and len(prims.env.calls) == 1

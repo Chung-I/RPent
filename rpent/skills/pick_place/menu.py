@@ -31,6 +31,14 @@ estimated per simulated result against the best row now, so it is exactly 0 when
 change that row; a probe is recommended only when its row beats the best row by more than EVOI_Z
 Monte Carlo errors.
 
+The cost rule (milestone 2b, ``abstain_cost`` a number A): every row's expected cost adds A x (1 - P(placed_stable)),
+the cost of leaving the task undone, and abstaining costs A. The recommendation is the cheapest of the best row
+("commit"), the cheapest probe row ("probe", when it beats the cheaper of the best row and A by more than EVOI_Z errors)
+and abstaining ("decline"); ``threshold`` is then an optional floor on P(placed_stable). A probe's preposterior may
+abstain after the probe, and a probe that ends the case costs the irreversible cost and A. ``abstain_cost`` None keeps
+the milestone 2a rule: commit when the best row reaches the threshold (default DEFAULT_THRESHOLD), and a decline costs
+nothing.
+
 The novelty guard (``guard``, guard.KnnGuard) sees every commit and lower-risk row for every particle. When it flags
 the object as unlike the training objects, the menu declines and says why, whatever the threshold and the probe rows
 say; the rows stay in the menu, and the decline row keeps the guard's check either way.
@@ -43,12 +51,12 @@ from typing import Any, Callable
 import numpy as np
 
 from rpent.skills.pick_place.belief import N_PARTICLES, Belief, ParticleBelief
-from rpent.skills.pick_place.costs import CARE_SCALE, COST, TIME_COST_PER_S, expected_cost, particle_costs
+from rpent.skills.pick_place.costs import COST, TIME_COST_PER_S, care_scale, expected_cost, particle_costs
 from rpent.skills.pick_place.destinations import DESTINATIONS, edge_distance
 from rpent.skills.pick_place.features import Geometry, extract, particle_features, particle_matrix
 from rpent.skills.pick_place.guard import flag_reason
 from rpent.skills.pick_place.probes import PROBE_SECONDS, weigh_force
-from rpent.skills.pick_place.protocol import Option, Prediction
+from rpent.skills.pick_place.protocol import IRREVERSIBLE, Option, Prediction
 
 MAX_OPEN_WIDTH = 0.090                       # m: the widest exact pinch (a 9.4 cm open gap less 2 mm a side); a substrate
                                              # with another gripper sets env.max_pinch_width
@@ -124,9 +132,10 @@ def believed_com_world(belief: ParticleBelief, pose: dict[str, Any]) -> np.ndarr
 
 
 def probe_value(belief: ParticleBelief, continuation_costs: list[np.ndarray], probe_model: Any, X_probe: np.ndarray, force: float,
-                care: str, rng: np.random.Generator, k: int = EVOI_K) -> dict[str, Any]:
+                care: str | float, rng: np.random.Generator, k: int = EVOI_K, abstain_cost: float | None = None) -> dict[str, Any]:
     """The preposterior value of one probe against the cheapest continuation row now (row b, per-particle
-    costs C_b). The probe throws the object with each particle's risk r (the case ends at the
+    costs C_b). With an abstain cost A, abstaining is a continuation row that costs A for every particle, and T
+    below adds A. The probe throws the object with each particle's risk r (the case ends at the
     irreversible cost T), so the exact cost after the probe when its result is not used is
     sum_i w_i (r_i T + (1 - r_i) C_b,i). For k particles drawn by weight one result is sampled from the
     probe model and the belief w' is reweighted by its likelihood; the result's gain is the posterior
@@ -135,13 +144,16 @@ def probe_value(belief: ParticleBelief, continuation_costs: list[np.ndarray], pr
     belief's P(kind) and P(thrown), ``evoi`` (the mean gain, floored at 0), ``evoi_se`` (its Monte
     Carlo error) and ``expected_cost_after`` (the cost when the result is not used, minus the mean gain)."""
     C = np.asarray(continuation_costs, dtype=float).reshape(len(continuation_costs), -1)
+    if abstain_cost is not None:
+        C = np.vstack([C, np.full(C.shape[1], float(abstain_cost))])
     w = belief.weights
     best = int(np.argmin(C @ w))
     risk = np.asarray(probe_model.risk(X_probe), dtype=float)
     P = np.asarray(probe_model.p_kind(X_probe), dtype=float)
     a = belief.arrays()
     keep = 1.0 - risk
-    unused = float(w @ (risk * COST["dropped_high"] * CARE_SCALE[care] + keep * C[best]))
+    terminal = COST["dropped_high"] * care_scale(care) + (0.0 if abstain_cost is None else float(abstain_cost))
+    unused = float(w @ (risk * terminal + keep * C[best]))
     gains = np.zeros(int(k))
     for j, i in enumerate(rng.choice(len(w), size=int(k), p=w)):
         obs = probe_model.sample(X_probe[i], belief.particles[i], force, rng, p=P[i])
@@ -157,7 +169,8 @@ def probe_value(belief: ParticleBelief, continuation_costs: list[np.ndarray], pr
 
 
 def _probe_rows(probe_models: dict[str, Any], belief: ParticleBelief, geometry: Geometry, mid: Any, pose: dict[str, Any],
-                f_std: float, care: str, continuation: list[Option], rng: np.random.Generator) -> list[Option]:
+                f_std: float, care: str | float, continuation: list[Option], rng: np.random.Generator,
+                abstain_cost: float | None = None) -> list[Option]:
     """One row per probe model, at the middle proposal with the weigh squeeze. The continuation costs
     are those of the current pose (the push moves the object up to 4 cm, the weigh lifts it 2 cm;
     both are treated as leaving the menu unchanged)."""
@@ -168,7 +181,7 @@ def _probe_rows(probe_models: dict[str, Any], belief: ParticleBelief, geometry: 
     costs = [o._costs for o in continuation]
     rows = []
     for probe, pm in probe_models.items():
-        v = probe_value(belief, costs, pm, X, force, care, rng)
+        v = probe_value(belief, costs, pm, X, force, care, rng, abstain_cost=abstain_cost)
         tip = v["p_kind"].get("tipped", 0.0) * COST["tipped"] if probe == "push" else 0.0
         cost = TIME_COST_PER_S * PROBE_SECONDS[probe] + tip + v["expected_cost_after"]
         reason = f"{probe} first: value of information {v['evoi']:.2f}, expected cost of the best row after it {v['expected_cost_after']:.2f}"
@@ -211,11 +224,12 @@ def _rows(proposals: list[Any], f_std: float, destination: str, com_xy: np.ndarr
     return rows
 
 
-def build_menu(model: Any, belief: ParticleBelief | Belief, geometry: Geometry, proposals: list[Any], f_std: float, care: str,
+def build_menu(model: Any, belief: ParticleBelief | Belief, geometry: Geometry, proposals: list[Any], f_std: float, care: str | float,
                destination: str, plan_fn: Callable[..., list[Any]], rng: np.random.Generator,
                pose_fn: Callable[[Any], dict[str, Any]] | None = None, max_open: float = MAX_OPEN_WIDTH,
                threshold: float | None = None, n: int = N_PARTICLES,
-               probe_models: dict[str, Any] | None = None, guard: Any = None) -> tuple[list[Option], str]:
+               probe_models: dict[str, Any] | None = None, guard: Any = None,
+               abstain_cost: float | None = None) -> tuple[list[Option], str]:
     """The ranked menu and the recommendation. ``pose_fn(proposal)`` gives the pose the particles map
     through (default: ``geometry_pose``); a milestone 1 ``Belief`` becomes n particles at the
     nominal CoM; ``threshold`` None reads DEFAULT_THRESHOLD now, not at import; ``probe_models``
@@ -223,8 +237,8 @@ def build_menu(model: Any, belief: ParticleBelief | Belief, geometry: Geometry, 
     that is a probe or the best same-destination row is a probe with a positive value of information
     whose expected cost is below the best row's by more than EVOI_Z Monte Carlo errors (read at call
     time), else "commit" when the best row reaches the threshold, else "decline". A ``guard`` (guard.KnnGuard) that
-    flags the rows makes it "decline" with the guard's reason; the decline row keeps the guard's check."""
-    threshold = DEFAULT_THRESHOLD if threshold is None else float(threshold)
+    flags the rows makes it "decline" with the guard's reason; the decline row keeps the guard's check. With
+    ``abstain_cost`` a number, the cost rule of the module docstring decides instead, and the decline row costs it."""
     pose_fn = pose_fn or (lambda prop: geometry_pose(geometry, prop))
     usable = usable_proposals(proposals, max_open)
     options: list[Option] = []
@@ -243,23 +257,28 @@ def build_menu(model: Any, belief: ParticleBelief | Belief, geometry: Geometry, 
             pred, per = estimate(model, belief, base, pose, action["force"], planned, rng)
             act = dict(action, s=prop.s)
             options.append(Option(id=rid, kind=kind, action=act, pred=pred, cost_s=cost_s,
-                                  expected_cost=expected_cost(pred, cost_s, care), reason=reason,
-                                  _costs=particle_costs(per, cost_s, care), _base=base, _pose=pose, _planned=planned))
+                                  expected_cost=expected_cost(pred, cost_s, care, abstain_cost), reason=reason,
+                                  _costs=particle_costs(per, cost_s, care, abstain_cost), _base=base, _pose=pose,
+                                  _planned=planned))
         continuation = [o for o in options if o.action["destination"] == destination and o.id != "inboard_place"]
         if probe_models and continuation:
-            options += _probe_rows(probe_models, belief, geometry, mid, mid_pose, f_std, care, continuation, rng)
+            options += _probe_rows(probe_models, belief, geometry, mid, mid_pose, f_std, care, continuation, rng, abstain_cost)
         options.sort(key=lambda o: o.expected_cost)
     same = [o for o in options if o.kind in ("commit", "lower_risk") and o.action["destination"] == destination]
     check = None
     if same:
         best = same[0]
-        worst = max(((k, best.pred.p[k] * COST[k]) for k in best.pred.p), key=lambda kv: kv[1])
-        reason = f"{worst[0]} carries the largest expected cost in the best row ({best.id})"
-        recommendation = "commit" if best.pred.p["placed_stable"] >= threshold else "decline"
-        first = next(o for o in options if o.kind == "probe" or o is best)
-        if (first.kind == "probe" and first.probe["evoi"] > 0
-                and best.expected_cost - first.expected_cost > EVOI_Z * first.probe["evoi_se"]):
-            recommendation = "probe"
+        if abstain_cost is None:
+            floor = DEFAULT_THRESHOLD if threshold is None else float(threshold)
+            worst = max(((k, best.pred.p[k] * COST[k]) for k in best.pred.p), key=lambda kv: kv[1])
+            reason = f"{worst[0]} carries the largest expected cost in the best row ({best.id})"
+            recommendation = "commit" if best.pred.p["placed_stable"] >= floor else "decline"
+            first = next(o for o in options if o.kind == "probe" or o is best)
+            if (first.kind == "probe" and first.probe["evoi"] > 0
+                    and best.expected_cost - first.expected_cost > EVOI_Z * first.probe["evoi_se"]):
+                recommendation = "probe"
+        else:
+            recommendation, reason = _cost_rule(options, best, care, float(abstain_cost), threshold)
         if guard is not None:
             check = guard.check(*guard_queries(options, belief))
             if check["flag"]:
@@ -267,6 +286,25 @@ def build_menu(model: Any, belief: ParticleBelief | Belief, geometry: Geometry, 
     else:
         reason = decline_reason(proposals, max_open) if proposals and not usable else "no row reaches the requested destination"
         recommendation = "decline"
-    options.append(Option(id="decline", kind="decline", action={}, pred=None, cost_s=0.0, expected_cost=None, reason=reason,
-                          guard=check))
+    options.append(Option(id="decline", kind="decline", action={}, pred=None, cost_s=0.0,
+                          expected_cost=None if abstain_cost is None else float(abstain_cost), reason=reason, guard=check))
     return options, recommendation
+
+
+def _cost_rule(options: list[Option], best: Option, care: str | float, A: float, floor: float | None) -> tuple[str, str]:
+    """(recommendation, decline reason) under the cost rule: commit when the best row costs at most A (and reaches
+    the floor, if one is set), a probe that beats the cheaper of the two by more than EVOI_Z errors, else decline."""
+    scale = care_scale(care)
+    worst = max(best.pred.p, key=lambda k: best.pred.p[k] * COST[k] * (scale if k in IRREVERSIBLE else 1.0))
+    c, p_ok = float(best.expected_cost), float(best.pred.p["placed_stable"])
+    if floor is not None and c <= A and p_ok < float(floor):
+        recommendation, reason = "decline", f"best row's P(placed_stable) {p_ok:.2f} is below the floor {float(floor):.2f}"
+    else:
+        recommendation = "commit" if c <= A else "decline"
+        reason = f"best row costs {c:.2f} {'>' if c > A else '<='} abstain {A:.2f}: {worst} carries the largest expected cost"
+    probes = [o for o in options if o.kind == "probe"]
+    if probes:
+        pr = min(probes, key=lambda o: o.expected_cost)
+        if pr.probe["evoi"] > 0 and min(c, A) - pr.expected_cost > EVOI_Z * pr.probe["evoi_se"]:
+            recommendation = "probe"
+    return recommendation, reason

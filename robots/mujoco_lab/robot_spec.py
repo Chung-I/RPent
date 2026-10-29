@@ -57,9 +57,16 @@ def resolve_bundle(bundle: str | None = None) -> str | None:
     return str(DEFAULT_BUNDLE) if (DEFAULT_BUNDLE / "manifest.json").exists() else None
 
 
+def manifest_abstain_cost(manifest: dict[str, Any]) -> float | None:
+    """The abstain cost of a bundle's decision (milestone 2b: {"decision": {"abstain_cost": 1.0}}); None without
+    one (m2: the milestone 2a rule)."""
+    A = (manifest.get("decision") or {}).get("abstain_cost")
+    return None if A is None else float(A)
+
+
 def load_bundle(bundle_dir: str, kind: str | None = None) -> dict[str, Any]:
     """The models a bundle's manifest names: the success model of its kind (or ``kind``), the prior,
-    and the readout and probe models and the novelty guard when present."""
+    and the readout and probe models and the novelty guard when present, and the decision's abstain cost."""
     man = json.load(open(os.path.join(bundle_dir, "manifest.json")))
     kind = kind or os.environ.get("RPENT_PICK_PLACE_MODEL_KIND") or man.get("kind", "classifier")
     path = os.path.join(bundle_dir, man["hazard_model" if kind == "hazard" else "success_model"])
@@ -95,7 +102,7 @@ def load_bundle(bundle_dir: str, kind: str | None = None) -> dict[str, Any]:
         guard = KnnGuard.load(os.path.join(bundle_dir, man["guard"]))
     return {"manifest": man, "kind": kind, "model": model,
             "prior": lab_prior_fn if man.get("prior") == "lab_generator" else None,
-            "readout_model": readout, "probe_models": probe_models, "guard": guard}
+            "readout_model": readout, "probe_models": probe_models, "guard": guard, "abstain_cost": manifest_abstain_cost(man)}
 
 
 def load_model(model_path: str | None = None, kind: str | None = None) -> Any:
@@ -132,7 +139,8 @@ def build_lab(sim_dir: str | None = None, model_path: str | None = None, render:
     if b is not None:
         B = load_bundle(b, model_kind)
         return MuJoCoLabPrimitives(env=env, model=B["model"], rng=rng, prior=B["prior"], readout_model=B["readout_model"],
-                                   probe_models=B["probe_models"], threshold=threshold, manifest=B["manifest"], guard=B["guard"])
+                                   probe_models=B["probe_models"], threshold=threshold, manifest=B["manifest"], guard=B["guard"],
+                                   abstain_cost=B["abstain_cost"])
     return MuJoCoLabPrimitives(env=env, model=load_model(model_path, model_kind), rng=rng, threshold=threshold)
 
 

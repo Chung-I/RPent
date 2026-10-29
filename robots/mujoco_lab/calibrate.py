@@ -28,7 +28,10 @@ protocols are paired case by case), resets the lab, and runs one protocol throug
   control for the selection effect of executing the best row);
 * ``probe_all`` (a diagnostic): the push, then the weigh (each when the menu offers it), whatever the
   recommendation, then the best row; it scores the probes' declared kinds when the recommendation
-  rarely asks for a probe.
+  rarely asks for a probe;
+* ``policy``: the recommendation at every step: decline abstains, probe runs the recommended probe (at
+  most ``MAX_PROBES``; past that, the menu's rule on the best row alone), commit runs the best row, and a
+  recoverable failure is reassessed and followed again (at most ``POLICY_ATTEMPTS`` attempts).
 
 Each case keeps the novelty guard's check of its first assessment (``guard``, None without a guard), and the
 summary counts the cases it checked and flagged; the commit protocol runs the best row after a guard decline too.
@@ -40,9 +43,10 @@ calibration blocks score the executed attempts (``first_attempt``, and ``second_
 the seven-class Brier score against the training class rates, the ECE on P(placed_stable) with its
 object-bootstrap 95 % interval and the plug-in rule (pass when the upper bound is under 0.05, fail
 when the lower bound is over, else undecided), the one-vs-rest ECE per outcome, the iid floor, and the
-simulated coverage of the interval. ``realized_cost`` (the cost table at care normal, probe time and
-risk included) covers every case. ``probe_kind`` and ``thrown`` score the probes' declared kinds and
-risk against the probe models' training rates.
+simulated coverage of the interval. ``realized_cost`` (the cost table at the run's care, probe time and
+risk included, and the abstain cost A of the primitives for a case that ends without the object placed:
+``--abstain-cost``, by default the bundle's decision, none for m2) covers every case. ``probe_kind`` and
+``thrown`` score the probes' declared kinds and risk against the probe models' training rates.
 
 Models: ``--bundle DIR`` (a deployed bundle; the objects default to its test split), ``--crossfit DIR``
 (``train_models --folds``: each object is scored by the fold bundle trained without it; ``nested``
@@ -70,18 +74,19 @@ import numpy as np
 
 from robots.mujoco_lab import tracking
 from robots.mujoco_lab.corpus import case_rng, draw_theta, trainable
-from rpent.skills.pick_place.costs import CARE_SCALE, COST, TIME_COST_PER_S
+from rpent.skills.pick_place.costs import COST, TIME_COST_PER_S, care_scale
 from rpent.skills.pick_place.destinations import MESH_IDS, PRIMITIVE_IDS
 from rpent.skills.pick_place.evaluate import (_ece, coverage_design, ece_ci, ece_from_sums, ece_iid_floor,
                                               object_sums, object_weights, per_class, score)
 from rpent.skills.pick_place.features import extract
 from rpent.skills.pick_place.probes import PROBE_KINDS, PROBE_SECONDS
-from rpent.skills.pick_place.protocol import IRREVERSIBLE, OUTCOMES, Prediction
-from rpent.skills.pick_place.tools import MAX_PROBES, assess_pick, pick_and_place
+from rpent.skills.pick_place.protocol import IRREVERSIBLE, OUTCOMES, RECOVERABLE, Prediction
+from rpent.skills.pick_place.tools import MAX_PROBES, _threshold, assess_pick, pick_and_place
 
-PROTOCOLS = ("commit", "probe_first", "repair", "random_row", "probe_all")
+PROTOCOLS = ("commit", "probe_first", "repair", "random_row", "probe_all", "policy")
+POLICY_ATTEMPTS = 3               # policy: the attempts per case (a recoverable failure is reassessed)
 PROBE_ORDER = ("probe_push", "probe_weigh")     # probe_all: the order of scene A of the probe corpus
-CARE = "normal"                   # the realized cost uses the cost table at care normal
+CARE = "normal"                   # the default care of the realized cost
 ECE_TARGET = 0.05                 # the plug-in rule's bound on the ECE of P(placed_stable)
 N_BOOT = 2000
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -89,18 +94,18 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 
 # ---------------------------------------------------------------- costs
 
-def attempt_cost(outcome: str, cost_s: float, care: str = CARE) -> float:
+def attempt_cost(outcome: str, cost_s: float, care: str | float = CARE) -> float:
     """An executed row: its outcome's cost (care scales the irreversible ones) and its time."""
-    return float(COST[outcome] * (CARE_SCALE[care] if outcome in IRREVERSIBLE else 1.0) + TIME_COST_PER_S * float(cost_s))
+    return float(COST[outcome] * (care_scale(care) if outcome in IRREVERSIBLE else 1.0) + TIME_COST_PER_S * float(cost_s))
 
 
-def probe_cost(probe: str, kind: str, thrown: bool, care: str = CARE) -> float:
+def probe_cost(probe: str, kind: str, thrown: bool, care: str | float = CARE) -> float:
     """An executed probe: its time, a tipped push and a thrown object (the probe row's expected-cost terms)."""
     c = TIME_COST_PER_S * PROBE_SECONDS[probe]
     if probe == "push" and kind == "tipped":
         c += COST["tipped"]
     if thrown:
-        c += COST["dropped_high"] * CARE_SCALE[care]
+        c += COST["dropped_high"] * care_scale(care)
     return float(c)
 
 
@@ -111,7 +116,20 @@ def _rows_to(a: dict[str, Any], destination: str) -> list[dict[str, Any]]:
     return [o for o in a["options"] if o["kind"] in ("commit", "lower_risk") and o["action"]["destination"] == destination]
 
 
-def _probe_record(d: dict[str, Any], prims: Any, care: str) -> dict[str, Any]:
+def _without_probe(a: dict[str, Any], prims: Any) -> str:
+    """policy, once it may not probe again: the menu's rule on the best row alone (the cost rule: commit when the
+    row costs at most A and reaches the floor, if one is set; the milestone 2a rule: P(placed_stable) at the
+    threshold). It reads the rounded payload, so a tie within 0.0005 can go either way."""
+    row = next((o for o in a["options"] if o["id"] == a.get("best_option")), None)
+    if row is None:
+        return "decline"
+    A, floor, p = getattr(prims, "abstain_cost", None), getattr(prims, "threshold", None), float(row["p"]["placed_stable"])
+    if A is None:
+        return "commit" if p >= _threshold(prims) else "decline"
+    return "commit" if float(row["expected_cost"]) <= float(A) and (floor is None or p >= float(floor)) else "decline"
+
+
+def _probe_record(d: dict[str, Any], prims: Any, care: str | float) -> dict[str, Any]:
     pm = (getattr(prims, "probe_models", None) or {}).get(d["probed"])
     stats = getattr(pm, "stats", None) or {}
     n = int(stats.get("n") or 0)
@@ -123,7 +141,7 @@ def _probe_record(d: dict[str, Any], prims: Any, care: str) -> dict[str, Any]:
             "cost": probe_cost(d["probed"], d["kind"], d["thrown"], care)}
 
 
-def _attempt_record(d: dict[str, Any], row: dict[str, Any], a: dict[str, Any], features: Any, care: str) -> dict[str, Any]:
+def _attempt_record(d: dict[str, Any], row: dict[str, Any], a: dict[str, Any], features: Any, care: str | float) -> dict[str, Any]:
     return {"option": d["option"], "kind": row["kind"], "action": row["action"], "recommendation": a.get("recommendation"),
             "declared": {"p": row["p"], "p_drop_height": row["p_drop_height"], "expected_cost": row["expected_cost"]},
             "outcome": d["outcome"], "label": d["outcome"], "placed_at_requested": d["placed_at_requested"],
@@ -131,10 +149,11 @@ def _attempt_record(d: dict[str, Any], row: dict[str, Any], a: dict[str, Any], f
             "diagnosis": d.get("diagnosis"), "artifact": bool(d.get("artifact", False))}
 
 
-def run_protocol(prims: Any, protocol: str, destination: str, rng: np.random.Generator, care: str = CARE, features_fn=None,
+def run_protocol(prims: Any, protocol: str, destination: str, rng: np.random.Generator, care: str | float = CARE, features_fn=None,
                  follow: bool = False, max_probes: int = MAX_PROBES) -> dict[str, Any]:
     """One case through the skill tools under ``protocol`` (see the module docstring). ``rng`` draws the
-    random row; ``features_fn(row)`` gives the features of a row about to run (for the subgroups)."""
+    random row; ``features_fn(row)`` gives the features of a row about to run (for the subgroups). The case
+    costs its probes, its attempts and ``prims.abstain_cost`` (when set) if it ends without the object placed."""
     if protocol not in PROTOCOLS:
         raise ValueError(f"protocol must be one of {PROTOCOLS}, not {protocol!r}")
     store: dict[str, Any] = {}
@@ -145,7 +164,9 @@ def run_protocol(prims: Any, protocol: str, destination: str, rng: np.random.Gen
         case["ended"] = reason
         if error is not None:
             case["error"] = error
-        case["cost"] = float(sum(p["cost"] for p in case["probes"]) + sum(t["cost"] for t in case["attempts"]))
+        A = getattr(prims, "abstain_cost", None)
+        case["abstain_part"] = 0.0 if A is None or reason in ("placed", "error") else float(A)
+        case["cost"] = float(sum(p["cost"] for p in case["probes"]) + sum(t["cost"] for t in case["attempts"]) + case["abstain_part"])
         case["artifact"] = any(x["artifact"] for x in case["probes"] + case["attempts"])
         return case
 
@@ -187,6 +208,35 @@ def run_protocol(prims: Any, protocol: str, destination: str, rng: np.random.Gen
                 reason = probe(option_id)
                 if reason is not None:
                     return end(reason)
+    if protocol == "policy":
+        while True:
+            rec = a.get("recommendation")
+            if rec == "probe" and len(case["probes"]) >= max_probes:
+                rec = _without_probe(a, prims)
+            if rec == "decline":
+                return end("abstained")
+            if rec == "probe":
+                reason = probe(a["recommended_option"])
+                if reason is not None:
+                    return end(reason)
+                continue
+            row = next((o for o in a["options"] if o["id"] == a.get("best_option")), None)
+            if row is None:
+                return end("no_row")
+            features = features_fn(row) if features_fn is not None else None
+            d = call(option_id=row["id"])
+            if "outcome" not in d:
+                return end("error", str(d.get("error") or d.get("reason")))
+            case["attempts"].append(_attempt_record(d, row, a, features, care))
+            if d["outcome"] == "placed_stable":
+                return end("placed")
+            if d["outcome"] not in RECOVERABLE or len(case["attempts"]) >= POLICY_ATTEMPTS:
+                return end("failed")
+            a = d["assessment"]
+            if "error" in a:
+                return end("error", a["error"])
+            if not a.get("assessed", False):
+                return end("unreachable")
     for attempt in range(2 if protocol == "repair" else 1):
         if protocol == "random_row":
             rows = _rows_to(a, destination)
@@ -233,7 +283,7 @@ def _stream(seed: int, object_id: str, idx: int, k: int) -> np.random.Generator:
 
 
 def run_case(prims: Any, object_id: str, idx: int, seed: int, protocol: str = "commit", follow: bool = False,
-             use_fixtures: bool = False) -> dict[str, Any]:
+             use_fixtures: bool = False, care: str | float = CARE) -> dict[str, Any]:
     """Reset the lab to the case's draw and run the protocol; the first attempt's fields sit at the top
     level (milestone 1's row)."""
     from robots.mujoco_lab.adapter import object_props
@@ -251,7 +301,8 @@ def run_case(prims: Any, object_id: str, idx: int, seed: int, protocol: str = "c
         return extract(env.geometry(), np.asarray(prop.point), prop.yaw, truth["mass"], truth["mu"], act["force"], act["v_lift"],
                        act["v_transport"], act["destination"], act.get("release_height"))
 
-    case = run_protocol(prims, protocol, destination, _stream(seed, object_id, idx, 2), features_fn=features_fn, follow=follow)
+    case = run_protocol(prims, protocol, destination, _stream(seed, object_id, idx, 2), care=care, features_fn=features_fn,
+                        follow=follow)
     case["artifact"] = case_artifact(case, reset_info)
     row = {"object": object_id, "idx": idx, "destination": destination, "theta": theta, "com_end": com_end,
            "truth": {k: truth[k] for k in ("mass", "mu", "com_s")}, "reset": reset_info, **case}
@@ -268,7 +319,8 @@ _STATE: dict[str, Any] = {}
 
 
 def _primitives(bundle: str | None, threshold: float | None, model_kind: str | None) -> Any:
-    """One lab env per process, and the primitives of each bundle on it (cached)."""
+    """One lab env per process, and the primitives of each bundle on it (cached; the abstain cost is the bundle's
+    decision until a job sets it)."""
     from robots.mujoco_lab.adapter import MuJoCoLabEnv
     from robots.mujoco_lab.robot_spec import load_bundle, load_model
     from robots.mujoco_lab.toolkit import MuJoCoLabPrimitives
@@ -284,7 +336,7 @@ def _primitives(bundle: str | None, threshold: float | None, model_kind: str | N
             B = load_bundle(bundle, model_kind)
             prims = MuJoCoLabPrimitives(env=env, model=B["model"], prior=B["prior"], readout_model=B["readout_model"],
                                         probe_models=B["probe_models"], threshold=threshold, manifest=B["manifest"],
-                                        guard=B["guard"])
+                                        guard=B["guard"], abstain_cost=B["abstain_cost"])
         _STATE["prims"][key] = prims
     return _STATE["prims"][key]
 
@@ -292,11 +344,12 @@ def _primitives(bundle: str | None, threshold: float | None, model_kind: str | N
 def _run_object(job: tuple[str, list[int], dict[str, Any]]) -> list[dict[str, Any]]:
     object_id, idxs, s = job
     prims = _primitives(s["bundle"], s["threshold"], s["model_kind"])
+    prims.abstain_cost = s["abstain_cost"]       # every job sets it: the cached primitives keep no earlier run's value
     rows = []
     for idx in idxs:
         t0 = time.time()
         try:
-            row = run_case(prims, object_id, idx, s["seed"], s["protocol"], s["follow"], s["fixtures"])
+            row = run_case(prims, object_id, idx, s["seed"], s["protocol"], s["follow"], s["fixtures"], s["care"])
         except Exception as exc:  # noqa: BLE001  one bad case must not stop the run
             row = {"object": object_id, "idx": idx, "error": str(exc)[:200], "executed": False}
         row.update(fold=s["fold"], bundle=s["bundle"], const=s["const"], seconds=round(time.time() - t0, 2))
@@ -339,9 +392,10 @@ def _bundle_metrics(bundle: str) -> tuple[dict[str, Any], dict[str, Any]]:
 
 def plan_cases(a: argparse.Namespace) -> dict[str, Any]:
     """The objects, and per object the bundle that scores it, its fold and its constant baseline."""
-    from robots.mujoco_lab.robot_spec import resolve_bundle
+    from robots.mujoco_lab.robot_spec import manifest_abstain_cost, resolve_bundle
 
     assign: dict[str, tuple[str | None, int | None]] = {}
+    decision: dict[str | None, float | None] = {}
     consts: dict[str | None, list[float]] = {}
     kinds: dict[str, str] = {}
     if a.crossfit:
@@ -358,30 +412,44 @@ def plan_cases(a: argparse.Namespace) -> dict[str, Any]:
             if bad:
                 raise SystemExit(f"fold {k} was trained on its held-out object(s) {bad}: folds.json and the fold bundles disagree")
             consts[bundle], kinds[str(k)] = class_rates(metrics), a.model_kind or man.get("kind", "classifier")
+            decision[bundle] = manifest_abstain_cost(man)
         for o in objects:
             assign[o] = (os.path.join(a.crossfit, f"fold_{folds[o]}"), folds[o])
-        return {"objects": objects, "assign": assign, "consts": consts, "kind": kinds, "folds": {o: folds[o] for o in objects}}
+        return {"objects": objects, "assign": assign, "consts": consts, "kind": kinds, "folds": {o: folds[o] for o in objects},
+                "decision": decision}
     if a.bundle:
         man, metrics = _bundle_metrics(a.bundle)
         bundle, kind = a.bundle, a.model_kind or man.get("kind", "classifier")
     else:
         metrics = json.load(open(a.metrics))
         bundle = resolve_bundle(None)
-        kind = a.model_kind or (_bundle_metrics(bundle)[0].get("kind", "classifier") if bundle else metrics.get("kind", "classifier"))
+        man = _bundle_metrics(bundle)[0] if bundle else {}
+        kind = a.model_kind or (man.get("kind", "classifier") if bundle else metrics.get("kind", "classifier"))
     objects = a.objects.split(",") if a.objects else list(metrics["split"]["test"])
-    consts[bundle] = class_rates(metrics)
+    consts[bundle], decision[bundle] = class_rates(metrics), manifest_abstain_cost(man)
     for o in objects:
         assign[o] = (bundle, None)
-    return {"objects": objects, "assign": assign, "consts": consts, "kind": kind, "folds": None}
+    return {"objects": objects, "assign": assign, "consts": consts, "kind": kind, "folds": None, "decision": decision}
+
+
+def run_abstain_cost(a: argparse.Namespace, plan: dict[str, Any]) -> float | None:
+    """The run's abstain cost: ``--abstain-cost`` (a number, or "none"), else the bundles' decision, which must agree."""
+    if getattr(a, "abstain_cost", None) is not None:
+        return None if a.abstain_cost == "none" else float(a.abstain_cost)
+    values = set(plan["decision"].values())
+    if len(values) > 1:
+        raise SystemExit(f"the bundles disagree on the abstain cost: {plan['decision']}; pass --abstain-cost")
+    return values.pop()
 
 
 def run_cases(a: argparse.Namespace, plan: dict[str, Any]) -> list[dict[str, Any]]:
-    jobs = []
+    jobs, A = [], run_abstain_cost(a, plan)
     for o in plan["objects"]:
         bundle, fold = plan["assign"][o]
         jobs.append((o, list(range(a.repeats)), {"bundle": bundle, "fold": fold, "const": plan["consts"][bundle], "seed": a.seed,
                                                  "protocol": a.protocol, "follow": a.follow_recommendation, "fixtures": a.fixtures,
-                                                 "threshold": a.threshold, "model_kind": a.model_kind}))
+                                                 "threshold": a.threshold, "model_kind": a.model_kind, "care": a.care,
+                                                 "abstain_cost": A}))
     rows: list[dict[str, Any]] = []
     if a.workers <= 1:
         for job in jobs:
@@ -518,6 +586,7 @@ def realized_cost(rows: list[dict[str, Any]], rng: np.random.Generator, n_boot: 
     return {"n": len(ok), "n_errors": n_err, "n_artifacts": n_art, "mean": float(c.mean()),
             "ci95_object_bootstrap": _mean_ci(c, inv, int(inv.max()) + 1, rng, n_boot),
             "probe_part": float(np.mean([sum(p["cost"] for p in r.get("probes") or []) for r in ok])),
+            "abstain_part": float(np.mean([float(r.get("abstain_part") or 0.0) for r in ok])),
             "by_end": {e: {"n": len(v), "mean": float(np.mean(v))} for e, v in sorted(by_end.items())}}
 
 
@@ -576,7 +645,11 @@ def summarize(rows: list[dict[str, Any]], protocol: str, rng: np.random.Generato
 def compare(A: dict[str, Any], B: dict[str, Any], rng: np.random.Generator, n_boot: int = N_BOOT) -> dict[str, Any]:
     """A − B over the paired cases (same object and idx, counted in both: no error, no artifact): the mean
     realized cost and the first attempts' ECE on P(placed_stable), each with a 95 % interval that resamples
-    objects jointly for both."""
+    objects jointly for both. The two runs must use the same costs (care scale, abstain cost; files from before
+    these fields read as care normal and no abstain cost)."""
+    costs_a, costs_b = ((R.get("care_scale", 1.0), R.get("abstain_cost")) for R in (A, B))
+    if costs_a != costs_b:
+        raise ValueError(f"the runs use different costs (care_scale, abstain_cost): a {costs_a}, b {costs_b}")
     ka = {(r["object"], r["idx"]): r for r in _counted(A["rows"])}
     kb = {(r["object"], r["idx"]): r for r in _counted(B["rows"])}
     keys = sorted(set(ka) & set(kb))
@@ -613,6 +686,33 @@ def _write(out: dict[str, Any], path: str) -> None:
         json.dump(out, f, indent=1, default=float)
 
 
+def _care_arg(text: str) -> str | float:
+    """--care: low, normal, high or a number above 0."""
+    care = text if text in ("low", "normal", "high") else _number(text)
+    try:
+        care_scale(care)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from None
+    return care
+
+
+def _abstain_arg(text: str) -> str | float:
+    """--abstain-cost: a finite number above 0, or none (the milestone 2a rule)."""
+    if text == "none":
+        return text
+    x = _number(text)
+    if not (isinstance(x, float) and np.isfinite(x) and x > 0):
+        raise argparse.ArgumentTypeError(f"abstain cost must be a number above 0 or none, not {text!r}")
+    return x
+
+
+def _number(text: str) -> str | float:
+    try:
+        return float(text)
+    except ValueError:
+        return text
+
+
 def main(argv: list[str] | None = None) -> dict[str, Any]:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     src = ap.add_mutually_exclusive_group()
@@ -627,6 +727,10 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--follow-recommendation", action="store_true", help="commit protocol: abstain on a decline recommendation")
     ap.add_argument("--threshold", type=float, default=None, help="override the commit threshold (tests)")
+    ap.add_argument("--care", type=_care_arg, default=CARE, help="low, normal, high or a number above 0 (scales the irreversible costs)")
+    ap.add_argument("--abstain-cost", type=_abstain_arg, default=None,
+                    help="the cost of a case that ends without the object placed: a number, or none (the 2a rule); "
+                         "default: the bundle's decision")
     ap.add_argument("--model-kind", default=None)
     ap.add_argument("--fixtures", action="store_true", help="draw half the destinations from the inspected mesh fixtures")
     ap.add_argument("--workers", type=int, default=1)
@@ -648,15 +752,17 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
     rows = run_cases(a, plan)
     out = summarize(rows, a.protocol, rng, a.coverage_sims, nested=bool(a.crossfit))
     out.update(kind=plan["kind"], objects=plan["objects"], folds=plan["folds"], seed=a.seed, repeats=a.repeats,
+               care=a.care, care_scale=care_scale(a.care), abstain_cost=run_abstain_cost(a, plan),
                source={"crossfit": a.crossfit, "bundle": a.bundle, "metrics": a.metrics}, seconds=round(time.time() - t0, 1))
     _write(out, a.out)
-    summary = {k: out[k] for k in ("protocol", "kind", "n", "n_executed", "abstained", "errors", "artifacts", "ece",
+    summary = {k: out[k] for k in ("protocol", "kind", "care", "abstain_cost", "n", "n_executed", "abstained", "errors", "artifacts", "ece",
                                    "ece_ci95_object_bootstrap", "brier", "brier_const", "ece_iid_floor", "outcomes", "probes_run",
                                    "probe_kind", "thrown")}
     summary.update(realized_cost={k: out["realized_cost"][k] for k in ("n", "mean", "ci95_object_bootstrap")},
                    acceptance=out["first_attempt"]["acceptance"], seconds=out["seconds"])
     out["wandb"] = tracking.log_run("calibrate", {"protocol": a.protocol, "seed": a.seed, "repeats": a.repeats, "source": out["source"],
-                                                  "n_objects": len(plan["objects"]), "threshold": a.threshold}, summary)
+                                                  "n_objects": len(plan["objects"]), "threshold": a.threshold,
+                                                  "care": a.care, "abstain_cost": out["abstain_cost"]}, summary)
     print(json.dumps(summary, indent=1, default=float))
     return out
 

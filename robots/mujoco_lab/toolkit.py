@@ -38,11 +38,12 @@ class MuJoCoLabPrimitives:
     expect them. ``prior(pose, n, rng)`` is the lab prior (the corpus generator) or None (the
     milestone 1 parametric prior); ``readout_model`` and ``probe_models`` update the belief;
     ``threshold`` overrides the commit threshold; ``manifest`` is the loaded bundle's manifest; ``guard`` is the
-    novelty guard (guard.KnnGuard) or None."""
+    novelty guard (guard.KnnGuard) or None; ``abstain_cost`` is the cost rule's A (the bundle's decision; None: the
+    milestone 2a rule)."""
 
     def __init__(self, env: Any, model: Any, rng: np.random.Generator | None = None, prior: Any = None,
                  readout_model: Any = None, probe_models: dict[str, Any] | None = None, threshold: float | None = None,
-                 manifest: dict[str, Any] | None = None, guard: Any = None):
+                 manifest: dict[str, Any] | None = None, guard: Any = None, abstain_cost: float | None = None):
         self.env = env
         self.model = model
         self.rng = rng if rng is not None else np.random.default_rng(0)
@@ -52,6 +53,7 @@ class MuJoCoLabPrimitives:
         self.threshold = threshold
         self.manifest = manifest
         self.guard = guard
+        self.abstain_cost = abstain_cost
 
 
 class MuJoCoLabToolkit(Toolkit):
