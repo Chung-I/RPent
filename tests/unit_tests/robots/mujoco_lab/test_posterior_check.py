@@ -227,3 +227,42 @@ def test_probe_check_reads_the_entry_and_the_squeeze_scene():
                                                   "f_damage_n": 20.0}] * n, np.ones(n))
     check_probe_cases(cases, {"probe_models": {"squeeze": pm}, "prior": prior}, [1.0], 5, 0)
     assert np.all(pm.seen[0][:, FEATURES_M2B.index("frag_crush")] == 1.0)
+
+
+def test_posterior_check_reports_fragility_and_fill_coverage(tmp_path, monkeypatch):
+    from robots.mujoco_lab import posterior_check as pc
+    from rpent.skills.pick_place.belief import ParticleBelief
+    from tests.unit_tests.skills.synthetic import synthetic_pose, synthetic_rows
+
+    row = {"object": "v", "draw": 0, "pose": synthetic_pose(), "base": synthetic_rows(1)[0]["features"], "force": 5.0,
+           "kind": "measured", "reading": {}, "theta_frag": {"f_damage_n": 20.0}, "fill": 0.7,
+           "entry": {"class": "crushable", "law": "cardboard", "fillable": True},
+           "theta": {"mass_scale": 1.0, "mu": 0.5, "com_s": None}, "com_end": 1,
+           "truth": {"mass": 0.2, "mu": 0.5}, "com_obj_true": [0.0, 0.0, 0.03]}
+    rows = [dict(row, key="v__d0__Csqueeze", probe="squeeze"),
+            dict(row, key="v__d0__Bweigh", probe="weigh"),
+            dict(row, key="v__d1__Bweigh", probe="weigh", draw=1, fill=0.0),
+            dict(row, object="tr", key="tr__d0__Bweigh", probe="weigh", fill=0.0),
+            dict(row, object="tr", key="tr__d1__Bweigh", probe="weigh", draw=1)]
+    particles = [{"mass": 0.2, "mu": 0.5, "com_obj": [0.0, 0.0, 0.03], "com_frac": 0.5,
+                  "f_damage_n": f, "fill": fill} for f, fill in zip((10.0, 20.0, 30.0), (0.0, 0.6, 0.9))]
+    pm = _RecordingProbe()
+    pm.reading = {}
+    bundle = {"manifest": {"metrics": "metrics.json", "probe_corpus": "unused"}, "probe_models": {"squeeze": pm, "weigh": pm},
+              "prior": lambda pose, n, rng: ParticleBelief(particles, np.array([0.25, 0.5, 0.25]))}
+    (tmp_path / "metrics.json").write_text(json.dumps({"split": {"train": ["tr"], "val": ["v"]}}))
+    monkeypatch.setattr(pc, "load_bundle", lambda path: bundle)
+    monkeypatch.setattr(pc, "load_rows", lambda path: rows)
+    monkeypatch.setattr(pc.tracking, "log_run", lambda *a, **kw: None)
+    common = ["--bundle", str(tmp_path), "--split", "val"]
+    squeeze = pc.main(common + ["--probes", "C", "--out", str(tmp_path / "c.json")])["squeeze_f_damage"]
+    assert squeeze["n"] == 1 and squeeze["post"]["coverage"] == 1.0
+    assert squeeze["prior"]["log_width_median"] == pytest.approx(np.log(3.0))
+    fill = pc.main(common + ["--probes", "B", "--out", str(tmp_path / "b.json")])["weigh_fill"]
+    assert fill["n"] == 2 and fill["n_filled"] == 1 and fill["constant_p_filled"] == 0.5
+    for name in ("prior", "post"):
+        assert fill[name]["filled_only_coverage"] == 1.0
+        assert fill[name]["filled_only_width_median"] == pytest.approx(0.3)
+        assert fill[name]["p_filled_when_empty"] == fill[name]["p_filled_when_filled"] == 0.75
+        assert fill[name]["brier"] == pytest.approx(0.3125) and fill[name]["brier_const"] == 0.25
+        assert fill[name]["ece"] == pytest.approx(0.25)

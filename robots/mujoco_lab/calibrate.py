@@ -40,7 +40,7 @@ Every assigned case is kept: a thrown probe or an object out of reach ends it wi
 with a flagged probe or attempt, or whose reset did not reach rest (``artifact``, adapter.artifact: pad
 contacts that were not physical), stays in ``rows`` but every metric leaves it out and counts it. The
 calibration blocks score the executed attempts (``first_attempt``, and ``second_attempt`` for repair):
-the seven-class Brier score against the training class rates, the ECE on P(placed_stable) with its
+the eleven-class Brier score against the training class rates, the ECE on P(placed_stable) with its
 object-bootstrap 95 % interval and the plug-in rule (pass when the upper bound is under 0.05, fail
 when the lower bound is over, else undecided), the one-vs-rest ECE per outcome, the iid floor, and the
 simulated coverage of the interval. ``realized_cost`` (the cost table at the run's care, probe time and
@@ -80,7 +80,7 @@ from rpent.skills.pick_place.evaluate import (_ece, coverage_design, ece_ci, ece
                                               object_sums, object_weights, per_class, score)
 from rpent.skills.pick_place.features import extract
 from rpent.skills.pick_place.probes import DAMAGED, PROBE_KINDS, PROBE_SECONDS
-from rpent.skills.pick_place.protocol import IRREVERSIBLE, MOTION_OUTCOMES, OUTCOMES, RECOVERABLE, Prediction
+from rpent.skills.pick_place.protocol import DAMAGE, IRREVERSIBLE, MOTION_OUTCOMES, OUTCOMES, RECOVERABLE, Prediction
 from rpent.skills.pick_place.tools import MAX_PROBES, _threshold, assess_pick, pick_and_place
 
 PROTOCOLS = ("commit", "probe_first", "repair", "random_row", "probe_all", "policy")
@@ -531,6 +531,32 @@ def calibration_block(att: list[dict[str, Any]], rng: np.random.Generator, cover
     return block
 
 
+def irreversible_block(att: list[dict[str, Any]], rng: np.random.Generator) -> dict[str, Any]:
+    """Binary calibration of the sum over IRREVERSIBLE; damage ECE needs at least 50 positives.
+
+    The constant is each attempt's training class rates (its fold's for cross-fit), or the
+    uniform outcome baseline when no rates are available, as in calibration_block.
+    """
+    if not att:
+        return {"n": 0, "n_irreversible": 0, "ece": None, "ece_ci95_object_bootstrap": None,
+                "brier": None, "brier_const": None, "per_class": None, "acceptance": None}
+    P = np.array([[float(t["declared"]["p"].get(k, 0.0)) for k in OUTCOMES] for t in att])
+    labels = [t["label"] for t in att]
+    p = P[:, [OUTCOMES.index(k) for k in IRREVERSIBLE]].sum(axis=1)
+    y = np.array([k in IRREVERSIBLE for k in labels], dtype=float)
+    if all(t.get("const") is not None for t in att):
+        c = np.array([sum(float(v) for k, v in zip(OUTCOMES, t["const"]) if k in IRREVERSIBLE) for t in att])
+    else:
+        c = np.full(len(att), len(IRREVERSIBLE) / len(OUTCOMES))
+    ci = ece_ci(p, y, [t["object"] for t in att], rng)
+    brier, baseline = float(np.mean((p - y) ** 2)), float(np.mean((c - y) ** 2))
+    classes = per_class(P, labels)
+    return {"n": len(att), "n_irreversible": int(y.sum()), "mean_p_irreversible": float(p.mean()),
+            "rate_irreversible": float(y.mean()), "ece": _ece(p, y), "ece_ci95_object_bootstrap": ci,
+            "brier": brier, "brier_const": baseline, "per_class": {k: classes[k] for k in DAMAGE},
+            "acceptance": {"brier_below_const": bool(brier < baseline), "ece_rule": ece_rule(ci)}}
+
+
 def _brier(P: np.ndarray, Y: np.ndarray) -> float:
     return float(np.mean(np.sum((P - Y) ** 2, axis=1)))
 
@@ -660,6 +686,7 @@ def summarize(rows: list[dict[str, Any]], protocol: str, rng: np.random.Generato
            "recommendation_decline_rate": float(np.mean([x == "decline" for x in rec])) if rec else None,
            "recommendations": dict(Counter(rec)), "abstained": sum(1 for r in ok if r.get("ended") == "abstained"),
            "errors": n_err, "artifacts": n_art, "ended": dict(Counter(str(r.get("ended")) for r in ok)),
+           "irreversible": irreversible_block(first, rng),
            "first_attempt": b1, "second_attempt": calibration_block(second, rng) if protocol == "repair" else None}
     out.update({k: b1[k] for k in ("ece", "ece_ci95_object_bootstrap", "brier", "brier_const", "by_subgroup", "by_destination",
                                    "by_option", "outcomes", "per_class", "ece_iid_floor")})

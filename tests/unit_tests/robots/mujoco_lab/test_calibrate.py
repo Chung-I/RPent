@@ -548,3 +548,39 @@ def test_a_case_sets_the_slosh_scale_of_the_bundle_thresholds(monkeypatch):
     with pytest.raises(Stop):
         run_case(prims, "ycb__mug", 0, 0)
     assert prims.env.slosh_zeta == 0.02 and prims.env.slosh_scale == {"carry": {"0.6": 0.5}}
+
+
+def test_irreversible_block_sums_the_irreversible_classes():
+    from robots.mujoco_lab import calibrate
+    from rpent.skills.pick_place.evaluate import _ece, ece_ci
+    from rpent.skills.pick_place.protocol import IRREVERSIBLE
+
+    att = [_att(f"o{i // 2}", 0, 0.0, label) for i, label in enumerate(OUTCOMES)]
+    for i, r in enumerate(att):
+        r["declared"]["p"] = {k: (0.02 + i * 0.003 if k in IRREVERSIBLE else 0.0) for k in OUTCOMES}
+        r["declared"]["p"]["placed_stable"] = 1.0 - sum(r["declared"]["p"].values())
+        r["const"] = [0.1 if k in IRREVERSIBLE else 0.08 for k in OUTCOMES]
+    p = np.array([sum(r["declared"]["p"][k] for k in IRREVERSIBLE) for r in att])
+    y = np.array([r["label"] in IRREVERSIBLE for r in att], dtype=float)
+    ci = ece_ci(p, y, [r["object"] for r in att], np.random.default_rng(4))
+    out = calibrate.irreversible_block(att, np.random.default_rng(4))
+    assert out["n"] == len(att) and out["n_irreversible"] == len(IRREVERSIBLE)
+    assert out["brier"] == pytest.approx(np.mean((p - y) ** 2))
+    assert out["brier_const"] == pytest.approx(np.mean((0.6 - y) ** 2))
+    assert out["ece"] == pytest.approx(_ece(p, y))
+    assert out["ece_ci95_object_bootstrap"] == pytest.approx(ci)
+    assert out["acceptance"]["ece_rule"] == calibrate.ece_rule(ci)
+    assert calibrate.summarize([], "commit", np.random.default_rng(0))["irreversible"]["n"] == 0
+
+
+def test_damage_class_marked_insufficient_under_50_positives():
+    from robots.mujoco_lab import calibrate
+    from rpent.skills.pick_place.protocol import DAMAGE
+
+    att = [_att(f"o{i % 3}", 0, 0.5, "crushed") for i in range(49)]
+    out = calibrate.irreversible_block(att, np.random.default_rng(0))
+    assert set(out["per_class"]) == set(DAMAGE)
+    assert out["per_class"]["crushed"] == {"n_pos": 49, "ece": "insufficient"}
+    assert all(out["per_class"][k] == {"n_pos": 0, "ece": "insufficient"} for k in DAMAGE[1:])
+    out = calibrate.irreversible_block(att + [att[0]], np.random.default_rng(0))
+    assert out["per_class"]["crushed"] == {"n_pos": 50, "ece": 1.0}

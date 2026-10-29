@@ -56,7 +56,7 @@ from robots.mujoco_lab.prior import com_hypothesis, lab_prior
 from robots.mujoco_lab.robot_spec import load_bundle
 from robots.mujoco_lab.train_models import load_rows, write_manifest
 from rpent.skills.pick_place.belief import ParticleBelief
-from rpent.skills.pick_place.evaluate import row_base, row_pose, rows_of
+from rpent.skills.pick_place.evaluate import _ece, row_base, row_pose, rows_of
 from rpent.skills.pick_place.features import model_names, particle_matrix, particle_sides
 from rpent.skills.pick_place.likelihood import as_law
 
@@ -150,6 +150,13 @@ def check_probe_cases(cases: list[list[dict[str, Any]]], bundle: dict[str, Any],
         c = {"object": first["object"], "label": "+".join(r["kind"] for r in case), "n_probes": len(case),
              "info": {"used": [], "rejected": []}, "prior": _hits(b, truth), "prior_sim": _hits(b, sim), "prior_width": _widths(b),
              "post": {}, "post_sim": {}, "post_width": {}}
+        squeeze = next((r for r in case if r["probe"] == "squeeze" and (r.get("theta_frag") or {}).get("f_damage_n") is not None), None)
+        weigh = next((r for r in case if r["probe"] == "weigh" and (r.get("entry") or {}).get("fillable")), None)
+        if squeeze is not None:
+            c["squeeze_f_damage"] = {"prior": _fragility_interval(b, squeeze), "post": {}}
+        if weigh is not None:
+            c["weigh_fill"] = {"filled": float(weigh.get("fill") or 0.0) > 0,
+                               "prior": _fill_interval(b, weigh), "post": {}}
         for j, t in enumerate(grid):
             ll = np.zeros(len(b.weights))
             for pm, obs, X, force in terms:
@@ -160,7 +167,76 @@ def check_probe_cases(cases: list[list[dict[str, Any]]], bundle: dict[str, Any],
                     c["info"]["rejected"] += [f"{pm.probe}_{k}" for k in info["rejected"]]
             post = b.reweight(ll)
             c["post"][t], c["post_sim"][t], c["post_width"][t] = _hits(post, truth), _hits(post, sim), _widths(post)
+            if squeeze is not None:
+                c["squeeze_f_damage"]["post"][t] = _fragility_interval(post, squeeze)
+            if weigh is not None:
+                c["weigh_fill"]["post"][t] = _fill_interval(post, weigh)
         out.append(c)
+    return out
+
+
+def _interval(b: ParticleBelief, key: str, positive: bool = False) -> tuple[float, float] | None:
+    v = np.array([np.nan if p.get(key) is None else float(p[key]) for p in b.particles])
+    ok = np.isfinite(v) & (v > 0 if positive else True)
+    v, w = v[ok], np.asarray(b.weights)[ok]
+    if not len(v) or not w.sum() > 0:
+        return None
+    order = np.argsort(v, kind="stable")
+    cw = np.cumsum(w[order]) / w.sum()
+    return tuple(float(v[order[min(int(np.searchsorted(cw, q)), len(v) - 1)]]) for q in (0.1, 0.9))
+
+
+def _fragility_interval(b: ParticleBelief, row: dict[str, Any]) -> dict[str, Any]:
+    interval = _interval(b, "f_damage_n", positive=True)
+    truth = float(row["theta_frag"]["f_damage_n"])
+    return {"hit": bool(interval is not None and interval[0] <= truth <= interval[1]),
+            "width": float(np.log(interval[1] / interval[0])) if interval is not None else None}
+
+
+def _fill_interval(b: ParticleBelief, row: dict[str, Any]) -> dict[str, Any]:
+    filled = np.array([float(p.get("fill") or 0.0) > 0 for p in b.particles])
+    truth = float(row.get("fill") or 0.0)
+    interval = _interval(b, "fill", positive=True) if truth > 0 else None
+    return {"p_filled": float(np.asarray(b.weights)[filled].sum() / np.sum(b.weights)),
+            "hit": bool(interval is not None and interval[0] <= truth <= interval[1]) if truth > 0 else None,
+            "width": interval[1] - interval[0] if interval is not None else None}
+
+
+def probe_property_report(cases: list[dict[str, Any]], temper: float, constant: float | None) -> dict[str, Any]:
+    """Fragility intervals and fill classification; fill intervals condition on positive fill.
+
+    Empty truths enter the binary fill scores only. A filled truth without positive posterior
+    support misses its interval. The binary constant is the training fillable weigh rate.
+    """
+    out = {}
+    for key in ("squeeze_f_damage", "weigh_fill"):
+        records = [c[key] for c in cases if key in c]
+        if not records:
+            continue
+        block = {"n": len(records)}
+        y = np.array([r["filled"] for r in records], dtype=float) if key == "weigh_fill" else None
+        if y is not None:
+            block.update(n_filled=int(y.sum()), constant_p_filled=constant)
+        for name in ("prior", "post"):
+            scores = [r[name][temper] if name == "post" else r[name] for r in records]
+            if y is None:
+                widths = [v["width"] for v in scores if v["width"] is not None]
+                block[name] = {"coverage": float(np.mean([v["hit"] for v in scores])),
+                               "log_width_median": float(np.median(widths)) if widths else None}
+            else:
+                p = np.array([v["p_filled"] for v in scores])
+                widths = [v["width"] for v, filled in zip(scores, y) if filled and v["width"] is not None]
+                brier = float(np.mean((p - y) ** 2))
+                bc = float(np.mean((constant - y) ** 2)) if constant is not None else None
+                ece = _ece(p, y)
+                block[name] = {"filled_only_coverage": float(np.mean([v["hit"] for v, filled in zip(scores, y) if filled])) if y.any() else None,
+                               "filled_only_width_median": float(np.median(widths)) if widths else None,
+                               "p_filled_when_filled": float(p[y > 0].mean()) if y.any() else None,
+                               "p_filled_when_empty": float(p[y == 0].mean()) if (y == 0).any() else None,
+                               "brier": brier, "brier_const": bc, "ece": ece,
+                               "acceptance": {"brier_below_const": bool(brier < bc) if bc is not None else None,
+                                              "ece_le_005": bool(ece <= 0.05)}}
+        out[key] = block
     return out
 
 
@@ -263,6 +339,12 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
     }
     if a.probes == "A":
         out["n_with_weigh"] = sum(c["n_probes"] == 2 for c in cases)
+    if a.probes:
+        tags = set(PROBE_TAGS[a.probes])
+        train_weigh = [r for r in rows_for("train") if r["probe"] == "weigh" and r["key"].rsplit("__", 1)[1] in tags
+                       and (r.get("entry") or {}).get("fillable")]
+        constant = float(np.mean([float(r.get("fill") or 0.0) > 0 for r in train_weigh])) if train_weigh else None
+        out.update(probe_property_report(cases, temper, constant))
     with open(a.out, "w") as f:
         json.dump(out, f, indent=1)
     if a.choose_on:
