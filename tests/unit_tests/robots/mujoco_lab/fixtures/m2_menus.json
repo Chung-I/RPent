@@ -1,0 +1,1050 @@
+[
+ {
+  "object": "hope__popcorn_box",
+  "idx": 0,
+  "destination": "table_centre",
+  "recommendation": "commit",
+  "rows": [
+   {
+    "id": "firm_grip",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.9660674760114698,
+     "tipped": 0.004861718809555152,
+     "missed": 0.0012444720610939296,
+     "dropped_low": 0.003066972671184214,
+     "dropped_high": 0.004100024804876281,
+     "rolled_off": 0.0016776666189646536,
+     "not_lifted": 0.018981669022855596
+    },
+    "expected_cost": 0.4475524551724658,
+    "reason": "twice the squeeze",
+    "probe": null
+   },
+   {
+    "id": "commit_std",
+    "kind": "commit",
+    "p": {
+     "placed_stable": 0.9615612506085828,
+     "tipped": 0.005860371545013408,
+     "missed": 0.0013402073232669088,
+     "dropped_low": 0.0032470025111532826,
+     "dropped_high": 0.004418995566282205,
+     "rolled_off": 0.0017732785211592458,
+     "not_lifted": 0.021798893924541377
+    },
+    "expected_cost": 0.45230839877891155,
+    "reason": "",
+    "probe": null
+   },
+   {
+    "id": "regrasp_com",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.9615612506085828,
+     "tipped": 0.005860371545013408,
+     "missed": 0.0013402073232669088,
+     "dropped_low": 0.0032470025111532826,
+     "dropped_high": 0.004418995566282205,
+     "rolled_off": 0.0017732785211592458,
+     "not_lifted": 0.021798893924541377
+    },
+    "expected_cost": 0.5523083987789116,
+    "reason": "the standard pinch is already nearest the believed centre of mass",
+    "probe": null
+   },
+   {
+    "id": "probe_weigh",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 0.6546490218830309,
+    "reason": "weigh first: value of information 0.00, expected cost of the best row after it 0.45",
+    "probe": {
+     "p_kind": {
+      "measured": 0.9888592124821426,
+      "lower_bound": 0.010717550492991258,
+      "lost": 0.0004232370248677577
+     },
+     "p_thrown": 0.0015588464536243163,
+     "evoi": 0.0,
+     "evoi_se": 0.0,
+     "expected_cost_after": 0.45464902188303086
+    }
+   },
+   {
+    "id": "probe_push",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 0.6812708036085253,
+    "reason": "push first: value of information 0.00, expected cost of the best row after it 0.55",
+    "probe": {
+     "p_kind": {
+      "slid": 0.9370986925578328,
+      "tipped": 0.03263030953866404,
+      "no_breakaway": 0.006901992093836516,
+      "no_contact": 0.023369005809666655
+     },
+     "p_thrown": 0.022205206738131752,
+     "evoi": 0.0,
+     "evoi_se": 0.0,
+     "expected_cost_after": 0.5486404940698613
+    }
+   },
+   {
+    "id": "slow_lift",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.9616557366274563,
+     "tipped": 0.005676200309943747,
+     "missed": 0.0013404980317119589,
+     "dropped_low": 0.003449473946080987,
+     "dropped_high": 0.004894832140977865,
+     "rolled_off": 0.0017739331518016655,
+     "not_lifted": 0.021209325792026962
+    },
+    "expected_cost": 0.7544146616476479,
+    "reason": "slower lift and carry",
+    "probe": null
+   },
+   {
+    "id": "decline",
+    "kind": "decline",
+    "p": null,
+    "expected_cost": null,
+    "reason": "dropped_high carries the largest expected cost in the best row (firm_grip)",
+    "probe": null
+   }
+  ]
+ },
+ {
+  "object": "hope__popcorn_box",
+  "idx": 1,
+  "destination": "table_centre",
+  "recommendation": "commit",
+  "rows": [
+   {
+    "id": "firm_grip",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.9659766670698928,
+     "tipped": 0.004730882510253765,
+     "missed": 0.0012294060648488847,
+     "dropped_low": 0.0030670972135213525,
+     "dropped_high": 0.004100022228303911,
+     "rolled_off": 0.0015898387885081283,
+     "not_lifted": 0.01930608612467064
+    },
+    "expected_cost": 0.44712973393501954,
+    "reason": "twice the squeeze",
+    "probe": null
+   },
+   {
+    "id": "commit_std",
+    "kind": "commit",
+    "p": {
+     "placed_stable": 0.9614062954718957,
+     "tipped": 0.005724255053415068,
+     "missed": 0.001328720079748691,
+     "dropped_low": 0.0032481167417855463,
+     "dropped_high": 0.004418207911653119,
+     "rolled_off": 0.0016930757904041734,
+     "not_lifted": 0.022181328951097132
+    },
+    "expected_cost": 0.45194817486078437,
+    "reason": "",
+    "probe": null
+   },
+   {
+    "id": "regrasp_com",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.9614062954718957,
+     "tipped": 0.005724255053415068,
+     "missed": 0.001328720079748691,
+     "dropped_low": 0.0032481167417855463,
+     "dropped_high": 0.004418207911653119,
+     "rolled_off": 0.0016930757904041734,
+     "not_lifted": 0.022181328951097132
+    },
+    "expected_cost": 0.5519481748607843,
+    "reason": "the standard pinch is already nearest the believed centre of mass",
+    "probe": null
+   },
+   {
+    "id": "probe_weigh",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 0.6542269596030865,
+    "reason": "weigh first: value of information 0.00, expected cost of the best row after it 0.45",
+    "probe": {
+     "p_kind": {
+      "measured": 0.9902177314380631,
+      "lower_bound": 0.009359033564914323,
+      "lost": 0.00042323499702588094
+     },
+     "p_thrown": 0.0015588464536243163,
+     "evoi": 0.0,
+     "evoi_se": 0.0,
+     "expected_cost_after": 0.45422695960308657
+    }
+   },
+   {
+    "id": "probe_push",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 0.6810902983663145,
+    "reason": "push first: value of information 0.00, expected cost of the best row after it 0.55",
+    "probe": {
+     "p_kind": {
+      "slid": 0.9317201705874063,
+      "tipped": 0.032863138921429426,
+      "no_breakaway": 0.006962408518151941,
+      "no_contact": 0.028454281973011645
+     },
+     "p_thrown": 0.022205206738131752,
+     "evoi": 0.0,
+     "evoi_se": 0.0,
+     "expected_cost_after": 0.5482271594448851
+    }
+   },
+   {
+    "id": "slow_lift",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.9615051516732167,
+     "tipped": 0.00554386765158531,
+     "missed": 0.0013289524101551817,
+     "dropped_low": 0.0034510458787488864,
+     "dropped_high": 0.0048942796409726244,
+     "rolled_off": 0.0016933648104137224,
+     "not_lifted": 0.02158333793490759
+    },
+    "expected_cost": 0.754053757164875,
+    "reason": "slower lift and carry",
+    "probe": null
+   },
+   {
+    "id": "decline",
+    "kind": "decline",
+    "p": null,
+    "expected_cost": null,
+    "reason": "dropped_high carries the largest expected cost in the best row (firm_grip)",
+    "probe": null
+   }
+  ]
+ },
+ {
+  "object": "ycb__mug",
+  "idx": 0,
+  "destination": "table_edge",
+  "recommendation": "commit",
+  "rows": [
+   {
+    "id": "firm_grip",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.89780413148953,
+     "tipped": 0.007861664188221606,
+     "missed": 0.0008760454853449989,
+     "dropped_low": 0.00503907399127229,
+     "dropped_high": 0.008117228092857585,
+     "rolled_off": 0.008274026501309598,
+     "not_lifted": 0.07202783025146342
+    },
+    "expected_cost": 0.5317469717614065,
+    "reason": "twice the squeeze",
+    "probe": null
+   },
+   {
+    "id": "commit_std",
+    "kind": "commit",
+    "p": {
+     "placed_stable": 0.8278166872822451,
+     "tipped": 0.009776239943214736,
+     "missed": 0.000939732728903714,
+     "dropped_low": 0.007450628799469496,
+     "dropped_high": 0.01300578650082708,
+     "rolled_off": 0.008904473987311139,
+     "not_lifted": 0.13210645075802774
+    },
+    "expected_cost": 0.5937711292912929,
+    "reason": "",
+    "probe": null
+   },
+   {
+    "id": "inboard_place",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.8264494278992228,
+     "tipped": 0.011842264825254715,
+     "missed": 0.000947142928704774,
+     "dropped_low": 0.007356435845557481,
+     "dropped_high": 0.012244501921497173,
+     "rolled_off": 0.003332157093808245,
+     "not_lifted": 0.13782806948595486
+    },
+    "expected_cost": 0.6169431734190215,
+    "reason": "safer place, not the requested one",
+    "probe": null
+   },
+   {
+    "id": "probe_weigh",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 0.738576474658944,
+    "reason": "weigh first: value of information 0.00, expected cost of the best row after it 0.54",
+    "probe": {
+     "p_kind": {
+      "measured": 0.9624977256451863,
+      "lower_bound": 0.031599939298424216,
+      "lost": 0.005902335056388422
+     },
+     "p_thrown": 0.0015588464536243163,
+     "evoi": 0.00013581748942835946,
+     "evoi_se": 0.0001358174894283595,
+     "expected_cost_after": 0.538576474658944
+    }
+   },
+   {
+    "id": "regrasp_com",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.8380058934931142,
+     "tipped": 0.010808959683681302,
+     "missed": 0.0008607923278155886,
+     "dropped_low": 0.013413909579770528,
+     "dropped_high": 0.022897206829776192,
+     "rolled_off": 0.01089384558972671,
+     "not_lifted": 0.10311939249611654
+    },
+    "expected_cost": 0.7455986199368402,
+    "reason": "pinch nearer the believed centre of mass",
+    "probe": null
+   },
+   {
+    "id": "probe_push",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 0.7893747676920101,
+    "reason": "push first: value of information 0.00, expected cost of the best row after it 0.63",
+    "probe": {
+     "p_kind": {
+      "slid": 0.9289287678483932,
+      "tipped": 0.05840931368028251,
+      "no_breakaway": 0.00612808210167633,
+      "no_contact": 0.006533836369647916
+     },
+     "p_thrown": 0.022205206738131752,
+     "evoi": 0.0,
+     "evoi_se": 0.0,
+     "expected_cost_after": 0.6309654540117275
+    }
+   },
+   {
+    "id": "slow_lift",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.8280050432334296,
+     "tipped": 0.009470799789196753,
+     "missed": 0.0009399180806749025,
+     "dropped_low": 0.008073260644187305,
+     "dropped_high": 0.014616936183024084,
+     "rolled_off": 0.008906680612057046,
+     "not_lifted": 0.1299873614574299
+    },
+    "expected_cost": 0.9010957432181796,
+    "reason": "slower lift and carry",
+    "probe": null
+   },
+   {
+    "id": "decline",
+    "kind": "decline",
+    "p": null,
+    "expected_cost": null,
+    "reason": "rolled_off carries the largest expected cost in the best row (firm_grip)",
+    "probe": null
+   }
+  ]
+ },
+ {
+  "object": "ycb__mug",
+  "idx": 1,
+  "destination": "bin",
+  "recommendation": "commit",
+  "rows": [
+   {
+    "id": "firm_grip",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.8817313895265673,
+     "tipped": 0.010432896788988013,
+     "missed": 0.0021424158227138445,
+     "dropped_low": 0.004755596402491713,
+     "dropped_high": 0.022344112794810484,
+     "rolled_off": 0.003048300802748799,
+     "not_lifted": 0.0755452878616787
+    },
+    "expected_cost": 0.5820656209328293,
+    "reason": "twice the squeeze",
+    "probe": null
+   },
+   {
+    "id": "drop_release",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.7797390851331326,
+     "tipped": 0.07213661444917556,
+     "missed": 0.003336616932019524,
+     "dropped_low": 0.005599714166414955,
+     "dropped_high": 0.030716186692550256,
+     "rolled_off": 0.004556079008794736,
+     "not_lifted": 0.10391570361791216
+    },
+    "expected_cost": 0.6093921258632911,
+    "reason": "release 5 cm above the rim: faster, more tip risk",
+    "probe": null
+   },
+   {
+    "id": "commit_std",
+    "kind": "commit",
+    "p": {
+     "placed_stable": 0.8040507908710122,
+     "tipped": 0.012800310177328796,
+     "missed": 0.0022283439024649893,
+     "dropped_low": 0.007017002941423084,
+     "dropped_high": 0.03397300203160553,
+     "rolled_off": 0.003487610175255435,
+     "not_lifted": 0.1364429399009098
+    },
+    "expected_cost": 0.6775701880059766,
+    "reason": "",
+    "probe": null
+   },
+   {
+    "id": "probe_weigh",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 0.7790153061639848,
+    "reason": "weigh first: value of information 0.01, expected cost of the best row after it 0.58",
+    "probe": {
+     "p_kind": {
+      "measured": 0.9588956973155912,
+      "lower_bound": 0.030221009662901036,
+      "lost": 0.01088329302150792
+     },
+     "p_thrown": 0.0015588464536243163,
+     "evoi": 0.00993719610799851,
+     "evoi_se": 0.0012138279824295127,
+     "expected_cost_after": 0.5790153061639848
+    }
+   },
+   {
+    "id": "probe_push",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 0.8389500471559485,
+    "reason": "push first: value of information 0.00, expected cost of the best row after it 0.68",
+    "probe": {
+     "p_kind": {
+      "slid": 0.9277377235850531,
+      "tipped": 0.05930884977561297,
+      "no_breakaway": 0.006399955385587148,
+      "no_contact": 0.006553471253747885
+     },
+     "p_thrown": 0.022205206738131752,
+     "evoi": 0.0005255697951801494,
+     "evoi_se": 8.8279929372649e-05,
+     "expected_cost_after": 0.6796411973803355
+    }
+   },
+   {
+    "id": "regrasp_com",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.8055753190717204,
+     "tipped": 0.014958536677309927,
+     "missed": 0.0019286726746902125,
+     "dropped_low": 0.012532328841816185,
+     "dropped_high": 0.055755604211113585,
+     "rolled_off": 0.0034284328904876453,
+     "not_lifted": 0.10582110563286092
+    },
+    "expected_cost": 0.8782502765182529,
+    "reason": "pinch nearer the believed centre of mass",
+    "probe": null
+   },
+   {
+    "id": "slow_lift",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.8025891351486774,
+     "tipped": 0.013267778624532205,
+     "missed": 0.002215737967216651,
+     "dropped_low": 0.007689694822056969,
+     "dropped_high": 0.03656422146914795,
+     "rolled_off": 0.003464016379711905,
+     "not_lifted": 0.13420941558865648
+    },
+    "expected_cost": 0.9904191084524334,
+    "reason": "slower lift and carry",
+    "probe": null
+   },
+   {
+    "id": "decline",
+    "kind": "decline",
+    "p": null,
+    "expected_cost": null,
+    "reason": "dropped_high carries the largest expected cost in the best row (firm_grip)",
+    "probe": null
+   }
+  ]
+ },
+ {
+  "object": "ycb__tomato_soup_can",
+  "idx": 0,
+  "destination": "table_edge",
+  "recommendation": "commit",
+  "rows": [
+   {
+    "id": "firm_grip",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.8312821915086139,
+     "tipped": 0.031860728651129544,
+     "missed": 0.002792983210388365,
+     "dropped_low": 0.00859131831055375,
+     "dropped_high": 0.015857344605087843,
+     "rolled_off": 0.01458649573841859,
+     "not_lifted": 0.09502893797580739
+    },
+    "expected_cost": 0.6429787008775075,
+    "reason": "twice the squeeze",
+    "probe": null
+   },
+   {
+    "id": "commit_std",
+    "kind": "commit",
+    "p": {
+     "placed_stable": 0.7074787114229766,
+     "tipped": 0.033046422948805734,
+     "missed": 0.0023552449121244795,
+     "dropped_low": 0.011557096700951749,
+     "dropped_high": 0.022501788185918175,
+     "rolled_off": 0.014449655309995224,
+     "not_lifted": 0.20861108051922822
+    },
+    "expected_cost": 0.7360215223010631,
+    "reason": "",
+    "probe": null
+   },
+   {
+    "id": "inboard_place",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.7058433378476757,
+     "tipped": 0.03959476313887457,
+     "missed": 0.002355836208617791,
+     "dropped_low": 0.011401004806909093,
+     "dropped_high": 0.02122260371391231,
+     "rolled_off": 0.005280444382178065,
+     "not_lifted": 0.2143020099018325
+    },
+    "expected_cost": 0.7430178495857696,
+    "reason": "safer place, not the requested one",
+    "probe": null
+   },
+   {
+    "id": "regrasp_com",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.6927763472680559,
+     "tipped": 0.033151270310715464,
+     "missed": 0.002355664575693931,
+     "dropped_low": 0.010851610927212325,
+     "dropped_high": 0.021038460444816328,
+     "rolled_off": 0.01403139120151686,
+     "not_lifted": 0.225795255271989
+    },
+    "expected_cost": 0.8346054316812821,
+    "reason": "pinch nearer the believed centre of mass",
+    "probe": null
+   },
+   {
+    "id": "probe_weigh",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 0.84964861407567,
+    "reason": "weigh first: value of information 0.00, expected cost of the best row after it 0.65",
+    "probe": {
+     "p_kind": {
+      "measured": 0.8717857158765854,
+      "lower_bound": 0.1277908007058796,
+      "lost": 0.00042348341753683795
+     },
+     "p_thrown": 0.0015588464536243163,
+     "evoi": 0.00012201400234034454,
+     "evoi_se": 0.00011237583986837558,
+     "expected_cost_after": 0.6496486140756701
+    }
+   },
+   {
+    "id": "probe_push",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 0.8696293407801521,
+    "reason": "push first: value of information 0.00, expected cost of the best row after it 0.74",
+    "probe": {
+     "p_kind": {
+      "slid": 0.9591947777214316,
+      "tipped": 0.029902081193186218,
+      "no_breakaway": 0.005434417322928375,
+      "no_contact": 0.005468723762454322
+     },
+     "p_thrown": 0.022205206738131752,
+     "evoi": 0.0,
+     "evoi_se": 0.0,
+     "expected_cost_after": 0.7397272595869658
+    }
+   },
+   {
+    "id": "slow_lift",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.7069869506219264,
+     "tipped": 0.032059956652375085,
+     "missed": 0.0023561994250755375,
+     "dropped_low": 0.012671653299743575,
+     "dropped_high": 0.02497854346662131,
+     "rolled_off": 0.014461916623893647,
+     "not_lifted": 0.20648477991036415
+    },
+    "expected_cost": 1.047532499784951,
+    "reason": "slower lift and carry",
+    "probe": null
+   },
+   {
+    "id": "decline",
+    "kind": "decline",
+    "p": null,
+    "expected_cost": null,
+    "reason": "dropped_high carries the largest expected cost in the best row (firm_grip)",
+    "probe": null
+   }
+  ]
+ },
+ {
+  "object": "ycb__tomato_soup_can",
+  "idx": 1,
+  "destination": "bin",
+  "recommendation": "commit",
+  "rows": [
+   {
+    "id": "firm_grip",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.807539234688215,
+     "tipped": 0.03934850107864822,
+     "missed": 0.0067134033062343145,
+     "dropped_low": 0.007948516434860959,
+     "dropped_high": 0.039447099730051595,
+     "rolled_off": 0.006494400851726625,
+     "not_lifted": 0.0925088439102627
+    },
+    "expected_cost": 0.7299723456837659,
+    "reason": "twice the squeeze",
+    "probe": null
+   },
+   {
+    "id": "drop_release",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.6039365777568338,
+     "tipped": 0.15609660761989705,
+     "missed": 0.005872772441395362,
+     "dropped_low": 0.008990278018102283,
+     "dropped_high": 0.05108526189722814,
+     "rolled_off": 0.00635223812826753,
+     "not_lifted": 0.16766626413827523
+    },
+    "expected_cost": 0.8419802902760107,
+    "reason": "release 5 cm above the rim: faster, more tip risk",
+    "probe": null
+   },
+   {
+    "id": "commit_std",
+    "kind": "commit",
+    "p": {
+     "placed_stable": 0.6776467237910637,
+     "tipped": 0.04283350215571351,
+     "missed": 0.005448188291627945,
+     "dropped_low": 0.011119205310868976,
+     "dropped_high": 0.05581610458344743,
+     "rolled_off": 0.006481301224304068,
+     "not_lifted": 0.20065497464297316
+    },
+    "expected_cost": 0.8712154121184545,
+    "reason": "",
+    "probe": null
+   },
+   {
+    "id": "probe_weigh",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 0.9319097137222583,
+    "reason": "weigh first: value of information 0.00, expected cost of the best row after it 0.73",
+    "probe": {
+     "p_kind": {
+      "measured": 0.8781634459073331,
+      "lower_bound": 0.12141308808766653,
+      "lost": 0.00042346600500177276
+     },
+     "p_thrown": 0.0015588464536243163,
+     "evoi": 0.00471894942731701,
+     "evoi_se": 0.001692507369347447,
+     "expected_cost_after": 0.7319097137222582
+    }
+   },
+   {
+    "id": "probe_push",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 0.9543822587161405,
+    "reason": "push first: value of information 0.00, expected cost of the best row after it 0.82",
+    "probe": {
+     "p_kind": {
+      "slid": 0.9586647421805202,
+      "tipped": 0.029593066190742378,
+      "no_breakaway": 0.00544598860273087,
+      "no_contact": 0.006296203026006081
+     },
+     "p_thrown": 0.022205206738131752,
+     "evoi": 0.0,
+     "evoi_se": 0.0,
+     "expected_cost_after": 0.8247891925253981
+    }
+   },
+   {
+    "id": "regrasp_com",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.6639015220631532,
+     "tipped": 0.04295786419855088,
+     "missed": 0.00549421537779354,
+     "dropped_low": 0.010472945090731238,
+     "dropped_high": 0.052591932043973,
+     "rolled_off": 0.006049754409404419,
+     "not_lifted": 0.21853176681639314
+    },
+    "expected_cost": 0.9613993403421593,
+    "reason": "pinch nearer the believed centre of mass",
+    "probe": null
+   },
+   {
+    "id": "slow_lift",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.6733120848317812,
+     "tipped": 0.04390361032697179,
+     "missed": 0.005328449014530762,
+     "dropped_low": 0.012316979303988748,
+     "dropped_high": 0.06031892181914238,
+     "rolled_off": 0.006367793631228105,
+     "not_lifted": 0.19845216107235664
+    },
+    "expected_cost": 1.1942086964335221,
+    "reason": "slower lift and carry",
+    "probe": null
+   },
+   {
+    "id": "decline",
+    "kind": "decline",
+    "p": null,
+    "expected_cost": null,
+    "reason": "dropped_high carries the largest expected cost in the best row (firm_grip)",
+    "probe": null
+   }
+  ]
+ },
+ {
+  "object": "handal__hammer_1",
+  "idx": 0,
+  "destination": "plate",
+  "recommendation": "decline",
+  "rows": [
+   {
+    "id": "drop_release",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.013487421912300922,
+     "tipped": 0.01290967224727971,
+     "missed": 0.019841781680340224,
+     "dropped_low": 0.02764320575474597,
+     "dropped_high": 0.07762279315692071,
+     "rolled_off": 0.033866516854378734,
+     "not_lifted": 0.8146286083940317
+    },
+    "expected_cost": 1.325155513935879,
+    "reason": "release 5 cm above the rim: faster, more tip risk",
+    "probe": null
+   },
+   {
+    "id": "commit_std",
+    "kind": "commit",
+    "p": {
+     "placed_stable": 0.013021062103999068,
+     "tipped": 0.012388998381212168,
+     "missed": 0.019148184283945276,
+     "dropped_low": 0.027995055947521854,
+     "dropped_high": 0.07492425178720533,
+     "rolled_off": 0.03225624298379903,
+     "not_lifted": 0.8202662045123158
+    },
+    "expected_cost": 1.405567814723859,
+    "reason": "",
+    "probe": null
+   },
+   {
+    "id": "regrasp_com",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.013021062103999068,
+     "tipped": 0.012388998381212168,
+     "missed": 0.019148184283945276,
+     "dropped_low": 0.027995055947521854,
+     "dropped_high": 0.07492425178720533,
+     "rolled_off": 0.03225624298379903,
+     "not_lifted": 0.8202662045123158
+    },
+    "expected_cost": 1.505567814723859,
+    "reason": "the standard pinch is already nearest the believed centre of mass",
+    "probe": null
+   },
+   {
+    "id": "probe_weigh",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 1.5298881639735604,
+    "reason": "weigh first: value of information 0.00, expected cost of the best row after it 1.33",
+    "probe": {
+     "p_kind": {
+      "measured": 0.035480527316004686,
+      "lower_bound": 0.9640959366226738,
+      "lost": 0.0004235360613211125
+     },
+     "p_thrown": 0.0015588464536243163,
+     "evoi": 0.0009958682570421916,
+     "evoi_se": 0.0009958682570421916,
+     "expected_cost_after": 1.3298881639735605
+    }
+   },
+   {
+    "id": "probe_push",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 1.5381922729111306,
+    "reason": "push first: value of information 0.00, expected cost of the best row after it 1.41",
+    "probe": {
+     "p_kind": {
+      "slid": 0.6881473636924694,
+      "tipped": 0.031436077431713,
+      "no_breakaway": 0.2585454811846536,
+      "no_contact": 0.02187107769116424
+     },
+     "p_thrown": 0.022205206738131752,
+     "evoi": 0.0,
+     "evoi_se": 0.0,
+     "expected_cost_after": 1.4067561954794177
+    }
+   },
+   {
+    "id": "slow_lift",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.014925827506280163,
+     "tipped": 0.014271963008057604,
+     "missed": 0.022003192024483215,
+     "dropped_low": 0.024245340032239444,
+     "dropped_high": 0.06669714631860998,
+     "rolled_off": 0.04012297900658075,
+     "not_lifted": 0.8177335521037471
+    },
+    "expected_cost": 1.7034878977426078,
+    "reason": "slower lift and carry",
+    "probe": null
+   },
+   {
+    "id": "firm_grip",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.04135335311325845,
+     "tipped": 0.02067697567816749,
+     "missed": 0.03619285161987109,
+     "dropped_low": 0.036088283443363685,
+     "dropped_high": 0.09871668281615882,
+     "rolled_off": 0.0762781230641303,
+     "not_lifted": 0.6906937302650505
+    },
+    "expected_cost": 1.713279005275373,
+    "reason": "twice the squeeze",
+    "probe": null
+   },
+   {
+    "id": "decline",
+    "kind": "decline",
+    "p": null,
+    "expected_cost": null,
+    "reason": "not_lifted carries the largest expected cost in the best row (drop_release)",
+    "probe": null
+   }
+  ]
+ },
+ {
+  "object": "hot3d__spatula",
+  "idx": 0,
+  "destination": "plate",
+  "recommendation": "decline",
+  "rows": [
+   {
+    "id": "drop_release",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.005733255232798788,
+     "tipped": 0.06384928001226192,
+     "missed": 0.014243363894022844,
+     "dropped_low": 0.07443592576468903,
+     "dropped_high": 0.09667409533552532,
+     "rolled_off": 0.0008834924701814823,
+     "not_lifted": 0.7441805872905202
+    },
+    "expected_cost": 1.312406802344768,
+    "reason": "release 5 cm above the rim: faster, more tip risk",
+    "probe": null
+   },
+   {
+    "id": "commit_std",
+    "kind": "commit",
+    "p": {
+     "placed_stable": 0.005547096922739711,
+     "tipped": 0.060878961815229025,
+     "missed": 0.013697264029280407,
+     "dropped_low": 0.07387006861753777,
+     "dropped_high": 0.09350415090899718,
+     "rolled_off": 0.000842292813795201,
+     "not_lifted": 0.7516601648924178
+    },
+    "expected_cost": 1.396008595522218,
+    "reason": "",
+    "probe": null
+   },
+   {
+    "id": "regrasp_com",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.005547096922739711,
+     "tipped": 0.060878961815229025,
+     "missed": 0.013697264029280407,
+     "dropped_low": 0.07387006861753777,
+     "dropped_high": 0.09350415090899718,
+     "rolled_off": 0.000842292813795201,
+     "not_lifted": 0.7516601648924178
+    },
+    "expected_cost": 1.496008595522218,
+    "reason": "the standard pinch is already nearest the believed centre of mass",
+    "probe": null
+   },
+   {
+    "id": "probe_weigh",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 1.5091850174119903,
+    "reason": "weigh first: value of information 0.01, expected cost of the best row after it 1.31",
+    "probe": {
+     "p_kind": {
+      "measured": 0.05065564515798293,
+      "lower_bound": 0.9489207528555308,
+      "lost": 0.00042360198648624676
+     },
+     "p_thrown": 0.0015588464536243163,
+     "evoi": 0.008970176511351891,
+     "evoi_se": 0.002926722214266624,
+     "expected_cost_after": 1.3091850174119903
+    }
+   },
+   {
+    "id": "firm_grip",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.013932949167118402,
+     "tipped": 0.15851429787050555,
+     "missed": 0.03346101128304079,
+     "dropped_low": 0.07401977142114324,
+     "dropped_high": 0.11399862974273015,
+     "rolled_off": 0.0027473405456674023,
+     "not_lifted": 0.6033259999697946
+    },
+    "expected_cost": 1.5513879320015747,
+    "reason": "twice the squeeze",
+    "probe": null
+   },
+   {
+    "id": "probe_push",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 1.6443042461271318,
+    "reason": "push first: value of information 0.00, expected cost of the best row after it 1.39",
+    "probe": {
+     "p_kind": {
+      "slid": 0.792942170915657,
+      "tipped": 0.15001367446230077,
+      "no_breakaway": 0.039400467323554754,
+      "no_contact": 0.01764368729848782
+     },
+     "p_thrown": 0.022205206738131752,
+     "evoi": 0.0,
+     "evoi_se": 0.0,
+     "expected_cost_after": 1.394290571664831
+    }
+   },
+   {
+    "id": "slow_lift",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.005541292807049634,
+     "tipped": 0.06742304499802088,
+     "missed": 0.014115068945802747,
+     "dropped_low": 0.06682599234449885,
+     "dropped_high": 0.09691376594820343,
+     "rolled_off": 0.0008839627191503792,
+     "not_lifted": 0.748296872237274
+    },
+    "expected_cost": 1.7115011857437286,
+    "reason": "slower lift and carry",
+    "probe": null
+   },
+   {
+    "id": "decline",
+    "kind": "decline",
+    "p": null,
+    "expected_cost": null,
+    "reason": "dropped_high carries the largest expected cost in the best row (drop_release)",
+    "probe": null
+   }
+  ]
+ },
+ {
+  "object": "hot3d__storage_box",
+  "idx": 0,
+  "destination": "table_centre",
+  "recommendation": "decline",
+  "rows": [
+   {
+    "id": "decline",
+    "kind": "decline",
+    "p": null,
+    "expected_cost": null,
+    "reason": "every proposal is wider than the gripper opening",
+    "probe": null
+   }
+  ]
+ }
+]
