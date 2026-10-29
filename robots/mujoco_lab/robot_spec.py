@@ -142,17 +142,25 @@ def build_lab(sim_dir: str | None = None, model_path: str | None = None, render:
               threshold: float | None = None):
     """The convenience factory: an adapter, the models and a random stream (used by the calibration
     check and the tests; the runner goes through get_toolkit). An explicit ``model_path`` loads that
-    milestone 1 model; otherwise the bundle (see resolve_bundle), else milestone 1's files."""
+    milestone 1 model; otherwise the bundle (see resolve_bundle), else milestone 1's files. ``theta``'s ``fill`` and
+    ``frag`` (milestone 2b) go to the lab's reset as the fill and the hidden fragility."""
     from robots.mujoco_lab.adapter import MuJoCoLabEnv
     from robots.mujoco_lab.toolkit import MuJoCoLabPrimitives
 
     env = MuJoCoLabEnv(sim_dir=sim_dir, render=render)
     if object_id is not None:
-        env.reset(object_id, theta, seed=seed)
+        hidden = dict(theta or {})
+        fill, frag = hidden.pop("fill", 0.0), hidden.pop("frag", None)
+        env.reset(object_id, hidden, seed=seed, fill=fill, frag=frag)
     rng = np.random.default_rng(seed)
     b = None if model_path else resolve_bundle(bundle)
     if b is not None:
+        from robots.mujoco_lab.prior import fragility_world
+
         B = load_bundle(b, model_kind)
+        world = fragility_world(B["manifest"])
+        if world is not None:            # the bundle's slosh model, as the calibration sets it
+            env.slosh_zeta, env.slosh_scale = world[1].slosh_zeta, world[1].slosh_scale
         return MuJoCoLabPrimitives(env=env, model=B["model"], rng=rng, prior=B["prior"], readout_model=B["readout_model"],
                                    probe_models=B["probe_models"], threshold=threshold, manifest=B["manifest"], guard=B["guard"],
                                    abstain_cost=B["abstain_cost"])
@@ -167,11 +175,26 @@ def get_toolkit(*, runtime_kwargs: dict[str, Any], dashboard_events: DashboardEv
     return MuJoCoLabToolkit(memory=memory, primitives=runtime_kwargs["primitives"], dashboard_events=dashboard_events)
 
 
+def care_arg(value: str) -> str | float:
+    """--care: a name (low, normal, high) or a number above 0, the care factor itself (costs.care_scale)."""
+    from rpent.skills.pick_place.costs import CARE_SCALE, care_scale
+
+    if value in CARE_SCALE:
+        return value
+    try:
+        kappa = float(value)
+        care_scale(kappa)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"care must be low, normal, high or a number above 0, not {value!r}") from None
+    return kappa
+
+
 def _add_cli_args(parser: argparse.ArgumentParser, use_dashboard: bool) -> None:
     parser.add_argument("--object", default=None, required=not use_dashboard, help="object id in the lab (e.g. ycb__banana)")
     parser.add_argument("--destination", default="bin", help="where to set it down (see the system prompt)")
-    parser.add_argument("--care", default="normal", choices=["low", "normal", "high"])
-    parser.add_argument("--theta-json", default=None, help="hidden properties as JSON: mu, mass_scale, com_s, v_lift")
+    parser.add_argument("--care", default="normal", type=care_arg, help="low, normal, high or a number above 0 (the care factor)")
+    parser.add_argument("--theta-json", default=None, help="hidden properties as JSON: mu, mass_scale, com_s, v_lift, and "
+                        "fill (0 to 1) and frag (fragility.map_latent's keys) for milestone 2b")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--sim-dir", default=None, help="the experiment's sim/ folder (default: RPENT_MUJOCO_SIM_DIR)")
     parser.add_argument("--model-path", default=None, help="success model .joblib (default: the trained one)")

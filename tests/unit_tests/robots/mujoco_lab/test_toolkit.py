@@ -165,3 +165,57 @@ def test_system_prompt_states_the_cost_rule_and_damage():
     for k in ("abstain cost", "`abstain_cost`", "`care_scale`", "a number above 0", "probe_squeeze", "k_hat",
               "light_grip", "gentle_carry", "`damage`", "`meter_max`", "`damaged`", "object is damaged"):
         assert k in text, k
+
+
+def test_cli_care_takes_a_number(tmp_path):
+    """--care takes low, normal, high or a number above 0 (the care factor kappa); a number stays a number."""
+    import pytest
+
+    from robots.mujoco_lab import get_robot_spec
+
+    spec = get_robot_spec()
+
+    def parse(*argv):
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--output-dir", default=None)
+        parser.add_argument("--memory-dir", default=None)
+        spec.add_cli_args(parser, False)
+        return spec.parse_config(parser.parse_args(["--object", "mug", "--output-dir", str(tmp_path / "o"), *argv]))
+
+    cfg = parse("--care", "10")
+    assert cfg.prompt_vars["care"] == 10.0 and cfg.task_desc["care"] == 10.0
+    assert parse("--care", "high").prompt_vars["care"] == "high"
+    for bad in ("0", "-1", "nan", "very"):
+        with pytest.raises(SystemExit):
+            parse("--care", bad)
+
+
+def test_build_lab_passes_the_fill_and_the_fragility(monkeypatch):
+    """theta's fill and frag go to the lab's reset (milestone 2b) and the rest stays theta; an m2b bundle's
+    thresholds set the lab's slosh model, as in the calibration."""
+    from robots.mujoco_lab import adapter, robot_spec
+    from robots.mujoco_lab.fragility import DATA, Thresholds
+
+    calls = {}
+
+    class Env:
+        def __init__(self, sim_dir=None, render=False):
+            self.slosh_zeta, self.slosh_scale = 0.5, None
+
+        def reset(self, object_id, theta=None, seed=0, **kw):
+            calls.update(object_id=object_id, theta=theta, seed=seed, **kw)
+
+    manifest = {"prior": "lab_generator_m2b", "classes": {"path": "fragility_classes.json"},
+                "thresholds": {"path": "thresholds_v1.json"}}
+    bundle = {"model": StubModel(), "prior": None, "readout_model": None, "probe_models": {}, "guard": None,
+              "abstain_cost": 1.0, "manifest": manifest}
+    monkeypatch.setattr(adapter, "MuJoCoLabEnv", Env)
+    monkeypatch.setattr(robot_spec, "load_bundle", lambda b, kind=None: bundle)
+    frag = {"k_n_per_mm": 2.0, "f_damage_n": 12.0, "v_bruise_ms": None, "v_break_ms": None}
+    prims = robot_spec.build_lab(object_id="ycb__mug", theta={"mu": 0.4, "fill": 0.6, "frag": frag}, seed=3, bundle="b")
+    assert calls == {"object_id": "ycb__mug", "theta": {"mu": 0.4}, "seed": 3, "fill": 0.6, "frag": frag}
+    th = Thresholds.from_json(f"{DATA}/thresholds_v1.json")
+    assert prims.env.slosh_zeta == th.slosh_zeta and prims.env.slosh_scale == th.slosh_scale and th.slosh_scale
+    calls.clear()
+    robot_spec.build_lab(object_id="ycb__mug", theta={"mu": 0.4}, seed=3, bundle="b")
+    assert calls["fill"] == 0.0 and calls["frag"] is None and calls["theta"] == {"mu": 0.4}
