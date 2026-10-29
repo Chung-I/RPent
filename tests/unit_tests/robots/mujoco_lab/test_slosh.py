@@ -78,3 +78,39 @@ def test_empty_container_has_no_slosh():
 
     s = Slosh(CYL, 0.0, 0.01)
     assert s.omega == 0.0 and s.step([5.0, 0.0], [0.0, 0.0], 0.002) == 0.0
+
+
+def test_scale_multiplies_the_forcing_of_the_current_profile():
+    """slosh_scale (plan 2b, Task 8): the factor of the current profile class multiplies the horizontal forcing, and the
+    linear model's response with it; the profile is jolt until set, and a class with no factor keeps 1."""
+    from robots.mujoco_lab.slosh import Slosh
+
+    dt = 0.0005
+
+    def peak(scale, profile=None):
+        s = Slosh(CYL, 0.6, 0.0, scale=scale)
+        if profile is not None:
+            s.profile = profile
+        return max(s.step([1.0, 0.0], [0.0, 0.0], dt) for _ in range(int(1.0 / dt)))
+
+    base = peak(None)
+    assert peak({"carry": 0.5, "jolt": 2.0}) == pytest.approx(2.0 * base, rel=1e-9)
+    assert peak({"carry": 0.5, "jolt": 2.0}, "carry") == pytest.approx(0.5 * base, rel=1e-9)
+    assert peak({"carry": 0.5}) == pytest.approx(base, rel=1e-9)
+
+
+def test_scale_leaves_the_tilt_alone():
+    from robots.mujoco_lab.slosh import Slosh
+
+    s = Slosh(CYL, 0.6, 0.01, scale={"jolt": 0.5})
+    assert s.step([0.0, 0.0], [0.1, 0.0], 0.002) == pytest.approx(math.degrees(0.1), rel=1e-9)
+
+
+def test_scale_at_interpolates_each_class_in_the_fill():
+    """slosh_scale gives each class's factor at the annex's fills: linear in between, the end values outside."""
+    from robots.mujoco_lab.slosh import scale_at
+
+    sc = {"carry": {"0.3": 0.9, "0.9": 0.6}, "jolt": {"0.6": 1.1}}
+    assert scale_at(sc, 0.45) == pytest.approx({"carry": 0.825, "jolt": 1.1})
+    assert scale_at(sc, 0.1)["carry"] == pytest.approx(0.9) and scale_at(sc, 0.95)["carry"] == pytest.approx(0.6)
+    assert scale_at(None, 0.6) == {}

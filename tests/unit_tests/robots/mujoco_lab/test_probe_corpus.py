@@ -108,3 +108,25 @@ def test_m2_probe_rows_have_no_damage_and_no_squeeze():
     assert {r["key"].rsplit("__", 1)[1] for r in rows} <= {"Apush", "Aweigh", "Bweigh"}
     assert all(r["fill"] == 0.0 and r["theta_frag"] is None and r.get("damage") is None for r in rows)
     assert rows[0]["theta"] == draw_theta(case_rng(7, "ycb__jello", 0), object_props("ycb__jello")["mass"])[0]
+
+
+def test_probe_rows_set_the_slosh_scale_of_their_thresholds():
+    from robots.mujoco_lab.adapter import load_sim
+    from robots.mujoco_lab.fragility import THRESHOLDS_V0, Thresholds, load_classes
+    from robots.mujoco_lab.probe_corpus import probe_rows
+
+    class Stop(Exception):
+        pass
+
+    class Env:
+        s = load_sim(None)
+
+        def reset(self, *a, **kw):
+            raise Stop
+
+    th = Thresholds.from_json(THRESHOLDS_V0)
+    th.slosh_zeta, th.slosh_scale = 0.02, {"carry": {"0.6": 0.5}}
+    env = Env()
+    with pytest.raises(Stop):
+        probe_rows(env, "ycb__mug", 0, 7, classes=load_classes(), thresholds=th)
+    assert env.slosh_zeta == 0.02 and env.slosh_scale == {"carry": {"0.6": 0.5}}

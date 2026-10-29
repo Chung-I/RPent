@@ -24,7 +24,8 @@ of J1'). Per horizontal axis the surface slope s (radians) follows
 
 integrated with semi-implicit Euler. ``step`` returns the angle between the free surface's normal and the cavity's
 axis, |s - tilt|, tilt being the axis's deviation from vertical: a container that leans into the acceleration holds
-its liquid level with the rim. The model is linear (small angles); Genesis checks it in the annex (Task 8).
+its liquid level with the rim. The model is linear (small angles); Genesis checks it in the annex (Task 8), which
+fits a factor on the forcing a per profile class (carry or jolt) and fill: the thresholds' slosh_scale.
 """
 
 from __future__ import annotations
@@ -39,7 +40,7 @@ XI1 = 1.8412
 
 
 class Slosh:
-    def __init__(self, cavity: dict[str, Any], fill: float, zeta: float, g: float = G):
+    def __init__(self, cavity: dict[str, Any], fill: float, zeta: float, g: float = G, scale: dict[str, float] | None = None):
         from robots.mujoco_lab.fragility import cavity_radius, liquid
 
         h = float(liquid(cavity, fill)["height_m"])
@@ -48,14 +49,27 @@ class Slosh:
         self.zeta, self.g = float(zeta), float(g)
         self.s = np.zeros(2)
         self.v = np.zeros(2)
+        self.scale = dict(scale or {})      # the forcing's factor per profile class at this fill (scale_at)
+        self.profile = "jolt"               # the class of the motion from the next step on: carry or jolt
 
     def step(self, a_h, tilt, dt: float) -> float:
         """Advance by dt under the horizontal acceleration a_h (m/s^2, world x and y) and return the surface angle in
         degrees, the angle between the free surface's normal and the cavity axis tilted by ``tilt`` (radians, x and y);
-        0 for an empty cavity."""
+        0 for an empty cavity. The current profile's factor scales a_h, not the tilt."""
         if self.omega == 0.0:
             return 0.0
         w = self.omega
-        self.v += float(dt) * (w * w * np.asarray(a_h, dtype=float) / self.g - 2.0 * self.zeta * w * self.v - w * w * self.s)
+        a = self.scale.get(self.profile, 1.0) * np.asarray(a_h, dtype=float)
+        self.v += float(dt) * (w * w * a / self.g - 2.0 * self.zeta * w * self.v - w * w * self.s)
         self.s += float(dt) * self.v
         return float(np.degrees(np.linalg.norm(self.s - np.asarray(tilt, dtype=float))))
+
+
+def scale_at(slosh_scale: dict[str, dict[str, float]] | None, fill: float) -> dict[str, float]:
+    """Each profile class's forcing factor at ``fill`` from slosh_scale ({class: {str(fill): factor}} at the annex's
+    fills): linear in the fill between them, the end values outside; {} for none."""
+    out = {}
+    for profile, by_fill in (slosh_scale or {}).items():
+        fills = sorted(by_fill, key=float)
+        out[profile] = float(np.interp(float(fill), [float(f) for f in fills], [float(by_fill[f]) for f in fills]))
+    return out

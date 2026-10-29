@@ -310,6 +310,7 @@ def run_case(prims: Any, object_id: str, idx: int, seed: int, protocol: str = "c
                                                     fragility=world)
     if world is not None:
         env.slosh_zeta = world[1].slosh_zeta
+        env.slosh_scale = world[1].slosh_scale
     env.reset(object_id, theta, seed=seed * 1000 + idx, com_end=com_end, fixture=destination if destination in MESH_IDS else None,
               fill=hidden["fill"], frag=hidden["frag"])
     reset_info = dict(getattr(env, "reset_info", None) or {})

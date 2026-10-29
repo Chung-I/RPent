@@ -270,7 +270,9 @@ class MuJoCoLabEnv:
         self.s = load_sim(sim_dir)
         self.render = render
         self.damage_meter = bool(damage_meter)
-        self.slosh_zeta = float(Thresholds.from_json(THRESHOLDS_V0).slosh_zeta if slosh_zeta is None else slosh_zeta)
+        th0 = Thresholds.from_json(THRESHOLDS_V0)
+        self.slosh_zeta = float(th0.slosh_zeta if slosh_zeta is None else slosh_zeta)
+        self.slosh_scale = th0.slosh_scale          # the thresholds' forcing factors per profile class and fill
         self._classes: dict[str, Any] | None = None
         self.entry: dict[str, Any] = {"class": "none", "law": None, "fillable": False, "cavity": None}
         self.fill, self.frag, self.liquid, self.spill_deg = 0.0, None, None, None
@@ -563,13 +565,20 @@ class MuJoCoLabEnv:
 
     def _meter_begin(self) -> None:
         """Start the damage meter for an attempt or a probe (its times count from here); off: no meter."""
-        from robots.mujoco_lab.slosh import Slosh
+        from robots.mujoco_lab.slosh import Slosh, scale_at
 
         self._squeezed = self._held = self._armed = self._jam = False
         self._dmeter = None
         if self.damage_meter:
-            slosh = Slosh(self.entry["cavity"], self.fill, self.slosh_zeta) if self.liquid is not None else None
+            slosh = (Slosh(self.entry["cavity"], self.fill, self.slosh_zeta, scale=scale_at(self.slosh_scale, self.fill))
+                     if self.liquid is not None else None)
             self._dmeter = DamageMeter(float(self.s["scene"].DT), slosh)
+
+    def _slosh_profile(self, profile: str) -> None:
+        """The slosh model's profile class from the next physics substep on: carry over the transport, jolt elsewhere."""
+        m = self._dmeter
+        if m is not None and m.slosh is not None:
+            m.slosh.profile = profile
 
     def _meter_end(self) -> tuple[dict[str, Any], dict[str, Any] | None]:
         """(the meter's channels, the first threshold crossing as {label, channel, t} or None) and stop the meter."""
@@ -830,11 +839,13 @@ class MuJoCoLabEnv:
             z = hand_z0 + LIFT_H
             xy = pt[:2].copy()
             goal = np.asarray(dest["xy"], dtype=float)
+            self._slosh_profile("carry")
             for frac in transport_profile(float(np.linalg.norm(goal - xy)), v_transport, hz, accel=a_transport):
                 cur = xy + (goal - xy) * frac
                 sim.set_hand([cur[0], cur[1], z], proposal.yaw)
                 sim.step_ctrl()
                 on_step("transport")
+            self._slosh_profile("jolt")
             low_off = sim.obj_low_z() - sim.d.xpos[sim.hand][2]
             target_low = self._release_target_low_z(dest, release_height)
             z_rel = target_low - low_off

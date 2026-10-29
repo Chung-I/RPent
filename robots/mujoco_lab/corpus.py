@@ -193,6 +193,7 @@ def rollout_row(env, object_id: str, idx: int, seed: int, use_fixtures: bool = F
     theta, act = apply_damage(theta, act, d)
     fixture = act["destination"] if act["destination"] in MESH_IDS else None
     env.slosh_zeta = th.slosh_zeta
+    env.slosh_scale = th.slosh_scale
     env.reset(object_id, theta, seed=seed * 1000 + idx, com_end=com_end, fixture=fixture, fill=d["fill"], frag=d["theta_frag"])
     reset_info = dict(env.reset_info)
     props_list = env.proposals()

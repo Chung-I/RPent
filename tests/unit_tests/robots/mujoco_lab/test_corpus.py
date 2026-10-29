@@ -174,3 +174,30 @@ def test_m2_rows_are_v8_rows():
         assert row["fill"] == 0.0 and row["theta_frag"] is None and row["damage"] is None and row["a_transport"] == 2.0
         assert row["label"] == row["motion_label"]
     assert row["label"] == v8["label"] and row["force"] == v8["force"]
+
+
+class _Stop(Exception):
+    pass
+
+
+class _ResetStops:
+    """An env that stops at the reset, after a row has set its slosh model."""
+
+    def __init__(self, s):
+        self.s = s
+
+    def reset(self, *a, **kw):
+        raise _Stop
+
+
+def test_a_row_sets_the_slosh_scale_of_its_thresholds():
+    from robots.mujoco_lab.adapter import load_sim
+    from robots.mujoco_lab.corpus import rollout_row
+    from robots.mujoco_lab.fragility import THRESHOLDS_V0, Thresholds, load_classes
+
+    th = Thresholds.from_json(THRESHOLDS_V0)
+    th.slosh_zeta, th.slosh_scale = 0.02, {"carry": {"0.6": 0.5}}
+    env = _ResetStops(load_sim(None))
+    with pytest.raises(_Stop):
+        rollout_row(env, "ycb__mug", 0, 0, classes=load_classes(), thresholds=th)
+    assert env.slosh_zeta == 0.02 and env.slosh_scale == {"carry": {"0.6": 0.5}}

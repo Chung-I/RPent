@@ -606,3 +606,33 @@ def test_squeeze_noise_is_drawn_per_object():
         env.reset(oid, seed=5)
         eps.append(env.probe_squeeze(_mid(env), 5.0).reading["eps"])
     assert eps[0] != eps[1] and eps[0] == eps[2]
+
+
+def test_the_transport_slosh_takes_the_carry_scale(monkeypatch):
+    """slosh_scale (plan 2b, Task 8): the slosh model runs with the carry class over the transport's physics substeps
+    and the jolt class everywhere else, at the factors of the mug's fill."""
+    import robots.mujoco_lab.slosh as slosh
+
+    made = []
+
+    class Spy(slosh.Slosh):
+        def __init__(self, *a, **kw):
+            super().__init__(*a, **kw)
+            self.log = []
+            made.append(self)
+
+        def step(self, a_h, tilt, dt):
+            self.log.append(self.profile)
+            return super().step(a_h, tilt, dt)
+
+    monkeypatch.setattr(slosh, "Slosh", Spy)
+    env = _env()
+    env.slosh_scale = {"carry": {"0.6": 0.5, "1.0": 0.7}, "jolt": {"0.6": 0.9}}
+    _mug(env, 0.8)
+    r = env.execute(_mid(env), force=20.0, v_lift=0.15, v_transport=0.5, destination="table_centre")
+    s = made[-1]
+    n = sum(x["phase"] == "transport" for x in r.trace) * int(env.s["scene"].SUB)
+    assert s.scale == pytest.approx({"carry": 0.6, "jolt": 0.9})
+    assert n > 0 and s.log.count("carry") == n and s.log[0] == s.log[-1] == "jolt"
+    i = s.log.index("carry")
+    assert s.log[i:i + n] == ["carry"] * n

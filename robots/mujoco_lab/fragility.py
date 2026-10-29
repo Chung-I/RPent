@@ -83,12 +83,24 @@ class Thresholds:
     slosh_zeta: float
     version: str = ""
     status: str = ""
+    slosh_scale: dict[str, dict[str, float]] | None = None   # the annex's forcing factors, {class: {str(fill): factor}}
 
     @staticmethod
     def from_json(path: str) -> Thresholds:
         d = json.load(open(path))
         return Thresholds(laws=d["laws"], slosh_zeta=float(d["slosh_zeta"]), version=str(d.get("version", "")),
-                          status=str(d.get("status", "")))
+                          status=str(d.get("status", "")), slosh_scale=_slosh_scale(d.get("slosh_scale")))
+
+
+def _slosh_scale(sc: dict[str, dict[str, Any]] | None) -> dict[str, dict[str, float]] | None:
+    """A file's slosh_scale as floats (None: none): every class has fills in [0, 1], each with a finite positive factor."""
+    if sc is None:
+        return None
+    out = {str(c): {str(f): float(v) for f, v in by_fill.items()} for c, by_fill in sc.items()}
+    if any(not by_fill or any(not 0.0 <= float(f) <= 1.0 or not (math.isfinite(v) and v > 0.0) for f, v in by_fill.items())
+           for by_fill in out.values()):
+        raise ValueError(f"slosh_scale must give each class {{fill in [0, 1]: a finite positive factor}}: {sc}")
+    return out
 
 
 def _lognormal(p: dict[str, float], z: float) -> float:

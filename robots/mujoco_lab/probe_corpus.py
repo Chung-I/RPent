@@ -100,6 +100,7 @@ def probe_rows(env, object_id: str, idx: int, seed: int, classes: str | dict[str
     theta, _ = apply_damage(theta, {}, d)      # a probe takes no squeeze or carry from the draw
     force = weigh_force(f_std)
     env.slosh_zeta = th.slosh_zeta
+    env.slosh_scale = th.slosh_scale
     reset = {"seed": seed * 1000 + idx, "com_end": com_end, "fixture": None, "fill": d["fill"], "frag": d["theta_frag"]}
     env.reset(object_id, theta, **reset)
     start = dict(env.reset_info)

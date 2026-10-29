@@ -221,3 +221,23 @@ def test_array_forms_match_the_scalar_ones():
             want = map_latent(Z[i], C[oid], th)
             for k in ("k_n_per_mm", "f_damage_n", "v_bruise_ms", "v_break_ms"):
                 assert (want[k] is None) == (A[k] is None) and (want[k] is None or A[k][i] == pytest.approx(want[k]))
+
+
+def test_thresholds_read_the_optional_slosh_scale(tmp_path):
+    """v0 has no slosh_scale (None); a file with one gives {class: {fill: factor}} as floats; a factor that is not
+    finite and positive, or a fill outside [0, 1], is an error."""
+    import json
+
+    from robots.mujoco_lab.fragility import THRESHOLDS_V0, Thresholds
+
+    assert _th().slosh_scale is None
+    d = json.load(open(THRESHOLDS_V0))
+    p = tmp_path / "t.json"
+    d["slosh_scale"] = {"carry": {"0.3": 0.9, "0.6": 1}}
+    json.dump(d, open(p, "w"))
+    assert Thresholds.from_json(str(p)).slosh_scale == {"carry": {"0.3": 0.9, "0.6": 1.0}}
+    for bad in ({"carry": {"0.3": 0.0}}, {"jolt": {"1.2": 0.9}}):
+        d["slosh_scale"] = bad
+        json.dump(d, open(p, "w"))
+        with pytest.raises(ValueError, match="slosh_scale"):
+            Thresholds.from_json(str(p))

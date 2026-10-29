@@ -527,3 +527,24 @@ def test_probe_kind_block_scores_the_damaged_kind():
     out = probe_kind_block([{"probes": [rec]}])
     assert out["weigh"]["brier"] == pytest.approx(0.5) and out["weigh"]["kinds"] == {"damaged": 1}
     assert out["squeeze"]["n"] == 0
+
+
+def test_a_case_sets_the_slosh_scale_of_the_bundle_thresholds(monkeypatch):
+    import robots.mujoco_lab.prior as prior
+    from robots.mujoco_lab.calibrate import run_case
+    from robots.mujoco_lab.fragility import THRESHOLDS_V0, Thresholds, load_classes
+
+    class Stop(Exception):
+        pass
+
+    class Env:
+        def reset(self, *a, **kw):
+            raise Stop
+
+    th = Thresholds.from_json(THRESHOLDS_V0)
+    th.slosh_zeta, th.slosh_scale = 0.02, {"carry": {"0.6": 0.5}}
+    monkeypatch.setattr(prior, "fragility_world", lambda manifest: (load_classes(), th))
+    prims = SimpleNamespace(env=Env(), manifest={})
+    with pytest.raises(Stop):
+        run_case(prims, "ycb__mug", 0, 0)
+    assert prims.env.slosh_zeta == 0.02 and prims.env.slosh_scale == {"carry": {"0.6": 0.5}}
