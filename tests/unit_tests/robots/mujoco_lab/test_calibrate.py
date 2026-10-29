@@ -478,3 +478,52 @@ def test_case_draw_draws_fill_and_fragility():
     theta, com_end, dest, hidden = case_draw(5, "ycb__mug", 0, m)
     assert hidden == {"fill": 0.0, "frag": None, "spill_angle_deg": None}
     assert (theta, com_end) == draw_theta(case_rng(5, "ycb__mug", 0), m)
+
+
+# ---------------------------------------------------------------- milestone 2b: damage in every probe (task 7)
+def test_probe_cost_charges_damage():
+    """A probe that damages or throws the object costs its time and 5 kappa once; the case adds A when it ends."""
+    from robots.mujoco_lab.calibrate import probe_cost
+    from rpent.skills.pick_place.costs import TIME_COST_PER_S
+    from rpent.skills.pick_place.probes import PROBE_SECONDS
+
+    t = TIME_COST_PER_S * PROBE_SECONDS["squeeze"]
+    assert probe_cost("squeeze", "measured", False, 10.0) == pytest.approx(t)
+    assert probe_cost("squeeze", "damaged", False, 10.0) == pytest.approx(t + 50.0)
+    assert probe_cost("weigh", "damaged", True, 1.0) == pytest.approx(TIME_COST_PER_S * PROBE_SECONDS["weigh"] + 5.0)
+
+
+class _DamagingProbe(_Script):
+    """A scripted case whose probe crushes the object."""
+
+    def pick(self, **kw):
+        self.calls.append(kw.get("option_id"))
+        return SimpleNamespace(data={"probed": "squeeze", "kind": "damaged", "reading": {}, "thrown": False,
+                                     "damage": {"label": "crushed", "channel": "force", "t": 1.0},
+                                     "assessment": {"assessed": False, "reason": "object is damaged (crushed)"}})
+
+
+def test_a_damaging_probe_ends_the_case_damaged(monkeypatch):
+    """Review Focus 2: the case ends "damaged" and costs the probe's time, 5 kappa and A."""
+    from robots.mujoco_lab import calibrate
+    from rpent.skills.pick_place.costs import TIME_COST_PER_S
+    from rpent.skills.pick_place.probes import PROBE_SECONDS
+
+    sc = _DamagingProbe([_assessment("probe", probe=True)], [])
+    monkeypatch.setattr(calibrate, "assess_pick", sc.assess)
+    monkeypatch.setattr(calibrate, "pick_and_place", sc.pick)
+    for protocol in ("policy", "probe_first"):
+        sc.assessments = [_assessment("probe", probe=True)]
+        case = calibrate.run_protocol(SimpleNamespace(abstain_cost=1.0), protocol, "table_centre", np.random.default_rng(0), care=10.0)
+        assert case["ended"] == "damaged" and case["probes"][0]["kind"] == "damaged" and case["attempts"] == []
+        assert case["cost"] == pytest.approx(TIME_COST_PER_S * PROBE_SECONDS["squeeze"] + 50.0 + 1.0)
+
+
+def test_probe_kind_block_scores_the_damaged_kind():
+    """The probes' declared kinds are scored with "damaged" among the classes."""
+    from robots.mujoco_lab.calibrate import probe_kind_block
+
+    rec = {"probe": "weigh", "kind": "damaged", "declared": {"p_kind": {"measured": 0.5, "damaged": 0.5}}, "const_kind": None}
+    out = probe_kind_block([{"probes": [rec]}])
+    assert out["weigh"]["brier"] == pytest.approx(0.5) and out["weigh"]["kinds"] == {"damaged": 1}
+    assert out["squeeze"]["n"] == 0

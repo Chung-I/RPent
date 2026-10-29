@@ -28,7 +28,8 @@ G = 9.81
 def test_weigh_force():
     assert weigh_force(5.0) == 15.0 and weigh_force(10.0) == 20.0 and weigh_force(30.0) == 60.0 and weigh_force(40.0) == 70.0
     assert PROBE_SECONDS == {"weigh": 4.0, "push": 2.0, "squeeze": 3.0}           # plan 2b: the squeeze probe
-    assert PROBE_KINDS == {"weigh": ("measured", "lower_bound", "lost"), "push": ("slid", "tipped", "no_breakaway", "no_contact")}
+    assert PROBE_KINDS == {"weigh": ("measured", "lower_bound", "lost"), "push": ("slid", "tipped", "no_breakaway", "no_contact"),
+                           "squeeze": ("measured",)}                       # plan 2b: "damaged" is learned where the corpus has it
 
 
 def test_probe_result_data_has_no_trace():
@@ -270,3 +271,117 @@ def test_squeeze_cap_uses_the_belief_weights():
     rigid = [{"mass": 0.1, "mu": 0.5, "com_obj": [0.0, 0.0, 0.0], "f_damage_n": None}] * 3
     assert squeeze_cap(ParticleBelief(rigid, np.ones(3)), f_std=10.0) == 5.0
     assert PROBE_SECONDS["squeeze"] == 3.0
+
+
+# ---------------------------------------------------------------- milestone 2b: damage in every probe, the squeeze
+from rpent.skills.pick_place.features import FEATURES_M2B  # noqa: E402
+from rpent.skills.pick_place.likelihood import Law  # noqa: E402
+from rpent.skills.pick_place.probes import CalibratedClassifier, ProbeModel, true_matrix  # noqa: E402
+
+CRUSHABLE = {"class": "crushable", "law": "cardboard", "fillable": False}
+
+
+def _const_model(probe, classes, p, p_thrown=0.0, reading=None):
+    clf = CalibratedClassifier(tuple(classes), None, None, np.array(p, dtype=float))
+    return ProbeModel(probe=probe, classes=tuple(classes), clf=clf, reading=reading or {}, p_thrown=p_thrown)
+
+
+def test_terminal_risk_adds_thrown_and_damaged():
+    """P(the probe ends the case) is P(thrown) + P(damaged), at most 1; a model that never saw damage gives P(thrown)."""
+    X = np.zeros((3, 4))
+    damaging = PROBE_KINDS["weigh"] + ("damaged",)
+    assert np.allclose(_const_model("weigh", damaging, [0.6, 0.1, 0.1, 0.2], p_thrown=0.1).terminal_risk(X), 0.3)
+    assert np.allclose(_const_model("weigh", damaging, [0.1, 0.0, 0.0, 0.9], p_thrown=0.3).terminal_risk(X), 1.0)
+    assert np.allclose(_const_model("weigh", PROBE_KINDS["weigh"], [0.8, 0.1, 0.1], p_thrown=0.05).terminal_risk(X), 0.05)
+
+
+def test_probe_models_learn_the_damaged_kind():
+    """A probe corpus with damaged weigh rows gives the weigh's kind classifier a "damaged" class; the push, which
+    damaged nothing, gets none."""
+    rows = _probe_rows()
+    for r in rows[::10]:                                       # every tenth row is a weigh row
+        r.update(kind="damaged", reading={})
+    models = fit_probe_models(rows)
+    assert models["weigh"].classes == PROBE_KINDS["weigh"] + ("damaged",) and models["push"].classes == PROBE_KINDS["push"]
+    assert models["weigh"].stats["kinds"]["damaged"] == len(rows[::10])
+
+
+def _squeeze_rows(n: int = 300, sd: float = 0.1, seed: int = 0) -> list[dict]:
+    """Synthetic squeeze rows at a 5 N cap on a crushable object: measured, log(k_hat / k) ~ N(0, sd); the substrate
+    keeps the noise (eps) in the reading."""
+    rng = np.random.default_rng(seed)
+    out = []
+    for r in _probe_rows(n, seed=seed)[::2]:
+        k = float(np.exp(rng.normal(np.log(2.0), 0.4)))
+        frag = {"k_n_per_mm": k, "f_damage_n": float(np.exp(rng.normal(np.log(20.0), 0.3))), "v_bruise_ms": None, "v_break_ms": None}
+        eps = float(rng.normal(0.0, sd))
+        out.append({**r, "key": r["key"].replace("Bweigh", "Csqueeze"), "probe": "squeeze", "kind": "measured", "force": 5.0,
+                    "reading": {"k_hat": k * float(np.exp(eps)), "eps": eps}, "theta_frag": frag, "entry": CRUSHABLE, "fill": 0.0,
+                    "spill_angle_deg": None})
+    return out
+
+
+def _stiff_particles(lk, f_damage=20.0) -> ParticleBelief:
+    return ParticleBelief([{"mass": 0.3, "mu": 0.5, "com_obj": [0.0, 0.0, 0.03], "k_n_per_mm": float(np.exp(v)),
+                            "f_damage_n": float(np.broadcast_to(f_damage, np.shape(lk))[i]), "v_bruise_ms": None, "v_break_ms": None}
+                           for i, v in enumerate(lk)], np.ones(len(lk)))
+
+
+def test_true_matrix_reads_the_damage_features():
+    """The probe models train on the truth's damage features: the row's entry flags and its margins at the probe's
+    force (the squeeze's cap margin log(cap / f_damage_n))."""
+    rows = _squeeze_rows(20)
+    X = true_matrix(rows, FEATURES_M2B)
+    j = {k: FEATURES_M2B.index(k) for k in ("frag_crush", "crush_margin")}
+    assert np.all(X[:, j["frag_crush"]] == 1.0)
+    assert np.allclose(X[:, j["crush_margin"]], [np.log(5.0 / r["theta_frag"]["f_damage_n"]) for r in rows])
+
+
+def test_squeeze_reading_law_is_on_the_stiffness():
+    """The squeeze's measured kind reads k_hat: its law is on log(k_hat / k), its samples read k_hat, and a reading
+    concentrates the particles' stiffness."""
+    rows = _squeeze_rows()
+    pm = fit_probe_models(rows, names=FEATURES_M2B)["squeeze"]
+    assert pm.classes == ("measured",) and pm.reading["measured"].b1 == pytest.approx(0.0, abs=0.03)
+    assert pm.reading["measured"].sd1 == pytest.approx(0.1, rel=0.3)
+    b = _stiff_particles(np.random.default_rng(1).normal(np.log(2.0), 0.4, 2000))
+    pose = dict(rows[0]["pose"], entry=CRUSHABLE)
+    X = particle_matrix(rows[0]["base"], b.arrays(), pose, 5.0, FEATURES_M2B)
+    s = pm.sample(X[0], b.particles[0], 5.0, np.random.default_rng(3))
+    assert s["kind"] == "measured" and set(s["reading"]) == {"k_hat"}
+    ll, info = pm.loglik({"probe": "squeeze", "kind": "measured", "reading": {"k_hat": 3.0}}, X, b.arrays(), 5.0)
+    assert "reading" in info["used"]
+    assert abs(np.log(b.reweight(ll).quantile("k_n_per_mm", 0.5) / 3.0)) < 0.05
+
+
+class _CrushRule:
+    """The exact damage rule as a kind classifier: damaged iff the squeeze is above the damage force (crush_margin > 0)."""
+
+    def predict(self, X):
+        d = (np.asarray(X)[:, FEATURES_M2B.index("crush_margin")] > 0).astype(float)
+        return np.column_stack([1.0 - d, d])
+
+
+def test_survived_squeeze_lowers_weaker_particles():
+    """A kind model that is the exact rule: after "measured" at a cap of 15 N, the particles weaker than 15 N (half the
+    prior's weight) keep under 0.05 of it. The evidence enters through the learned kind term alone."""
+    f = np.exp(np.random.default_rng(2).uniform(np.log(5.0), np.log(45.0), 2000))
+    b = _stiff_particles(np.zeros(2000), f_damage=f)
+    pm = ProbeModel(probe="squeeze", classes=("measured", "damaged"), clf=_CrushRule(), reading={}, p_thrown=0.0,
+                    feature_names=FEATURES_M2B)
+    r = _squeeze_rows(2)[0]
+    X = particle_matrix(r["base"], b.arrays(), dict(r["pose"], entry=CRUSHABLE), 15.0, FEATURES_M2B)
+    ll, info = pm.loglik({"probe": "squeeze", "kind": "measured", "reading": {}}, X, b.arrays(), 15.0)
+    weak = f < 15.0
+    post = b.reweight(ll)
+    assert info["used"] == ["kind"] and 0.4 < b.weights[weak].sum() / b.weights.sum()
+    assert post.weights[weak].sum() / post.weights.sum() < 0.05
+
+
+def test_a_kind_the_model_never_saw_is_rejected():
+    """A damaged result from a model trained without damage (the squeeze under the cap never crushed) tells nothing:
+    the kind term is rejected, not an error."""
+    pm = _const_model("squeeze", ("measured",), [1.0], reading={"measured": Law.normal(0.0, 0.1)})
+    b = _stiff_particles(np.zeros(10))
+    ll, info = pm.loglik({"probe": "squeeze", "kind": "damaged", "reading": {}}, np.zeros((10, 4)), b.arrays(), 5.0)
+    assert np.all(ll == 0.0) and info == {"used": [], "rejected": ["kind"]}

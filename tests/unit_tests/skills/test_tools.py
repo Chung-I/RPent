@@ -705,3 +705,64 @@ def test_pick_passes_the_carry_acceleration_to_execute():
     pick_and_place(object="mug", destination="table_centre", option_id="commit_std", primitives=prims, store={})
     pick_and_place(object="mug", destination="table_centre", option_id="gentle_carry", primitives=prims, store={})
     assert [c["a_transport"] for c in env.calls] == [2.0, 0.5]
+
+
+# ---------------------------------------------------------------- milestone 2b: a damaging probe or attempt ends the case
+from tests.unit_tests.skills.probe_stubs import FlatSqueeze  # noqa: E402
+
+CRUSHABLE = {"class": "crushable", "law": "cardboard", "fillable": False}
+
+
+class _SqueezeEnv(_ProbeEnv):
+    """A probe env whose object is crushable, with the squeeze probe."""
+
+    def pose_info(self):
+        return dict(super().pose_info(), entry=CRUSHABLE)
+
+    def probe_squeeze(self, proposal, force):
+        self.squeeze_args = (proposal.s, force)
+        return self._probe("squeeze")
+
+
+def _squeeze(kind="damaged"):
+    damage = {"label": "crushed", "channel": "force", "t": 1.2} if kind == "damaged" else None
+    return ProbeResult(probe="squeeze", kind=kind, reading={} if damage else {"k_hat": 2.0, "eps": 0.03}, displacement_m=0.0,
+                       tilt_deg=0.0, thrown=False, seconds=3.0, damage=damage)
+
+
+def test_squeeze_probe_can_crush_and_ends_the_case():
+    """A squeeze that crushes: the payload names the damage, the fresh assessment says the object is damaged and has
+    no rows, and probe_first afterwards runs nothing."""
+    env = _SqueezeEnv(probes=[_squeeze()])
+    prims, store = _bprims(env, probe_models={"squeeze": FlatSqueeze(), "weigh": FlatWeigh()}, model=MuGate(f_std=10.0)), {}
+    d = pick_and_place(object="mug", destination="table_centre", option_id="probe_squeeze", primitives=prims, store=store).data
+    assert d["probed"] == "squeeze" and d["kind"] == "damaged" and d["damage"]["label"] == "crushed"
+    assert env.squeeze_args == (0.5, 5.0)          # the cap: half the standard 10 N squeeze (the belief has no f_damage_n)
+    a = d["assessment"]
+    assert a["assessed"] is False and a["reason"] == "object is damaged (crushed)" and "options" not in a
+    again = pick_and_place(object="mug", destination="table_centre", mode="probe_first", primitives=prims, store=store).data
+    assert again["assessed"] is False and again["reason"] == "object is damaged (crushed)"
+    assert env.probe_calls == ["squeeze"] and env.calls == []
+
+
+def test_damaged_object_is_not_assessed():
+    """After an attempt that crushes the object the case is over: assess_pick says so and offers no rows; the next
+    episode starts afresh."""
+    env = _DamageEnv([("crushed", {"rot_deg": 0.0, "heavy_side": 0})])
+    prims, store = _bprims(env), {}
+    r = _commit(prims, store)
+    assert r["outcome"] == "crushed" and r["assessment"]["assessed"] is False
+    d = assess_pick(object="mug", destination="table_centre", primitives=prims, store=store).data
+    assert d == {"assessed": False, "reason": "object is damaged (crushed)", "next": tools_mod.DAMAGED_NEXT}
+    env.episode += 1
+    assert assess_pick(object="mug", destination="table_centre", primitives=prims, store=store).data["assessed"] is True
+
+
+def test_squeeze_payload_hides_the_reading_noise():
+    """The substrate keeps the squeeze's reading noise (eps) for its own checks; it never reaches the planner or the
+    belief."""
+    env = _SqueezeEnv(probes=[_squeeze("measured")])
+    prims, store = _bprims(env, probe_models={"squeeze": FlatSqueeze()}, model=MuGate(f_std=10.0)), {}
+    d = pick_and_place(object="mug", destination="table_centre", option_id="probe_squeeze", primitives=prims, store=store).data
+    assert d["kind"] == "measured" and d["reading"] == {"k_hat": 2.0}
+    assert store["beliefs"]["ycb__mug"]["belief"].history[-1]["obs"]["reading"] == {"k_hat": 2.0}

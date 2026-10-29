@@ -30,9 +30,10 @@ falls outside. Coverage against the sim's values (``sim_truth``) is reported bes
 (worst of the three; ties: the smaller temper) goes into the bundle (manifest ``tempers.readout``);
 when no temper is feasible the bundle keeps 1 and the result says so.
 
-``--probes A|B`` checks the update after the probes instead, on the bundle's probe corpus: B, the
+``--probes A|B|C`` checks the update after the probes instead, on the bundle's probe corpus: B, the
 weigh probe alone; A, the push and then the weigh from the state the push left (the push alone when
-it threw the object). The grid then tempers the probe models (manifest ``tempers.probe``).
+it threw the object); C, the squeeze alone (crushable and bruisable objects). The probe models see each
+row's public fragility entry (``row_pose``). The grid then tempers the probe models (manifest ``tempers.probe``).
 
     python -P -m robots.mujoco_lab.posterior_check --bundle robots/mujoco_lab/data/m2 --split val \\
         --temper-grid 0.7,0.85,1,1.25,1.5,2,3 --choose-on val --out robots/mujoco_lab/data/m2/posterior_check.json
@@ -118,12 +119,12 @@ def check_rows(rows: list[dict[str, Any]], bundle: dict[str, Any], grid: list[fl
     return cases
 
 
-PROBE_TAGS = {"A": ("Apush", "Aweigh"), "B": ("Bweigh",)}
+PROBE_TAGS = {"A": ("Apush", "Aweigh"), "B": ("Bweigh",), "C": ("Csqueeze",)}
 
 
 def probe_cases(rows: list[dict[str, Any]], probes: str) -> list[list[dict[str, Any]]]:
     """One case per draw: the scene's probe rows in order (A: push, then weigh when the push left the
-    object on the table; B: weigh)."""
+    object on the table; B: weigh; C: squeeze)."""
     tags = PROBE_TAGS[probes]
     by: dict[tuple[str, int], dict[str, dict[str, Any]]] = defaultdict(dict)
     for r in rows:
@@ -144,7 +145,7 @@ def check_probe_cases(cases: list[list[dict[str, Any]]], bundle: dict[str, Any],
         b = prior(first["pose"], n, rng)
         a = b.arrays()
         terms = [(pms[r["probe"]], {"kind": r["kind"], "reading": r["reading"]},
-                  particle_matrix(r["base"], a, r["pose"], r["force"], model_names(pms[r["probe"]])), float(r["force"])) for r in case]
+                  particle_matrix(r["base"], a, row_pose(r), r["force"], model_names(pms[r["probe"]])), float(r["force"])) for r in case]
         truth, sim = generator_truth(first), sim_truth(first)
         c = {"object": first["object"], "label": "+".join(r["kind"] for r in case), "n_probes": len(case),
              "info": {"used": [], "rejected": []}, "prior": _hits(b, truth), "prior_sim": _hits(b, sim), "prior_width": _widths(b),
@@ -195,7 +196,7 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
     ap.add_argument("--temper-grid", default=None, help="comma-separated tempers (always with 1 and the bundle's)")
     ap.add_argument("--choose-on", default=None, choices=("train", "val"), help="choose the temper on this split; write it into the bundle")
     ap.add_argument("--seed", type=int, default=0)
-    ap.add_argument("--probes", default=None, choices=tuple(PROBE_TAGS), help="check the update after the probes (A: push then weigh; B: weigh)")
+    ap.add_argument("--probes", default=None, choices=tuple(PROBE_TAGS), help="check the update after the probes (A: push then weigh; B: weigh; C: squeeze)")
     ap.add_argument("--out", required=True)
     a = ap.parse_args(argv)
     B = load_bundle(a.bundle)

@@ -23,7 +23,8 @@ assessments and beliefs; separate from RPent's EnvState).
 The belief lives in ``store["beliefs"][object_id]`` (``{"episode", "belief", "probes_run"}``) for one
 episode; every attempt appends a history entry ``{"type", "base", "pose", "force", "planned", "obs",
 "used_terms", "rejected_terms"}`` and reweights it (``update_belief``), and every cached assessment is
-then stale.
+then stale. A probe or an attempt that damages the object ends the case: the record keeps the damage label
+(``"damaged"``) and the object gets no menu for the rest of the episode.
 """
 
 from __future__ import annotations
@@ -38,17 +39,20 @@ from rpent.skills.pick_place.destinations import DESTINATIONS
 from rpent.skills.pick_place.diagnose import diagnose
 from rpent.skills.pick_place.features import A_TRANSPORT, model_names, particle_matrix, particle_sides
 from rpent.skills.pick_place.menu import build_menu, estimate, geometry_pose, pinch_limit
-from rpent.skills.pick_place.protocol import IRREVERSIBLE, OUTCOMES, RECOVERABLE, Assessment, Option
+from rpent.skills.pick_place.probes import DAMAGED
+from rpent.skills.pick_place.protocol import DAMAGE, IRREVERSIBLE, OUTCOMES, RECOVERABLE, Assessment, Option
 from rpent.tools.base import ToolResult, tool
 
 G = 9.81
 MIN_FORCE_N = 10.0
 MODES = ("commit", "assess_only", "probe_first")
-PROBE_OPTIONS = {"probe_push": "push", "probe_weigh": "weigh"}
+PROBE_OPTIONS = {"probe_push": "push", "probe_weigh": "weigh", "probe_squeeze": "squeeze"}
 MAX_PROBES = 2                    # probe_first runs at most this many probes per call
 REFRESH_ESS = MIN_ESS             # update_belief refreshes when the effective particles fall below this
 FLOOR_P = 1e-4                    # the outcome term's floor without a readout model
 OUT_OF_REACH = {"assessed": False, "reason": "object is out of reach (floor or bin)", "next": "report it; the skill cannot reach it"}
+DAMAGED_NEXT = "report it; the skill does not move a damaged object again"
+HIDDEN_READING = ("eps",)         # the substrate's record of a reading's noise: for its own checks, never the planner's
 
 
 def standard_force(nominal_mass: float) -> float:
@@ -92,6 +96,12 @@ def _belief_record(loc: dict[str, Any], env: Any, primitives: Any, store: dict[s
         rec = {"episode": episode, "belief": _prior_belief(loc, env, primitives), "probes_run": set()}
         _beliefs(store)[loc["object_id"]] = rec
     return rec
+
+
+def _damage_of(loc: dict[str, Any], env: Any, store: dict[str, Any]) -> str | None:
+    """The damage label of this episode's damaging probe or attempt, if one ran (the case is then over)."""
+    rec = _beliefs(store).get(loc["object_id"])
+    return rec.get("damaged") if rec is not None and rec["episode"] == int(getattr(env, "episode", 0)) else None
 
 
 def entry_loglik(belief: ParticleBelief, entry: dict[str, Any], primitives: Any,
@@ -159,6 +169,9 @@ def _assess(object: str, destination: str, care: str | float, primitives: Any,
                 "next": "call view_env_state and use the object's name as `object`"}, None
     if loc.get("reachable") is False:
         return dict(OUT_OF_REACH), None
+    damaged = _damage_of(loc, env, store)
+    if damaged:
+        return {"assessed": False, "reason": f"object is damaged ({damaged})", "next": DAMAGED_NEXT}, None
     key = (loc["object_id"], destination, care, int(getattr(env, "episode", 0)))
     cache = _cache(store)
     if key in cache:
@@ -236,23 +249,28 @@ def _update(rec: dict[str, Any], entry: dict[str, Any], loc: dict[str, Any], pri
 
 
 def _run_probe(row: Option, object: str, destination: str, care: str, primitives: Any, store: dict[str, Any]) -> dict[str, Any]:
-    """Run one probe row, update the belief with its result, and return the probe payload."""
+    """Run one probe row, update the belief with its result, and return the probe payload. A probe that damages
+    the object ends the case (its fresh assessment says so); the reading's noise (HIDDEN_READING) stays out."""
     env = primitives.env
     loc = env.locate(object)
     rec = _belief_record(loc, env, primitives, store)
     probe, act = row.action["probe"], row.action
-    if probe == "weigh":
+    if probe in ("weigh", "squeeze"):
         prop = next(p for p in env.proposals() if abs(p.s - act["s"]) < 1e-9)
-        res = env.probe_weigh(prop, act["force"])
+        res = env.probe_weigh(prop, act["force"]) if probe == "weigh" else env.probe_squeeze(prop, act["force"])
     else:
         res = env.probe_push()
     rec["probes_run"].add(probe)
+    damage = getattr(res, "damage", None)
+    if res.kind == DAMAGED or damage:
+        rec["damaged"] = (damage or {}).get("label") or DAMAGED
+    reading = {k: v for k, v in dict(res.reading).items() if k not in HIDDEN_READING}
     entry = {"type": "probe", "option": row.id, "base": row._base, "pose": row._pose, "force": float(act["force"]), "planned": None,
-             "obs": {"probe": probe, "kind": res.kind, "reading": dict(res.reading)}}
+             "obs": {"probe": probe, "kind": res.kind, "reading": dict(reading)}}
     before, after = _update(rec, entry, loc, primitives)
-    return {"probed": probe, "placed": False, "kind": res.kind, "reading": dict(res.reading),
+    return {"probed": probe, "placed": False, "kind": res.kind, "reading": reading,
             "displacement_m": res.displacement_m, "tilt_deg": res.tilt_deg, "thrown": bool(res.thrown), "seconds": res.seconds,
-            "artifact": bool(getattr(res, "artifact", False)), "damage": getattr(res, "damage", None),
+            "artifact": bool(getattr(res, "artifact", False)), "damage": damage,
             "declared": row.to_data()["probe"], "belief_before": before.to_data(),
             "belief": after.to_data(), "assessment": _reassess(object, destination, care, primitives, store)}
 
@@ -265,7 +283,7 @@ def _meter_max(meter: dict[str, Any] | None) -> dict[str, float]:
 
 def _attempt(option: Option, object: str, destination: str, care: str, primitives: Any, store: dict[str, Any]) -> dict[str, Any]:
     """Execute one commit or lower-risk row, update the belief with the outcome and readouts, and
-    return the attempt payload."""
+    return the attempt payload. An outcome in DAMAGE ends the case (its fresh assessment says so)."""
     env = primitives.env
     loc = env.locate(object)
     rec = _belief_record(loc, env, primitives, store)
@@ -273,6 +291,8 @@ def _attempt(option: Option, object: str, destination: str, care: str, primitive
     act = option.action
     r = env.execute(prop, act["force"], act["v_lift"], act["v_transport"], act["destination"], act.get("release_height"),
                     a_transport=act.get("a_transport", A_TRANSPORT))
+    if r.label in DAMAGE:
+        rec["damaged"] = r.label
     declared = option.to_data()
     readouts = dict(getattr(r, "readouts", None) or {})
     entry = {"type": "attempt", "option": option.id, "base": option._base, "pose": option._pose, "force": float(act["force"]),
@@ -348,9 +368,10 @@ def pick_and_place(*, object: str, destination: str = "bin", mode: str = "commit
 
     With no option_id the best row for the requested destination runs, unless the
     recommendation is decline or probe (then nothing runs; pass an option_id to override). Rows that change the destination
-    (inboard_place) run only when named. option_id "probe_push" or "probe_weigh" runs that probe
-    (once per episode): the object is pushed or lifted 2 cm and set back, the belief is updated,
-    and nothing is placed. mode "probe_first" runs the recommended probes (at most two, while the
+    (inboard_place) run only when named. option_id "probe_push", "probe_weigh" or "probe_squeeze" runs that probe
+    (once per episode): the object is pushed, lifted 2 cm and set back, or squeezed in place; the belief is updated,
+    and nothing is placed. A probe or an attempt that damages the object ends the case: every later call this
+    episode returns "object is damaged". mode "probe_first" runs the recommended probes (at most two, while the
     recommendation is probe), then commits as above; mode "assess_only" returns the assessment
     without moving. After an attempt the result carries the pad readouts, a diagnosis of what
     went wrong, the belief before and after the update, and a fresh assessment under the updated

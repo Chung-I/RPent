@@ -664,3 +664,116 @@ def test_m2_models_get_no_damage_rows():
     options, _ = _menu()
     ids = {o.id for o in options}
     assert "light_grip" not in ids and "gentle_carry" not in ids and "commit_std" in ids
+
+
+# ---------------------------------------------------------------- milestone 2b: damage in every probe, the squeeze row
+from rpent.skills.pick_place.probes import PROBE_KINDS as _KINDS  # noqa: E402
+from tests.unit_tests.skills.probe_stubs import FlatSqueeze  # noqa: E402
+
+STEEL = {"class": "none", "law": None, "fillable": False}
+BRUISABLE = {"class": "bruisable", "law": "fruit", "fillable": False}
+
+
+def _const_probe(probe, classes, p, p_thrown=0.0, reading=None):
+    from rpent.skills.pick_place.probes import CalibratedClassifier, ProbeModel
+
+    clf = CalibratedClassifier(tuple(classes), None, None, np.array(p, dtype=float))
+    return ProbeModel(probe=probe, classes=tuple(classes), clf=clf, reading=reading or {}, p_thrown=p_thrown)
+
+
+def test_probe_value_counts_damage_risk():
+    """A weigh that damages with P 0.2 and tells nothing, at care 10 and A 1: unused, the probe costs 0.2 x (5 x 10 + 1)
+    = 10.2 and 0.8 x the best continuation (abstaining, 1.0)."""
+    pm = _const_probe("weigh", _KINDS["weigh"] + ("damaged",), [0.8, 0.0, 0.0, 0.2])
+    b = _particles(np.linspace(0.1, 0.9, 20), np.ones(20))
+    v = probe_value(b, [np.full(20, 2.0)], pm, np.zeros((20, 3)), 20.0, 10.0, np.random.default_rng(0), abstain_cost=1.0)
+    assert v["expected_cost_after"] == pytest.approx(0.2 * 51.0 + 0.8 * 1.0) and v["evoi"] == 0.0
+    assert v["p_kind"]["damaged"] == pytest.approx(0.2)
+
+
+class _HalfDamagingPush(PerfectPush):
+    """PerfectPush that damages the object with P 0.5 whatever its friction."""
+
+    classes = _KINDS["push"] + ("damaged",)
+
+    def p_kind(self, X):
+        row = np.zeros(len(self.classes))
+        row[0], row[-1] = 0.5, 0.5
+        return np.tile(row, (len(X), 1))
+
+    def terminal_risk(self, X):
+        return np.full(len(X), 0.5)
+
+    def sample(self, x_row, particle, force, rng, p=None):
+        p = self.p_kind(np.zeros((1, 1)))[0] if p is None else np.asarray(p, dtype=float)
+        if self.classes[int(rng.choice(len(self.classes), p=p / p.sum()))] == "damaged":
+            return {"probe": "push", "kind": "damaged", "reading": {}, "thrown": False}
+        return super().sample(x_row, particle, force, rng)
+
+    def loglik(self, obs, X, arrays, force, temper=None, terms=None, P=None):
+        if obs["kind"] == "damaged":
+            return np.zeros(len(X)), {"used": ["kind"], "rejected": []}
+        return super().loglik(obs, X, arrays, force, temper, terms, P)
+
+
+def test_probe_value_draws_results_that_keep_the_object():
+    """The push of test_probe_preposterior_counts_abstain_after_the_probe (value 0.4), now damaging with P 0.5: a
+    result is drawn among those that keep the object, so the value is 0.5 x 0.4, not 0.25 x 0.4, and the cost
+    after it is 0.5 x (5 + 1) + 0.5 x 1.0 - 0.2."""
+    b = _particles([0.2, 0.5], [0.5, 0.5])
+    v = probe_value(b, [np.array([3.0, 0.2])], _HalfDamagingPush(), np.zeros((2, 3)), 20.0, "normal", np.random.default_rng(0),
+                    k=400, abstain_cost=1.0)
+    assert v["evoi"] == pytest.approx(0.2, abs=0.05) and v["expected_cost_after"] == pytest.approx(3.5 - 0.2, abs=0.05)
+
+
+def _sqmenu(entry, belief, probe_models):
+    from rpent.skills.pick_place.menu import geometry_pose
+
+    g = _geometry()
+    return build_menu(MuGate(f_std=20.0), belief, g, [P(0.3), P(0.5), P(0.7)], 20.0, "normal", "table_centre", plan_fn,
+                      np.random.default_rng(0), pose_fn=lambda prop: dict(geometry_pose(g, prop), entry=entry), threshold=0.7,
+                      probe_models=probe_models)
+
+
+def test_no_squeeze_row_for_non_fragile_objects():
+    """The squeeze row needs a crushable or bruisable object, and it presses at the cap squeeze_cap(belief, f_std): here
+    the 10 % quantile of f_damage_n (about 8.4 N), under half the standard squeeze (10 N)."""
+    from rpent.skills.pick_place.probes import squeeze_cap
+
+    belief = _frag_belief(f_damage=np.linspace(6.0, 30.0, 64))
+    for entry, want in ((STEEL, False), (FILLABLE, False), (CRUSHABLE, True), (BRUISABLE, True)):
+        rows = _by_id(_sqmenu(entry, belief, {"squeeze": FlatSqueeze(), "weigh": FlatWeigh()})[0])
+        assert ("probe_squeeze" in rows) == want and "probe_weigh" in rows
+        if want:
+            cap = squeeze_cap(belief, 20.0)
+            assert cap < 10.0 and rows["probe_squeeze"].action == {"probe": "squeeze", "s": 0.5, "force": cap}
+            from rpent.skills.pick_place.features import G
+            from rpent.skills.pick_place.menu import PLACEHOLDER
+
+            load = PLACEHOLDER["mass"] * G / (2 * PLACEHOLDER["mu"] * cap)        # the base is extracted at the cap
+            assert rows["probe_squeeze"]._base["load_ratio"] == pytest.approx(load)
+            assert rows["probe_weigh"].action["force"] == weigh_force(20.0)
+
+
+def _squeeze_world(rho: float, n: int = 1000, seed: int = 0):
+    """Particles whose log stiffness has correlation rho with the log damage force (each sd 0.4), a squeeze that reads
+    the stiffness (log sd 0.10) and never damages, and two rows: commit_std crushes an object weaker than 15 N
+    (cost 5 + 0.4), light_grip costs 0.9 whatever the object."""
+    from rpent.skills.pick_place.belief import ParticleBelief
+    from rpent.skills.pick_place.likelihood import Law
+
+    z1, z2 = np.random.default_rng(seed).standard_normal((2, n))
+    lf, lk = np.log(20.0) + 0.4 * z1, np.log(2.0) + 0.4 * (rho * z1 + np.sqrt(1.0 - rho ** 2) * z2)
+    b = ParticleBelief([{"mass": 0.3, "mu": 0.5, "com_obj": [0.0, 0.0, 0.03], "k_n_per_mm": float(np.exp(a)),
+                         "f_damage_n": float(np.exp(c)), "v_bruise_ms": None, "v_break_ms": None} for a, c in zip(lk, lf)], np.ones(n))
+    pm = _const_probe("squeeze", ("measured",), [1.0], reading={"measured": Law.normal(0.0, 0.10)})
+    return b, pm, [np.where(np.exp(lf) < 15.0, 5.0, 0.0) + 0.4, np.full(n, 0.9)]
+
+
+def test_squeeze_is_worthless_without_correlation():
+    """The squeeze reads only the stiffness. At rho 0 it tells nothing about the damage force: its value is within 2
+    Monte Carlo errors of 0. At rho 0.9 the same squeeze is worth more than 2 errors."""
+    for rho, worth in ((0.0, False), (0.9, True)):
+        b, pm, C = _squeeze_world(rho)
+        v = probe_value(b, C, pm, np.zeros((len(b), 3)), 5.0, "normal", np.random.default_rng(1), k=400, abstain_cost=1.0)
+        assert (v["evoi"] > 2.0 * v["evoi_se"]) == worth, (rho, v)

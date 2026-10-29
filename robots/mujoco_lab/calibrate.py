@@ -79,7 +79,7 @@ from rpent.skills.pick_place.destinations import MESH_IDS, PRIMITIVE_IDS
 from rpent.skills.pick_place.evaluate import (_ece, coverage_design, ece_ci, ece_from_sums, ece_iid_floor,
                                               object_sums, object_weights, per_class, score)
 from rpent.skills.pick_place.features import extract
-from rpent.skills.pick_place.probes import PROBE_KINDS, PROBE_SECONDS
+from rpent.skills.pick_place.probes import DAMAGED, PROBE_KINDS, PROBE_SECONDS
 from rpent.skills.pick_place.protocol import IRREVERSIBLE, MOTION_OUTCOMES, OUTCOMES, RECOVERABLE, Prediction
 from rpent.skills.pick_place.tools import MAX_PROBES, _threshold, assess_pick, pick_and_place
 
@@ -100,11 +100,12 @@ def attempt_cost(outcome: str, cost_s: float, care: str | float = CARE) -> float
 
 
 def probe_cost(probe: str, kind: str, thrown: bool, care: str | float = CARE) -> float:
-    """An executed probe: its time, a tipped push and a thrown object (the probe row's expected-cost terms)."""
+    """An executed probe: its time, a tipped push, and a thrown or damaged object, charged once (the probe row's
+    expected-cost terms; the case adds A when it ends, see run_protocol)."""
     c = TIME_COST_PER_S * PROBE_SECONDS[probe]
     if probe == "push" and kind == "tipped":
         c += COST["tipped"]
-    if thrown:
+    if thrown or kind == DAMAGED:
         c += COST["dropped_high"] * care_scale(care)
     return float(c)
 
@@ -133,7 +134,7 @@ def _probe_record(d: dict[str, Any], prims: Any, care: str | float) -> dict[str,
     pm = (getattr(prims, "probe_models", None) or {}).get(d["probed"])
     stats = getattr(pm, "stats", None) or {}
     n = int(stats.get("n") or 0)
-    return {"probe": d["probed"], "kind": d["kind"], "reading": d["reading"], "thrown": bool(d["thrown"]),
+    return {"probe": d["probed"], "kind": d["kind"], "reading": d["reading"], "thrown": bool(d["thrown"]), "damage": d.get("damage"),
             "artifact": bool(d.get("artifact", False)), "displacement_m": d.get("displacement_m"), "tilt_deg": d.get("tilt_deg"),
             "declared": d.get("declared"),
             "const_kind": {k: v / n for k, v in stats["kinds"].items()} if n and stats.get("kinds") else None,
@@ -189,6 +190,8 @@ def run_protocol(prims: Any, protocol: str, destination: str, rng: np.random.Gen
             case["error"] = d["error"]
             return "error"
         case["probes"].append(_probe_record(d, prims, care))
+        if d["kind"] == DAMAGED or d.get("damage"):
+            return "damaged"
         if d["thrown"]:
             return "thrown"
         a = d["assessment"]
@@ -532,9 +535,11 @@ def _brier(P: np.ndarray, Y: np.ndarray) -> float:
 
 
 def probe_kind_block(rows: list[dict[str, Any]]) -> dict[str, Any]:
-    """Per probe: the declared kind probabilities of the executed probes against the kinds seen."""
+    """Per probe: the declared kind probabilities of the executed probes against the kinds seen ("damaged" among
+    them; a model that never saw it declares 0)."""
     out = {}
-    for probe, classes in PROBE_KINDS.items():
+    for probe, kinds in PROBE_KINDS.items():
+        classes = kinds + (DAMAGED,)
         recs = [p for r in rows for p in (r.get("probes") or []) if p["probe"] == probe and (p.get("declared") or {}).get("p_kind")]
         if not recs:
             out[probe] = {"n": 0, "kinds": {}, "brier": None, "brier_const": None, "below_const": None}
@@ -570,7 +575,7 @@ def guard_block(rows: list[dict[str, Any]]) -> dict[str, int] | None:
 
 def probes_run(rows: list[dict[str, Any]]) -> dict[str, int]:
     c = Counter(p["probe"] for r in rows for p in (r.get("probes") or []))
-    return {"push": c["push"], "weigh": c["weigh"], "cases_with_probes": sum(1 for r in rows if r.get("probes")), "cases": len(rows)}
+    return {"push": c["push"], "weigh": c["weigh"], "squeeze": c["squeeze"], "cases_with_probes": sum(1 for r in rows if r.get("probes")), "cases": len(rows)}
 
 
 def _mean_ci(values: np.ndarray, inv: np.ndarray, n_objects: int, rng: np.random.Generator, n_boot: int = N_BOOT) -> list[float]:

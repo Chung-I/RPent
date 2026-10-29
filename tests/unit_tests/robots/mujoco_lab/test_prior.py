@@ -156,3 +156,44 @@ def test_prior_from_manifest(tmp_path):
     changed.write_text(changed.read_text().replace('"slosh_zeta": 0.01', '"slosh_zeta": 0.02'))
     with pytest.raises(ValueError, match="sha256"):
         prior_from_manifest({**man, "thresholds": {"path": str(changed), "sha256": sha256_of(THRESHOLDS_V0)}})
+
+
+def test_weigh_narrows_the_fill():
+    """A mug filled to 0.6 and a toy weigh law (log sd 0.05), 200 seeded cases under the m2b prior: after one weigh the
+    80 % interval of the fill among the filled particles is narrower than 0.3 and holds 0.6 in at least 75 % of the
+    cases, and P(filled) rises from the prior's 0.5. An empty mug with a mass scale up to 3 weighs what a filled light
+    one weighs, so an interval over every particle spans the empty atom: P(filled) and the filled cases are scored
+    apart (plan 2b, Task 9 (b))."""
+    from robots.mujoco_lab.adapter import MuJoCoLabEnv
+    from robots.mujoco_lab.fragility import THRESHOLDS_V0, Thresholds, entry_of, liquid, load_classes
+    from robots.mujoco_lab.prior import FILLED_MASS_SCALE_RANGE, make_prior
+    from rpent.skills.pick_place.belief import ParticleBelief
+    from rpent.skills.pick_place.likelihood import Law
+    from rpent.skills.pick_place.probes import PROBE_KINDS, CalibratedClassifier, ProbeModel
+
+    classes = load_classes()
+    prior = make_prior(classes, Thresholds.from_json(THRESHOLDS_V0))
+    env = MuJoCoLabEnv()
+    env.reset("ycb__mug", seed=0)
+    pose = env.pose_info()
+    m_liquid = liquid(entry_of("ycb__mug", classes)[0]["cavity"], 0.6)["mass_kg"]
+    clf = CalibratedClassifier(PROBE_KINDS["weigh"], None, None, np.array([1.0, 0.0, 0.0]))
+    pm = ProbeModel(probe="weigh", classes=PROBE_KINDS["weigh"], clf=clf, reading={"measured": Law.normal(0.0, 0.05)}, p_thrown=0.0)
+    lo, hi = FILLED_MASS_SCALE_RANGE
+    widths, hits, p_filled = [], [], []
+    for seed in range(200):
+        rng = np.random.default_rng(seed)
+        b = prior(pose, 2000, rng)
+        m_true = pose["nominal_mass"] * float(np.exp(rng.uniform(np.log(lo), np.log(hi)))) + m_liquid
+        obs = {"probe": "weigh", "kind": "measured", "reading": {"m_hat": m_true * float(np.exp(rng.normal(0.0, 0.05)))}}
+        a = b.arrays()
+        ll, _ = pm.loglik(obs, np.zeros((len(b), 3)), a, 20.0)
+        post = b.reweight(ll)
+        filled = a["fill"] > 0
+        p_filled.append(float(post.weights[filled].sum() / post.weights.sum()))
+        sub = ParticleBelief([p for p, f in zip(post.particles, filled) if f], post.weights[filled] / post.weights[filled].sum())
+        q10, q90 = sub.quantile("fill", 0.1), sub.quantile("fill", 0.9)
+        widths.append(q90 - q10)
+        hits.append(q10 <= 0.6 <= q90)
+    assert max(widths) < 0.3 and np.mean(hits) >= 0.75, (max(widths), np.mean(hits))
+    assert np.median(p_filled) > 0.6

@@ -19,6 +19,7 @@
 import json
 import os
 
+import numpy as np
 import pytest
 
 pytestmark = pytest.mark.skipif(not os.environ.get("RPENT_MUJOCO_SIM_DIR"), reason="sim dir not set")
@@ -189,3 +190,40 @@ def test_probe_temper_reaches_the_probe_models(probe_bundle, tmp_path):
     tempers = json.load(open(bundle / "manifest.json"))["tempers"]
     assert tempers["probe"] == out["temper"] and tempers.get("readout") == before
     assert all(pm.temper == out["temper"] for pm in load_bundle(str(bundle))["probe_models"].values())
+
+
+class _RecordingProbe:
+    """A probe model that tells nothing and keeps the feature rows it was given."""
+
+    probe, classes, temper = "squeeze", ("measured",), 1.0
+
+    def __init__(self):
+        from rpent.skills.pick_place.features import FEATURES_M2B
+
+        self.feature_names, self.seen = FEATURES_M2B, []
+
+    def loglik(self, obs, X, arrays, force, temper=None, terms=None, P=None):
+        self.seen.append(X)
+        return np.zeros(len(X)), {"used": ["kind"], "rejected": []}
+
+
+def test_probe_check_reads_the_entry_and_the_squeeze_scene():
+    """Scene C (the squeeze) is a case of its own, and the probe models see the row's public entry: the probe corpus's
+    poses carry none."""
+    from robots.mujoco_lab.posterior_check import check_probe_cases, probe_cases
+    from rpent.skills.pick_place.belief import ParticleBelief
+    from rpent.skills.pick_place.features import FEATURES_M2B
+    from tests.unit_tests.skills.synthetic import synthetic_pose, synthetic_rows
+
+    base = dict(synthetic_rows(1)[0]["features"], force=5.0)
+    row = {"key": "o__s0__d0__Csqueeze", "object": "o", "draw": 0, "probe": "squeeze", "kind": "measured", "reading": {"k_hat": 2.0},
+           "base": base, "pose": synthetic_pose(), "entry": {"class": "crushable", "law": "cardboard", "fillable": False}, "force": 5.0,
+           "theta": {"mass_scale": 1.0, "mu": 0.5, "com_s": None}, "com_end": 1, "truth": {"mass": 0.2, "mu": 0.5},
+           "com_obj_true": [0.0, 0.0, 0.03]}
+    cases = probe_cases([row, dict(row, key="o__s0__d0__Bweigh", probe="weigh")], "C")
+    assert [[r["probe"] for r in c] for c in cases] == [["squeeze"]]
+    pm = _RecordingProbe()
+    prior = lambda pose, n, rng: ParticleBelief([{"mass": 0.2, "mu": 0.5, "com_obj": [0.0, 0.0, 0.03], "com_frac": 0.5,  # noqa: E731
+                                                  "f_damage_n": 20.0}] * n, np.ones(n))
+    check_probe_cases(cases, {"probe_models": {"squeeze": pm}, "prior": prior}, [1.0], 5, 0)
+    assert np.all(pm.seen[0][:, FEATURES_M2B.index("frag_crush")] == 1.0)

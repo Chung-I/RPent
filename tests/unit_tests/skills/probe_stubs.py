@@ -42,6 +42,9 @@ class PerfectPush:
     def risk(self, X):
         return np.full(len(X), float(self.p_thrown))
 
+    def terminal_risk(self, X):
+        return self.risk(X)
+
     def sample(self, x_row, particle, force, rng, p=None):
         return {"probe": "push", "kind": "slid", "reading": {"high": float(particle["mu"] > self.cut)}, "thrown": False}
 
@@ -63,11 +66,27 @@ class FlatWeigh:
     def risk(self, X):
         return np.zeros(len(X))
 
+    def terminal_risk(self, X):
+        return self.risk(X)
+
     def sample(self, x_row, particle, force, rng, p=None):
         return {"probe": "weigh", "kind": "measured", "reading": {"m_hat": 0.3}, "thrown": False}
 
     def loglik(self, obs, X, arrays, force, temper=None, terms=None, P=None):
         return np.zeros(len(X)), {"used": ["kind"], "rejected": []}
+
+
+class FlatSqueeze(FlatWeigh):
+    """A squeeze probe (milestone 2b) that tells nothing and never damages."""
+
+    probe = "squeeze"
+    classes = ("measured",)
+
+    def p_kind(self, X):
+        return np.ones((len(X), 1))
+
+    def sample(self, x_row, particle, force, rng, p=None):
+        return {"probe": "squeeze", "kind": "measured", "reading": {"k_hat": 2.0}, "thrown": False}
 
 
 class MuGate:

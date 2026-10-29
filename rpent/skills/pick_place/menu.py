@@ -23,9 +23,10 @@ whose exact pinch width is over the substrate's opening (``env.max_pinch_width``
 MAX_OPEN_WIDTH) or nan (the pads close on nothing) gets no row; when no proposal is left the
 menu declines and says why ("every proposal is wider than the gripper opening").
 
-Probe rows (push, weigh; when the substrate has probe models) are valued by preposterior analysis:
-the expected cost of the best continuation row after the probe's result, over results simulated
-from the belief (``probe_value``). A probe row's expected cost is its time, the push's tip risk and
+Probe rows (push, weigh, and the squeeze for a crushable or bruisable object at ``squeeze_cap``; when the substrate has
+probe models) are valued by preposterior analysis: the expected cost of the best continuation row after the probe's
+result, over results simulated from the belief (``probe_value``). Every probe may end the case, thrown or damaged
+(``terminal_risk``), at the irreversible cost and A. A probe row's expected cost is its time, the push's tip risk and
 that expected cost after it; it competes with the other rows in the same ranking. The value is
 estimated per simulated result against the best row now, so it is exactly 0 when no result can
 change that row; a probe is recommended only when its row beats the best row by more than EVOI_Z
@@ -53,10 +54,10 @@ import numpy as np
 from rpent.skills.pick_place.belief import N_PARTICLES, Belief, ParticleBelief
 from rpent.skills.pick_place.costs import COST, TIME_COST_PER_S, care_scale, expected_cost, particle_costs
 from rpent.skills.pick_place.destinations import DESTINATIONS, edge_distance
-from rpent.skills.pick_place.features import (A_TRANSPORT, DAMAGE_FEATURES, FEATURES_M2, Geometry, extract, model_names,
-                                              particle_features, particle_matrix)
+from rpent.skills.pick_place.features import (A_TRANSPORT, DAMAGE_FEATURES, FEATURES_M2, Geometry, entry_flags, extract,
+                                              model_names, particle_features, particle_matrix)
 from rpent.skills.pick_place.guard import flag_reason
-from rpent.skills.pick_place.probes import PROBE_SECONDS, weigh_force
+from rpent.skills.pick_place.probes import DAMAGED, PROBE_SECONDS, squeeze_cap, weigh_force
 from rpent.skills.pick_place.protocol import IRREVERSIBLE, Option, Prediction
 
 MAX_OPEN_WIDTH = 0.090                       # m: the widest exact pinch (a 9.4 cm open gap less 2 mm a side); a substrate
@@ -137,28 +138,35 @@ def probe_value(belief: ParticleBelief, continuation_costs: list[np.ndarray], pr
                 care: str | float, rng: np.random.Generator, k: int = EVOI_K, abstain_cost: float | None = None) -> dict[str, Any]:
     """The preposterior value of one probe against the cheapest continuation row now (row b, per-particle
     costs C_b). With an abstain cost A, abstaining is a continuation row that costs A for every particle, and T
-    below adds A. The probe throws the object with each particle's risk r (the case ends at the
-    irreversible cost T), so the exact cost after the probe when its result is not used is
+    below adds A. The probe ends the case, thrown or damaged, with each particle's risk r (``terminal_risk``; the case
+    ends at the irreversible cost T), so the exact cost after the probe when its result is not used is
     sum_i w_i (r_i T + (1 - r_i) C_b,i). For k particles drawn by weight one result is sampled from the
-    probe model and the belief w' is reweighted by its likelihood; the result's gain is the posterior
-    saving of the row it then picks (a, the cheapest under w') over row b where the object is kept:
-    sum_l w'_l (1 - r_l) (C_b,l - C_a,l), 0 whenever the result leaves row b cheapest. Returns the
-    belief's P(kind) and P(thrown), ``evoi`` (the mean gain, floored at 0), ``evoi_se`` (its Monte
-    Carlo error) and ``expected_cost_after`` (the cost when the result is not used, minus the mean gain)."""
+    probe model among the results that keep the object (no "damaged" kind) and the belief w' is reweighted by its
+    likelihood; the result's gain is the posterior saving of the row it then picks (a, the cheapest under w') over
+    row b where the object is kept: sum_l w'_l (1 - r_l) (C_b,l - C_a,l), 0 whenever the result leaves row b cheapest
+    (and for a particle the probe damages for sure). Returns the belief's P(kind) and P(thrown), ``evoi`` (the mean
+    gain, floored at 0), ``evoi_se`` (its Monte Carlo error) and ``expected_cost_after`` (the cost when the result is
+    not used, minus the mean gain)."""
     C = np.asarray(continuation_costs, dtype=float).reshape(len(continuation_costs), -1)
     if abstain_cost is not None:
         C = np.vstack([C, np.full(C.shape[1], float(abstain_cost))])
     w = belief.weights
     best = int(np.argmin(C @ w))
-    risk = np.asarray(probe_model.risk(X_probe), dtype=float)
+    thrown = np.asarray(probe_model.risk(X_probe), dtype=float)
+    risk = np.asarray(probe_model.terminal_risk(X_probe), dtype=float)
     P = np.asarray(probe_model.p_kind(X_probe), dtype=float)
+    kept = P.copy()                                  # the results that keep the object: the damaged kind is in the risk
+    if DAMAGED in probe_model.classes:
+        kept[:, list(probe_model.classes).index(DAMAGED)] = 0.0
     a = belief.arrays()
     keep = 1.0 - risk
     terminal = COST["dropped_high"] * care_scale(care) + (0.0 if abstain_cost is None else float(abstain_cost))
     unused = float(w @ (risk * terminal + keep * C[best]))
     gains = np.zeros(int(k))
     for j, i in enumerate(rng.choice(len(w), size=int(k), p=w)):
-        obs = probe_model.sample(X_probe[i], belief.particles[i], force, rng, p=P[i])
+        if not kept[i].sum() > 0:
+            continue
+        obs = probe_model.sample(X_probe[i], belief.particles[i], force, rng, p=kept[i])
         ll, _ = probe_model.loglik(obs, X_probe, a, force, P=P)
         wp = belief.reweight(ll).weights
         pick = int(np.argmin(C @ wp))
@@ -166,23 +174,27 @@ def probe_value(belief: ParticleBelief, continuation_costs: list[np.ndarray], pr
             gains[j] = float((wp * keep) @ (C[best] - C[pick]))
     gain = float(np.mean(gains)) if len(gains) else 0.0
     se = float(np.std(gains, ddof=1) / np.sqrt(len(gains))) if len(gains) > 1 else 0.0
-    return {"p_kind": dict(zip(probe_model.classes, (w @ P).tolist())), "p_thrown": float(w @ risk),
+    return {"p_kind": dict(zip(probe_model.classes, (w @ P).tolist())), "p_thrown": float(w @ thrown),
             "evoi": gain if gain > EVOI_EPS else 0.0, "evoi_se": se, "expected_cost_after": unused - gain}
 
 
 def _probe_rows(probe_models: dict[str, Any], belief: ParticleBelief, geometry: Geometry, mid: Any, pose: dict[str, Any],
                 f_std: float, care: str | float, continuation: list[Option], rng: np.random.Generator,
                 abstain_cost: float | None = None) -> list[Option]:
-    """One row per probe model, at the middle proposal with the weigh squeeze. The continuation costs
-    are those of the current pose (the push moves the object up to 4 cm, the weigh lifts it 2 cm;
-    both are treated as leaving the menu unchanged)."""
-    force = weigh_force(f_std)
-    base = extract(geometry, mid.point, mid.yaw, PLACEHOLDER["mass"], PLACEHOLDER["mu"], force, PROBE_V_LIFT, 0.0,
-                   PROBE_DESTINATION, None, belief.visibility)
+    """One row per probe model, at the middle proposal: the push and the weigh with the weigh squeeze, the squeeze
+    (only for a crushable or bruisable object, by the pose's public entry) at ``squeeze_cap``. The continuation costs
+    are those of the current pose (the push moves the object up to 4 cm, the weigh lifts it 2 cm, the squeeze
+    presses in place; each is treated as leaving the menu unchanged)."""
+    flags = entry_flags(pose.get("entry")) or {}
     a = belief.arrays()
     costs = [o._costs for o in continuation]
     rows = []
     for probe, pm in probe_models.items():
+        if probe == "squeeze" and not (flags.get("frag_crush") or flags.get("frag_bruise")):
+            continue
+        force = squeeze_cap(belief, f_std) if probe == "squeeze" else weigh_force(f_std)
+        base = extract(geometry, mid.point, mid.yaw, PLACEHOLDER["mass"], PLACEHOLDER["mu"], force, PROBE_V_LIFT, 0.0,
+                       PROBE_DESTINATION, None, belief.visibility)
         X = particle_matrix(base, a, pose, force, model_names(pm))
         v = probe_value(belief, costs, pm, X, force, care, rng, abstain_cost=abstain_cost)
         tip = v["p_kind"].get("tipped", 0.0) * COST["tipped"] if probe == "push" else 0.0
