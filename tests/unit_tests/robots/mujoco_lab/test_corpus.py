@@ -27,9 +27,10 @@ ROW_KEYS = {
     "v_transport", "release_height", "width", "label", "max_z", "drop_z", "loss_phase", "loss_step", "fixture",
     "loss_t", "loss_speed", "zone", "release", "planned", "geometry", "features", "pose", "com_obj_true", "readouts",
     "reset", "rev_steps", "deepest_mm", "artifact",
+    "a_transport", "entry", "theta_frag", "fill", "spill_angle_deg", "meter", "motion_label", "damage",      # corpus v9
 }
 OUTCOME_KEYS = {"label", "max_z", "drop_z", "loss_phase", "loss_step", "loss_t", "loss_speed", "zone", "release", "planned", "readouts",
-                "rev_steps", "deepest_mm", "artifact"}
+                "rev_steps", "deepest_mm", "artifact", "meter", "motion_label", "damage"}
 DECLINED_KEYS = (ROW_KEYS - OUTCOME_KEYS) | {"declined"}       # a pinch the skill never offers: no rollout
 
 
@@ -116,3 +117,60 @@ def test_trainable_rows_ran_and_were_offered():
     rows = ({"error": "boom"}, {"declined": "wider than the gripper opening"}, {"label": "placed_stable", "artifact": True},
             {"label": "placed_stable", "artifact": False}, {"label": "placed_stable"})
     assert [trainable(r) for r in rows] == [False, False, False, True, True]
+
+
+def test_draw_damage_ranges():
+    """The damage stream: a fillable object is empty with p 0.5, else filled to U[0.3, 0.9] with the container's mass
+    scale on [0.8, 1.25]; the force is log-uniform on [0.4, 2.5] f_std and the carry acceleration one of 0.5, 1, 2;
+    every draw keeps three standard normals for its fragility."""
+    from robots.mujoco_lab.corpus import apply_damage, damage_rng, draw_damage
+    from robots.mujoco_lab.fragility import THRESHOLDS_V0, Thresholds, entry_of, load_classes
+
+    classes, th = load_classes(), Thresholds.from_json(THRESHOLDS_V0)
+    mug, _ = entry_of("ycb__mug", classes)
+    d = [draw_damage(damage_rng(0, "ycb__mug", i), mug, th, 10.0) for i in range(400)]
+    filled = [x for x in d if x["fill"] > 0]
+    assert 0.4 < len(filled) / len(d) < 0.6 and all(0.3 <= x["fill"] <= 0.9 for x in filled)
+    assert all(0.8 <= x["mass_scale"] <= 1.25 for x in filled) and all("mass_scale" not in x for x in d if x["fill"] == 0)
+    assert all(x["spill_angle_deg"] is None for x in d if x["fill"] == 0) and all(0 < x["spill_angle_deg"] < 90 for x in filled)
+    assert all(4.0 <= x["force"] <= 25.0 for x in d) and {x["a_transport"] for x in d} == {0.5, 1.0, 2.0}
+    assert all(len(x["theta_frag"]["z"]) == 3 and x["theta_frag"]["v_break_ms"] > 0 for x in d)
+    brick, _ = entry_of("ycb__brick", classes)
+    assert all(draw_damage(damage_rng(0, "ycb__brick", i), brick, th, 10.0)["fill"] == 0.0 for i in range(50))
+    theta, act = apply_damage({"mass_scale": 2.5, "mu": 0.4, "com_s": 0.6, "v_lift": 0.15}, {"force": 10.0, "s": 0.5}, filled[0])
+    assert theta["mass_scale"] == filled[0]["mass_scale"] and theta["com_s"] is None and theta["mu"] == 0.4
+    assert act == {"force": filled[0]["force"], "s": 0.5, "a_transport": filled[0]["a_transport"]}
+    assert draw_damage(damage_rng(0, "ycb__mug", 3), mug, th, 10.0) == d[3]          # deterministic
+
+
+def test_control_rows_reproduce_v8():
+    """Three rows of corpus v8 rerun as control rows (v8's draws and actions, a_transport 2.0, no liquid): the meter and
+    the fragility change no motion, so the motion labels are v8's."""
+    from robots.mujoco_lab.adapter import MuJoCoLabEnv
+    from robots.mujoco_lab.corpus import rollout_row
+
+    path = os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "robots", "mujoco_lab", "data", "corpus_v8.jsonl")
+    want = ("ycb__banana__d1", "ycb__brick__d1", "hot3d__mug__d2")         # placed_stable, not_lifted, dropped_low in v8
+    v8 = {r["key"]: r for r in map(json.loads, open(os.path.normpath(path))) if r["key"] in want}
+    env = MuJoCoLabEnv()
+    for key in want:
+        oid, idx = key.rsplit("__d", 1)
+        row = rollout_row(env, oid, int(idx), v8[key]["seed"], mode="control")
+        assert row["a_transport"] == 2.0 and row["fill"] == 0.0 and row["force"] == v8[key]["force"]
+        assert row["motion_label"] == v8[key]["label"], key
+
+
+def test_m2_rows_are_v8_rows():
+    """Mode m2 is milestone 2a's world: v8's draws and actions, no liquid and no fragility, so nothing can be damaged
+    and the label is v8's (a crushable object squeezed at v8's force, and a v8 row)."""
+    from robots.mujoco_lab.adapter import MuJoCoLabEnv
+    from robots.mujoco_lab.corpus import rollout_row
+
+    path = os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "robots", "mujoco_lab", "data", "corpus_v8.jsonl")
+    v8 = next(r for r in map(json.loads, open(os.path.normpath(path))) if r["key"] == "ycb__banana__d1")
+    env = MuJoCoLabEnv()
+    for oid, idx, seed in (("ycb__jello", 0, 0), ("ycb__banana", 1, v8["seed"])):
+        row = rollout_row(env, oid, idx, seed, mode="m2")
+        assert row["fill"] == 0.0 and row["theta_frag"] is None and row["damage"] is None and row["a_transport"] == 2.0
+        assert row["label"] == row["motion_label"]
+    assert row["label"] == v8["label"] and row["force"] == v8["force"]

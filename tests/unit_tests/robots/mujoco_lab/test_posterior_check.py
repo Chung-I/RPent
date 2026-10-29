@@ -31,7 +31,8 @@ def tiny_bundle(tmp_path_factory):
 
     d = tmp_path_factory.mktemp("pc")
     corpus = d / "c.jsonl"
-    assert corpus_main(["--out", str(corpus), "--draws", "8", "--workers", "1", "--objects", "ycb__banana,ycb__brick,ycb__mug"]) == 24
+    assert corpus_main(["--out", str(corpus), "--draws", "8", "--workers", "1", "--objects", "ycb__banana,ycb__brick,ycb__mug",
+                        "--mode", "m2"]) == 24                              # an m2 bundle trains on the m2 world
     train_main(["--corpus", str(corpus), "--out-dir", str(d / "m2"), "--n-belief", "4"])
     return d / "m2"
 
@@ -41,6 +42,24 @@ def test_train_models_writes_the_readout_model(tiny_bundle):
     assert man["readout_model"] == "readout_model.json" and (tiny_bundle / man["readout_model"]).exists()
     metrics = json.load(open(tiny_bundle / man["metrics"]))
     assert "hold" in metrics["readout"]["terms"] and "side_error" in metrics["readout"]
+
+
+def test_posterior_check_draws_from_the_bundle_prior(tiny_bundle, tmp_path, monkeypatch):
+    """The check draws each case's prior particles from the bundle's prior (its manifest's), not a fixed one."""
+    import robots.mujoco_lab.posterior_check as pc
+    from robots.mujoco_lab.prior import lab_prior
+
+    calls = []
+
+    def recording(pose, n=2000, rng=None):
+        calls.append(n)
+        return lab_prior(pose, n, rng)
+
+    plain = pc.load_bundle
+    monkeypatch.setattr(pc, "load_bundle", lambda *a, **k: {**plain(*a, **k), "prior": recording})
+    out = pc.main(["--bundle", str(tiny_bundle), "--split", "val", "--n-particles", "50", "--temper-grid", "1",
+                   "--choose-on", "val", "--out", str(tmp_path / "pc.json")])
+    assert calls and set(calls) == {50} and len(calls) >= out["n"]
 
 
 def test_posterior_check_reports_coverage(tiny_bundle, tmp_path):
@@ -118,7 +137,8 @@ def probe_bundle(tiny_bundle, tmp_path_factory):
     from robots.mujoco_lab.train_models import main as train_main
 
     pc = tmp_path_factory.mktemp("pp") / "p.jsonl"
-    assert probe_main(["--out", str(pc), "--draws", "8", "--workers", "1", "--objects", "ycb__banana,ycb__brick,ycb__mug", "--seed", "7"]) >= 48
+    assert probe_main(["--out", str(pc), "--draws", "8", "--workers", "1", "--objects", "ycb__banana,ycb__brick,ycb__mug", "--seed", "7",
+                       "--mode", "m2"]) >= 48
     out = train_main(["--probe-corpus", str(pc), "--out-dir", str(tiny_bundle)])
     rows = [r for r in map(json.loads, open(pc)) if trainable(r)]
     return tiny_bundle, rows, out

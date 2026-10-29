@@ -252,8 +252,15 @@ def _run_probe(row: Option, object: str, destination: str, care: str, primitives
     before, after = _update(rec, entry, loc, primitives)
     return {"probed": probe, "placed": False, "kind": res.kind, "reading": dict(res.reading),
             "displacement_m": res.displacement_m, "tilt_deg": res.tilt_deg, "thrown": bool(res.thrown), "seconds": res.seconds,
-            "artifact": bool(getattr(res, "artifact", False)), "declared": row.to_data()["probe"], "belief_before": before.to_data(),
+            "artifact": bool(getattr(res, "artifact", False)), "damage": getattr(res, "damage", None),
+            "declared": row.to_data()["probe"], "belief_before": before.to_data(),
             "belief": after.to_data(), "assessment": _reassess(object, destination, care, primitives, store)}
+
+
+def _meter_max(meter: dict[str, Any] | None) -> dict[str, float]:
+    """Each damage-meter channel's maximum (its records are [t, value] pairs; 0 for an empty channel); {} without a
+    meter."""
+    return {k: max((float(v) for _, v in rows or []), default=0.0) for k, rows in (meter or {}).items()}
 
 
 def _attempt(option: Option, object: str, destination: str, care: str, primitives: Any, store: dict[str, Any]) -> dict[str, Any]:
@@ -281,6 +288,8 @@ def _attempt(option: Option, object: str, destination: str, care: str, primitive
         "option": option.id,
         "destination_used": act["destination"],
         "artifact": bool(getattr(r, "artifact", False)),       # the substrate says the run's contacts were not physical
+        "damage": getattr(r, "damage", None),                  # the damage meter's first threshold crossing, if any
+        "meter_max": _meter_max(getattr(r, "meter", None)),
         "declared": {"p_success": declared["p"]["placed_stable"],
                      "p_irreversible": {k: declared["p"][k] for k in ("dropped_high", "rolled_off")},
                      "p_recoverable": {k: declared["p"][k] for k in ("tipped", "missed", "dropped_low", "not_lifted")},

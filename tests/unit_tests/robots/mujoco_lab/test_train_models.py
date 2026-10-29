@@ -65,7 +65,8 @@ def test_train_models_on_true_features(tmp_path):
     from robots.mujoco_lab.train_models import main
 
     corpus = tmp_path / "c.jsonl"
-    assert corpus_main(["--out", str(corpus), "--draws", "8", "--workers", "1", "--objects", "ycb__banana,ycb__brick,ycb__mug"]) == 24
+    assert corpus_main(["--out", str(corpus), "--draws", "8", "--workers", "1", "--objects", "ycb__banana,ycb__brick,ycb__mug",
+                        "--mode", "m2"]) == 24
     out = main(["--corpus", str(corpus), "--out-dir", str(tmp_path / "m2"), "--n-belief", "4"])
     assert out["features"] == "true" and out["prior"] == "lab_generator"
     assert out["classifier"]["features"] == "true" and out["classifier"]["belief"]["n"] == out["n_val"]
@@ -271,3 +272,27 @@ def test_probe_metrics_serialise_mixture_laws(tmp_path):
     assert Law.from_json(measured) == ProbeModel.load(str(tmp_path / "b" / "probe_weigh.joblib")).reading["measured"]
     slid = metrics["probes"]["push"]["reading"]["slid"]
     assert isinstance(slid, list) and len(slid) == 2
+
+
+def test_load_bundle_takes_the_prior_from_the_manifest(tmp_path):
+    """An m2 manifest gives today's lab prior; a manifest naming the m2b prior gives the joint prior on its class and
+    threshold files, and a file that changed since training stops the load."""
+    from robots.mujoco_lab.fragility import CLASSES, THRESHOLDS_V0
+    from robots.mujoco_lab.prior import M2B_PRIOR, sha256_of
+    from robots.mujoco_lab.robot_spec import lab_prior_fn, load_bundle
+    from robots.mujoco_lab.train_models import main
+    from tests.unit_tests.skills.synthetic import synthetic_rows, with_pose
+
+    corpus = tmp_path / "c.jsonl"
+    _write(with_pose(synthetic_rows(300)), corpus)
+    main(["--corpus", str(corpus), "--out-dir", str(tmp_path / "b"), "--features", "true", "--n-belief", "4"])
+    assert load_bundle(str(tmp_path / "b"))["prior"] is lab_prior_fn
+    path = tmp_path / "b" / "manifest.json"
+    man = {**json.load(open(path)), "prior": M2B_PRIOR, "classes": {"path": CLASSES, "sha256": sha256_of(CLASSES)},
+           "thresholds": {"path": THRESHOLDS_V0, "sha256": sha256_of(THRESHOLDS_V0)}}
+    json.dump(man, open(path, "w"))
+    prior = load_bundle(str(tmp_path / "b"))["prior"]
+    assert callable(prior) and prior is not lab_prior_fn
+    json.dump({**man, "thresholds": {"path": THRESHOLDS_V0, "sha256": "0" * 64}}, open(path, "w"))
+    with pytest.raises(ValueError, match="sha256"):
+        load_bundle(str(tmp_path / "b"))

@@ -67,7 +67,7 @@ def test_reset_leaves_the_object_at_rest_near_the_rest_xy():
 
     env = _env()
     obj = "hot3d__lizard_figurine"
-    theta, com_end, _ = case_draw(11, obj, 0, object_props(obj)["mass"])
+    theta, com_end, _, _ = case_draw(11, obj, 0, object_props(obj)["mass"])
     env.reset(obj, theta, seed=11000, com_end=com_end)
     info = env.reset_info
     assert info["at_rest"] and info["zone"] in ("table", *env.fixtures_in_scene) and 0.2 <= info["settle_s"] <= 3.0
@@ -87,7 +87,7 @@ def test_a_reset_that_does_not_reach_rest_says_so():
 
     env = _env()
     obj = "hot3d__lizard_figurine"
-    theta, com_end, _ = case_draw(11, obj, 5, object_props(obj)["mass"])
+    theta, com_end, _, _ = case_draw(11, obj, 5, object_props(obj)["mass"])
     env.reset(obj, theta, seed=11005, com_end=com_end)
     assert env.reset_info == {"settle_s": REST_CAP_S, "at_rest": False, "zone": "table"}
 
@@ -402,3 +402,172 @@ def test_reset_frees_the_previous_sim():
         assert old() is None
     finally:
         gc.enable()
+
+
+# --- milestone 2b: the damage meter, the liquid, the carry acceleration and the squeeze probe
+
+MUG = "ycb__mug"            # fillable: a 276 ml frustum cavity (fragility_classes.json); its s 0.5 and 0.7 pinches fit
+CRUSHABLE = "ycb__jello"    # cardboard, 7.3 cm across at s 0.5
+
+
+def _mug(env, fill, seed=0):
+    env.reset(MUG, {"mass_scale": 1.0, "com_s": None}, seed=seed, fill=fill)
+    return env
+
+
+def _mid(env):
+    from rpent.skills.pick_place.menu import mid_proposal, pinch_limit, usable_proposals
+
+    return mid_proposal(usable_proposals(env.proposals(), pinch_limit(env)))
+
+
+def test_damage_meter_does_not_change_the_motion():
+    """The meter reads the contacts, the pad forces and the CoM velocity in every physics substep and writes nothing,
+    so a rollout with it on moves the object exactly as one with it off."""
+    runs = []
+    for on in (True, False):
+        env = _env(damage_meter=on)
+        p = _control(env, SHORT)
+        r = env.execute(p, force=20.0, v_lift=0.15, v_transport=0.25, destination="plate")
+        runs.append((r, [(x["z"], x["rot_deg"], x["low_z"]) for x in r.trace], env.sim.obj_pos().tolist(), env.sim.obj_mat().tolist()))
+    (r_on, *on), (r_off, *off) = runs
+    assert on == off
+    assert r_on.meter["fn_pad_max"] and r_on.motion_label == r_off.motion_label == r_on.label == r_off.label
+    assert r_off.meter == {} and r_off.damage is None
+
+
+def test_filled_container_weighs_its_liquid():
+    from robots.mujoco_lab.fragility import entry_of, liquid, load_classes
+
+    entry, _ = entry_of(MUG, load_classes())
+    env = _env()
+    m_empty = _mug(env, 0.0).truth()["mass"]
+    t = _mug(env, 0.6).truth()
+    m_l = liquid(entry["cavity"], 0.6)["mass_kg"]
+    assert m_l > 0.1                                                    # 0.6 of 276 ml
+    assert t["mass"] == pytest.approx(m_empty + m_l, rel=0.01)
+    assert t["fill"] == 0.6 and t["liquid_mass"] == pytest.approx(m_l, rel=1e-6) and t["frag"] is None
+
+
+def test_liquid_moves_the_com_to_the_weighted_centroid():
+    from robots.mujoco_lab.fragility import entry_of, liquid, load_classes
+
+    entry, _ = entry_of(MUG, load_classes())
+    env = _env()
+    t0 = _mug(env, 0.0).truth()
+    t1 = _mug(env, 0.6).truth()
+    liq = liquid(entry["cavity"], 0.6)
+    want = (t0["mass"] * np.asarray(t0["com_obj"]) + liq["mass_kg"] * np.asarray(liq["centroid_obj"])) / (t0["mass"] + liq["mass_kg"])
+    assert np.allclose(t1["com_obj"], want, atol=2e-4)
+    # not vacuous: the liquid moves the CoM by more than five tolerances (1.5 mm for this mug at 0.6)
+    assert np.linalg.norm(np.asarray(t1["com_obj"]) - np.asarray(t0["com_obj"])) > 5 * 2e-4
+
+
+def test_free_fall_impact_speed_matches_the_height():
+    """The brick released with its lowest point 0.18 m above the table: the first impact after the release is the CoM
+    speed one substep before the new table contact, sqrt(2 g 0.18) = 1.879 m/s."""
+    env = _env()
+    p = _control(env, SHORT)
+    r = env.execute(p, force=20.0, v_lift=0.15, v_transport=0.25, destination="table_centre", release_height=0.18)
+    assert r.meter["impacts"]
+    t, v = r.meter["impacts"][0]
+    assert v == pytest.approx(1.879, rel=0.10)
+
+
+def test_force_channel_first_crossing():
+    """A squeeze ramp to 20 N on the brick: the force channel (the larger pad's normal force over 10 ms, a running
+    maximum kept at every 1 % growth) first passes 10 N within 50 ms of the step in which the ramp commands 10 N."""
+    from robots.mujoco_lab.fragility import _first_above
+
+    env = _env()
+    p = _control(env, SHORT)
+    res = env.probe_squeeze(p, 20.0)
+    t_cmd = next(x["t_meter"] for x in res.trace if x["phase"] == "ramp" and x["f_cmd"] >= 10.0)
+    t_meas = _first_above(res.meter["fn_pad_max"], 10.0)
+    assert t_meas is not None and abs(t_meas - t_cmd) <= 0.05
+    assert res.meter["fn_pad_max"][-1][1] == pytest.approx(20.0, rel=0.05)
+    assert res.probe == "squeeze" and res.kind == "measured" and res.damage is None
+
+
+def test_slow_carry_lowers_the_surface_angle():
+    """A mug filled to 0.8 carried to the table centre: the surface angle's maximum at a 0.5 m/s^2 carry is below that
+    at 2.0 m/s^2 (a step in acceleration overshoots the static slope atan(a / g), 2.9 and 11.5 deg)."""
+    out = {}
+    for a in (0.5, 2.0):
+        env = _env()
+        _mug(env, 0.8)
+        r = env.execute(_mid(env), force=20.0, v_lift=0.15, v_transport=0.5, destination="table_centre", a_transport=a)
+        out[a] = r.meter["surface_max"][-1][1]
+    assert out[0.5] < out[2.0]
+
+
+def test_spill_by_tilt_overrides_the_motion_label():
+    """A mug filled to 0.8 pinched off its centre with 2.5 N turns in the pads during the lift past its spill angle,
+    before any carry (a slow one, 0.5 m/s^2): it spills when the tilt crosses the spill angle, and the spill replaces
+    the motion label, whatever that says (placed_stable here)."""
+    from robots.mujoco_lab.fragility import entry_of, load_classes, spill_angle_deg
+
+    env = _env()
+    _mug(env, 0.8)
+    r = env.execute(env.proposals()[0], force=2.5, v_lift=0.15, v_transport=0.25, destination="table_centre",
+                    a_transport=0.5)
+    spill = spill_angle_deg(entry_of(MUG, load_classes())[0]["cavity"], 0.8)
+    assert max(x["rot_lift_deg"] or 0.0 for x in r.trace) > spill                 # the tilt alone passes it
+    cross = next(x["t_meter"] for x in r.trace if (x["rot_lift_deg"] or 0.0) > spill)
+    carry = next(x["t_meter"] for x in r.trace if x["phase"] == "transport")
+    assert r.damage["label"] == "spilled" and r.damage["channel"] == "surface"
+    assert r.damage["t"] < carry and abs(r.damage["t"] - cross) < 0.15
+    assert r.label == "spilled" and r.motion_label != "spilled"
+
+
+def _crushable(env, f_damage_n):
+    from robots.mujoco_lab.fragility import THRESHOLDS_V0, Thresholds, entry_of, load_classes, map_latent
+
+    entry, _ = entry_of(CRUSHABLE, load_classes())
+    frag = {**map_latent([0.0, 0.0, 0.0], entry, Thresholds.from_json(THRESHOLDS_V0)), "f_damage_n": float(f_damage_n)}
+    env.reset(CRUSHABLE, seed=0, frag=frag)
+    return frag
+
+
+def test_weigh_probe_can_crush():
+    """The jello box with f_damage_n 5 N under the weigh squeeze (weigh_force(10) = 20 N): the probe crushes it, so its
+    kind is "damaged" and its damage "crushed"; at 60 N it survives."""
+    from rpent.skills.pick_place.probes import weigh_force
+
+    env = _env()
+    _crushable(env, 5.0)
+    res = env.probe_weigh(_mid(env), weigh_force(10.0))
+    assert res.kind == "damaged" and res.damage["label"] == "crushed" and res.damage["channel"] == "force"
+    _crushable(env, 60.0)
+    res = env.probe_weigh(_mid(env), weigh_force(10.0))
+    assert res.kind != "damaged" and res.damage is None and res.meter["fn_pad_max"][-1][1] > 15.0
+
+
+def test_push_meters_the_surface_angle():
+    """The push moves a mug filled to 0.6: the surface channel records the slosh it starts."""
+    env = _env()
+    _mug(env, 0.6)
+    res = env.probe_push()
+    assert res.meter["surface_max"] and res.meter["surface_max"][-1][1] > 0.5
+
+
+def test_squeeze_reading_noise_is_ten_percent():
+    """500 seeded readings: log(k_hat / k) has sd 0.10; the probe keeps its standard normal."""
+    from robots.mujoco_lab.adapter import MuJoCoLabEnv
+
+    r = [MuJoCoLabEnv.squeeze_reading(2.0, np.random.default_rng(i)) for i in range(500)]
+    lr = np.log([x["k_hat"] / 2.0 for x in r])
+    assert abs(float(np.std(lr)) - 0.10) < 0.01
+    assert all(x["k_hat"] == pytest.approx(2.0 * np.exp(0.10 * x["eps"])) for x in r)
+    assert MuJoCoLabEnv.squeeze_reading(None, np.random.default_rng(0)).get("k_hat") is None
+
+
+def test_squeeze_probe_reads_the_stiffness():
+    """The jello box under a 10 N squeeze (its f_damage_n 60 N): measured, k_hat = k exp(0.10 eps) with the eps the
+    reading keeps, no lift, the box left where it was."""
+    env = _env()
+    frag = _crushable(env, 60.0)
+    res = env.probe_squeeze(_mid(env), 10.0)
+    assert res.kind == "measured" and res.damage is None
+    assert res.reading["k_hat"] == pytest.approx(frag["k_n_per_mm"] * np.exp(0.10 * res.reading["eps"]))
+    assert res.displacement_m < 0.02 and not res.thrown and max(x["z"] for x in res.trace) < 0.01

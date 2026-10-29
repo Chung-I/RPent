@@ -39,7 +39,7 @@ def test_probe_recommendation_is_stable_across_streams():
     obj, idx, seed = "hope__pitted_cherries", 21, 2
     prims = build_lab(bundle=BUNDLE)
     env = prims.env
-    theta, com_end, dest = case_draw(seed, obj, idx, object_props(obj)["mass"])
+    theta, com_end, dest, _ = case_draw(seed, obj, idx, object_props(obj)["mass"])
     env.reset(obj, theta, seed=seed * 1000 + idx, com_end=com_end, fixture=dest if dest in MESH_IDS else None)
     prims.rng = _stream(seed, obj, idx, 1)
     store = {}

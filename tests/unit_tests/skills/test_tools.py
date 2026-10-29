@@ -287,6 +287,26 @@ def _commit(prims, store, destination="table_centre", obj="mug"):
     return pick_and_place(object=obj, destination=destination, option_id="commit_std", primitives=prims, store=store).data
 
 
+class _DamageEnv(_ReadingEnv):
+    """Attempts whose rollouts carry the damage meter's channels and, for a spill, the damage."""
+
+    def execute(self, *a, **kw):
+        r = super().execute(*a, **kw)
+        r.meter = {"fn_pad_max": [[0.1, 4.0], [0.9, 7.5]], "surface_max": [[2.0, 31.0]], "impacts": []}
+        r.damage = {"label": "spilled", "channel": "surface", "t": 2.0} if r.label == "spilled" else None
+        return r
+
+
+def test_attempt_payload_carries_the_damage_and_the_meter_maxima():
+    """The attempt result names the damage (its label, channel and time) and each meter channel's maximum; an env
+    without a meter gives no damage and no maxima."""
+    r = _commit(_bprims(_DamageEnv([("spilled", {"rot_deg": 0.0, "heavy_side": 0})])), {})
+    assert r["outcome"] == "spilled" and r["damage"] == {"label": "spilled", "channel": "surface", "t": 2.0}
+    assert r["meter_max"] == {"fn_pad_max": 7.5, "surface_max": 31.0, "impacts": 0.0}
+    plain = _commit(_bprims(_ReadingEnv([("placed_stable", {"rot_deg": 0.0, "heavy_side": 0})])), {})
+    assert plain["damage"] is None and plain["meter_max"] == {}
+
+
 def test_pick_payload_carries_readouts_diagnosis_and_beliefs():
     env = _ReadingEnv([("not_lifted", {"fz_slip_max_n": 3.0, "rot_deg": 0.0, "heavy_side": 0, "loss_phase": None})])
     r = _commit(_bprims(env), {})

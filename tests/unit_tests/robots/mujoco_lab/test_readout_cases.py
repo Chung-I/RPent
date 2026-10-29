@@ -55,7 +55,7 @@ def _row_and_trace(env, key: str) -> tuple[dict, list[dict]]:
     env.execute = execute
     try:
         obj, idx = key.rsplit("__d", 1)
-        row = corpus.rollout_row(env, obj, int(idx), 0, False)
+        row = corpus.rollout_row(env, obj, int(idx), 0, False, mode="m2")     # a v8 row: v8's world
     finally:
         env.execute = plain
     return row, got["r"].trace

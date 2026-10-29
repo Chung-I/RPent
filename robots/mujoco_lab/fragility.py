@@ -198,6 +198,60 @@ def spill_angle_deg(cavity: dict[str, Any], fill: float) -> float:
     return 90.0
 
 
+SPILL_GRID = np.linspace(0.0, 1.0, 201)       # the fills of a cavity's spill-angle table
+_SPILL_TABLES: dict[tuple, np.ndarray] = {}
+
+
+def spill_angle(cavity: dict[str, Any], fill):
+    """spill_angle_deg from a table over SPILL_GRID (linear between fills 0.005 apart, about 0.7 s per cavity once a
+    process): the corpus rows, the sim's damage rule and the prior read the same angle."""
+    key = tuple(float(cavity[k]) for k in ("r_bottom_m", "r_top_m", "height_m"))
+    if key not in _SPILL_TABLES:
+        _SPILL_TABLES[key] = np.array([spill_angle_deg(cavity, float(f)) for f in SPILL_GRID])
+    out = np.interp(np.clip(fill, 0.0, 1.0), SPILL_GRID, _SPILL_TABLES[key])
+    return float(out) if np.ndim(out) == 0 else out
+
+
+def liquid_arrays(cavity: dict[str, Any], fills) -> tuple[np.ndarray, np.ndarray]:
+    """liquid() for many fills: (mass in kg (n,), centroid in the object frame (n, 3)); the height solves the frustum's
+    volume by Newton steps (dV/dh = pi r(h)^2)."""
+    f = np.clip(np.asarray(fills, dtype=float), 0.0, 1.0)
+    r_b, r_t, H = _frustum(cavity)
+    k = (r_t - r_b) / H
+    V = _volume_to(cavity, H)
+    target = f * V
+    h = f * H
+    for _ in range(40):
+        vol = np.pi * (r_b * r_b * h + r_b * k * h * h + k * k * h ** 3 / 3.0)
+        h = np.clip(h - (vol - target) / np.maximum(np.pi * (r_b + k * h) ** 2, 1e-12), 0.0, H)
+    vol = np.pi * (r_b * r_b * h + r_b * k * h * h + k * k * h ** 3 / 3.0)
+    mom = np.pi * (r_b * r_b * h * h / 2.0 + 2.0 * r_b * k * h ** 3 / 3.0 + k * k * h ** 4 / 4.0)
+    zc = np.where(vol > 0, mom / np.maximum(vol, 1e-300), 0.0)
+    axis, bottom = np.asarray(cavity["axis_obj"], dtype=float), np.asarray(cavity["bottom_obj"], dtype=float)
+    return 1000.0 * V * f, bottom[None, :] + zc[:, None] * axis[None, :]
+
+
+def map_latent_arrays(Z, entry: dict[str, Any], th: Thresholds) -> dict[str, Any]:
+    """map_latent for many latent draws Z (n, 3): arrays per key, None for the keys the law has no part for."""
+    Z = np.asarray(Z, dtype=float).reshape(-1, 3)
+    out: dict[str, Any] = {"k_n_per_mm": None, "f_damage_n": None, "v_bruise_ms": None, "v_break_ms": None, "z": Z}
+    law = th.laws.get(entry.get("law")) if entry.get("law") and entry.get("class", "none") != "none" else None
+    if law is None:
+        return out
+
+    def ln(p, z):
+        return float(p["median"]) * np.exp(float(p["log_sd"]) * z)
+
+    if "f_damage_n" in law:
+        rho = float(law["rho"])
+        out["f_damage_n"] = ln(law["f_damage_n"], Z[:, 0])
+        out["k_n_per_mm"] = ln(law["k_n_per_mm"], rho * Z[:, 0] + math.sqrt(1.0 - rho * rho) * Z[:, 1])
+    for key in ("v_bruise_ms", "v_break_ms"):
+        if key in law:
+            out[key] = ln(law[key], Z[:, 2])
+    return out
+
+
 def _first_above(steps, threshold: float) -> float | None:
     for t, v in steps or []:
         if float(v) > float(threshold):

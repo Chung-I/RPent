@@ -73,7 +73,7 @@ from typing import Any
 import numpy as np
 
 from robots.mujoco_lab import tracking
-from robots.mujoco_lab.corpus import case_rng, draw_theta, trainable
+from robots.mujoco_lab.corpus import apply_damage, case_rng, damage_rng, draw_damage, draw_theta, trainable
 from rpent.skills.pick_place.costs import COST, TIME_COST_PER_S, care_scale
 from rpent.skills.pick_place.destinations import MESH_IDS, PRIMITIVE_IDS
 from rpent.skills.pick_place.evaluate import (_ece, coverage_design, ece_ci, ece_from_sums, ece_iid_floor,
@@ -261,15 +261,27 @@ def run_protocol(prims: Any, protocol: str, destination: str, rng: np.random.Gen
     return end("failed")
 
 
-def case_draw(seed: int, object_id: str, idx: int, nominal_mass: float, use_fixtures: bool = False) -> tuple[dict[str, Any], int, str]:
-    """The case's hidden properties, CoM end and destination: one stream per (seed, object, idx)."""
+def case_draw(seed: int, object_id: str, idx: int, nominal_mass: float, use_fixtures: bool = False,
+              fragility: tuple[dict[str, Any], Any] | None = None) -> tuple[dict[str, Any], int, str, dict[str, Any]]:
+    """The case's hidden properties, CoM end, destination and hidden damage state {fill, frag, spill_angle_deg}: one
+    stream per (seed, object, idx). In an m2b world (``fragility`` = (classes, thresholds)) the fill and the fragility
+    come from the corpus's damage stream with the corpus rule (corpus.draw_damage, apply_damage), so a case hides what
+    the corpus row of that (seed, object, idx) hides; an m2 case is empty and cannot be damaged."""
+    from robots.mujoco_lab.fragility import entry_of
+
     rng = case_rng(seed, object_id, idx)
     theta, com_end = draw_theta(rng, nominal_mass)
     if use_fixtures and MESH_IDS and rng.random() < 0.5:
         destination = str(rng.choice(sorted(MESH_IDS)))
     else:
         destination = str(rng.choice(sorted(PRIMITIVE_IDS)))
-    return theta, com_end, destination
+    hidden: dict[str, Any] = {"fill": 0.0, "frag": None, "spill_angle_deg": None}
+    if fragility is not None:
+        classes, th = fragility
+        d = draw_damage(damage_rng(seed, object_id, idx), entry_of(object_id, classes)[0], th, 1.0)
+        theta, _ = apply_damage(theta, {}, d)
+        hidden = {"fill": d["fill"], "frag": d["theta_frag"], "spill_angle_deg": d["spill_angle_deg"]}
+    return theta, com_end, destination, hidden
 
 
 def case_artifact(case: dict[str, Any], reset_info: dict[str, Any]) -> bool:
@@ -287,10 +299,16 @@ def run_case(prims: Any, object_id: str, idx: int, seed: int, protocol: str = "c
     """Reset the lab to the case's draw and run the protocol; the first attempt's fields sit at the top
     level (milestone 1's row)."""
     from robots.mujoco_lab.adapter import object_props
+    from robots.mujoco_lab.prior import fragility_world
 
     env = prims.env
-    theta, com_end, destination = case_draw(seed, object_id, idx, object_props(object_id)["mass"], use_fixtures)
-    env.reset(object_id, theta, seed=seed * 1000 + idx, com_end=com_end, fixture=destination if destination in MESH_IDS else None)
+    world = fragility_world(getattr(prims, "manifest", None))
+    theta, com_end, destination, hidden = case_draw(seed, object_id, idx, object_props(object_id)["mass"], use_fixtures,
+                                                    fragility=world)
+    if world is not None:
+        env.slosh_zeta = world[1].slosh_zeta
+    env.reset(object_id, theta, seed=seed * 1000 + idx, com_end=com_end, fixture=destination if destination in MESH_IDS else None,
+              fill=hidden["fill"], frag=hidden["frag"])
     reset_info = dict(getattr(env, "reset_info", None) or {})
     prims.rng = _stream(seed, object_id, idx, 1)
     truth = env.truth()
@@ -305,6 +323,7 @@ def run_case(prims: Any, object_id: str, idx: int, seed: int, protocol: str = "c
                         follow=follow)
     case["artifact"] = case_artifact(case, reset_info)
     row = {"object": object_id, "idx": idx, "destination": destination, "theta": theta, "com_end": com_end,
+           "fill": hidden["fill"], "theta_frag": hidden["frag"],
            "truth": {k: truth[k] for k in ("mass", "mu", "com_s")}, "reset": reset_info, **case}
     first = case["attempts"][0] if case["attempts"] else None
     row.update(executed=first is not None, option=first and first["option"], outcome=first and first["outcome"],

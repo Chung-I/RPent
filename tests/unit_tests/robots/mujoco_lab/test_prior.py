@@ -87,3 +87,72 @@ def test_particle_features_match_extract_with_the_true_com():
     for k in ("lever", "com_h", "base_ratio", "com_height_ratio", "mass", "mu", "load_ratio"):
         assert got[k] == pytest.approx(want[k], abs=1e-6), k
     assert abs(got["lever"] - base["lever"]) > 0.005                        # the shift moved the lever
+
+
+def test_prior_matches_the_generator():
+    """make_prior against the joint generator (draw_theta, draw_action, then draw_damage and apply_damage, the mass and
+    CoM of prior.joint_hidden) on 20,000 draws each: the mug's mass (container and liquid), fill and CoM height along
+    its cavity axis; the jello box's damage force."""
+    from scipy.stats import ks_2samp
+
+    from robots.mujoco_lab.adapter import MuJoCoLabEnv
+    from robots.mujoco_lab.corpus import apply_damage, case_rng, damage_rng, draw_action, draw_damage, draw_theta
+    from robots.mujoco_lab.fragility import THRESHOLDS_V0, Thresholds, entry_of, load_classes, map_latent
+    from robots.mujoco_lab.prior import joint_hidden, make_prior
+
+    classes, th = load_classes(), Thresholds.from_json(THRESHOLDS_V0)
+    prior = make_prior(classes, th)
+    env = MuJoCoLabEnv()
+    n = 20000
+    for oid in ("ycb__mug", "ycb__jello"):
+        env.reset(oid, seed=0)
+        pose = env.pose_info()
+        assert pose["object_id"] == oid
+        entry, _ = entry_of(oid, classes)
+        b = prior(pose, n, np.random.default_rng(1))
+        P = b.particles
+        gen = []
+        for i in range(n):
+            rng = case_rng(3, oid, i)
+            theta, com_end = draw_theta(rng, pose["nominal_mass"])
+            act = draw_action(rng, 10.0)
+            d = draw_damage(damage_rng(3, oid, i), entry, th, 10.0)
+            theta, act = apply_damage(theta, act, d)
+            gen.append((joint_hidden(pose, entry, theta, com_end, d["fill"]), d))
+        if oid == "ycb__mug":
+            axis = np.asarray(entry["cavity"]["axis_obj"])
+            assert ks_2samp([p["mass"] for p in P], [h["mass"] for h, _ in gen]).pvalue > 0.01
+            assert ks_2samp([p["fill"] for p in P], [d["fill"] for _, d in gen]).pvalue > 0.01
+            assert ks_2samp([np.asarray(p["com_obj"]) @ axis for p in P], [np.asarray(h["com_obj"]) @ axis for h, _ in gen]).pvalue > 0.01
+            assert np.allclose([p["mass"] for p in P], [pose["nominal_mass"] * p["mass_scale"] * (1 + p["f"]) + p["liquid_mass"] for p in P])
+            assert all((p["spill_angle_deg"] is None) == (p["fill"] == 0.0) for p in P)
+        else:
+            assert ks_2samp(np.log([p["f_damage_n"] for p in P]), np.log([d["theta_frag"]["f_damage_n"] for _, d in gen])).pvalue > 0.01
+            assert all(p["fill"] == 0.0 for p in P)
+        for p in P[:20]:                                   # every particle's fragility is its latent draw under the law
+            want = map_latent(p["frag_z"], entry, th)
+            assert all(want[k] == pytest.approx(p[k]) if want[k] is not None else p[k] is None
+                       for k in ("k_n_per_mm", "f_damage_n", "v_bruise_ms", "v_break_ms"))
+
+
+def test_prior_from_manifest(tmp_path):
+    """A bundle's manifest names its prior: "lab_generator" gives lab_prior; the m2b prior gives the joint prior on the
+    named class and threshold files (relative paths under data/), each checked by its sha256; no prior gives None."""
+    import shutil
+
+    from robots.mujoco_lab.adapter import MuJoCoLabEnv
+    from robots.mujoco_lab.fragility import THRESHOLDS_V0
+    from robots.mujoco_lab.prior import DATA, M2B_PRIOR, lab_prior, prior_from_manifest, sha256_of
+
+    assert prior_from_manifest({"prior": "lab_generator"}) is lab_prior and prior_from_manifest({}) is None
+    man = {"prior": M2B_PRIOR, "classes": {"path": "fragility_classes.json", "sha256": sha256_of(f"{DATA}/fragility_classes.json")},
+           "thresholds": {"path": THRESHOLDS_V0, "sha256": sha256_of(THRESHOLDS_V0)}}
+    env = MuJoCoLabEnv()
+    env.reset("ycb__mug", seed=0)
+    P = prior_from_manifest(man)(env.pose_info(), 400, np.random.default_rng(0)).particles
+    assert 0 < sum(p["fill"] > 0 for p in P) < 400 and all("f_damage_n" in p for p in P)
+    changed = tmp_path / "thresholds.json"
+    shutil.copy(THRESHOLDS_V0, changed)
+    changed.write_text(changed.read_text().replace('"slosh_zeta": 0.01', '"slosh_zeta": 0.02'))
+    with pytest.raises(ValueError, match="sha256"):
+        prior_from_manifest({**man, "thresholds": {"path": str(changed), "sha256": sha256_of(THRESHOLDS_V0)}})

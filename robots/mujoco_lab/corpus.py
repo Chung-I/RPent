@@ -19,6 +19,15 @@
 One row per rollout (JSON lines): the hidden draw, the action, the measured
 geometry, the features (true-θ, see features.extract), the planned trajectory
 and the outcome label with the loss record. One worker process per object.
+
+Corpus v9 (plan 2b, ``--mode v9``, the default) draws v8's theta and action from v8's stream and then, from a
+damage stream of its own (``damage_rng``), the fill, the hidden fragility, the squeeze (log-uniform on
+[0.4, 2.5] f_std) and the carry acceleration (``draw_damage``, applied by ``apply_damage``). A row carries the
+public fragility flags (``entry``), the draws (``theta_frag``, ``fill``, ``spill_angle_deg``, ``a_transport``),
+the damage meter (``meter``), the motion label of the rules (``motion_label``), the meter's first threshold
+crossing (``damage``) and the label, which the damage replaces. ``--mode control`` reruns v8's draws and actions
+(a_transport 2.0, no liquid) with the fragility drawn, to check that nothing else changed the motion;
+``--mode m2`` is milestone 2a's world (v8's draws and actions, no liquid, no fragility: v8's rows and labels).
 A drawn pinch the skill never offers (menu.unusable_reason: wider than the
 gripper opening, or off the object) does not run: its row says why
 ("declined") and carries no outcome. Each rollout row carries the contact
@@ -39,6 +48,7 @@ from typing import Any
 
 import numpy as np
 
+from robots.mujoco_lab.fragility import CLASSES, FLAGS, THRESHOLDS_V0, Thresholds, draw_fragility, entry_of, load_classes, spill_angle
 from rpent.skills.pick_place.destinations import DESTINATIONS, MESH_IDS, PRIMITIVE_IDS, release_height
 
 MASS_SCALE_RANGE = (0.5, 3.0)
@@ -50,6 +60,15 @@ S_CHOICES = (0.3, 0.5, 0.7)
 P_COM_SHIFT = 0.5
 P_DROP_RELEASE = 0.3
 RELEASE_KEYS = ("tilt_deg", "displacement_xy_m", "drop_height_m", "final_zone", "final_speed")
+DAMAGE_STREAM = 9
+P_EMPTY = 0.5                          # a fillable object is empty with p 0.5
+FILL_RANGE = (0.3, 0.9)
+FILLED_MASS_SCALE_RANGE = (0.8, 1.25)  # a filled container's own mass scale: v8's [0.5, 3.0] would hide the liquid's mass
+FORCE_FACTOR_RANGE = (0.4, 2.5)        # v9's squeeze, times f_std
+A_TRANSPORT_CHOICES = (0.5, 1.0, 2.0)  # m/s^2
+MODES = ("v9", "control", "m2")
+A_TRANSPORT_V8 = 2.0                   # adapter.A_TRANSPORT, the carry acceleration of every v8 row
+_WORLDS: dict[tuple[str, str], tuple[dict[str, Any], Thresholds]] = {}
 
 
 def trainable(row: dict[str, Any]) -> bool:
@@ -94,6 +113,52 @@ def draw_action(rng: np.random.Generator, f_std: float, use_fixtures: bool = Fal
     }
 
 
+def damage_rng(seed: int, object_id: str, idx: int) -> np.random.Generator:
+    """The damage stream of a draw, apart from case_rng's, so v8's draws stay as they were."""
+    return np.random.default_rng([int(seed), zlib.crc32(object_id.encode()), int(idx), DAMAGE_STREAM])
+
+
+def draw_damage(rng: np.random.Generator, entry: dict[str, Any], th: Thresholds, f_std: float) -> dict[str, Any]:
+    """The draw's fill (0 unless the object is fillable and not empty: then U[0.3, 0.9]), its hidden fragility (three
+    standard normals for every class, fragility.draw_fragility), the squeeze, the carry acceleration and, for a filled
+    draw, the container's mass scale. Every draw takes the same values from the stream."""
+    u_empty, fill = float(rng.random()), float(rng.uniform(*FILL_RANGE))
+    frag = draw_fragility(rng, entry, th)
+    lo, hi = FORCE_FACTOR_RANGE
+    force = float(f_std) * float(np.exp(rng.uniform(np.log(lo), np.log(hi))))
+    a_transport = float(rng.choice(A_TRANSPORT_CHOICES))
+    lo, hi = FILLED_MASS_SCALE_RANGE
+    scale = float(np.exp(rng.uniform(np.log(lo), np.log(hi))))
+    filled = bool(entry.get("fillable")) and u_empty >= P_EMPTY
+    out = {"fill": fill if filled else 0.0, "theta_frag": frag, "spill_angle_deg": spill_angle(entry["cavity"], fill) if filled else None,
+           "force": force, "a_transport": a_transport}
+    if filled:
+        out["mass_scale"] = scale
+    return out
+
+
+def apply_damage(theta: dict[str, Any], action: dict[str, Any], d: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    """v8's draws under a damage draw: a filled container takes its own mass scale and no CoM-shift branch; the action
+    takes the squeeze and the carry acceleration."""
+    th, act = dict(theta), dict(action)
+    if float(d.get("fill") or 0.0) > 0.0:
+        th["mass_scale"], th["com_s"] = float(d["mass_scale"]), None
+    act["force"], act["a_transport"] = float(d["force"]), float(d["a_transport"])
+    return th, act
+
+
+def world(classes: str | dict[str, Any] | None = None, thresholds: str | Thresholds | None = None) -> tuple[dict[str, Any], Thresholds]:
+    """The fragility entries and the thresholds (paths or loaded; default: the class file and thresholds v0), cached."""
+    if isinstance(classes, dict) and isinstance(thresholds, Thresholds):
+        return classes, thresholds
+    cp = classes if isinstance(classes, str) else CLASSES
+    tp = thresholds if isinstance(thresholds, str) else THRESHOLDS_V0
+    if (cp, tp) not in _WORLDS:
+        _WORLDS[(cp, tp)] = (load_classes(cp), Thresholds.from_json(tp))
+    c, t = _WORLDS[(cp, tp)]
+    return (classes if isinstance(classes, dict) else c), (thresholds if isinstance(thresholds, Thresholds) else t)
+
+
 def _release_summary(rel: dict[str, Any] | None) -> dict[str, Any] | None:
     if rel is None:
         return None
@@ -104,19 +169,31 @@ def _release_summary(rel: dict[str, Any] | None) -> dict[str, Any] | None:
     return out
 
 
-def rollout_row(env, object_id: str, idx: int, seed: int, use_fixtures: bool = False) -> dict[str, Any]:
-    """One rollout of `object_id` under a fresh hidden draw; returns the corpus row."""
+def rollout_row(env, object_id: str, idx: int, seed: int, use_fixtures: bool = False, mode: str = "v9",
+                classes: str | dict[str, Any] | None = None, thresholds: str | Thresholds | None = None) -> dict[str, Any]:
+    """One rollout of `object_id` under a fresh hidden draw; returns the corpus row (``mode``: v9, control or m2)."""
     from robots.mujoco_lab.adapter import object_props
     from rpent.skills.pick_place.features import extract
     from rpent.skills.pick_place.menu import pinch_limit, unusable_reason
 
+    if mode not in MODES:
+        raise ValueError(f"unknown corpus mode {mode!r}; known: {MODES}")
     rng = case_rng(seed, object_id, idx)
     props = object_props(object_id)
     theta, com_end = draw_theta(rng, props["mass"])
     f_std = env.s["t3_make"].std_force(props["mass"])
     act = draw_action(rng, f_std, use_fixtures)
+    C, th = world(classes, thresholds)
+    entry, _ = entry_of(object_id, C)
+    d = draw_damage(damage_rng(seed, object_id, idx), entry, th, f_std)
+    if mode == "control":                  # v8's draws and action, the fragility drawn, no liquid
+        d = {"fill": 0.0, "theta_frag": d["theta_frag"], "spill_angle_deg": None, "force": act["force"], "a_transport": A_TRANSPORT_V8}
+    elif mode == "m2":                     # milestone 2a's world: v8's draws and action, no liquid, no fragility
+        d = {"fill": 0.0, "theta_frag": None, "spill_angle_deg": None, "force": act["force"], "a_transport": A_TRANSPORT_V8}
+    theta, act = apply_damage(theta, act, d)
     fixture = act["destination"] if act["destination"] in MESH_IDS else None
-    env.reset(object_id, theta, seed=seed * 1000 + idx, com_end=com_end, fixture=fixture)
+    env.slosh_zeta = th.slosh_zeta
+    env.reset(object_id, theta, seed=seed * 1000 + idx, com_end=com_end, fixture=fixture, fill=d["fill"], frag=d["theta_frag"])
     reset_info = dict(env.reset_info)
     props_list = env.proposals()
     prop = next(p for p in props_list if abs(p.s - act["s"]) < 1e-9)
@@ -148,14 +225,23 @@ def rollout_row(env, object_id: str, idx: int, seed: int, use_fixtures: bool = F
         "pose": pose,
         "com_obj_true": truth["com_obj"],
         "reset": reset_info,
+        "a_transport": act["a_transport"],
+        "entry": {k: entry.get(k) for k in FLAGS},
+        "theta_frag": d["theta_frag"],
+        "fill": d["fill"],
+        "spill_angle_deg": d["spill_angle_deg"],
     }
     declined = unusable_reason(prop.width, pinch_limit(env))
     if declined is not None:                            # the menu never offers this pinch: no rollout
         return {**row, "declined": declined}
-    r = env.execute(prop, act["force"], theta["v_lift"], act["v_transport"], act["destination"], act["release_height"])
+    r = env.execute(prop, act["force"], theta["v_lift"], act["v_transport"], act["destination"], act["release_height"],
+                    a_transport=act["a_transport"])
     return {
         **row,
         "label": r.label,
+        "motion_label": r.motion_label,
+        "damage": r.damage,
+        "meter": r.meter,
         "max_z": r.max_z,
         "drop_z": r.drop_z,
         "loss_phase": r.loss_phase,
@@ -172,8 +258,8 @@ def rollout_row(env, object_id: str, idx: int, seed: int, use_fixtures: bool = F
     }
 
 
-def _worker(args: tuple[str, int, int, list[int], bool]) -> list[dict[str, Any]]:
-    object_id, draws, seed, skip, use_fixtures = args
+def _worker(args: tuple[str, int, int, list[int], bool, str, str, str]) -> list[dict[str, Any]]:
+    object_id, draws, seed, skip, use_fixtures, mode, classes, thresholds = args
     from robots.mujoco_lab.adapter import MuJoCoLabEnv
 
     env = MuJoCoLabEnv()
@@ -182,7 +268,7 @@ def _worker(args: tuple[str, int, int, list[int], bool]) -> list[dict[str, Any]]
         if idx in skip:
             continue
         try:
-            rows.append(rollout_row(env, object_id, idx, seed, use_fixtures))
+            rows.append(rollout_row(env, object_id, idx, seed, use_fixtures, mode, classes, thresholds))
         except Exception as exc:  # noqa: BLE001  one bad rollout must not kill the object's batch
             rows.append({"key": f"{object_id}__d{idx}", "object": object_id, "error": str(exc)[:200]})
     return rows
@@ -197,6 +283,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--resume", action="store_true")
     ap.add_argument("--fixtures", action="store_true", help="draw half the destinations from the inspected mesh fixtures")
+    ap.add_argument("--mode", default="v9", choices=MODES,
+                    help="v9: the damage draws; control: v8's draws and actions with the fragility; m2: v8's world (no damage)")
+    ap.add_argument("--classes", default=CLASSES, help="the fragility classes (fragility_classes.json)")
+    ap.add_argument("--thresholds", default=THRESHOLDS_V0, help="the damage thresholds (thresholds_v0.json)")
     a = ap.parse_args(argv)
     from robots.mujoco_lab.adapter import object_ids
 
@@ -211,7 +301,7 @@ def main(argv: list[str] | None = None) -> int:
             if "error" in row:
                 continue
             done.setdefault(row["object"], set()).add(int(row["key"].rsplit("d", 1)[1]))
-    jobs = [(oid, a.draws, a.seed, sorted(done.get(oid, set())), a.fixtures) for oid in objects]
+    jobs = [(oid, a.draws, a.seed, sorted(done.get(oid, set())), a.fixtures, a.mode, a.classes, a.thresholds) for oid in objects]
     written = 0
     mode = "a" if a.resume and os.path.exists(a.out) else "w"
     with open(a.out, mode) as f:

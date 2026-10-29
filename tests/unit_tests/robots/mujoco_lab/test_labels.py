@@ -226,3 +226,11 @@ def test_lower_loss_touching_the_table_past_the_gap_is_a_drop():
             x["has_surface"] = False
     out = label_rollout(tr, dest, {"tilt_deg": 0.0, "displacement_xy_m": 0.0}, _final(zone="floor", low=0.0))
     assert out["label"] == "dropped_high" and out["loss_phase"] == "lower"
+
+
+def test_final_label_damage_replaces_the_motion_label():
+    from robots.mujoco_lab.labels import final_label
+
+    assert final_label("placed_stable", None) == "placed_stable"
+    assert final_label("tipped", {"label": "spilled", "channel": "surface", "t": 1.2}) == "spilled"
+    assert final_label("dropped_high", {"label": "broken", "channel": "impact", "t": 3.0}) == "broken"

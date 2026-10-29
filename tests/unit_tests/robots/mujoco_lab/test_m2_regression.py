@@ -51,7 +51,7 @@ def menus() -> list[dict]:
     prims.abstain_cost = None
     out = []
     for object_id, idx in CASES:
-        theta, com_end, destination = case_draw(SEED, object_id, idx, object_props(object_id)["mass"], False)
+        theta, com_end, destination, _ = case_draw(SEED, object_id, idx, object_props(object_id)["mass"], False)
         prims.env.reset(object_id, theta, seed=SEED * 1000 + idx, com_end=com_end,
                         fixture=destination if destination in MESH_IDS else None)
         prims.rng = _stream(SEED, object_id, idx, 1)

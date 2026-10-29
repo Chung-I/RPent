@@ -132,3 +132,9 @@ def label_rollout(trace: list[dict[str, Any]], dest: dict[str, Any], release: di
     else:
         label = "placed_stable"
     return {"label": label, "max_z": max_z, **none}
+
+
+def final_label(motion_label: str, damage: dict[str, Any] | None) -> str:
+    """The rollout's label (plan 2b): the damage meter's first threshold crossing (``damage``: label, channel, t; see
+    fragility.damage_event) replaces the motion label of the rules above."""
+    return str(damage["label"]) if damage else motion_label

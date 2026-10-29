@@ -20,6 +20,12 @@ needs: reset an object with hidden properties, locate it, propose pinches, measu
 geometry, plan the hand trajectory, execute pinch → lift → transport → set-down →
 release, and label the outcome. A contact monitor flags the runs whose pad contacts
 were not physical, and those after a reset that did not reach rest (``artifact``).
+
+Milestone 2b: a fillable object may hold a liquid (``reset(fill=...)``: a point mass at the liquid's centroid,
+fragility.liquid), the object may carry a hidden fragility (``reset(frag=...)``), and the damage meter
+(meter.DamageMeter) runs in every physics substep of an attempt or a probe. Its first threshold crossing
+(fragility.damage_event) replaces the motion label (``Rollout.damage``, labels.final_label) and makes a probe's kind
+"damaged". The squeeze probe (``probe_squeeze``) presses without lifting and reads the stiffness.
 """
 
 from __future__ import annotations
@@ -34,7 +40,9 @@ from typing import Any
 import numpy as np
 
 from rpent.skills.pick_place.destinations import DESTINATIONS, OBJECT_REST_XY, PRIMITIVE_IDS, has_surface, is_mesh, release_height
-from robots.mujoco_lab.labels import Final, first_lifted, label_rollout, lifted
+from robots.mujoco_lab.fragility import THRESHOLDS_V0, Thresholds, damage_event, entry_of, liquid, load_classes, spill_angle
+from robots.mujoco_lab.labels import Final, final_label, first_lifted, label_rollout, lifted
+from robots.mujoco_lab.meter import DamageMeter
 from robots.mujoco_lab.readouts import RISEN_M, slide_force, summarize
 from rpent.skills.pick_place.features import G, Geometry
 from rpent.skills.pick_place.probes import ProbeResult
@@ -77,6 +85,11 @@ REV_COS = -0.5               # the contact monitor (artifact): a pad-hull contac
 REV_N = 1.0                  # object points against the pad's closing direction (cosine below REV_COS) with more than
 REV_STEPS = 5                # REV_N newtons; a run is an artifact with reversed contacts in REV_STEPS squeeze substeps
 DEEP_M = 0.003               # or more, a pad penetration over DEEP_M, or a reset that did not reach rest
+SQUEEZE_F0 = 1.0             # the squeeze probe: close with 1 N a pad, ramp to its force over 2 s, hold 0.3 s, open
+SQUEEZE_RAMP_S = 2.0
+SQUEEZE_HOLD_S = 0.3
+SQUEEZE_NOISE = 0.10         # its reading: k_hat = k exp(0.10 eps) (plan 2b, decision 9: a synthetic sensor)
+LIQUID_ANCHOR = '<freejoint name="obj_free"/>'
 
 def at_rest(poses: list[tuple[np.ndarray, np.ndarray]], hz: int) -> bool:
     """True when every (position, rotation matrix) of the history's last REST_WINDOW_S (one entry per
@@ -190,6 +203,20 @@ class Rollout:
     rev_steps: int = 0                  # the contact monitor (see MuJoCoLabEnv._watch_contacts and artifact)
     deepest_mm: float = 0.0
     artifact: bool = False
+    meter: dict[str, Any] = field(default_factory=dict)     # the damage meter's channels (meter.DamageMeter); {} when off
+    motion_label: str | None = None                          # the motion rules' label; ``label`` is it unless damage
+    damage: dict[str, Any] | None = None                     # the first threshold crossing: label, channel, t
+
+
+def _with_liquid(xml: str, liq: dict[str, Any]) -> str:
+    """The scene with the liquid as a point mass at its centroid in the object body (like the CoM point mass): it adds
+    its mass and moves the CoM, and does not slosh in the physics (the meter models the slosh)."""
+    if xml.count(LIQUID_ANCHOR) != 1:
+        raise RuntimeError("the object body's free joint, where the liquid goes, is not in the scene")
+    c = liq["centroid_obj"]
+    geom = (f'<geom name="liquid" type="sphere" size="0.005" pos="{c[0]:.6f} {c[1]:.6f} {c[2]:.6f}" mass="{liq["mass_kg"]:.6f}" '
+            'contype="0" conaffinity="0" rgba="0 0 0 0" group="3"/>')
+    return xml.replace(LIQUID_ANCHOR, LIQUID_ANCHOR + "\n      " + geom)
 
 
 def _steps(distance: float, speed: float, hz: float) -> int:
@@ -232,9 +259,16 @@ def ramp_profile(distance: float, v_max: float, hz: float) -> list[float]:
 class MuJoCoLabEnv:
     """One object on the table with hidden properties, the pads, and the place fixtures."""
 
-    def __init__(self, sim_dir: str | None = None, render: bool = False):
+    def __init__(self, sim_dir: str | None = None, render: bool = False, damage_meter: bool = True,
+                 slosh_zeta: float | None = None):
         self.s = load_sim(sim_dir)
         self.render = render
+        self.damage_meter = bool(damage_meter)
+        self.slosh_zeta = float(Thresholds.from_json(THRESHOLDS_V0).slosh_zeta if slosh_zeta is None else slosh_zeta)
+        self._classes: dict[str, Any] | None = None
+        self.entry: dict[str, Any] = {"class": "none", "law": None, "fillable": False, "cavity": None}
+        self.fill, self.frag, self.liquid, self.spill_deg = 0.0, None, None, None
+        self._dmeter: DamageMeter | None = None
         self.episode = 0
         self.sim = None
         self.obj: dict[str, Any] | None = None
@@ -272,11 +306,25 @@ class MuJoCoLabEnv:
             names.append(mesh["id"])
         return out, names
 
+    def fragility_classes(self) -> dict[str, Any]:
+        if self._classes is None:
+            self._classes = load_classes()
+        return self._classes
+
     def reset(self, object_id: str, theta: dict[str, Any] | None = None, seed: int = 0, com_end: int = +1,
-              fixture: str | None = None) -> None:
+              fixture: str | None = None, fill: float = 0.0, frag: dict[str, Any] | None = None) -> None:
+        """``fill``: the share of a fillable object's cavity that holds water (0: empty); ``frag``: its hidden
+        fragility (fragility.map_latent's keys; None: nothing can damage it)."""
         sc, gr, ob, t3 = self.s["scene"], self.s["grasp"], self.s["objects"], self.s["t3_make"]
         o = ob.BY_ID[object_id]
         props = object_props(object_id)
+        entry, _ = entry_of(object_id, self.fragility_classes())
+        fill = float(fill or 0.0)
+        if not 0.0 <= fill <= 1.0:
+            raise ValueError(f"fill {fill} is outside [0, 1]")
+        if fill > 0.0 and not entry.get("fillable"):
+            raise ValueError(f"{object_id} is not a fillable container (fragility_classes.json)")
+        liq = liquid(entry["cavity"], fill) if fill > 0.0 else None
         th = dict(t3.causes_for(props["mass"])["control"])
         th.update(theta or {})
         shift = (0.0, 0.0, 0.0, 0.0)
@@ -291,6 +339,11 @@ class MuJoCoLabEnv:
         pos = np.array([rest_xy[0], rest_xy[1], pos[2]])
         xml = sc.build_xml(o, props, mu=th["mu"], mass_scale=th["mass_scale"], com_shift=shift, obj_pos=pos,
                            obj_quat=quat, cam_k=1.0, fixtures=specs)
+        if liq is not None:          # the rest pose above is the empty container's: the reset settles the filled one
+            xml = _with_liquid(xml, liq)
+        self.entry, self.fill, self.frag, self.liquid = entry, fill, (dict(frag) if frag else None), liq
+        self.spill_deg = spill_angle(entry["cavity"], fill) if liq is not None else None
+        self._cavity_axis = np.asarray(entry["cavity"]["axis_obj"], dtype=float) if liq is not None else None
         self.sim = sc.Sim(xml)
         self._install_meter()
         self.fixtures_in_scene = names
@@ -441,8 +494,16 @@ class MuJoCoLabEnv:
         import weakref
 
         ref, plain, sub = weakref.ref(self.sim), type(self.sim).step_ctrl, int(self.s["scene"].SUB)
+        plain_sub = type(self.sim).substep
         self._metering, self._step_forces = False, None
         self._watch = {"rev_steps": 0, "deepest_mm": 0.0}
+        self._dmeter, self._hull_set, self._fbuf = None, set(self.sim.hull_ids), np.zeros(6)
+
+        def substep() -> None:          # every physics step of the scene: the damage meter reads after it
+            sim = ref()
+            plain_sub(sim)
+            if self._dmeter is not None:
+                self._damage_substep()
 
         def step_ctrl() -> None:
             sim = ref()
@@ -458,6 +519,57 @@ class MuJoCoLabEnv:
             self._step_forces = acc / sub
 
         self.sim.step_ctrl = step_ctrl
+        self.sim.substep = substep
+
+    def _damage_substep(self) -> None:
+        """One physics substep of the damage meter: the pads' normal forces on the object, its (hull, geom) contacts with
+        non-pad geoms, the CoM velocity and the cavity's axis. A release (the grip opens after a squeeze) or a loss
+        (both pads held it with nothing under it, then neither touches it) arms the impact channel. Reads only."""
+        import mujoco
+
+        sim, f, hull = self.sim, self._fbuf, self._hull_set
+        pl, pr = (sim.pad_l, sim.pad_r) if sim.has_hand else (-1, -1)
+        pad_n, touch, touching = [0.0, 0.0], [False, False], set()
+        for i in range(sim.d.ncon):
+            c = sim.d.contact[i]
+            g1, g2 = int(c.geom1), int(c.geom2)
+            if (g1 in hull) == (g2 in hull):
+                continue
+            h, other = (g1, g2) if g1 in hull else (g2, g1)
+            if other == pl or other == pr:
+                k = 0 if other == pl else 1
+                mujoco.mj_contactForce(sim.m, sim.d, i, f)
+                pad_n[k] += abs(float(f[0]))
+                touch[k] = True
+            else:
+                touching.add((h, other))
+        ctrl = float(sim.d.ctrl[0]) if sim.m.nu else 0.0
+        self._squeezed = self._squeezed or ctrl > 0.0
+        self._held = self._held or (touch[0] and touch[1] and not touching)
+        if not self._armed and ((self._squeezed and ctrl <= 0.0) or (self._held and not (touch[0] or touch[1]))):
+            self._armed = True
+        m = self._dmeter
+        axis = sim.obj_mat() @ self._cavity_axis if m.slosh is not None else None
+        m.substep(pad_n, touching, sim.obj_vel()[0], axis, self._armed)
+
+    def _meter_begin(self) -> None:
+        """Start the damage meter for an attempt or a probe (its times count from here); off: no meter."""
+        from robots.mujoco_lab.slosh import Slosh
+
+        self._squeezed = self._held = self._armed = False
+        self._dmeter = None
+        if self.damage_meter:
+            slosh = Slosh(self.entry["cavity"], self.fill, self.slosh_zeta) if self.liquid is not None else None
+            self._dmeter = DamageMeter(float(self.s["scene"].DT), slosh)
+
+    def _meter_end(self) -> tuple[dict[str, Any], dict[str, Any] | None]:
+        """(the meter's channels, the first threshold crossing as {label, channel, t} or None) and stop the meter."""
+        m, self._dmeter = self._dmeter, None
+        if m is None:
+            return {}, None
+        data = m.to_data()
+        ev = damage_event(data, self.frag or {}, self.entry, self.fill, spill_deg=self.spill_deg)
+        return data, (None if ev is None else {"label": ev[0], "channel": ev[1], "t": round(float(ev[2]), 4)})
 
     def locate(self, prompt: str) -> dict[str, Any] | None:
         self._need()
@@ -496,7 +608,8 @@ class MuJoCoLabEnv:
         com_obj = sim.obj_mat().T @ (com - sim.obj_pos())
         com_s = float(((com_obj - np.array(self.props["centre"])) @ ax - lo) / L)
         return {"mass": mass, "mu": float(self.theta["mu"]), "com_s": com_s, "com": com.tolist(), "com_obj": com_obj.tolist(),
-                "theta": dict(self.theta)}
+                "theta": dict(self.theta), "fill": self.fill, "liquid_mass": float(self.liquid["mass_kg"]) if self.liquid else 0.0,
+                "frag": None if self.frag is None else dict(self.frag)}
 
     def pose_info(self) -> dict[str, Any]:
         """The object's current pose and what a CoM hypothesis needs (object frame, nominal values)."""
@@ -504,6 +617,7 @@ class MuJoCoLabEnv:
         sim, t3 = self.sim, self.s["t3_make"]
         ax, lo, L = t3.pivot_axis(self.obj, self.props)
         return {
+            "object_id": self.obj["id"],
             "R": sim.obj_mat().ravel().tolist(),
             "p": sim.obj_pos().tolist(),
             "low_z": float(sim.obj_low_z()),
@@ -650,7 +764,7 @@ class MuJoCoLabEnv:
         return base + h
 
     def plan_trajectory(self, proposal: Proposal, v_lift: float, v_transport: float, destination: str,
-                        release_height: float | None = None) -> list[Segment]:
+                        release_height: float | None = None, a_transport: float = A_TRANSPORT) -> list[Segment]:
         self._need()
         sc, gr = self.s["scene"], self.s["grasp"]
         dest = self._dest(destination)
@@ -672,7 +786,7 @@ class MuJoCoLabEnv:
             Segment("close", int(CLOSE_S * hz), z_rest, z_rest, True, 0.0),
             Segment("lift", len(ramp_profile(LIFT_H, v_lift, hz)), z_rest, low_top - surf0, True, v_lift),
             Segment("hold", int(HOLD_S * hz), low_top - surf0, low_top - surf0, True, 0.0),
-            Segment("transport", len(transport_profile(float(np.linalg.norm(dxy)), v_transport, hz)), low_top - surf0,
+            Segment("transport", len(transport_profile(float(np.linalg.norm(dxy)), v_transport, hz, accel=a_transport)), low_top - surf0,
                     low_top - (surf_d if has_d else sc.TABLE_TOP), has_d, v_transport),
             Segment("lower", len(ramp_profile(z_hand_top - z_hand_rel, V_LOWER, hz)), low_top - (surf_d if has_d else sc.TABLE_TOP),
                     target_low - (surf_d if has_d else sc.TABLE_TOP), has_d, V_LOWER),
@@ -685,12 +799,13 @@ class MuJoCoLabEnv:
 
     # -------------------------------------------------------------- execution
     def execute(self, proposal: Proposal, force: float, v_lift: float, v_transport: float = 0.5,
-                destination: str = "bin", release_height: float | None = None) -> Rollout:
+                destination: str = "bin", release_height: float | None = None, a_transport: float = A_TRANSPORT) -> Rollout:
         self._need()
         sc, gr = self.s["scene"], self.s["grasp"]
         dest = self._dest(destination)
         self._refresh_baselines()
-        planned = self.plan_trajectory(proposal, v_lift, v_transport, destination, release_height)
+        planned = self.plan_trajectory(proposal, v_lift, v_transport, destination, release_height, a_transport)
+        self._meter_begin()
         sim = self.sim
         hz = sc.CTRL_HZ
         pt = np.asarray(proposal.point, dtype=float)
@@ -704,7 +819,7 @@ class MuJoCoLabEnv:
             z = hand_z0 + LIFT_H
             xy = pt[:2].copy()
             goal = np.asarray(dest["xy"], dtype=float)
-            for frac in transport_profile(float(np.linalg.norm(goal - xy)), v_transport, hz):
+            for frac in transport_profile(float(np.linalg.norm(goal - xy)), v_transport, hz, accel=a_transport):
                 cur = xy + (goal - xy) * frac
                 sim.set_hand([cur[0], cur[1], z], proposal.yaw)
                 sim.step_ctrl()
@@ -722,7 +837,8 @@ class MuJoCoLabEnv:
         else:           # not lifted (a pivot holds one end up): let it down where it is and carry nothing off
             self._open_and_rise(pt[0], pt[1], gr.hand_start_z(pt) + LIFT_H, proposal.yaw, trace, on_step)
         self._metering = False
-        return self._label(trace, rose, dest, release, planned, v_lift)
+        meter, damage = self._meter_end()
+        return self._label(trace, rose, dest, release, planned, v_lift, meter, damage)
 
     def _open_and_rise(self, x: float, y: float, z: float, yaw: float, trace: list[dict[str, Any]], on_step) -> dict[str, Any]:
         """Open the gripper with the hand at (x, y, z) for RELEASE_S, then rise RETREAT_M and settle; the release
@@ -789,7 +905,8 @@ class MuJoCoLabEnv:
                           "fz": float(acc[0]), "fn": float(acc[1] + acc[2]), "pad_nz": pad_nz,
                           "hand_z": float(sim.d.xpos[sim.hand][2]), "rot_lift_deg": turn(R, lift_R[0]) if lift_R else None,
                           "grip_dz": float((R @ grip[0] + pos)[2] - grip[1]) if grip else None,
-                          "pitch_ey": float(pitch - pitch0[0])})
+                          "pitch_ey": float(pitch - pitch0[0]),
+                          "t_meter": None if self._dmeter is None else round(self._dmeter.t, 4)})
         return trace, on_step
 
     # ---------------------------------------------------------------- probes
@@ -883,6 +1000,7 @@ class MuJoCoLabEnv:
         gr, sim, hz = self.s["grasp"], self.sim, self.s["scene"].CTRL_HZ
         pt = np.asarray(proposal.point, dtype=float)
         p_start, R_start = sim.obj_pos().copy(), sim.obj_mat().copy()
+        self._meter_begin()
         trace, on_step = self._tracer(pt, proposal.yaw)
         gr.run_grasp(sim, pt, proposal.yaw, force=force, v_lift=WEIGH_V_LIFT, lift_h=WEIGH_LIFT_M, hold_s=WEIGH_HOLD_S,
                      on_step=on_step)
@@ -897,8 +1015,10 @@ class MuJoCoLabEnv:
         for _ in range(int(WEIGH_SETTLE_S * hz)):
             sim.step_ctrl()
             steps[0] += 1
+        meter, damage = self._meter_end()
         disp, tilt, thrown = self._probe_cost(p_start, R_start)
-        return ProbeResult("weigh", kind, reading, disp, tilt, thrown, steps[0] / hz, trace, **self._monitor())
+        return ProbeResult("weigh", "damaged" if damage else kind, reading, disp, tilt, thrown, steps[0] / hz, trace, **self._monitor(),
+                           meter=meter, damage=damage)
 
     def probe_push(self) -> ProbeResult:
         """The t3_probes.push_probe motion: the open hand's leading pad, at a quarter of the object's
@@ -911,6 +1031,7 @@ class MuJoCoLabEnv:
         self._refresh_baselines()
         sc, sim, hz = self.s["scene"], self.sim, self.s["scene"].CTRL_HZ
         self._watch = {"rev_steps": 0, "deepest_mm": 0.0}             # the open hand never squeezes
+        self._meter_begin()
         R, p = sim.obj_mat(), sim.obj_pos()
         axis = R @ np.asarray(self.props["axis"], dtype=float)
         yaw = float(np.arctan2(axis[1], axis[0]) + np.pi / 2)
@@ -958,8 +1079,65 @@ class MuJoCoLabEnv:
         for _ in range(int(RETREAT_SETTLE_S * hz)):
             sim.step_ctrl()
             steps[0] += 1
+        meter, damage = self._meter_end()
         disp, tilt, thrown = self._probe_cost(p_start, R_start)
-        return ProbeResult("push", kind, reading, disp, tilt, thrown, steps[0] / hz, rec, **self._monitor())
+        return ProbeResult("push", "damaged" if damage else kind, reading, disp, tilt, thrown, steps[0] / hz, rec, **self._monitor(),
+                           meter=meter, damage=damage)
+
+    @staticmethod
+    def squeeze_reading(k: float | None, rng: np.random.Generator) -> dict[str, float]:
+        """The squeeze probe's reading: k_hat = k exp(SQUEEZE_NOISE eps), eps a standard normal it keeps (``eps``); no
+        k_hat for an object without a stiffness."""
+        eps = float(rng.standard_normal())
+        out = {"eps": eps}
+        if k is not None:
+            out["k_hat"] = float(k) * math.exp(SQUEEZE_NOISE * eps)
+        return out
+
+    def probe_squeeze(self, proposal: Proposal, f_max: float) -> ProbeResult:
+        """Close at the proposal with SQUEEZE_F0 a pad, ramp each pad's force to ``f_max`` over SQUEEZE_RAMP_S, hold
+        SQUEEZE_HOLD_S, open, rise 10 cm and settle; no lift. Kinds: measured (reading ``squeeze_reading`` of the hidden
+        stiffness, eps from the reset's stream) and damaged (the meter's first threshold crossing). The trace's
+        steps carry the commanded force ``f_cmd`` and the meter's time ``t_meter``."""
+        self._need()
+        self._refresh_baselines()
+        gr, sim, hz = self.s["grasp"], self.sim, self.s["scene"].CTRL_HZ
+        pt = np.asarray(proposal.point, dtype=float)
+        p_start, R_start = sim.obj_pos().copy(), sim.obj_mat().copy()
+        f_max = max(float(f_max), SQUEEZE_F0)
+        self._meter_begin()
+        trace, on_step = self._tracer(pt, proposal.yaw)
+        f_cmd = [SQUEEZE_F0]
+
+        def on(phase: str) -> None:
+            on_step(phase)
+            trace[-1]["f_cmd"] = f_cmd[0]
+
+        gr.run_grasp(sim, pt, proposal.yaw, force=SQUEEZE_F0, v_lift=WEIGH_V_LIFT, lift_h=0.0, hold_s=0.0, on_step=on)
+        n = int(round(SQUEEZE_RAMP_S * hz))
+        for k in range(1, n + 1):
+            f_cmd[0] = SQUEEZE_F0 + (f_max - SQUEEZE_F0) * k / n
+            sim.grip(f_cmd[0])
+            sim.step_ctrl()
+            on("ramp")
+        for _ in range(int(round(SQUEEZE_HOLD_S * hz))):
+            sim.step_ctrl()
+            on("hold")
+        self._metering = False
+        steps = [len(trace)]
+        sim.grip(-20.0)
+        for _ in range(int(WEIGH_OPEN_S * hz)):
+            sim.step_ctrl()
+            steps[0] += 1
+        self._rise_hand(proposal.yaw, steps)
+        for _ in range(int(RETREAT_SETTLE_S * hz)):
+            sim.step_ctrl()
+            steps[0] += 1
+        meter, damage = self._meter_end()
+        reading = self.squeeze_reading((self.frag or {}).get("k_n_per_mm"), self.rng)
+        disp, tilt, thrown = self._probe_cost(p_start, R_start)
+        return ProbeResult("squeeze", "damaged" if damage else "measured", reading, disp, tilt, thrown, steps[0] / hz, trace,
+                           **self._monitor(), meter=meter, damage=damage)
 
     def _pitch_meter(self, pt: np.ndarray, yaw: float):
         """A function giving (z+ - z-) / 0.10 for the object-fixed points pt ± 0.05 ey (ey: the hand's
@@ -985,7 +1163,8 @@ class MuJoCoLabEnv:
         com_h = float(self.sim.d.subtree_com[self.sim.obj][2] - low)
         return abs(com_h - self.rest_com_height) > 0.2 * max(self.rest_com_height, 1e-3)
 
-    def _label(self, trace, rose, dest, release, planned, v_lift: float = 0.0) -> Rollout:
+    def _label(self, trace, rose, dest, release, planned, v_lift: float = 0.0, meter: dict[str, Any] | None = None,
+               damage: dict[str, Any] | None = None) -> Rollout:
         sim = self.sim
         touching, pads = sim.contacts()
         low = sim.obj_low_z()
@@ -993,5 +1172,6 @@ class MuJoCoLabEnv:
                       tipped=bool(release is not None and self._tipped(release, low)), held=bool(any(pads)),
                       com_xy=sim.d.subtree_com[sim.obj][:2].tolist())
         out = label_rollout(trace, dest, release, final)
-        return Rollout(out["label"], out["max_z"], out["drop_z"], out["loss_phase"], out["loss_step"], out["loss_t"],
-                       out["loss_speed"], final.zone, release, planned, trace, summarize(trace, out, v_lift), **self._monitor())
+        return Rollout(final_label(out["label"], damage), out["max_z"], out["drop_z"], out["loss_phase"], out["loss_step"],
+                       out["loss_t"], out["loss_speed"], final.zone, release, planned, trace, summarize(trace, out, v_lift),
+                       **self._monitor(), meter=meter or {}, motion_label=out["label"], damage=damage)

@@ -27,7 +27,7 @@ G = 9.81
 
 def test_weigh_force():
     assert weigh_force(5.0) == 15.0 and weigh_force(10.0) == 20.0 and weigh_force(30.0) == 60.0 and weigh_force(40.0) == 70.0
-    assert PROBE_SECONDS == {"weigh": 4.0, "push": 2.0}
+    assert PROBE_SECONDS == {"weigh": 4.0, "push": 2.0, "squeeze": 3.0}           # plan 2b: the squeeze probe
     assert PROBE_KINDS == {"weigh": ("measured", "lower_bound", "lost"), "push": ("slid", "tipped", "no_breakaway", "no_contact")}
 
 
@@ -256,3 +256,17 @@ def test_probe_reading_laws_select_a_mixture_on_validation_objects():
     models = fit_probe_models(rows, val_objects=val)
     assert models["weigh"].reading["measured"].kind == "mix2" and models["push"].reading["slid"].kind == "normal"
     assert fit_probe_models(rows)["weigh"].reading["measured"].kind == "normal"
+
+
+def test_squeeze_cap_uses_the_belief_weights():
+    """min(0.5 f_std, the weighted 10 % quantile of the particles' f_damage_n): equal particles under different weights
+    give different caps; an object without a damage force gets half the standard squeeze."""
+    from rpent.skills.pick_place.probes import squeeze_cap
+
+    parts = [{"mass": 0.1, "mu": 0.5, "com_obj": [0.0, 0.0, 0.0], "f_damage_n": f} for f in (4.0, 8.0, 12.0, 16.0, 20.0)]
+    assert squeeze_cap(ParticleBelief(parts, np.ones(5)), f_std=40.0) == 4.0
+    assert squeeze_cap(ParticleBelief(parts, np.array([0.01, 0.01, 0.01, 0.01, 0.96])), f_std=40.0) == 20.0
+    assert squeeze_cap(ParticleBelief(parts, np.ones(5)), f_std=6.0) == 3.0
+    rigid = [{"mass": 0.1, "mu": 0.5, "com_obj": [0.0, 0.0, 0.0], "f_damage_n": None}] * 3
+    assert squeeze_cap(ParticleBelief(rigid, np.ones(3)), f_std=10.0) == 5.0
+    assert PROBE_SECONDS["squeeze"] == 3.0

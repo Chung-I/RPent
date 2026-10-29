@@ -79,3 +79,32 @@ def test_a_draw_with_no_fitting_proposal_is_declined():
     rows = probe_rows(env, "hope__macaroni_and_cheese", 2, 7)
     assert len(rows) == 1 and rows[0]["key"] == "hope__macaroni_and_cheese__s7__d2" and rows[0]["draw"] == 2
     assert rows[0]["declined"] == "every proposal is wider than the gripper opening" and "probe" not in rows[0]
+
+
+def test_probe_rows_carry_the_damage_and_a_squeeze_for_a_crushable_object():
+    """Probe corpus v8: every row carries the draw's fill and fragility, the meter and the damage; a crushable object
+    also gets a squeeze from a fresh reset at the cap of squeeze_cap on the prior (at most half the standard squeeze)."""
+    from robots.mujoco_lab.adapter import MuJoCoLabEnv
+    from robots.mujoco_lab.probe_corpus import probe_rows
+
+    rows = probe_rows(MuJoCoLabEnv(), "ycb__jello", 0, 7)
+    by = {r["key"].rsplit("__", 1)[1]: r for r in rows}
+    assert set(by) <= {"Apush", "Aweigh", "Bweigh", "Csqueeze"} and {"Bweigh", "Csqueeze"} <= set(by)
+    assert all({"fill", "theta_frag", "entry", "meter", "damage"} <= set(r) for r in rows if "declined" not in r)
+    sq = by["Csqueeze"]
+    assert sq["probe"] == "squeeze" and sq["scene"] == "C" and sq["kind"] in ("measured", "damaged")
+    assert 0.0 < sq["force"] <= 0.5 * sq["f_std"] and sq["theta_frag"] == by["Bweigh"]["theta_frag"]
+    assert sq["kind"] == "damaged" or "k_hat" in sq["reading"]
+
+
+def test_m2_probe_rows_have_no_damage_and_no_squeeze():
+    """Mode m2 is probe corpus v7's world: v8's draws, no liquid, no fragility and no squeeze scene."""
+    from robots.mujoco_lab.adapter import MuJoCoLabEnv
+    from robots.mujoco_lab.corpus import case_rng, draw_theta
+    from robots.mujoco_lab.adapter import object_props
+    from robots.mujoco_lab.probe_corpus import probe_rows
+
+    rows = probe_rows(MuJoCoLabEnv(), "ycb__jello", 0, 7, mode="m2")
+    assert {r["key"].rsplit("__", 1)[1] for r in rows} <= {"Apush", "Aweigh", "Bweigh"}
+    assert all(r["fill"] == 0.0 and r["theta_frag"] is None and r.get("damage") is None for r in rows)
+    assert rows[0]["theta"] == draw_theta(case_rng(7, "ycb__jello", 0), object_props("ycb__jello")["mass"])[0]

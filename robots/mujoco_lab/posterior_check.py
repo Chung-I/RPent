@@ -98,10 +98,11 @@ def _widths(b: ParticleBelief) -> dict[str, float]:
 def check_rows(rows: list[dict[str, Any]], bundle: dict[str, Any], grid: list[float], n: int, seed: int) -> list[dict[str, Any]]:
     """One case per row: the prior's hits and widths, and per temper the posterior's (``*_sim``: against the sim's values)."""
     model, readout = bundle["model"], bundle["readout_model"]
+    prior = bundle.get("prior") or lab_prior                  # the bundle's manifest names it
     rng = np.random.default_rng(seed)
     cases = []
     for r in rows:
-        b = lab_prior(r["pose"], n, rng)
+        b = prior(r["pose"], n, rng)
         a = b.arrays()
         X = particle_matrix(r["features"], a, r["pose"], r["force"], model_names(model))
         P = model.predict_matrix(X, r.get("planned"))[0]
@@ -135,11 +136,12 @@ def probe_cases(rows: list[dict[str, Any]], probes: str) -> list[list[dict[str, 
 def check_probe_cases(cases: list[list[dict[str, Any]]], bundle: dict[str, Any], grid: list[float], n: int, seed: int) -> list[dict[str, Any]]:
     """Like check_rows, with the probe models' likelihood of each case's probe results."""
     pms = bundle["probe_models"]
+    prior = bundle.get("prior") or lab_prior
     rng = np.random.default_rng(seed)
     out = []
     for case in cases:
         first = case[0]
-        b = lab_prior(first["pose"], n, rng)
+        b = prior(first["pose"], n, rng)
         a = b.arrays()
         terms = [(pms[r["probe"]], {"kind": r["kind"], "reading": r["reading"]},
                   particle_matrix(r["base"], a, r["pose"], r["force"], model_names(pms[r["probe"]])), float(r["force"])) for r in case]

@@ -197,3 +197,27 @@ def test_empty_container_never_spills():
     meter = {"fn_pad_max": [(1.0, 5.0)], "surface_max": [(1.0, 89.9)], "impacts": []}
     assert damage_event(meter, {"f_damage_n": None, "v_bruise_ms": None, "v_break_ms": 3.0}, MUG, 0.0) is None
     assert damage_event(meter, {"f_damage_n": None, "v_bruise_ms": None, "v_break_ms": 3.0}, MUG, 0.5)[0] == "spilled"
+
+
+def test_array_forms_match_the_scalar_ones():
+    """liquid_arrays, map_latent_arrays and the spill-angle table give what liquid, map_latent and spill_angle_deg give
+    (the table within 0.05 deg between its fills)."""
+    from robots.mujoco_lab.fragility import (THRESHOLDS_V0, Thresholds, liquid, liquid_arrays, load_classes, map_latent,
+                                             map_latent_arrays, spill_angle, spill_angle_deg)
+
+    C, th = load_classes(), Thresholds.from_json(THRESHOLDS_V0)
+    cav = C["ycb__mug"]["cavity"]
+    fills = np.array([0.0, 0.3, 0.553, 0.9, 1.0])
+    m, c = liquid_arrays(cav, fills)
+    for i, f in enumerate(fills):
+        want = liquid(cav, float(f))
+        assert m[i] == pytest.approx(want["mass_kg"], abs=1e-12) and np.allclose(c[i], want["centroid_obj"], atol=1e-9)
+    for f in (0.3137, 0.6021, 0.8888):
+        assert spill_angle(cav, f) == pytest.approx(spill_angle_deg(cav, f), abs=0.05)
+    Z = np.random.default_rng(0).standard_normal((6, 3))
+    for oid in ("ycb__mug", "ycb__jello", "ycb__banana", "ycb__brick"):
+        A = map_latent_arrays(Z, C[oid], th)
+        for i in range(6):
+            want = map_latent(Z[i], C[oid], th)
+            for k in ("k_n_per_mm", "f_damage_n", "v_bruise_ms", "v_break_ms"):
+                assert (want[k] is None) == (A[k] is None) and (want[k] is None or A[k][i] == pytest.approx(want[k]))

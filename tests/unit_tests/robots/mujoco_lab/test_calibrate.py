@@ -454,3 +454,27 @@ def test_policy_protocol_stops_at_three_attempts(monkeypatch):
     sc = _scripted(monkeypatch, [_assessment("commit")] * 4, ["missed"] * 3)
     case = run_protocol(SimpleNamespace(abstain_cost=1.0), "policy", "table_centre", np.random.default_rng(0))
     assert POLICY_ATTEMPTS == 3 and len(sc.calls) == 3 and case["ended"] == "failed" and case["abstain_part"] == 1.0
+
+
+def test_case_draw_draws_fill_and_fragility():
+    """An m2b case draws the fill and the fragility with the corpus rule from the corpus's damage stream, so it hides
+    what the corpus row of that (seed, object, idx) hides; an m2 case draws neither."""
+    from robots.mujoco_lab.adapter import object_props
+    from robots.mujoco_lab.calibrate import case_draw
+    from robots.mujoco_lab.corpus import case_rng, damage_rng, draw_damage, draw_theta
+    from robots.mujoco_lab.fragility import THRESHOLDS_V0, Thresholds, entry_of, load_classes
+
+    classes, th = load_classes(), Thresholds.from_json(THRESHOLDS_V0)
+    m = object_props("ycb__mug")["mass"]
+    fills = []
+    for idx in range(40):
+        theta, com_end, dest, hidden = case_draw(5, "ycb__mug", idx, m, fragility=(classes, th))
+        d = draw_damage(damage_rng(5, "ycb__mug", idx), entry_of("ycb__mug", classes)[0], th, 1.0)
+        assert hidden == {"fill": d["fill"], "frag": d["theta_frag"], "spill_angle_deg": d["spill_angle_deg"]}
+        if d["fill"] > 0:
+            assert theta["com_s"] is None and theta["mass_scale"] == d["mass_scale"]
+        fills.append(hidden["fill"])
+    assert 0 < sum(f == 0 for f in fills) < 40 and all(f == 0 or 0.3 <= f <= 0.9 for f in fills)
+    theta, com_end, dest, hidden = case_draw(5, "ycb__mug", 0, m)
+    assert hidden == {"fill": 0.0, "frag": None, "spill_angle_deg": None}
+    assert (theta, com_end) == draw_theta(case_rng(5, "ycb__mug", 0), m)

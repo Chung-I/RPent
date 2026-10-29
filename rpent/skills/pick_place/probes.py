@@ -45,7 +45,7 @@ from rpent.skills.pick_place.features import FEATURES_M2, G, particle_matrix
 from rpent.skills.pick_place.likelihood import Law, as_law, fit_law
 from rpent.skills.pick_place.success_model import N_FOLDS, _Calibrator, _fit_gbm
 
-PROBE_SECONDS = {"weigh": 4.0, "push": 2.0}
+PROBE_SECONDS = {"weigh": 4.0, "push": 2.0, "squeeze": 3.0}
 PROBE_KINDS = {"weigh": ("measured", "lower_bound", "lost"), "push": ("slid", "tipped", "no_breakaway", "no_contact")}
 READING = {"measured": "m_hat", "lower_bound": "mu_hat", "slid": "f_break"}     # the reading each kind's law is on
 
@@ -53,6 +53,23 @@ READING = {"measured": "m_hat", "lower_bound": "mu_hat", "slid": "f_break"}     
 def weigh_force(f_std: float) -> float:
     """The weigh probe's squeeze per pad: twice the standard, at least 10 N more, at most 70 N."""
     return float(min(70.0, max(2.0 * f_std, f_std + 10.0)))
+
+
+def squeeze_cap(belief: Any, f_std: float) -> float:
+    """The squeeze probe's largest force per pad: half the standard squeeze, or less, the weighted 10 % quantile of the
+    particles' damage force (``f_damage_n``; particles without one do not count). So the probe crushes under the
+    belief's own law with probability 0.1 at most."""
+    v = np.array([np.nan if p.get("f_damage_n") is None else float(p["f_damage_n"]) for p in belief.particles], dtype=float)
+    ok = np.isfinite(v)
+    cap = 0.5 * float(f_std)
+    if not ok.any():
+        return cap
+    w = np.asarray(belief.weights, dtype=float)[ok]
+    vals = v[ok]
+    order = np.argsort(vals, kind="stable")
+    cw = np.cumsum(w[order]) / float(w.sum())
+    q10 = float(vals[order][min(int(np.searchsorted(cw, 0.1 - 1e-12, side="left")), len(vals) - 1)])
+    return float(min(cap, q10))
 
 
 @dataclass
@@ -68,6 +85,8 @@ class ProbeResult:
     rev_steps: int = 0              # a substrate's contact monitor (mujoco_lab: adapter.artifact): artifact is True
     deepest_mm: float = 0.0         # when the run's contacts were not physical; a substrate without one leaves the
     artifact: bool = False          # defaults
+    meter: dict[str, Any] = field(default_factory=dict)      # a substrate's damage meter (mujoco_lab: meter.py) and its
+    damage: dict[str, Any] | None = None                      # first threshold crossing; kind "damaged" when there is one
 
     def to_data(self) -> dict[str, Any]:
         d = asdict(self)

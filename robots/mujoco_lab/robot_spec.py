@@ -70,6 +70,8 @@ def load_bundle(bundle_dir: str, kind: str | None = None) -> dict[str, Any]:
     feature and outcome schemas ("m2" when the manifest names none). Every model must read the schema's features."""
     from rpent.skills.pick_place.features import FEATURE_SCHEMAS, model_names
 
+    from robots.mujoco_lab.prior import prior_from_manifest
+
     man = json.load(open(os.path.join(bundle_dir, "manifest.json")))
     kind = kind or os.environ.get("RPENT_PICK_PLACE_MODEL_KIND") or man.get("kind", "classifier")
     if kind == "hazard" and not man.get("hazard_model"):
@@ -113,7 +115,7 @@ def load_bundle(bundle_dir: str, kind: str | None = None) -> dict[str, Any]:
             raise ValueError(f"{bundle_dir}: the {what} reads feature names other than the manifest's {schema!r} schema")
     return {"manifest": man, "kind": kind, "model": model, "feature_schema": schema,
             "outcome_schema": man.get("outcome_schema", "m2"),
-            "prior": lab_prior_fn if man.get("prior") == "lab_generator" else None,
+            "prior": lab_prior_fn if man.get("prior") == "lab_generator" else prior_from_manifest(man),
             "readout_model": readout, "probe_models": probe_models, "guard": guard, "abstain_cost": manifest_abstain_cost(man)}
 
 
