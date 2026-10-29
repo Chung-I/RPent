@@ -313,7 +313,7 @@ def _commit(a: Assessment, option_id: str | None, object: str, destination: str,
 
 
 def _probe_brief(d: dict[str, Any]) -> dict[str, Any]:
-    return {k: d[k] for k in ("probed", "kind", "reading", "displacement_m", "thrown")}
+    return {k: d[k] for k in ("probed", "kind", "reading", "displacement_m", "thrown", "artifact")}
 
 
 @tool(readonly=False, exclude=("primitives", "store"))

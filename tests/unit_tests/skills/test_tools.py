@@ -519,6 +519,17 @@ def test_probe_first_runs_probes_then_commits():
     assert r["belief"]["mu_80"][0] > 0.3                         # the posterior after the push and the attempt
 
 
+def test_probe_first_keeps_each_probe_s_artifact_flag():
+    """mode probe_first: each probe brief says whether the substrate flagged that probe; the top-level flag is the
+    commit's only."""
+    import dataclasses
+
+    env = _ProbeEnv(results=[("placed_stable", {})], probes=[dataclasses.replace(_push(high=1.0), artifact=True)])
+    prims = _probe_prims(env, push=PerfectPush(), weigh=FlatWeigh())
+    r = pick_and_place(object="mug", destination="table_centre", mode="probe_first", primitives=prims, store={}).data
+    assert [(p["probed"], p["artifact"]) for p in r["probes"]] == [("push", True)] and r["artifact"] is False
+
+
 def test_probe_first_stops_after_a_thrown_probe():
     env = _ProbeEnv(probes=[_push(thrown=True)])
     prims = _probe_prims(env, push=PerfectPush())
