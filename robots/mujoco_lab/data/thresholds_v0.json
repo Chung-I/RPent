@@ -1,0 +1,67 @@
+{
+ "version": "v0",
+ "status": "provisional: development only (corpus *_t0); replaced by thresholds_v1 (Task 8)",
+ "units": {
+  "f_damage_n": "N",
+  "k_n_per_mm": "N/mm",
+  "v_bruise_ms": "m/s",
+  "v_break_ms": "m/s"
+ },
+ "laws": {
+  "cardboard": {
+   "f_damage_n": {
+    "median": 25.0,
+    "log_sd": 0.35
+   },
+   "k_n_per_mm": {
+    "median": 2.0,
+    "log_sd": 0.35
+   },
+   "rho": 0.8,
+   "source": "provisional value set by plan 2b (Task 4): not fitted and not taken from a cited measurement; thresholds_v1 (Task 8) replaces it with Genesis MPM squeezes"
+  },
+  "thin_plastic": {
+   "f_damage_n": {
+    "median": 20.0,
+    "log_sd": 0.4
+   },
+   "k_n_per_mm": {
+    "median": 1.5,
+    "log_sd": 0.4
+   },
+   "rho": 0.8,
+   "source": "provisional value set by plan 2b (Task 4): not fitted and not taken from a cited measurement; thresholds_v1 (Task 8) replaces it with Genesis MPM squeezes"
+  },
+  "fruit": {
+   "f_damage_n": {
+    "median": 30.0,
+    "log_sd": 0.4
+   },
+   "k_n_per_mm": {
+    "median": 5.0,
+    "log_sd": 0.4
+   },
+   "rho": 0.7,
+   "v_bruise_ms": {
+    "median": 1.0,
+    "log_sd": 0.3
+   },
+   "source": "provisional value set by plan 2b (Task 4): not fitted and not taken from a cited measurement; thresholds_v1 (Task 8) replaces it with Genesis MPM squeezes"
+  },
+  "ceramic": {
+   "v_break_ms": {
+    "median": 3.0,
+    "log_sd": 0.25
+   },
+   "source": "provisional value set by plan 2b (Task 4): not fitted and not taken from a cited measurement; thresholds_v1 (Task 8) replaces it with literature drop tests"
+  },
+  "glass": {
+   "v_break_ms": {
+    "median": 2.5,
+    "log_sd": 0.3
+   },
+   "source": "provisional value set by plan 2b (Task 4): not fitted and not taken from a cited measurement; thresholds_v1 (Task 8) replaces it with literature drop tests"
+  }
+ },
+ "slosh_zeta": 0.01
+}

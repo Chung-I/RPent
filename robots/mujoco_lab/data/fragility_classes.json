@@ -1,0 +1,786 @@
+{
+ "fruits_veggies__avocado": {
+  "cavity": null,
+  "class": "bruisable",
+  "fillable": false,
+  "law": "fruit",
+  "reason": "corpus material fruit"
+ },
+ "fruits_veggies__lemon1": {
+  "cavity": null,
+  "class": "bruisable",
+  "fillable": false,
+  "law": "fruit",
+  "reason": "corpus material fruit"
+ },
+ "fruits_veggies__lime": {
+  "cavity": null,
+  "class": "bruisable",
+  "fillable": false,
+  "law": "fruit",
+  "reason": "corpus material fruit"
+ },
+ "fruits_veggies__orange1": {
+  "cavity": null,
+  "class": "bruisable",
+  "fillable": false,
+  "law": "fruit",
+  "reason": "corpus material fruit"
+ },
+ "fruits_veggies__pomegranate": {
+  "cavity": null,
+  "class": "bruisable",
+  "fillable": false,
+  "law": "fruit",
+  "reason": "corpus material fruit"
+ },
+ "fruits_veggies__red_onion": {
+  "cavity": null,
+  "class": "bruisable",
+  "fillable": false,
+  "law": "fruit",
+  "reason": "corpus material fruit"
+ },
+ "handal__green_serving_spoon": {
+  "cavity": null,
+  "class": "none",
+  "fillable": false,
+  "law": null,
+  "reason": "corpus material wood: no damage class"
+ },
+ "handal__hammer": {
+  "cavity": null,
+  "class": "none",
+  "fillable": false,
+  "law": null,
+  "reason": "corpus material steel: no damage class"
+ },
+ "handal__hammer_1": {
+  "cavity": null,
+  "class": "none",
+  "fillable": false,
+  "law": null,
+  "reason": "corpus material steel: no damage class"
+ },
+ "handal__hammer_2": {
+  "cavity": null,
+  "class": "none",
+  "fillable": false,
+  "law": null,
+  "reason": "corpus material wood: no damage class"
+ },
+ "handal__hammer_3": {
+  "cavity": null,
+  "class": "none",
+  "fillable": false,
+  "law": null,
+  "reason": "corpus material hard_plastic: no damage class"
+ },
+ "handal__hammer_4": {
+  "cavity": null,
+  "class": "none",
+  "fillable": false,
+  "law": null,
+  "reason": "corpus material steel: no damage class"
+ },
+ "handal__hammer_5": {
+  "cavity": null,
+  "class": "none",
+  "fillable": false,
+  "law": null,
+  "reason": "corpus material hard_plastic: no damage class"
+ },
+ "handal__hammer_6": {
+  "cavity": null,
+  "class": "none",
+  "fillable": false,
+  "law": null,
+  "reason": "corpus material steel: no damage class"
+ },
+ "handal__hammer_7": {
+  "cavity": null,
+  "class": "none",
+  "fillable": false,
+  "law": null,
+  "reason": "corpus material hard_plastic: no damage class"
+ },
+ "handal__hammer_8": {
+  "cavity": null,
+  "class": "none",
+  "fillable": false,
+  "law": null,
+  "reason": "corpus material steel: no damage class"
+ },
+ "handal__ladle": {
+  "cavity": null,
+  "class": "none",
+  "fillable": false,
+  "law": null,
+  "reason": "corpus material wood: no damage class"
+ },
+ "handal__measuring_cups": {
+  "cavity": null,
+  "class": "none",
+  "fillable": false,
+  "law": null,
+  "reason": "a plastic measuring cup (render): the corpus material 'ceramic' comes from the name 'cup'; not fillable: it rests opening-down at the corpus reset pose (the mesh opens toward -z)"
+ },
+ "handal__measuring_cups_1": {
+  "cavity": null,
+  "class": "none",
+  "fillable": false,
+  "law": null,
+  "reason": "a plastic measuring cup (render): the corpus material 'ceramic' comes from the name 'cup'; not fillable: it rests opening-down at the corpus reset pose (the mesh opens toward -z)"
+ },
+ "handal__measuring_spoon": {
+  "cavity": null,
+  "class": "none",
+  "fillable": false,
+  "law": null,
+  "reason": "corpus material wood: no damage class"
+ },
+ "handal__pink_spaghetti_spoon": {
+  "cavity": null,
+  "class": "none",
+  "fillable": false,
+  "law": null,
+  "reason": "corpus material wood: no damage class"
+ },
+ "handal__red_serving_spoon": {
+  "cavity": null,
+  "class": "none",
+  "fillable": false,
+  "law": null,
+  "reason": "corpus material wood: no damage class"
+ },
+ "hope__bbq_sauce_bottle": {
+  "cavity": null,
+  "class": "crushable",
+  "fillable": false,
+  "law": "thin_plastic",
+  "reason": "corpus material thin_plastic"
+ },
+ "hope__butter": {
+  "cavity": null,
+  "class": "none",
+  "fillable": false,
+  "law": null,
+  "reason": "corpus material hard_plastic: no damage class"
+ },
+ "hope__canned_mushrooms": {
+  "cavity": null,
+  "class": "none",
+  "fillable": false,
+  "law": null,
+  "reason": "corpus material metal_can: no damage class"
+ },
+ "hope__canned_peaches": {
+  "cavity": null,
+  "class": "none",
+  "fillable": false,
+  "law": null,
+  "reason": "a metal can: the corpus material 'fruit' comes from its name"
+ },
+ "hope__canned_tuna": {
+  "cavity": null,
+  "class": "none",
+  "fillable": false,
+  "law": null,
+  "reason": "corpus material metal_can: no damage class"
+ },
+ "hope__chocolate_pudding_mix": {
+  "cavity": null,
+  "class": "crushable",
+  "fillable": false,
+  "law": "cardboard",
+  "reason": "corpus material cardboard"
+ },
+ "hope__corn_can": {
+  "cavity": null,
+  "class": "none",
+  "fillable": false,
+  "law": null,
+  "reason": "corpus material metal_can: no damage class"
+ },
+ "hope__cream_cheese": {
+  "cavity": null,
+  "class": "none",
+  "fillable": false,
+  "law": null,
+  "reason": "corpus material hard_plastic: no damage class"
+ },
+ "hope__granola_bars": {
+  "cavity": null,
+  "class": "crushable",
+  "fillable": false,
+  "law": "cardboard",
+  "reason": "corpus material cardboard"
+ },
+ "hope__green_beans_can": {
+  "cavity": null,
+  "class": "none",
+  "fillable": false,
+  "law": null,
+  "reason": "corpus material metal_can: no damage class"
+ },
+ "hope__ketchup_bottle": {
+  "cavity": null,
+  "class": "crushable",
+  "fillable": false,
+  "law": "thin_plastic",
+  "reason": "corpus material thin_plastic"
+ },
+ "hope__macaroni_and_cheese": {
+  "cavity": null,
+  "class": "crushable",
+  "fillable": false,
+  "law": "cardboard",
+  "reason": "corpus material cardboard"
+ },
+ "hope__mayonnaise_bottle": {
+  "cavity": null,
+  "class": "crushable",
+  "fillable": false,
+  "law": "thin_plastic",
+  "reason": "corpus material thin_plastic"
+ },
+ "hope__milk_carton": {
+  "cavity": null,
+  "class": "crushable",
+  "fillable": false,
+  "law": "cardboard",
+  "reason": "corpus material cardboard"
+ },
+ "hope__mustard_bottle": {
+  "cavity": null,
+  "class": "crushable",
+  "fillable": false,
+  "law": "thin_plastic",
+  "reason": "corpus material thin_plastic"
+ },
+ "hope__oatmeal_raisin_cookies": {
+  "cavity": null,
+  "class": "crushable",
+  "fillable": false,
+  "law": "cardboard",
+  "reason": "corpus material cardboard"
+ },
+ "hope__orange_juice_carton": {
+  "cavity": null,
+  "class": "crushable",
+  "fillable": false,
+  "law": "cardboard",
+  "reason": "a paperboard carton: the corpus material 'fruit' comes from its name"
+ },
+ "hope__parmesan_cheese_canister": {
+  "cavity": null,
+  "class": "none",
+  "fillable": false,
+  "law": null,
+  "reason": "corpus material metal_can: no damage class"
+ },
+ "hope__peas_and_carrots": {
+  "cavity": null,
+  "class": "none",
+  "fillable": false,
+  "law": null,
+  "reason": "corpus material hard_plastic: no damage class"
+ },
+ "hope__pineapple_slices_can": {
+  "cavity": null,
+  "class": "none",
+  "fillable": false,
+  "law": null,
+  "reason": "a metal can: the corpus material 'fruit' comes from its name"
+ },
+ "hope__pitted_cherries": {
+  "cavity": null,
+  "class": "none",
+  "fillable": false,
+  "law": null,
+  "reason": "corpus material hard_plastic: no damage class"
+ },
+ "hope__popcorn_box": {
+  "cavity": null,
+  "class": "crushable",
+  "fillable": false,
+  "law": "cardboard",
+  "reason": "corpus material cardboard"
+ },
+ "hope__raisin_box": {
+  "cavity": null,
+  "class": "crushable",
+  "fillable": false,
+  "law": "cardboard",
+  "reason": "corpus material cardboard"
+ },
+ "hope__ranch_dressing": {
+  "cavity": null,
+  "class": "crushable",
+  "fillable": false,
+  "law": "thin_plastic",
+  "reason": "corpus material thin_plastic"
+ },
+ "hope__spaghetti": {
+  "cavity": null,
+  "class": "crushable",
+  "fillable": false,
+  "law": "cardboard",
+  "reason": "corpus material cardboard"
+ },
+ "hope__tomato_sauce_can": {
+  "cavity": null,
+  "class": "none",
+  "fillable": false,
+  "law": null,
+  "reason": "a metal can: the corpus material 'fruit' comes from its name"
+ },
+ "hope__yogurt_cup": {
+  "cavity": null,
+  "class": "crushable",
+  "fillable": false,
+  "law": "thin_plastic",
+  "reason": "corpus material thin_plastic; not fillable: a sealed cup: the mesh is closed at the top"
+ },
+ "hot3d__bbq_sauce_bottle": {
+  "cavity": null,
+  "class": "crushable",
+  "fillable": false,
+  "law": "thin_plastic",
+  "reason": "corpus material thin_plastic"
+ },
+ "hot3d__birdhouse": {
+  "cavity": null,
+  "class": "none",
+  "fillable": false,
+  "law": null,
+  "reason": "corpus material hard_plastic: no damage class"
+ },
+ "hot3d__ceramic_mug": {
+  "cavity": {
+   "axis_obj": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "bottom_obj": [
+    -0.0037870065829004804,
+    0.016754188086083397,
+    0.009689478886956843
+   ],
+   "height_m": 0.07292152111304316,
+   "r_bottom_m": 0.0329959274144305,
+   "r_top_m": 0.04553192094086377
+  },
+  "cavity_check": "the frustum follows the tapered wall",
+  "cavity_checked": true,
+  "class": "breakable",
+  "fillable": true,
+  "law": "ceramic",
+  "reason": "corpus material ceramic"
+ },
+ "hot3d__clay_plates": {
+  "cavity": null,
+  "class": "breakable",
+  "fillable": false,
+  "law": "ceramic",
+  "reason": "corpus material ceramic"
+ },
+ "hot3d__coffee_pot": {
+  "cavity": null,
+  "class": "none",
+  "fillable": false,
+  "law": null,
+  "reason": "a metal moka pot (render): the corpus material 'ceramic' comes from the name 'pot'; not fillable: a closed moka pot: no open cavity"
+ },
+ "hot3d__computer_mouse": {
+  "cavity": null,
+  "class": "none",
+  "fillable": false,
+  "law": null,
+  "reason": "corpus material electronics: no damage class"
+ },
+ "hot3d__dumbbell": {
+  "cavity": null,
+  "class": "none",
+  "fillable": false,
+  "law": null,
+  "reason": "corpus material steel: no damage class"
+ },
+ "hot3d__foam_roller": {
+  "cavity": null,
+  "class": "none",
+  "fillable": false,
+  "law": null,
+  "reason": "corpus material foam: no damage class"
+ },
+ "hot3d__frozen_vegetable_block": {
+  "cavity": null,
+  "class": "none",
+  "fillable": false,
+  "law": null,
+  "reason": "corpus material wood: no damage class"
+ },
+ "hot3d__frozen_waffles": {
+  "cavity": null,
+  "class": "none",
+  "fillable": false,
+  "law": null,
+  "reason": "corpus material hard_plastic: no damage class"
+ },
+ "hot3d__glasses": {
+  "cavity": null,
+  "class": "none",
+  "fillable": false,
+  "law": null,
+  "reason": "corpus material hard_plastic: no damage class"
+ },
+ "hot3d__keyboard": {
+  "cavity": null,
+  "class": "none",
+  "fillable": false,
+  "law": null,
+  "reason": "corpus material electronics: no damage class"
+ },
+ "hot3d__lizard_figurine": {
+  "cavity": null,
+  "class": "none",
+  "fillable": false,
+  "law": null,
+  "reason": "corpus material hard_plastic: no damage class"
+ },
+ "hot3d__megaphone": {
+  "cavity": null,
+  "class": "none",
+  "fillable": false,
+  "law": null,
+  "reason": "corpus material hard_plastic: no damage class"
+ },
+ "hot3d__mug": {
+  "cavity": {
+   "axis_obj": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "bottom_obj": [
+    0.00288888179899225,
+    -0.0022593858731592238,
+    0.00717506749990203
+   ],
+   "height_m": 0.08270293250009797,
+   "r_bottom_m": 0.031172626756156962,
+   "r_top_m": 0.042829587930175876
+  },
+  "cavity_check": "the frustum follows the tapered wall",
+  "cavity_checked": true,
+  "class": "breakable",
+  "fillable": true,
+  "law": "ceramic",
+  "reason": "corpus material ceramic"
+ },
+ "hot3d__pitcher": {
+  "cavity": {
+   "axis_obj": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "bottom_obj": [
+    -0.004512348275077033,
+    0.001749946180441447,
+    0.0020263377482827027
+   ],
+   "height_m": 0.1531706622517173,
+   "r_bottom_m": 0.04260889283116423,
+   "r_top_m": 0.035408716890650734
+  },
+  "cavity_check": "a jug that narrows to a neck: the frustum averages the body and the neck, with the lip's radius; the spout is not modelled",
+  "cavity_checked": true,
+  "class": "breakable",
+  "fillable": true,
+  "law": "ceramic",
+  "reason": "corpus material ceramic"
+ },
+ "hot3d__potato_masher": {
+  "cavity": null,
+  "class": "none",
+  "fillable": false,
+  "law": null,
+  "reason": "corpus material wood: no damage class"
+ },
+ "hot3d__remote_control": {
+  "cavity": null,
+  "class": "none",
+  "fillable": false,
+  "law": null,
+  "reason": "corpus material electronics: no damage class"
+ },
+ "hot3d__rubiks_cube": {
+  "cavity": null,
+  "class": "none",
+  "fillable": false,
+  "law": null,
+  "reason": "corpus material hard_plastic: no damage class"
+ },
+ "hot3d__smartphone": {
+  "cavity": null,
+  "class": "breakable",
+  "fillable": false,
+  "law": "glass",
+  "reason": "corpus material glass"
+ },
+ "hot3d__soup_can": {
+  "cavity": null,
+  "class": "none",
+  "fillable": false,
+  "law": null,
+  "reason": "corpus material metal_can: no damage class"
+ },
+ "hot3d__spatula": {
+  "cavity": null,
+  "class": "none",
+  "fillable": false,
+  "law": null,
+  "reason": "corpus material wood: no damage class"
+ },
+ "hot3d__storage_box": {
+  "cavity": null,
+  "class": "none",
+  "fillable": false,
+  "law": null,
+  "reason": "a bamboo box (render): the corpus material 'cardboard' comes from the name 'box'; not fillable: an open box, not a liquid container"
+ },
+ "hot3d__wooden_bowl": {
+  "cavity": {
+   "axis_obj": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "bottom_obj": [
+    0.0011464564707155587,
+    -0.001927739994732772,
+    0.010763380042683512
+   ],
+   "height_m": 0.11781061995731648,
+   "r_bottom_m": 0.09095259161263691,
+   "r_top_m": 0.13023028835930012
+  },
+  "cavity_check": "a round wall: the frustum lies inside it near the rim and outside it near the floor, with the rim's radius and the measured volume",
+  "cavity_checked": true,
+  "class": "none",
+  "fillable": true,
+  "law": null,
+  "reason": "corpus material wood: no damage class"
+ },
+ "hot3d__wooden_spoons": {
+  "cavity": null,
+  "class": "none",
+  "fillable": false,
+  "law": null,
+  "reason": "corpus material wood: no damage class"
+ },
+ "ycb__banana": {
+  "cavity": null,
+  "class": "bruisable",
+  "fillable": false,
+  "law": "fruit",
+  "reason": "corpus material fruit"
+ },
+ "ycb__bowl": {
+  "cavity": {
+   "axis_obj": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "bottom_obj": [
+    1.1749776780535862e-05,
+    0.00031459392462252183,
+    -0.025011637141838808
+   ],
+   "height_m": 0.0499966371418388,
+   "r_bottom_m": 0.05265961224774491,
+   "r_top_m": 0.07463127150214068
+  },
+  "cavity_check": "the frustum follows the curved wall; the rim on its inner edge",
+  "cavity_checked": true,
+  "class": "breakable",
+  "fillable": true,
+  "law": "ceramic",
+  "reason": "corpus material ceramic"
+ },
+ "ycb__bowl2": {
+  "cavity": {
+   "axis_obj": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "bottom_obj": [
+    1.1749776780535862e-05,
+    0.00031459392462252183,
+    -0.025011637141838808
+   ],
+   "height_m": 0.0499966371418388,
+   "r_bottom_m": 0.05265961224774491,
+   "r_top_m": 0.07463127150214068
+  },
+  "cavity_check": "the same mesh as ycb__bowl",
+  "cavity_checked": true,
+  "class": "breakable",
+  "fillable": true,
+  "law": "ceramic",
+  "reason": "corpus material ceramic"
+ },
+ "ycb__brick": {
+  "cavity": null,
+  "class": "none",
+  "fillable": false,
+  "law": null,
+  "reason": "corpus material hard_plastic: no damage class"
+ },
+ "ycb__cheez_it": {
+  "cavity": null,
+  "class": "crushable",
+  "fillable": false,
+  "law": "cardboard",
+  "reason": "corpus material cardboard"
+ },
+ "ycb__chocolate_pudding": {
+  "cavity": null,
+  "class": "crushable",
+  "fillable": false,
+  "law": "cardboard",
+  "reason": "corpus material cardboard"
+ },
+ "ycb__clamp": {
+  "cavity": null,
+  "class": "none",
+  "fillable": false,
+  "law": null,
+  "reason": "corpus material hard_plastic: no damage class"
+ },
+ "ycb__coffee_can": {
+  "cavity": null,
+  "class": "none",
+  "fillable": false,
+  "law": null,
+  "reason": "corpus material metal_can: no damage class"
+ },
+ "ycb__cordless_drill": {
+  "cavity": null,
+  "class": "none",
+  "fillable": false,
+  "law": null,
+  "reason": "corpus material hard_plastic: no damage class"
+ },
+ "ycb__dry_erase_marker": {
+  "cavity": null,
+  "class": "none",
+  "fillable": false,
+  "law": null,
+  "reason": "corpus material hard_plastic: no damage class"
+ },
+ "ycb__jello": {
+  "cavity": null,
+  "class": "crushable",
+  "fillable": false,
+  "law": "cardboard",
+  "reason": "corpus material cardboard"
+ },
+ "ycb__mug": {
+  "cavity": {
+   "axis_obj": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "bottom_obj": [
+    -0.011966699335619694,
+    0.0002857939131257707,
+    -0.037477374398213775
+   ],
+   "height_m": 0.07766937439821378,
+   "r_bottom_m": 0.02330381152190025,
+   "r_top_m": 0.04302406372296259
+  },
+  "cavity_check": "the frustum follows the inner wall; the scan fills the inner bottom corner below 3.5 cm (a reconstruction artifact), so the frustum narrows toward the floor",
+  "cavity_checked": true,
+  "class": "breakable",
+  "fillable": true,
+  "law": "ceramic",
+  "reason": "corpus material ceramic"
+ },
+ "ycb__mustard": {
+  "cavity": null,
+  "class": "crushable",
+  "fillable": false,
+  "law": "thin_plastic",
+  "reason": "corpus material thin_plastic"
+ },
+ "ycb__pitcher": {
+  "cavity": null,
+  "class": "none",
+  "fillable": false,
+  "law": null,
+  "reason": "corpus material hard_plastic: no damage class; not fillable: the scanned mesh is closed at the top (a lid), so it has no open cavity"
+ },
+ "ycb__scissors": {
+  "cavity": null,
+  "class": "none",
+  "fillable": false,
+  "law": null,
+  "reason": "corpus material steel: no damage class"
+ },
+ "ycb__soft_scrub": {
+  "cavity": null,
+  "class": "crushable",
+  "fillable": false,
+  "law": "thin_plastic",
+  "reason": "corpus material thin_plastic"
+ },
+ "ycb__spam_can": {
+  "cavity": null,
+  "class": "none",
+  "fillable": false,
+  "law": null,
+  "reason": "corpus material metal_can: no damage class"
+ },
+ "ycb__spring_clamp": {
+  "cavity": null,
+  "class": "none",
+  "fillable": false,
+  "law": null,
+  "reason": "corpus material steel: no damage class"
+ },
+ "ycb__sugar_box": {
+  "cavity": null,
+  "class": "crushable",
+  "fillable": false,
+  "law": "cardboard",
+  "reason": "corpus material cardboard"
+ },
+ "ycb__tomato_soup_can": {
+  "cavity": null,
+  "class": "none",
+  "fillable": false,
+  "law": null,
+  "reason": "corpus material metal_can: no damage class"
+ },
+ "ycb__tuna_can": {
+  "cavity": null,
+  "class": "none",
+  "fillable": false,
+  "law": null,
+  "reason": "corpus material metal_can: no damage class"
+ },
+ "ycb__wood_block": {
+  "cavity": null,
+  "class": "none",
+  "fillable": false,
+  "law": null,
+  "reason": "corpus material wood: no damage class"
+ }
+}
