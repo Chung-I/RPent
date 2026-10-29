@@ -31,6 +31,12 @@ the probe rows of the bundle's training objects, scores each kind classifier on 
 objects (Brier against the training kind rates), and writes the models, ``probe_metrics.json`` and
 the manifest's ``probe_models``; without ``--corpus`` the split is the bundle's.
 
+``--feature-schema m2b`` (milestone 2b; default m2) fits every model on features.FEATURES_M2B (the m2 features and
+the damage features) and writes ``feature_schema``, ``outcome_schema`` and the cost rule's ``decision``
+({"abstain_cost": 1.0}) into the manifest; damage labels need it. The hazard model models motion labels only
+(HazardModel.supports): with damage labels it is not fitted ("not eligible") and the classifier is the kind.
+Probe models and the guard follow the bundle's manifest schema.
+
 Every bundle carries the novelty guard (guard.KnnGuard, ``knn_guard.npz``, manifest key ``guard``), fit on its
 training rows. ``--guard`` alone fits it into an existing bundle (its manifest's corpus, features and split), or into
 each fold bundle of a folds directory.
@@ -54,8 +60,11 @@ import numpy as np
 
 from robots.mujoco_lab import tracking
 from robots.mujoco_lab.corpus import trainable
+from rpent.skills.pick_place.costs import ABSTAIN_COST
 from rpent.skills.pick_place.evaluate import rows_of, split_objects
-from rpent.skills.pick_place.hazard_model import train_hazard
+from rpent.skills.pick_place.features import FEATURE_SCHEMAS
+from rpent.skills.pick_place.hazard_model import HazardModel, train_hazard
+from rpent.skills.pick_place.protocol import DAMAGE
 from rpent.skills.pick_place.success_model import train
 
 MANIFEST = "manifest.json"
@@ -91,14 +100,23 @@ def write_manifest(out_dir: str, **fields) -> dict:
     return man
 
 
-def fit_probes(path: str, out_dir: str, split: dict, seed: int = 0) -> dict:
-    """Probe models on the training objects' probe rows; per probe the kind rates, the thrown rate, the
-    reading laws and the validation Brier of the kind classifier against the training kind rates."""
+def bundle_schema(out_dir: str, schema: str | None = None) -> str:
+    """The feature schema of the bundle's manifest ("m2" when it names none); ``schema``, when given, must equal it."""
+    man_path = os.path.join(out_dir, MANIFEST)
+    found = json.load(open(man_path)).get("feature_schema", "m2") if os.path.exists(man_path) else (schema or "m2")
+    if schema is not None and schema != found:
+        raise SystemExit(f"{out_dir} has feature schema {found!r}, not {schema!r}")
+    return found
+
+
+def fit_probes(path: str, out_dir: str, split: dict, seed: int = 0, schema: str | None = None) -> dict:
+    """Probe models on the training objects' probe rows, on the bundle's feature schema; per probe the kind rates,
+    the thrown rate, the reading laws and the validation Brier of the kind classifier against the training kind rates."""
     from rpent.skills.pick_place.probes import fit_probe_models, true_matrix
 
     rows = load_rows(path)
     tr, va = rows_of(rows, split["train"]), rows_of(rows, split["val"])
-    models = fit_probe_models(tr, seed=seed)
+    models = fit_probe_models(tr, seed=seed, names=FEATURE_SCHEMAS[bundle_schema(out_dir, schema)])
     out: dict = {"probe_corpus": path, "split": split, "probes": {}}
     for probe, pm in models.items():
         every = [r for r in rows if r["probe"] == probe]
@@ -107,7 +125,7 @@ def fit_probes(path: str, out_dir: str, split: dict, seed: int = 0) -> dict:
         val: dict = {"n": len(va_p), "brier": None, "brier_const": None}
         if va_p:
             Y = np.array([[float(r["kind"] == k) for k in pm.classes] for r in va_p])
-            P = pm.p_kind(true_matrix(va_p))
+            P = pm.p_kind(true_matrix(va_p, pm.feature_names))
             val.update(brier=float(np.mean(np.sum((P - Y) ** 2, axis=1))), brier_const=float(np.mean(np.sum((const - Y) ** 2, axis=1))))
         out["probes"][probe] = {"n": len(every), "n_train": len(tr_p), "kind_rates": {k: sum(r["kind"] == k for r in every) / len(every) for k in pm.classes},
                                 "thrown_rate": sum(bool(r["thrown"]) for r in every) / len(every),
@@ -127,14 +145,14 @@ def fit_probes(path: str, out_dir: str, split: dict, seed: int = 0) -> dict:
     return out
 
 
-def fit_bundle_guard(rows: list[dict], out_dir: str, features: str, seed: int = 0) -> dict:
+def fit_bundle_guard(rows: list[dict], out_dir: str, features: str, seed: int = 0, names=FEATURE_SCHEMAS["m2"]) -> dict:
     """The novelty guard on a bundle's training rows, written to ``out_dir/GUARD``; returns its summary (the caller
     names it in the manifest), or None when the rows hold fewer than two objects (the calibration needs two)."""
     from rpent.skills.pick_place.guard import fit_guard
 
     if len({r["object"] for r in rows}) < 2:
         return None
-    g = fit_guard(rows, features, seed=seed)
+    g = fit_guard(rows, features, seed=seed, names=names)
     g.save(os.path.join(out_dir, GUARD))
     cal = g.calibration
     return {"n_reference": len(g.reference), "n_features_used": len(g.use), "n_calibration": g.n_calibration, "k": g.k,
@@ -151,7 +169,8 @@ def add_guard(out_dir: str, seed: int = 0) -> dict:
     man = json.load(open(os.path.join(out_dir, MANIFEST)))
     corpus = man["corpus"] if isinstance(man["corpus"], list) else [man["corpus"]]
     rows = [r for path in corpus for r in load_rows(path)]
-    info = fit_bundle_guard(rows_of(rows, bundle_split(out_dir)["train"]), out_dir, man.get("features", "nominal"), seed)
+    info = fit_bundle_guard(rows_of(rows, bundle_split(out_dir)["train"]), out_dir, man.get("features", "nominal"), seed,
+                            FEATURE_SCHEMAS[man.get("feature_schema", "m2")])
     write_manifest(out_dir, guard=GUARD if info else None)
     if info is not None:
         info["wandb"] = tracking.log_run("train_guard", {"bundle": out_dir, "corpus": corpus, "seed": seed}, info)
@@ -179,6 +198,8 @@ def main(argv: list[str] | None = None) -> dict:
     ap.add_argument("--folds", type=int, default=None, help="cross-fit: K object folds, one bundle per fold (needs --corpus)")
     ap.add_argument("--temper-grid", default=TEMPER_GRID, help="with --folds: the tempers each fold chooses from")
     ap.add_argument("--guard", action="store_true", help="alone: fit the novelty guard into the existing bundle or folds directory")
+    ap.add_argument("--feature-schema", choices=tuple(FEATURE_SCHEMAS), default=None,
+                    help="the models' features: m2 (default) or m2b (with the damage features); probes follow the bundle's")
     a = ap.parse_args(argv)
     if a.guard and not a.corpus and not a.probe_corpus:
         return {"guard": add_guard(a.out_dir, a.seed)}
@@ -190,7 +211,7 @@ def main(argv: list[str] | None = None) -> dict:
         return crossfit(a)
     out = train_bundle(a) if a.corpus else {"split": bundle_split(a.out_dir)}
     if a.probe_corpus:
-        out["probes"] = fit_probes(a.probe_corpus, a.out_dir, out["split"], a.seed)
+        out["probes"] = fit_probes(a.probe_corpus, a.out_dir, out["split"], a.seed, a.feature_schema)
     return out
 
 
@@ -245,7 +266,7 @@ def crossfit(a: argparse.Namespace) -> dict:
         res = train_bundle(argparse.Namespace(**{**vars(a), "out_dir": d}), split=split, rows=rows)
         write_manifest(d, fold=k, n_folds=a.folds, folds=os.path.join("..", FOLDS))
         if a.probe_corpus:
-            fit_probes(a.probe_corpus, d, split, a.seed)
+            fit_probes(a.probe_corpus, d, split, a.seed, a.feature_schema)
         out["bundles"][k] = {"dir": d, "kind": res["kind"], "n_train_objects": len(split["train"]), "n_val_objects": len(split["val"]),
                              "n_test_objects": len(held), "tempers": fold_tempers(d, a)}
         print(f"fold {k}: {json.dumps(out['bundles'][k])}", file=sys.stderr, flush=True)
@@ -258,6 +279,10 @@ def train_bundle(a: argparse.Namespace, split: dict | None = None, rows: list[di
     """The classifier, the hazard model and the readout model on ``a.corpus``; metrics and manifest.
     ``split`` (train / val / test objects) replaces the seeded split_objects; ``rows`` the corpus read."""
     rows = rows if rows is not None else [r for path in a.corpus for r in load_rows(path)]
+    schema = getattr(a, "feature_schema", None) or "m2"
+    names = FEATURE_SCHEMAS[schema]
+    if schema != "m2b" and any(r["label"] in DAMAGE for r in rows):
+        raise SystemExit("the corpus has damage labels: they need --feature-schema m2b (the damage features and masks)")
     if a.features == "true":
         missing = sum(1 for r in rows if "pose" not in r or "com_obj_true" not in r)
         if missing:
@@ -272,28 +297,32 @@ def train_bundle(a: argparse.Namespace, split: dict | None = None, rows: list[di
     tr, va = rows_of(rows, split["train"]), rows_of(rows, split["val"])
     os.makedirs(a.out_dir, exist_ok=True)
     t0 = time.time()
-    clf = train(tr, va, os.path.join(a.out_dir, "success_model.joblib"), seed=a.seed, prior_fn=prior_fn, features=a.features)
+    clf = train(tr, va, os.path.join(a.out_dir, "success_model.joblib"), seed=a.seed, prior_fn=prior_fn, features=a.features,
+                names=names)
     t1 = time.time()
+    eligible = HazardModel.supports(r["label"] for r in tr)
     haz = train_hazard(tr, va, os.path.join(a.out_dir, "hazard_model.joblib"), seed=a.seed, n_belief=a.n_belief,
-                       prior_fn=prior_fn, features=a.features)
+                       prior_fn=prior_fn, features=a.features, names=names) if eligible else "not eligible: damage labels"
     t2 = time.time()
     readout = None
     if any(r.get("readouts") for r in tr):
         from rpent.skills.pick_place.likelihood import ReadoutModel
 
-        rm = ReadoutModel.fit(tr, seed=a.seed)
+        rm = ReadoutModel.fit(tr, seed=a.seed, names=names)
         rm.save(os.path.join(a.out_dir, READOUT_MODEL), os.path.join(a.out_dir, READOUT_ROT))
         readout = {"terms": rm.to_json()["terms"], "side_error": rm.side_error, "stats": rm.stats}
     t3 = time.time()
-    guard = fit_bundle_guard(tr, a.out_dir, a.features, a.seed)
+    guard = fit_bundle_guard(tr, a.out_dir, a.features, a.seed, names)
     t4 = time.time()
-    kind = "hazard" if haz["belief"]["brier"] <= clf["belief"]["brier"] else "classifier"
+    kind = "hazard" if eligible and haz["belief"]["brier"] <= clf["belief"]["brier"] else "classifier"
     out = {
         "corpus": a.corpus if len(a.corpus) > 1 else a.corpus[0], "n_rows": len(rows), "split": split, "n_train": len(tr), "n_val": len(va),
-        "features": a.features, "prior": prior, "classifier": clf, "hazard": haz, "kind": kind,
+        "features": a.features, "feature_schema": schema, "outcome_schema": schema, "prior": prior, "classifier": clf,
+        "hazard": haz, "kind": kind,
         "acceptance_val_belief": {
             "classifier": {"ece": clf["belief"]["ece"], "brier": clf["belief"]["brier"], "brier_const": clf["belief"]["brier_const"]},
-            "hazard": {"ece": haz["belief"]["ece"], "brier": haz["belief"]["brier"], "brier_const": haz["belief"]["brier_const"]},
+            "hazard": {"ece": haz["belief"]["ece"], "brier": haz["belief"]["brier"], "brier_const": haz["belief"]["brier_const"]}
+            if eligible else None,
         },
         "readout": readout,
         "guard": guard,
@@ -303,7 +332,9 @@ def train_bundle(a: argparse.Namespace, split: dict | None = None, rows: list[di
     with open(os.path.join(a.out_dir, METRICS), "w") as f:
         json.dump(out, f, indent=1)
     write_manifest(a.out_dir, features=a.features, prior=prior, kind=kind, success_model="success_model.joblib",
-                   hazard_model="hazard_model.joblib", metrics=METRICS, corpus=out["corpus"], split_seed=a.seed,
+                   hazard_model="hazard_model.joblib" if eligible else None, metrics=METRICS, corpus=out["corpus"], split_seed=a.seed,
+                   feature_schema=schema, outcome_schema=schema,
+                   decision={"abstain_cost": ABSTAIN_COST} if schema == "m2b" else None,
                    readout_model=READOUT_MODEL if readout else None, guard=GUARD if guard else None,
                    tempers={})                                                         # new models: tempers are re-chosen
     out["wandb"] = tracking.log_run("train_models", {"corpus": out["corpus"], "features": a.features, "prior": prior,
@@ -312,7 +343,7 @@ def train_bundle(a: argparse.Namespace, split: dict | None = None, rows: list[di
                                      "seconds": out["seconds"],
                                      "classifier_by_subgroup": {k: v for k, v in clf["belief"]["by_subgroup"].items() if isinstance(v, dict)}})
     print(json.dumps({"kind": kind, "features": a.features, "acceptance_val_belief": out["acceptance_val_belief"],
-                      "oracle": {"classifier": clf["oracle"]["brier"], "hazard": haz["oracle"]["brier"]},
+                      "oracle": {"classifier": clf["oracle"]["brier"], "hazard": haz["oracle"]["brier"] if eligible else haz},
                       "unsupported": clf["belief"]["unsupported_classes"], "seconds": out["seconds"]}, indent=1))
     return out
 

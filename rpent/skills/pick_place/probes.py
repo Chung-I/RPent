@@ -40,7 +40,7 @@ import numpy as np
 from sklearn.model_selection import GroupKFold
 
 from rpent.skills.pick_place.evaluate import MIN_CLASS_ROWS
-from rpent.skills.pick_place.features import G, particle_matrix
+from rpent.skills.pick_place.features import FEATURES_M2, G, particle_matrix
 from rpent.skills.pick_place.likelihood import MAD_TO_SD, REJECT_Z, SD_FLOOR
 from rpent.skills.pick_place.success_model import N_FOLDS, _Calibrator, _fit_gbm
 
@@ -147,6 +147,7 @@ class ProbeModel:
     floor_p: float = 1e-4
     stats: dict[str, Any] = field(default_factory=dict)
     reading_rate: dict[str, float] = field(default_factory=dict)
+    feature_names: tuple[str, ...] = FEATURES_M2           # the class default: a model saved before the schemas
 
     def p_kind(self, X: np.ndarray) -> np.ndarray:
         """P(kind) per particle row of X, columns in ``classes`` order."""
@@ -229,19 +230,19 @@ def _law(x: np.ndarray) -> tuple[float, float]:
     return b, float(max(SD_FLOOR, MAD_TO_SD * np.median(np.abs(x - b))))
 
 
-def true_matrix(rows: list[dict[str, Any]]) -> np.ndarray:
-    """Probe features of each row at its truth: particle_matrix of the stored base, pose and force."""
+def true_matrix(rows: list[dict[str, Any]], names=FEATURES_M2) -> np.ndarray:
+    """Probe features of each row at its truth: particle_matrix of the stored base, pose and force, in ``names`` order."""
     out = []
     for r in rows:
         a = {"mass": np.array([float(r["truth"]["mass"])]), "mu": np.array([float(r["truth"]["mu"])]),
              "com_obj": np.array([r["com_obj_true"]], dtype=float)}
-        out.append(particle_matrix(r["base"], a, r["pose"], float(r["force"]))[0])
+        out.append(particle_matrix(r["base"], a, r["pose"], float(r["force"]), names)[0])
     return np.array(out)
 
 
-def fit_probe_model(rows: list[dict[str, Any]], probe: str, seed: int = 0) -> ProbeModel:
+def fit_probe_model(rows: list[dict[str, Any]], probe: str, seed: int = 0, names=FEATURES_M2) -> ProbeModel:
     classes = PROBE_KINDS[probe]
-    X = true_matrix(rows)
+    X = true_matrix(rows, names)
     y = np.array([r["kind"] for r in rows])
     groups = np.array([r["object"] for r in rows])
     clf = CalibratedClassifier.fit(X, y, groups, classes, seed)
@@ -261,10 +262,11 @@ def fit_probe_model(rows: list[dict[str, Any]], probe: str, seed: int = 0) -> Pr
         p_thrown = CalibratedClassifier.fit(X, np.where(thrown, "thrown", "kept"), groups, ("kept", "thrown"), seed)
     stats = {"n": len(rows), "kinds": {k: int((y == k).sum()) for k in classes}, "n_reading": n_reading,
              "reading_rate": rate, "thrown": int(thrown.sum())}
-    return ProbeModel(probe=probe, classes=classes, clf=clf, reading=reading, p_thrown=p_thrown, stats=stats, reading_rate=rate)
+    return ProbeModel(probe=probe, classes=classes, clf=clf, reading=reading, p_thrown=p_thrown, stats=stats, reading_rate=rate,
+                      feature_names=tuple(names))
 
 
-def fit_probe_models(rows: list[dict[str, Any]], seed: int = 0) -> dict[str, ProbeModel]:
-    """One ProbeModel per probe present in the (training) probe-corpus rows."""
-    return {probe: fit_probe_model([r for r in rows if r["probe"] == probe], probe, seed)
+def fit_probe_models(rows: list[dict[str, Any]], seed: int = 0, names=FEATURES_M2) -> dict[str, ProbeModel]:
+    """One ProbeModel per probe present in the (training) probe-corpus rows, on ``names``."""
+    return {probe: fit_probe_model([r for r in rows if r["probe"] == probe], probe, seed, names)
             for probe in PROBE_KINDS if any(r["probe"] == probe for r in rows)}

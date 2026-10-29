@@ -53,9 +53,11 @@ def _decline(reason="dropped_high carries the cost"):
 
 
 def test_outcomes_and_irreversible():
-    assert OUTCOMES == ("placed_stable", "tipped", "missed", "dropped_low", "dropped_high",
-                        "rolled_off", "not_lifted")
-    assert IRREVERSIBLE == ("dropped_high", "rolled_off")
+    from rpent.skills.pick_place.protocol import MOTION_OUTCOMES
+
+    assert MOTION_OUTCOMES == ("placed_stable", "tipped", "missed", "dropped_low", "dropped_high",
+                               "rolled_off", "not_lifted") and OUTCOMES[:7] == MOTION_OUTCOMES
+    assert IRREVERSIBLE[:2] == ("dropped_high", "rolled_off")
 
 
 def test_to_data_keys_and_best_row():
@@ -67,7 +69,8 @@ def test_to_data_keys_and_best_row():
     assert d["assessed"] is True
     assert d["best_option"] == "commit_std"
     assert d["p_success"] == 0.712
-    assert d["p_irreversible"] == {"dropped_high": 0.1, "rolled_off": 0.088}
+    assert d["p_irreversible"] == {"dropped_high": 0.1, "rolled_off": 0.088, "crushed": 0.0, "bruised": 0.0, "broken": 0.0,
+                                   "spilled": 0.0}
     assert d["p_recoverable"] == {"tipped": 0.05, "missed": 0.0, "dropped_low": 0.05, "not_lifted": 0.0}
     assert abs(d["p_held_to_release"] - 0.85) < 1e-3
     assert d["p_drop_height"] == {"0.00-0.05": 0.05, "0.05-0.10": 0.0, "0.10-0.20": 0.1, "0.20+": 0.0}
@@ -149,3 +152,18 @@ def test_best_never_returns_a_probe():
     decline = Assessment(object="mug", destination="plate", options=[_row(id="slow_lift"), _decline()], evidence=[],
                          recommendation="decline", care="normal", visibility=1.0, episode=0)
     assert decline.to_data()["recommended_option"] is None
+
+
+def test_prediction_holds_eleven_classes():
+    from rpent.skills.pick_place.costs import COST
+    from rpent.skills.pick_place.protocol import DAMAGE, IRREVERSIBLE, MOTION_OUTCOMES, OUTCOMES
+
+    assert MOTION_OUTCOMES == ("placed_stable", "tipped", "missed", "dropped_low", "dropped_high", "rolled_off", "not_lifted")
+    assert DAMAGE == ("crushed", "bruised", "broken", "spilled") and OUTCOMES == MOTION_OUTCOMES + DAMAGE
+    assert IRREVERSIBLE == ("dropped_high", "rolled_off") + DAMAGE
+    assert all(COST[k] == 5.0 for k in DAMAGE)
+    p = Prediction.weighted_mean([Prediction(p={"placed_stable": 0.9, "missed": 0.1})], [1.0]).p
+    assert list(p) == list(OUTCOMES) and all(p[k] == 0.0 for k in DAMAGE)
+    d = Assessment(object="mug", destination="plate", options=[_row(), _decline()], evidence=[], recommendation="commit",
+                   care="normal", visibility=1.0, episode=0).to_data()
+    assert set(d["p_irreversible"]) == set(IRREVERSIBLE) and set(d["options"][0]["p"]) == set(OUTCOMES)

@@ -188,3 +188,15 @@ def test_listed_terms_are_replayed_without_the_rejection_rule():
     assert info == {"used": ["outcome", "hold"], "rejected": []} and "hold" in comp["norm"]
     comp, info = m.components(_obs(fz_hold_n=0.5 * G), _flat(N), None, b.arrays(), None, terms=["outcome"])
     assert info == {"used": ["outcome"], "rejected": []} and comp["norm"] == {} and set(comp["cat"]) == {"outcome"}
+
+
+def test_rotation_classifier_stores_its_names_and_label_classes():
+    from rpent.skills.pick_place.features import FEATURES_M2, FEATURES_M2B
+    from rpent.skills.pick_place.protocol import MOTION_OUTCOMES, OUTCOMES
+
+    m = ReadoutModel.fit(_readout_rows())
+    assert m.rot_clf.feature_names == FEATURES_M2 and m.rot_clf.label_classes == MOTION_OUTCOMES
+    rows = [dict(r, label="crushed") if i % 7 == 0 else r for i, r in enumerate(_readout_rows())]
+    m = ReadoutModel.fit(rows, names=FEATURES_M2B)
+    assert m.rot_clf.feature_names == FEATURES_M2B and m.rot_clf.label_classes == OUTCOMES
+    assert m.rot_clf.predict(np.zeros((4, len(FEATURES_M2B))), "crushed").shape == (4,)

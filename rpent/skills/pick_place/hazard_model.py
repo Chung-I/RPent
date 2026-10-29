@@ -31,8 +31,8 @@ from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.linear_model import LogisticRegression
 
 from rpent.skills.pick_place.evaluate import belief_features, score, true_features
-from rpent.skills.pick_place.features import as_vector
-from rpent.skills.pick_place.protocol import DROP_HEIGHT_BINS, OUTCOMES, Prediction
+from rpent.skills.pick_place.features import FEATURES_M2, as_vector
+from rpent.skills.pick_place.protocol import DROP_HEIGHT_BINS, MOTION_OUTCOMES, OUTCOMES, Prediction
 
 AT_RISK = ("approach", "close", "lift", "hold", "transport", "lower")
 RELEASE_CLASSES = ("placed_stable", "tipped", "missed", "rolled_off")
@@ -69,8 +69,8 @@ def _phase_onehot(phase: str) -> np.ndarray:
     return np.array([1.0 if phase == p else 0.0 for p in AT_RISK])
 
 
-def _X_hazard(features: dict[str, float], phase: str) -> np.ndarray:
-    return np.concatenate([as_vector(features), _phase_onehot(phase)])
+def _X_hazard(features: dict[str, float], phase: str, names=FEATURES_M2) -> np.ndarray:
+    return np.concatenate([as_vector(features, names), _phase_onehot(phase)])
 
 
 class _Head:
@@ -114,9 +114,16 @@ def _fit_head(X: np.ndarray, y: np.ndarray, classes: list[str], seed: int, weigh
 
 class HazardModel:
     kind = "hazard"
+    feature_names: tuple[str, ...] = FEATURES_M2           # the class default: a model saved before the schemas
 
-    def __init__(self, not_lifted: _Head, hazard: _Head, release: _Head, hz: float = 50.0):
+    def __init__(self, not_lifted: _Head, hazard: _Head, release: _Head, hz: float = 50.0, feature_names=FEATURES_M2):
         self.not_lifted, self.hazard, self.release, self.hz = not_lifted, hazard, release, hz
+        self.feature_names = tuple(feature_names)
+
+    @staticmethod
+    def supports(labels) -> bool:
+        """Whether the outcome walk can model these labels: motion outcomes only (no damage class)."""
+        return all(lbl in MOTION_OUTCOMES for lbl in labels)
 
     @staticmethod
     def load(path: str) -> HazardModel:
@@ -128,14 +135,14 @@ class HazardModel:
     def loss_hazard(self, features: dict[str, float], phase: str) -> float:
         if phase not in AT_RISK:
             return 0.0
-        return float(self.hazard.proba(_X_hazard(features, phase)[None, :])[0]["1"])
+        return float(self.hazard.proba(_X_hazard(features, phase, self.feature_names)[None, :])[0]["1"])
 
     def p_not_lifted(self, features: dict[str, float]) -> float:
-        return float(self.not_lifted.proba(as_vector(features)[None, :])[0]["1"])
+        return float(self.not_lifted.proba(as_vector(features, self.feature_names)[None, :])[0]["1"])
 
     def predict_matrix(self, X: np.ndarray, planned: list[dict[str, Any]] | None = None
                        ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """The outcome walk for every feature row at once: (P (n x 7, OUTCOMES order), drop-height
+        """The outcome walk for every feature row at once: (P (n x len(OUTCOMES), OUTCOMES order), drop-height
         bins (n x 4), expected loss time (n,), nan where no loss mass)."""
         if planned is None:
             raise ValueError("the hazard model needs the planned trajectory")
@@ -184,7 +191,7 @@ class HazardModel:
     def predict_many(self, features: list[dict[str, float]], planned: list[dict[str, Any]] | None = None) -> list[Prediction]:
         if planned is None:
             raise ValueError("the hazard model needs the planned trajectory")
-        P, DH, LT = self.predict_matrix(np.array([as_vector(f) for f in features]), planned)
+        P, DH, LT = self.predict_matrix(np.array([as_vector(f, self.feature_names) for f in features]), planned)
         return predictions_from_matrix(P, DH, LT)
 
 
@@ -198,13 +205,16 @@ def predictions_from_matrix(P: np.ndarray, DH: np.ndarray | None = None, LT: np.
     return out
 
 
-def fit_hazard_model(rows: list[dict[str, Any]], seed: int = 0) -> HazardModel:
-    X_all = np.array([as_vector(r["features"]) for r in rows])
+def fit_hazard_model(rows: list[dict[str, Any]], seed: int = 0, names=FEATURES_M2) -> HazardModel:
+    """The hazard model on the rows' features in ``names`` order; motion labels only (HazardModel.supports)."""
+    if not HazardModel.supports(r["label"] for r in rows):
+        raise ValueError("the hazard model needs motion labels only")
+    X_all = np.array([as_vector(r["features"], names) for r in rows])
     y_nl = np.array(["1" if r["label"] == "not_lifted" else "0" for r in rows])
     not_lifted = _fit_head(X_all, y_nl, ["0", "1"], seed, logistic=True)
     recs = hazard_records(rows)
     if recs:
-        Xh = np.array([_X_hazard(r["features"], r["phase"]) for r in recs])
+        Xh = np.array([_X_hazard(r["features"], r["phase"], names) for r in recs])
         yh = np.array([str(r["event"]) for r in recs])
         wh = np.array([float(r["weight"]) for r in recs])
         hazard = _fit_head(Xh, yh, ["0", "1"], seed, weight=wh)
@@ -212,12 +222,12 @@ def fit_hazard_model(rows: list[dict[str, Any]], seed: int = 0) -> HazardModel:
         hazard = _Head(None, ["0", "1"], {"0": 1.0 - EPS, "1": EPS})
     rel_rows = [r for r in rows if r["label"] in RELEASE_CLASSES]
     if rel_rows:
-        Xr = np.array([as_vector(r["features"]) for r in rel_rows])
+        Xr = np.array([as_vector(r["features"], names) for r in rel_rows])
         yr = np.array([r["label"] for r in rel_rows])
         release = _fit_head(Xr, yr, list(RELEASE_CLASSES), seed)
     else:
         release = _Head(None, list(RELEASE_CLASSES), {c: 1.0 / len(RELEASE_CLASSES) for c in RELEASE_CLASSES})
-    return HazardModel(not_lifted, hazard, release)
+    return HazardModel(not_lifted, hazard, release, feature_names=names)
 
 
 def _score_hazard(model: HazardModel, rows_val: list[dict[str, Any]], rows_train: list[dict[str, Any]], seed: int,
@@ -236,9 +246,9 @@ def _score_hazard(model: HazardModel, rows_val: list[dict[str, Any]], rows_train
 
 
 def train_hazard(rows_train: list[dict[str, Any]], rows_val: list[dict[str, Any]], out_path: str, seed: int = 0,
-                 n_belief: int = 16, prior_fn=None, features: str = "nominal") -> dict[str, Any]:
+                 n_belief: int = 16, prior_fn=None, features: str = "nominal", names=FEATURES_M2) -> dict[str, Any]:
     fit_rows = [dict(r, features=true_features(r)) for r in rows_train] if features == "true" else rows_train
-    model = fit_hazard_model(fit_rows, seed)
+    model = fit_hazard_model(fit_rows, seed, names)
     model.save(out_path)
     metrics = _score_hazard(model, rows_val, rows_train, seed, n_belief, prior_fn=prior_fn, features=features)
     metrics.update({"kind": "hazard", "held_out_objects": sorted({r["object"] for r in rows_val}),

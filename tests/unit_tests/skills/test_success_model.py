@@ -97,3 +97,47 @@ def test_predict_matrix_equals_predict_many():
     P, dh, lt = model.predict_matrix(np.array([as_vector(f) for f in feats]))
     want = np.array([[p.p[k] for k in OUTCOMES] for p in model.predict_many(feats)])
     assert dh is None and lt is None and np.allclose(P, want)
+
+
+def _damage_rows(n: int = 600, seed: int = 3) -> list[dict]:
+    """Synthetic rows of three kinds of object (by object id): steel (no flag), crushable boxes (frag_crush, half the
+    rows crushed) and fillable cups (fill 0.5, a quarter of the rows spilled)."""
+    out = []
+    for i, r in enumerate(synthetic_rows(n, seed=seed)):
+        kind = i % 3
+        f = dict(r["features"], frag_crush=float(kind == 1), fillable=float(kind == 2), fill=0.5 if kind == 2 else 0.0)
+        label = "crushed" if kind == 1 and i % 2 == 0 else ("spilled" if kind == 2 and i % 4 == 0 else r["label"])
+        out.append(dict(r, features=f, label=label))
+    return out
+
+
+def test_models_store_their_feature_names(tmp_path):
+    from rpent.skills.pick_place.features import FEATURES_M2, FEATURES_M2B
+    from rpent.skills.pick_place.success_model import fit_success_model
+
+    m = fit_success_model(_damage_rows(), names=FEATURES_M2B)
+    assert m.feature_names == FEATURES_M2B
+    m.save(str(tmp_path / "b.joblib"))
+    assert SuccessModel.load(str(tmp_path / "b.joblib")).feature_names == FEATURES_M2B
+    old = fit_success_model(synthetic_rows(300))
+    assert old.feature_names == FEATURES_M2
+    vars(old).pop("feature_names", None)                     # a model saved before the schemas
+    old.save(str(tmp_path / "old.joblib"))
+    assert SuccessModel.load(str(tmp_path / "old.joblib")).feature_names == FEATURES_M2
+
+
+def test_masks_zero_inapplicable_damage_classes():
+    from rpent.skills.pick_place.features import FEATURES_M2B, as_vector
+    from rpent.skills.pick_place.success_model import fit_success_model
+
+    rows = _damage_rows()
+    m = fit_success_model(rows, names=FEATURES_M2B)
+    assert {"crushed", "spilled"} <= set(m.classes)
+    steel = [r["features"] for i, r in enumerate(rows) if i % 3 == 0][:20]
+    cup = [r["features"] for i, r in enumerate(rows) if i % 3 == 2][:20]
+    for p in m.predict_many(steel):
+        assert p.p["crushed"] == 0.0 and p.p["spilled"] == 0.0 and abs(sum(p.p.values()) - 1.0) < 1e-9
+    for p in m.predict_many(cup):
+        assert p.p["spilled"] > 0.0 and p.p["crushed"] == 0.0
+    P, _, _ = m.predict_matrix(np.array([as_vector(f, FEATURES_M2B) for f in steel]))
+    assert (P[:, OUTCOMES.index("crushed")] == 0.0).all() and np.allclose(P.sum(axis=1), 1.0)

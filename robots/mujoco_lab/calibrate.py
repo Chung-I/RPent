@@ -80,7 +80,7 @@ from rpent.skills.pick_place.evaluate import (_ece, coverage_design, ece_ci, ece
                                               object_sums, object_weights, per_class, score)
 from rpent.skills.pick_place.features import extract
 from rpent.skills.pick_place.probes import PROBE_KINDS, PROBE_SECONDS
-from rpent.skills.pick_place.protocol import IRREVERSIBLE, OUTCOMES, RECOVERABLE, Prediction
+from rpent.skills.pick_place.protocol import IRREVERSIBLE, MOTION_OUTCOMES, OUTCOMES, RECOVERABLE, Prediction
 from rpent.skills.pick_place.tools import MAX_PROBES, _threshold, assess_pick, pick_and_place
 
 PROTOCOLS = ("commit", "probe_first", "repair", "random_row", "probe_all", "policy")
@@ -484,10 +484,10 @@ def calibration_block(att: list[dict[str, Any]], rng: np.random.Generator, cover
     if not att:
         return {"n": 0, "ece": None, "ece_ci95_object_bootstrap": None, "brier": None, "brier_const": None, "by_subgroup": {},
                 "per_class": None, "ece_iid_floor": None, "outcomes": {}, "by_option": {}, "by_destination": {}, "acceptance": None}
-    preds = preds or [Prediction(p={k: float(t["declared"]["p"][k]) for k in OUTCOMES}) for t in att]
+    preds = preds or [Prediction(p={k: float(t["declared"]["p"].get(k, 0.0)) for k in OUTCOMES}) for t in att]
     const = np.array([t["const"] for t in att], dtype=float) if all(t.get("const") is not None for t in att) else None
     sc = score(preds, att, [], const=const)
-    P = np.array([[x.p[k] for k in OUTCOMES] for x in preds])
+    P = np.array([[x.p.get(k, 0.0) for k in OUTCOMES] for x in preds])
     labels = [t["label"] for t in att]
     p, y, objects = P[:, 0], np.array([lbl == "placed_stable" for lbl in labels], dtype=float), [t["object"] for t in att]
     ci = ece_ci(p, y, objects, rng)
@@ -591,11 +591,15 @@ def realized_cost(rows: list[dict[str, Any]], rng: np.random.Generator, n_boot: 
 
 
 def _rescale(P: dict[str, float], q: float) -> Prediction:
-    """P(placed_stable) set to q; the other classes rescaled to sum to 1 - q."""
-    rest = float(sum(float(P[k]) for k in OUTCOMES[1:]))
+    """P(placed_stable) set to q; the other classes rescaled to sum to 1 - q (spread over the motion classes when
+    they all have probability 0: no damage class gets mass the model did not give it)."""
+    rest = float(sum(float(P.get(k, 0.0)) for k in OUTCOMES[1:]))
     out = {"placed_stable": float(q)}
     for k in OUTCOMES[1:]:
-        out[k] = float(P[k]) * (1.0 - q) / rest if rest > 1e-12 else (1.0 - q) / (len(OUTCOMES) - 1)
+        if rest > 1e-12:
+            out[k] = float(P.get(k, 0.0)) * (1.0 - q) / rest
+        else:
+            out[k] = (1.0 - q) / (len(MOTION_OUTCOMES) - 1) if k in MOTION_OUTCOMES else 0.0
     return Prediction(p=out)
 
 

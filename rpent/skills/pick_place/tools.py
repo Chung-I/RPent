@@ -36,7 +36,7 @@ from rpent.skills.pick_place.belief import MIN_ESS, N_PARTICLES, REFRESH_DRAWS, 
 from rpent.skills.pick_place.costs import care_scale, prediction_matrix
 from rpent.skills.pick_place.destinations import DESTINATIONS
 from rpent.skills.pick_place.diagnose import diagnose
-from rpent.skills.pick_place.features import particle_matrix, particle_sides
+from rpent.skills.pick_place.features import model_names, particle_matrix, particle_sides
 from rpent.skills.pick_place.menu import build_menu, estimate, geometry_pose, pinch_limit
 from rpent.skills.pick_place.protocol import OUTCOMES, Assessment, Option
 from rpent.tools.base import ToolResult, tool
@@ -101,11 +101,11 @@ def entry_loglik(belief: ParticleBelief, entry: dict[str, Any], primitives: Any,
     outcome term alone without one); a probe through its probe model. ``terms`` replays exactly an
     entry's recorded terms (a refresh); None applies the rejection rule (a new reading)."""
     a = belief.arrays()
-    X = particle_matrix(entry["base"], a, entry["pose"], float(entry["force"]))
     if entry["type"] == "probe":
         pm = (getattr(primitives, "probe_models", None) or {}).get(entry["obs"]["probe"])
         if pm is None:
             raise ValueError(f"no probe model for {entry['obs']['probe']!r}")
+        X = particle_matrix(entry["base"], a, entry["pose"], float(entry["force"]), model_names(pm))
         return pm.loglik(entry["obs"], X, a, float(entry["force"]), terms=terms)
     obs = entry["obs"]
     _, per = estimate(primitives.model, belief, entry["base"], entry["pose"], float(entry["force"]), entry.get("planned") or [])
@@ -115,6 +115,7 @@ def entry_loglik(belief: ParticleBelief, entry: dict[str, Any], primitives: Any,
             return np.zeros(len(belief)), {"used": [], "rejected": []}
         P = prediction_matrix(per)
         return np.log(np.maximum(FLOOR_P, P[:, OUTCOMES.index(obs["label"])])), {"used": ["outcome"], "rejected": []}
+    X = particle_matrix(entry["base"], a, entry["pose"], float(entry["force"]), model_names(getattr(rm, "rot_clf", None)))
     comp, info = rm.components(obs, per, X, a, particle_sides(a, entry["pose"]), terms=terms)
     return rm.combine(comp), info
 

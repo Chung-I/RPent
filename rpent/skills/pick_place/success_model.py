@@ -12,9 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""The feature classifier: gradient boosting over the seven outcomes, calibrated per class
+"""The feature classifier: gradient boosting over the outcomes, calibrated per class
 on out-of-fold predictions grouped by object (isotonic when every class has enough rows,
-else a sigmoid), with constant predictors for degenerate targets."""
+else a sigmoid), with constant predictors for degenerate targets. A damage class gets probability 0
+on a row whose public flag does not allow it (``DAMAGE_FLAG``), and the row is renormalised."""
 
 from __future__ import annotations
 
@@ -28,13 +29,14 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import GroupKFold
 
 from rpent.skills.pick_place.evaluate import MIN_CLASS_ROWS, belief_features, score, true_features
-from rpent.skills.pick_place.features import as_vector
+from rpent.skills.pick_place.features import FEATURES_M2, as_vector
 from rpent.skills.pick_place.protocol import OUTCOMES, Prediction
 
 N_ESTIMATORS = 200
 MAX_DEPTH = 2
 N_FOLDS = 5
 EPS = 1e-4
+DAMAGE_FLAG = {"crushed": "frag_crush", "bruised": "frag_bruise", "broken": "frag_break", "spilled": "fillable"}
 
 
 class _Calibrator:
@@ -74,9 +76,12 @@ class _Calibrator:
 
 class SuccessModel:
     kind = "classifier"
+    feature_names: tuple[str, ...] = FEATURES_M2           # the class default: a model saved before the schemas
 
-    def __init__(self, clf: Any, classes: list[str], calibrator: _Calibrator | None, const: np.ndarray | None):
+    def __init__(self, clf: Any, classes: list[str], calibrator: _Calibrator | None, const: np.ndarray | None,
+                 feature_names=FEATURES_M2):
         self.clf, self.classes, self.calibrator, self.const = clf, classes, calibrator, const
+        self.feature_names = tuple(feature_names)
 
     @staticmethod
     def load(path: str) -> SuccessModel:
@@ -92,10 +97,22 @@ class SuccessModel:
         if self.calibrator is not None:
             raw = self.calibrator.transform(raw, self.classes)
         raw = np.clip(raw, EPS, None)
-        return raw / raw.sum(axis=1, keepdims=True)
+        raw = raw / raw.sum(axis=1, keepdims=True)
+        return self._mask(raw, X)
+
+    def _mask(self, P: np.ndarray, X: np.ndarray) -> np.ndarray:
+        """Zero the damage classes whose public flag (a column of X) is off, then renormalise each row."""
+        names = list(self.feature_names)
+        cols = [(j, names.index(DAMAGE_FLAG[c])) for j, c in enumerate(self.classes) if c in DAMAGE_FLAG and DAMAGE_FLAG[c] in names]
+        if not cols:
+            return P
+        P = P.copy()
+        for j, k in cols:
+            P[X[:, k] <= 0.0, j] = 0.0
+        return P / P.sum(axis=1, keepdims=True)
 
     def predict_many(self, features: list[dict[str, float]]) -> list[Prediction]:
-        X = np.array([as_vector(f) for f in features])
+        X = np.array([as_vector(f, self.feature_names) for f in features])
         P = self._proba(X)
         out = []
         for row in P:
@@ -109,7 +126,7 @@ class SuccessModel:
         return self.predict_many([features])[0]
 
     def predict_matrix(self, X: np.ndarray, planned: list[dict[str, Any]] | None = None) -> tuple[np.ndarray, None, None]:
-        """Outcome probabilities for feature rows X (n x len(FEATURES)), columns in OUTCOMES order."""
+        """Outcome probabilities for feature rows X (n x len(feature_names)), columns in OUTCOMES order."""
         P = self._proba(np.asarray(X, dtype=float))
         out = np.zeros((len(P), len(OUTCOMES)))
         for j, c in enumerate(self.classes):
@@ -121,14 +138,15 @@ def _fit_gbm(X: np.ndarray, y: np.ndarray, seed: int) -> GradientBoostingClassif
     return GradientBoostingClassifier(n_estimators=N_ESTIMATORS, max_depth=MAX_DEPTH, random_state=seed).fit(X, y)
 
 
-def fit_success_model(rows: list[dict[str, Any]], seed: int = 0) -> SuccessModel:
-    X = np.array([as_vector(r["features"]) for r in rows])
+def fit_success_model(rows: list[dict[str, Any]], seed: int = 0, names=FEATURES_M2) -> SuccessModel:
+    """The classifier on the rows' features in ``names`` order (stored as the model's feature_names)."""
+    X = np.array([as_vector(r["features"], names) for r in rows])
     y = np.array([r["label"] for r in rows])
     groups = np.array([r["object"] for r in rows])
     classes = sorted(set(y))
     if len(classes) == 1:
         const = np.array([1.0 if c == classes[0] else 0.0 for c in OUTCOMES])
-        return SuccessModel(None, list(OUTCOMES), None, const)
+        return SuccessModel(None, list(OUTCOMES), None, const, names)
     counts = {c: int((y == c).sum()) for c in classes}
     kind = "isotonic" if min(counts.values()) >= MIN_CLASS_ROWS else "sigmoid"
     n_groups = len(set(groups))
@@ -144,7 +162,7 @@ def fit_success_model(rows: list[dict[str, Any]], seed: int = 0) -> SuccessModel
         Y = np.array([[1.0 if lbl == c else 0.0 for c in classes] for lbl in y])
         calibrator = _Calibrator(kind).fit(oof, Y, classes)
     clf = _fit_gbm(X, y, seed)
-    return SuccessModel(clf, list(clf.classes_), calibrator, None)
+    return SuccessModel(clf, list(clf.classes_), calibrator, None, names)
 
 
 def evaluate_model(model: Any, rows_val: list[dict[str, Any]], rows_train: list[dict[str, Any]], seed: int = 0,
@@ -162,11 +180,11 @@ def evaluate_model(model: Any, rows_val: list[dict[str, Any]], rows_train: list[
 
 
 def train(rows_train: list[dict[str, Any]], rows_val: list[dict[str, Any]], out_path: str, seed: int = 0,
-          prior_fn=None, features: str = "nominal") -> dict[str, Any]:
-    """Fit on the training rows (on their true-CoM features when ``features="true"``), save, and score
-    on the validation rows in oracle and belief mode."""
+          prior_fn=None, features: str = "nominal", names=FEATURES_M2) -> dict[str, Any]:
+    """Fit on the training rows (on their true-CoM features when ``features="true"``) in ``names`` order, save,
+    and score on the validation rows in oracle and belief mode."""
     fit_rows = [dict(r, features=true_features(r)) for r in rows_train] if features == "true" else rows_train
-    model = fit_success_model(fit_rows, seed)
+    model = fit_success_model(fit_rows, seed, names)
     model.save(out_path)
     metrics = evaluate_model(model, rows_val, rows_train, seed, prior_fn=prior_fn, features=features)
     metrics.update({"kind": "classifier", "held_out_objects": sorted({r["object"] for r in rows_val}),

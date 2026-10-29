@@ -77,7 +77,7 @@ def test_cost_table_and_care_scales_only_irreversible():
     assert expected_cost(Prediction(p=p_tip), 0.0, "high") == expected_cost(Prediction(p=p_tip), 0.0, "low") == 0.5 * COST["tipped"]
     assert expected_cost(Prediction(p=p_high), 0.0, "high") == 0.5 * COST["dropped_high"] * CARE_SCALE["high"]
     assert expected_cost(Prediction(p=p_high), 10.0, "normal") == 0.5 * COST["dropped_high"] + 10 * TIME_COST_PER_S
-    assert set(IRREVERSIBLE) == {"dropped_high", "rolled_off"} and COST["placed_stable"] == 0.0
+    assert set(IRREVERSIBLE) == {"dropped_high", "rolled_off", "crushed", "bruised", "broken", "spilled"} and COST["placed_stable"] == 0.0
 
 
 def _base(destination="bin", v_lift=0.15):

@@ -201,3 +201,33 @@ def test_exact_width_matches_a_linear_program():
         point, yaw = rng.uniform(-0.01, 0.01, size=3), float(rng.uniform(-np.pi, np.pi))
         want, got = _lp_width(hulls, point, yaw), pinch_width(hulls, point, yaw)
         assert (np.isnan(want) and np.isnan(got)) or abs(got - want) < 1e-7, (want, got)
+
+
+def test_feature_schemas_and_damage_sentinels():
+    from rpent.skills.pick_place.features import DAMAGE_FEATURES, FEATURE_SCHEMAS, FEATURES_M2, FEATURES_M2B
+
+    assert FEATURES_M2 == (
+        "width", "slope_deg", "lever", "com_h", "mass", "mu", "load_ratio", "v_lift", "v_transport", "length",
+        "visibility", "base_ratio", "com_height_ratio", "dest_mu", "dest_rim_height", "dest_opening_ratio",
+        "dest_edge_dist", "dest_has_surface", "dest_release_height") and FEATURES == FEATURES_M2
+    assert DAMAGE_FEATURES == ("frag_crush", "frag_bruise", "frag_break", "fillable", "crush_margin", "log_v_damage", "fill",
+                               "spill_margin", "a_transport")
+    assert FEATURES_M2B == FEATURES_M2 + DAMAGE_FEATURES and FEATURE_SCHEMAS == {"m2": FEATURES_M2, "m2b": FEATURES_M2B}
+    f = {"mass": 0.2, "mu": 0.5}
+    v = as_vector(f, FEATURES_M2B)
+    assert np.array_equal(v[:19], as_vector(f)) and v[19:].tolist() == [0.0, 0.0, 0.0, 0.0, -5.0, 5.0, 0.0, 5.0, 2.0]
+    w = as_vector({"crush_margin": float("nan"), "fill": 0.4, "frag_crush": 1.0}, FEATURES_M2B)
+    assert w[FEATURES_M2B.index("crush_margin")] == -5.0 and w[FEATURES_M2B.index("fill")] == 0.4
+    assert w[FEATURES_M2B.index("frag_crush")] == 1.0
+
+
+def test_particle_matrix_follows_the_names():
+    from rpent.skills.pick_place.features import FEATURES_M2B
+    from tests.unit_tests.skills.synthetic import synthetic_pose, synthetic_rows
+
+    base = dict(synthetic_rows(1)[0]["features"], fill=0.6, fillable=1.0)
+    arrays = {"mass": np.array([0.1, 0.4]), "mu": np.array([0.3, 0.6]), "com_obj": np.zeros((2, 3))}
+    X2 = particle_matrix(base, arrays, synthetic_pose(), 20.0)
+    X = particle_matrix(base, arrays, synthetic_pose(), 20.0, FEATURES_M2B)
+    assert X.shape == (2, len(FEATURES_M2B)) and np.array_equal(X[:, :19], X2)
+    assert X[:, FEATURES_M2B.index("fill")].tolist() == [0.6, 0.6] and X[:, FEATURES_M2B.index("crush_margin")].tolist() == [-5.0, -5.0]

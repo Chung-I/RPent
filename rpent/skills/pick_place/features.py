@@ -24,7 +24,7 @@ world frame.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Sequence
+from typing import Any, Sequence
 
 import numpy as np
 
@@ -35,11 +35,27 @@ G = 9.81
 PAD_HALF = (0.004, 0.00875, 0.012)   # pad half-sizes: thickness, width, height (the lab gripper)
 NO_OPENING_RATIO = 10.0              # "opening over footprint" for places without an opening
 
-FEATURES: tuple[str, ...] = (
+FEATURES_M2: tuple[str, ...] = (
     "width", "slope_deg", "lever", "com_h", "mass", "mu", "load_ratio", "v_lift", "v_transport", "length",
     "visibility", "base_ratio", "com_height_ratio", "dest_mu", "dest_rim_height", "dest_opening_ratio",
     "dest_edge_dist", "dest_has_surface", "dest_release_height",
 )
+FEATURES = FEATURES_M2                 # the default schema (a model saved without feature names reads it)
+# milestone 2b: the public fragility flags, the damage margins (computed by the skill, Task 6), the fill and the
+# transport acceleration. A feature dict without one (or with a non-finite one) reads its sentinel: no flag,
+# far from any threshold, empty, the standard carry.
+DAMAGE_SENTINELS: dict[str, float] = {
+    "frag_crush": 0.0, "frag_bruise": 0.0, "frag_break": 0.0, "fillable": 0.0,
+    "crush_margin": -5.0, "log_v_damage": 5.0, "fill": 0.0, "spill_margin": 5.0, "a_transport": 2.0,
+}
+DAMAGE_FEATURES: tuple[str, ...] = tuple(DAMAGE_SENTINELS)
+FEATURES_M2B: tuple[str, ...] = FEATURES_M2 + DAMAGE_FEATURES
+FEATURE_SCHEMAS: dict[str, tuple[str, ...]] = {"m2": FEATURES_M2, "m2b": FEATURES_M2B}
+
+
+def model_names(model: Any) -> tuple[str, ...]:
+    """The feature names a fitted model reads (FEATURES_M2 for a model without them, or for None)."""
+    return tuple(getattr(model, "feature_names", None) or FEATURES_M2)
 
 
 @dataclass
@@ -167,15 +183,17 @@ def extract(geometry: Geometry, point, yaw: float, mass: float, mu: float, force
     }
 
 
-def as_vector(f: dict[str, float]) -> np.ndarray:
-    """Features in FEATURES order; nan (no face under the pads, no height) becomes 0."""
-    v = np.array([float(f.get(k, float("nan"))) for k in FEATURES], dtype=float)
-    v[~np.isfinite(v)] = 0.0
+def as_vector(f: dict[str, float], names: Sequence[str] = FEATURES_M2) -> np.ndarray:
+    """Features in ``names`` order; a missing or non-finite damage feature reads its sentinel, any other nan (no
+    face under the pads, no height) becomes 0."""
+    v = np.array([float(f.get(k, float("nan"))) for k in names], dtype=float)
+    bad = np.flatnonzero(~np.isfinite(v))
+    if len(bad):
+        v[bad] = [DAMAGE_SENTINELS.get(names[i], 0.0) for i in bad]
     return v
 
 
 # ---------------------------------------------------------------- per-particle features (milestone 2)
-_IDX = {k: i for i, k in enumerate(FEATURES)}
 SIDE_DEADBAND_M = 0.002
 
 
@@ -209,22 +227,25 @@ def particle_features(base: dict[str, float], particle: dict, pose: dict, force:
     return out
 
 
-def particle_matrix(base: dict[str, float], arrays: dict[str, np.ndarray], pose: dict, force: float) -> np.ndarray:
-    """``particle_features`` for every particle, as rows in FEATURES order (non-finite becomes 0, as in as_vector)."""
+def particle_matrix(base: dict[str, float], arrays: dict[str, np.ndarray], pose: dict, force: float,
+                    names: Sequence[str] = FEATURES_M2) -> np.ndarray:
+    """``particle_features`` for every particle, as rows in ``names`` order (non-finite becomes 0, as in as_vector);
+    the damage features are the base's."""
     R, p, pt, ey = _pose_arrays(pose)
     m, mu = np.asarray(arrays["mass"], dtype=float), np.asarray(arrays["mu"], dtype=float)
     C = np.asarray(arrays["com_obj"], dtype=float).reshape(-1, 3) @ R.T + p
-    X = np.tile(as_vector(base), (len(m), 1))
+    X = np.tile(as_vector(base, names), (len(m), 1))
+    idx = {k: i for i, k in enumerate(names)}
     h = C[:, 2] - float(pose["low_z"])
     length = float(pose["length"])
     with np.errstate(divide="ignore", invalid="ignore"):
-        X[:, _IDX["mass"]] = m
-        X[:, _IDX["mu"]] = mu
-        X[:, _IDX["load_ratio"]] = m * G / (2 * mu * force)
-        X[:, _IDX["lever"]] = np.abs((C - pt) @ ey)
-        X[:, _IDX["com_h"]] = C[:, 2] - pt[2]
-        X[:, _IDX["base_ratio"]] = np.where(h > 0, float(pose["base_extent"]) / h, np.nan)
-        X[:, _IDX["com_height_ratio"]] = h / length if length > 0 else np.nan
+        X[:, idx["mass"]] = m
+        X[:, idx["mu"]] = mu
+        X[:, idx["load_ratio"]] = m * G / (2 * mu * force)
+        X[:, idx["lever"]] = np.abs((C - pt) @ ey)
+        X[:, idx["com_h"]] = C[:, 2] - pt[2]
+        X[:, idx["base_ratio"]] = np.where(h > 0, float(pose["base_extent"]) / h, np.nan)
+        X[:, idx["com_height_ratio"]] = h / length if length > 0 else np.nan
     X[~np.isfinite(X)] = 0.0
     return X
 

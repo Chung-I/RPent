@@ -56,7 +56,7 @@ from robots.mujoco_lab.robot_spec import load_bundle
 from robots.mujoco_lab.train_models import load_rows, write_manifest
 from rpent.skills.pick_place.belief import ParticleBelief
 from rpent.skills.pick_place.evaluate import rows_of
-from rpent.skills.pick_place.features import particle_matrix, particle_sides
+from rpent.skills.pick_place.features import model_names, particle_matrix, particle_sides
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 COVER = (0.75, 0.85)
@@ -102,7 +102,7 @@ def check_rows(rows: list[dict[str, Any]], bundle: dict[str, Any], grid: list[fl
     for r in rows:
         b = lab_prior(r["pose"], n, rng)
         a = b.arrays()
-        X = particle_matrix(r["features"], a, r["pose"], r["force"])
+        X = particle_matrix(r["features"], a, r["pose"], r["force"], model_names(model))
         P = model.predict_matrix(X, r.get("planned"))[0]
         obs = {"label": r["label"], "readouts": r["readouts"], "force": r["force"]}
         comp, info = readout.components(obs, P, X, a, particle_sides(a, r["pose"]))
@@ -140,8 +140,8 @@ def check_probe_cases(cases: list[list[dict[str, Any]]], bundle: dict[str, Any],
         first = case[0]
         b = lab_prior(first["pose"], n, rng)
         a = b.arrays()
-        terms = [(pms[r["probe"]], {"kind": r["kind"], "reading": r["reading"]}, particle_matrix(r["base"], a, r["pose"], r["force"]),
-                  float(r["force"])) for r in case]
+        terms = [(pms[r["probe"]], {"kind": r["kind"], "reading": r["reading"]},
+                  particle_matrix(r["base"], a, r["pose"], r["force"], model_names(pms[r["probe"]])), float(r["force"])) for r in case]
         truth, sim = generator_truth(first), sim_truth(first)
         c = {"object": first["object"], "label": "+".join(r["kind"] for r in case), "n_probes": len(case),
              "info": {"used": [], "rejected": []}, "prior": _hits(b, truth), "prior_sim": _hits(b, sim), "prior_width": _widths(b),

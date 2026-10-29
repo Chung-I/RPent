@@ -38,7 +38,9 @@ def test_calibrate_two_objects_one_repeat(tmp_path):
     assert saved["n"] == 2 and len(saved["rows"]) == 2
     row = saved["rows"][0]
     assert {"object", "destination", "option", "declared", "outcome", "placed_at_requested", "truth"} <= set(row)
-    assert set(row["declared"]["p"]) == {"placed_stable", "tipped", "missed", "dropped_low", "dropped_high", "rolled_off", "not_lifted"}
+    assert set(row["declared"]["p"]) == {"placed_stable", "tipped", "missed", "dropped_low", "dropped_high", "rolled_off", "not_lifted",
+                                         "crushed", "bruised", "broken", "spilled"}
+    assert all(row["declared"]["p"][k] == 0.0 for k in ("crushed", "bruised", "broken", "spilled"))     # m2: motion classes only
 
 
 def test_follow_recommendation_can_abstain(tmp_path):

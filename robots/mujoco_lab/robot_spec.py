@@ -66,9 +66,14 @@ def manifest_abstain_cost(manifest: dict[str, Any]) -> float | None:
 
 def load_bundle(bundle_dir: str, kind: str | None = None) -> dict[str, Any]:
     """The models a bundle's manifest names: the success model of its kind (or ``kind``), the prior,
-    and the readout and probe models and the novelty guard when present, and the decision's abstain cost."""
+    and the readout and probe models and the novelty guard when present, the decision's abstain cost, and the
+    feature and outcome schemas ("m2" when the manifest names none). Every model must read the schema's features."""
+    from rpent.skills.pick_place.features import FEATURE_SCHEMAS, model_names
+
     man = json.load(open(os.path.join(bundle_dir, "manifest.json")))
     kind = kind or os.environ.get("RPENT_PICK_PLACE_MODEL_KIND") or man.get("kind", "classifier")
+    if kind == "hazard" and not man.get("hazard_model"):
+        raise ValueError(f"{bundle_dir} has no hazard model (the hazard model is not eligible for its labels)")
     path = os.path.join(bundle_dir, man["hazard_model" if kind == "hazard" else "success_model"])
     if kind == "hazard":
         from rpent.skills.pick_place.hazard_model import HazardModel
@@ -100,7 +105,14 @@ def load_bundle(bundle_dir: str, kind: str | None = None) -> dict[str, Any]:
         from rpent.skills.pick_place.guard import KnnGuard
 
         guard = KnnGuard.load(os.path.join(bundle_dir, man["guard"]))
-    return {"manifest": man, "kind": kind, "model": model,
+    schema = man.get("feature_schema", "m2")
+    fitted = [("success model", model), ("guard", guard), ("readout rotation classifier", getattr(readout, "rot_clf", None))]
+    fitted += [(f"probe model {p}", pm) for p, pm in (probe_models or {}).items()]
+    for what, m in fitted:
+        if m is not None and model_names(m) != FEATURE_SCHEMAS[schema]:
+            raise ValueError(f"{bundle_dir}: the {what} reads feature names other than the manifest's {schema!r} schema")
+    return {"manifest": man, "kind": kind, "model": model, "feature_schema": schema,
+            "outcome_schema": man.get("outcome_schema", "m2"),
             "prior": lab_prior_fn if man.get("prior") == "lab_generator" else None,
             "readout_model": readout, "probe_models": probe_models, "guard": guard, "abstain_cost": manifest_abstain_cost(man)}
 

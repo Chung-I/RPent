@@ -36,6 +36,10 @@ COST: dict[str, float] = {
     "not_lifted": 0.5,
     "dropped_high": 5.0,
     "rolled_off": 5.0,
+    "crushed": 5.0,
+    "bruised": 5.0,
+    "broken": 5.0,
+    "spilled": 5.0,
 }
 TIME_COST_PER_S = 0.05
 CARE_SCALE: dict[str, float] = {"low": 0.5, "normal": 1.0, "high": 3.0}

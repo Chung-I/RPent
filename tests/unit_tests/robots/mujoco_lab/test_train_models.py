@@ -187,3 +187,59 @@ def test_a_bundle_with_one_training_object_has_no_guard(tmp_path):
     assert fit_bundle_guard([r for r in rows if r["object"] == "o1"], str(tmp_path), "true") is None
     assert os.listdir(tmp_path) == []
     assert fit_bundle_guard([r for r in rows if r["object"] in ("o1", "o2")], str(tmp_path), "true")["n_calibration"] == 2
+
+
+def test_hazard_model_not_eligible_with_damage_labels(tmp_path):
+    """--feature-schema m2b on a corpus with damage labels: no hazard model, the classifier on FEATURES_M2B, and a
+    manifest with the schemas and the decision; load_bundle refuses a manifest whose schema the models do not match."""
+    from robots.mujoco_lab.robot_spec import load_bundle
+    from robots.mujoco_lab.train_models import main
+    from rpent.skills.pick_place.features import FEATURES_M2B
+    from tests.unit_tests.skills.synthetic import synthetic_rows, with_pose
+
+    rows = with_pose(synthetic_rows(300))
+    rows = [dict(r, label="crushed", features=dict(r["features"], frag_crush=1.0)) if i % 10 == 0 else r for i, r in enumerate(rows)]
+    corpus = tmp_path / "c.jsonl"
+    _write(rows, corpus)
+    out = main(["--corpus", str(corpus), "--out-dir", str(tmp_path / "b"), "--n-belief", "4", "--feature-schema", "m2b"])
+    assert out["hazard"] == "not eligible: damage labels" and out["kind"] == "classifier"
+    man = json.load(open(tmp_path / "b" / "manifest.json"))
+    assert man["feature_schema"] == "m2b" and man["outcome_schema"] == "m2b" and man["decision"] == {"abstain_cost": 1.0}
+    assert man.get("hazard_model") is None and not os.path.exists(tmp_path / "b" / "hazard_model.joblib")
+    B = load_bundle(str(tmp_path / "b"))
+    assert B["model"].feature_names == FEATURES_M2B and B["guard"].feature_names == FEATURES_M2B
+    assert B["readout_model"] is None or B["readout_model"].rot_clf is None or B["readout_model"].rot_clf.feature_names == FEATURES_M2B
+    assert (B["feature_schema"], B["outcome_schema"], B["abstain_cost"]) == ("m2b", "m2b", 1.0)
+    json.dump(dict(man, feature_schema="m2"), open(tmp_path / "b" / "manifest.json", "w"))
+    with pytest.raises(ValueError, match="feature names"):
+        load_bundle(str(tmp_path / "b"))
+
+
+def test_the_default_schema_is_m2(tmp_path):
+    from robots.mujoco_lab.train_models import main
+    from tests.unit_tests.skills.synthetic import synthetic_rows, with_pose
+
+    corpus = tmp_path / "c.jsonl"
+    _write(with_pose(synthetic_rows(300)), corpus)
+    main(["--corpus", str(corpus), "--out-dir", str(tmp_path / "b"), "--n-belief", "4"])
+    man = json.load(open(tmp_path / "b" / "manifest.json"))
+    assert man["feature_schema"] == "m2" and man["outcome_schema"] == "m2" and man.get("decision") is None
+    assert man["hazard_model"] == "hazard_model.joblib"
+
+
+def test_the_m2_bundle_reads_the_m2_schema():
+    """The m2 bundle's models were saved before the schemas: they read FEATURES_M2, and the rotation classifier keeps
+    its seven label columns after OUTCOMES grows to eleven."""
+    import numpy as np
+
+    from robots.mujoco_lab.robot_spec import DEFAULT_BUNDLE, load_bundle
+    from rpent.skills.pick_place.features import FEATURES_M2
+    from rpent.skills.pick_place.protocol import MOTION_OUTCOMES
+
+    B = load_bundle(str(DEFAULT_BUNDLE))
+    assert (B["feature_schema"], B["outcome_schema"]) == ("m2", "m2")
+    assert B["model"].feature_names == FEATURES_M2 and B["guard"].feature_names == FEATURES_M2
+    assert all(pm.feature_names == FEATURES_M2 for pm in B["probe_models"].values())
+    rot = B["readout_model"].rot_clf
+    assert rot.feature_names == FEATURES_M2 and rot.label_classes == MOTION_OUTCOMES
+    assert rot.predict(np.zeros((2, len(FEATURES_M2))), "placed_stable").shape == (2,)

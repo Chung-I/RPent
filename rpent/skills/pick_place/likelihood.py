@@ -45,8 +45,8 @@ from sklearn.model_selection import GroupKFold
 
 from rpent.skills.pick_place.costs import prediction_matrix
 from rpent.skills.pick_place.evaluate import MIN_CLASS_ROWS, true_features
-from rpent.skills.pick_place.features import G, as_vector, particle_sides
-from rpent.skills.pick_place.protocol import OUTCOMES
+from rpent.skills.pick_place.features import FEATURES_M2, G, as_vector, particle_sides
+from rpent.skills.pick_place.protocol import DAMAGE, MOTION_OUTCOMES, OUTCOMES
 from rpent.skills.pick_place.success_model import N_FOLDS, _Calibrator, _fit_gbm
 
 ROT_DEG = 10.0                      # rot_deg at or above this counts as rotated (the lab's ROT_SIDE_DEG)
@@ -74,32 +74,42 @@ def _law(x: np.ndarray) -> tuple[float, float]:
     return b, float(max(SD_FLOOR, MAD_TO_SD * np.median(np.abs(x - b))))
 
 
-def _onehot(labels, n: int) -> np.ndarray:
+def _onehot(labels, n: int, classes=OUTCOMES) -> np.ndarray:
+    """The labels one-hot over ``classes`` (a label outside them reads all zeros)."""
     labels = [labels] * n if isinstance(labels, str) else list(labels)
-    out = np.zeros((n, len(OUTCOMES)))
+    out = np.zeros((n, len(classes)))
     for i, lbl in enumerate(labels):
-        out[i, OUTCOMES.index(lbl)] = 1.0
+        if lbl in classes:
+            out[i, classes.index(lbl)] = 1.0
     return out
 
 
 class RotClassifier:
     """P(rot_deg >= ROT_DEG | features, label): gradient boosting with the success model's
-    out-of-fold calibration grouped by object."""
+    out-of-fold calibration grouped by object. The label is one-hot over ``label_classes`` (the motion
+    outcomes, or every outcome when the training labels hold a damage class)."""
 
-    def __init__(self, clf: Any, calibrator: _Calibrator | None, const: float | None):
+    feature_names: tuple[str, ...] = FEATURES_M2           # the class defaults: a classifier saved before the schemas
+    label_classes: tuple[str, ...] = MOTION_OUTCOMES
+
+    def __init__(self, clf: Any, calibrator: _Calibrator | None, const: float | None, feature_names=FEATURES_M2,
+                 label_classes=MOTION_OUTCOMES):
         self.clf, self.calibrator, self.const = clf, calibrator, const
+        self.feature_names, self.label_classes = tuple(feature_names), tuple(label_classes)
 
-    @staticmethod
-    def design(X: np.ndarray, labels) -> np.ndarray:
+    def design(self, X: np.ndarray, labels) -> np.ndarray:
         X = np.asarray(X, dtype=float).reshape(len(X), -1)
-        return np.hstack([X, _onehot(labels, len(X))])
+        return np.hstack([X, _onehot(labels, len(X), self.label_classes)])
 
     @classmethod
-    def fit(cls, X: np.ndarray, labels, y: np.ndarray, groups: np.ndarray, seed: int = 0) -> RotClassifier:
+    def fit(cls, X: np.ndarray, labels, y: np.ndarray, groups: np.ndarray, seed: int = 0,
+            feature_names=FEATURES_M2) -> RotClassifier:
+        labels = list(labels)
+        classes = OUTCOMES if any(lbl in DAMAGE for lbl in labels) else MOTION_OUTCOMES
         y = np.asarray(y, dtype=int)
         if y.min() == y.max():
-            return cls(None, None, float(y.mean()))
-        D = cls.design(X, labels)
+            return cls(None, None, float(y.mean()), feature_names, classes)
+        D = cls(None, None, None, feature_names, classes).design(X, labels)
         kind = "isotonic" if min(int(y.sum()), int((1 - y).sum())) >= MIN_CLASS_ROWS else "sigmoid"
         calibrator = None
         if len(set(groups)) >= N_FOLDS:
@@ -110,7 +120,7 @@ class RotClassifier:
                     continue
                 oof[te] = _fit_gbm(D[tr], y[tr], seed).predict_proba(D[te])[:, 1]
             calibrator = _Calibrator(kind).fit(oof[:, None], y[:, None].astype(float), ["rot"])
-        return cls(_fit_gbm(D, y, seed), calibrator, None)
+        return cls(_fit_gbm(D, y, seed), calibrator, None, feature_names, classes)
 
     def predict(self, X: np.ndarray, label: str) -> np.ndarray:
         if self.const is not None:
@@ -201,9 +211,9 @@ class ReadoutModel:
         return self.combine(comp), info
 
     @classmethod
-    def fit(cls, rows: list[dict[str, Any]], seed: int = 0) -> ReadoutModel:
-        """Fit the residual laws, the side error and the rotation classifier on (training) corpus rows
-        with readouts, at each row's true mass, friction and CoM."""
+    def fit(cls, rows: list[dict[str, Any]], seed: int = 0, names=FEATURES_M2) -> ReadoutModel:
+        """Fit the residual laws, the side error and the rotation classifier (on ``names``) on (training) corpus
+        rows with readouts, at each row's true mass, friction and CoM."""
         rows = [r for r in rows if r.get("readouts")]
         terms: dict[str, dict[str, tuple[float, float]]] = {}
         stats: dict[str, Any] = {"n_rows": len(rows), "terms": {}}
@@ -241,9 +251,10 @@ class ReadoutModel:
         rot_rows = [r for r in rows if "pose" in r and "com_obj_true" in r and r["readouts"].get("rot_deg") is not None]
         rot_clf = None
         if rot_rows:
-            X = np.array([as_vector(true_features(r)) for r in rot_rows])
+            X = np.array([as_vector(true_features(r), names) for r in rot_rows])
             y = np.array([float(r["readouts"]["rot_deg"]) >= ROT_DEG for r in rot_rows], dtype=int)
-            rot_clf = RotClassifier.fit(X, [r["label"] for r in rot_rows], y, np.array([r["object"] for r in rot_rows]), seed)
+            rot_clf = RotClassifier.fit(X, [r["label"] for r in rot_rows], y, np.array([r["object"] for r in rot_rows]), seed,
+                                        names)
             stats["rot"] = {"n": len(rot_rows), "rate": float(y.mean())}
         return cls(terms=terms, side_error=side_error, rot_clf=rot_clf, stats=stats)
 

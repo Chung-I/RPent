@@ -189,3 +189,13 @@ def test_probe_loglik_replays_listed_terms():
     ll_k, info_k = pm.loglik(near, X, b.arrays(), rows[0]["force"], terms=["kind"])
     np.testing.assert_allclose(ll_k, kind_only)
     assert info_k == {"used": ["kind"], "rejected": []}
+
+
+def test_probe_models_store_their_feature_names():
+    from rpent.skills.pick_place.features import FEATURES_M2, FEATURES_M2B
+
+    assert all(pm.feature_names == FEATURES_M2 for pm in fit_probe_models(_probe_rows(200)).values())
+    models = fit_probe_models(_probe_rows(200), names=FEATURES_M2B)
+    assert models and all(pm.feature_names == FEATURES_M2B for pm in models.values())
+    X = np.zeros((3, len(FEATURES_M2B)))
+    assert all(pm.p_kind(X).shape == (3, len(pm.classes)) for pm in models.values())

@@ -34,7 +34,7 @@ import numpy as np
 
 from rpent.skills.pick_place.belief import Belief
 from rpent.skills.pick_place.features import particle_features
-from rpent.skills.pick_place.protocol import OUTCOMES, Prediction
+from rpent.skills.pick_place.protocol import MOTION_OUTCOMES, OUTCOMES, Prediction
 
 G = 9.81
 MIN_CLASS_ROWS = 30
@@ -116,10 +116,12 @@ def score(preds: list[Prediction], rows: list[dict[str, Any]], train_rows: list[
     """Brier, constant-baseline Brier, ECE on P(placed_stable), and the same by subgroup. The constant
     baseline is the training rows' class frequencies, or ``const`` (one row per scored row, OUTCOMES
     order) when the rows come from models trained on different data (the cross-fit's folds)."""
-    P = np.array([[p.p[k] for k in OUTCOMES] for p in preds])
+    P = np.array([[p.p.get(k, 0.0) for k in OUTCOMES] for p in preds])
     Y = np.array([[1.0 if r["label"] == k else 0.0 for k in OUTCOMES] for r in rows])
     if const is not None:
-        Pc = np.asarray(const, dtype=float).reshape(len(rows), len(OUTCOMES))
+        Pc = np.asarray(const, dtype=float).reshape(len(rows), -1)
+        if Pc.shape[1] == len(MOTION_OUTCOMES) < len(OUTCOMES):             # a result file from before the damage classes
+            Pc = np.hstack([Pc, np.zeros((len(rows), len(OUTCOMES) - len(MOTION_OUTCOMES)))])
     else:
         freq = np.array([np.mean([t["label"] == k for t in train_rows]) if train_rows else 1 / len(OUTCOMES) for k in OUTCOMES])
         Pc = np.tile(freq, (len(rows), 1))

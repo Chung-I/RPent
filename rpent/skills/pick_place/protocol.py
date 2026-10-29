@@ -27,7 +27,7 @@ from typing import Any, Literal
 
 import numpy as np
 
-OUTCOMES: tuple[str, ...] = (
+MOTION_OUTCOMES: tuple[str, ...] = (
     "placed_stable",
     "tipped",
     "missed",
@@ -36,7 +36,9 @@ OUTCOMES: tuple[str, ...] = (
     "rolled_off",
     "not_lifted",
 )
-IRREVERSIBLE: tuple[str, ...] = ("dropped_high", "rolled_off")
+DAMAGE: tuple[str, ...] = ("crushed", "bruised", "broken", "spilled")       # milestone 2b: the object is damaged
+OUTCOMES: tuple[str, ...] = MOTION_OUTCOMES + DAMAGE
+IRREVERSIBLE: tuple[str, ...] = ("dropped_high", "rolled_off") + DAMAGE
 RECOVERABLE: tuple[str, ...] = ("tipped", "missed", "dropped_low", "not_lifted")
 DROP_HEIGHT_BINS: tuple[str, ...] = ("0.00-0.05", "0.05-0.10", "0.10-0.20", "0.20+")
 
@@ -122,7 +124,7 @@ class Option:
             "id": self.id,
             "kind": self.kind,
             "action": dict(self.action),
-            "p": None if pred is None else {k: _r(v) for k, v in pred.p.items()},
+            "p": None if pred is None else {k: _r(pred.p.get(k, 0.0)) for k in OUTCOMES},
             "p_drop_height": None if pred is None or pred.drop_height is None
             else {k: _r(v) for k, v in pred.drop_height.items()},
             "expected_loss_t": None if pred is None else _r(pred.expected_loss_t),
@@ -191,8 +193,8 @@ class Assessment:
         else:
             p_success = _r(pred.p["placed_stable"])
             p_held = _r(pred.held_to_release())
-            p_irr = {k: _r(pred.p[k]) for k in IRREVERSIBLE}
-            p_rec = {k: _r(pred.p[k]) for k in RECOVERABLE}
+            p_irr = {k: _r(pred.p.get(k, 0.0)) for k in IRREVERSIBLE}
+            p_rec = {k: _r(pred.p.get(k, 0.0)) for k in RECOVERABLE}
             p_dh = None if pred.drop_height is None else {k: _r(v) for k, v in pred.drop_height.items()}
         return {
             "assessed": True,

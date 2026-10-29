@@ -53,7 +53,7 @@ import numpy as np
 from rpent.skills.pick_place.belief import N_PARTICLES, Belief, ParticleBelief
 from rpent.skills.pick_place.costs import COST, TIME_COST_PER_S, care_scale, expected_cost, particle_costs
 from rpent.skills.pick_place.destinations import DESTINATIONS, edge_distance
-from rpent.skills.pick_place.features import Geometry, extract, particle_features, particle_matrix
+from rpent.skills.pick_place.features import FEATURES_M2, Geometry, extract, model_names, particle_features, particle_matrix
 from rpent.skills.pick_place.guard import flag_reason
 from rpent.skills.pick_place.probes import PROBE_SECONDS, weigh_force
 from rpent.skills.pick_place.protocol import IRREVERSIBLE, Option, Prediction
@@ -116,7 +116,7 @@ def estimate(model: Any, belief: ParticleBelief, base: dict[str, float], pose: d
     if hasattr(model, "predict_matrix"):
         from rpent.skills.pick_place.hazard_model import predictions_from_matrix
 
-        X = particle_matrix(base, belief.arrays(), pose, force)
+        X = particle_matrix(base, belief.arrays(), pose, force, model_names(model))
         P, DH, LT = model.predict_matrix(X, planned) if hazard else model.predict_matrix(X)
         per = predictions_from_matrix(P, DH, LT)
     else:
@@ -177,10 +177,11 @@ def _probe_rows(probe_models: dict[str, Any], belief: ParticleBelief, geometry: 
     force = weigh_force(f_std)
     base = extract(geometry, mid.point, mid.yaw, PLACEHOLDER["mass"], PLACEHOLDER["mu"], force, PROBE_V_LIFT, 0.0,
                    PROBE_DESTINATION, None, belief.visibility)
-    X = particle_matrix(base, belief.arrays(), pose, force)
+    a = belief.arrays()
     costs = [o._costs for o in continuation]
     rows = []
     for probe, pm in probe_models.items():
+        X = particle_matrix(base, a, pose, force, model_names(pm))
         v = probe_value(belief, costs, pm, X, force, care, rng, abstain_cost=abstain_cost)
         tip = v["p_kind"].get("tipped", 0.0) * COST["tipped"] if probe == "push" else 0.0
         cost = TIME_COST_PER_S * PROBE_SECONDS[probe] + tip + v["expected_cost_after"]
@@ -190,13 +191,13 @@ def _probe_rows(probe_models: dict[str, Any], belief: ParticleBelief, geometry: 
     return rows
 
 
-def guard_queries(options: list[Option], belief: ParticleBelief) -> tuple[np.ndarray, np.ndarray]:
-    """The novelty guard's query: every commit and lower-risk row for every particle (particle_matrix, as the model
-    sees them), with the belief's weights within a row and the rows weighted equally."""
+def guard_queries(options: list[Option], belief: ParticleBelief, names=FEATURES_M2) -> tuple[np.ndarray, np.ndarray]:
+    """The novelty guard's query: every commit and lower-risk row for every particle (particle_matrix in the guard's
+    ``names``, as the model sees them), with the belief's weights within a row and the rows weighted equally."""
     rows = [o for o in options if o.kind in ("commit", "lower_risk")]
     a = belief.arrays()
     w = np.asarray(belief.weights, dtype=float)
-    X = np.vstack([particle_matrix(o._base, a, o._pose, o.action["force"]) for o in rows])
+    X = np.vstack([particle_matrix(o._base, a, o._pose, o.action["force"], names) for o in rows])
     return X, np.tile(w / w.sum(), len(rows)) / len(rows)
 
 
@@ -280,7 +281,7 @@ def build_menu(model: Any, belief: ParticleBelief | Belief, geometry: Geometry, 
         else:
             recommendation, reason = _cost_rule(options, best, care, float(abstain_cost), threshold)
         if guard is not None:
-            check = guard.check(*guard_queries(options, belief))
+            check = guard.check(*guard_queries(options, belief, getattr(guard, "feature_names", None) or FEATURES_M2))
             if check["flag"]:
                 recommendation, reason = "decline", flag_reason(check)
     else:

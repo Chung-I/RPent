@@ -181,3 +181,18 @@ def test_a_reference_without_a_varying_feature_puts_every_row_at_distance_zero()
     assert KnnGuard.from_reference(np.ones((3, 2)), [1.0]).distances(np.zeros((4, 2))).tolist() == [0.0] * 4
     g = KnnGuard.fit([[0.0], [1.0]], ["a", "b"])
     assert g.calibration.tolist() == [0.0, 0.0] and g.check(np.array([[7.0]]))["flag"] is False
+
+
+def test_guard_stores_its_feature_names(tmp_path):
+    from rpent.skills.pick_place.features import FEATURES_M2, FEATURES_M2B
+    from tests.unit_tests.skills.synthetic import synthetic_rows, with_pose
+
+    rows = with_pose(synthetic_rows(200))
+    assert fit_guard(rows, "true", seed=0).feature_names == FEATURES_M2
+    g = fit_guard(rows, "true", seed=0, names=FEATURES_M2B)
+    assert g.feature_names == FEATURES_M2B and g.n_features == len(FEATURES_M2B)
+    g.save(tmp_path / "g.npz")
+    h = KnnGuard.load(tmp_path / "g.npz")
+    assert h.feature_names == FEATURES_M2B
+    with pytest.raises(ValueError, match="other features"):
+        KnnGuard.load(tmp_path / "g.npz", features=FEATURES_M2)

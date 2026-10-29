@@ -157,3 +157,17 @@ def test_predict_matrix_matches_the_scalar_walk(tmp_path):
         assert np.allclose(P[i], [p[k] for k in OUTCOMES], atol=1e-12)
         assert np.allclose(DH[i], list(dh.values()), atol=1e-12)
         assert (lt is None and not np.isfinite(LT[i])) or abs(LT[i] - lt) < 1e-9
+
+
+def test_hazard_model_supports_motion_labels_only_and_stores_names():
+    from rpent.skills.pick_place.features import FEATURES_M2, FEATURES_M2B
+    from rpent.skills.pick_place.hazard_model import fit_hazard_model
+
+    assert HazardModel.supports(["placed_stable", "tipped", "not_lifted"])
+    assert not HazardModel.supports(["placed_stable", "crushed"])
+    rows = synthetic_rows(300)
+    assert fit_hazard_model(rows).feature_names == FEATURES_M2
+    m = fit_hazard_model(rows, names=FEATURES_M2B)
+    assert m.feature_names == FEATURES_M2B
+    P, _, _ = m.predict_matrix(np.zeros((3, len(FEATURES_M2B))), PLANNED_TEMPLATE)
+    assert P.shape == (3, len(OUTCOMES)) and np.allclose(P.sum(axis=1), 1.0)
