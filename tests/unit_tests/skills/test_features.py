@@ -16,7 +16,9 @@
 
 import numpy as np
 
-from rpent.skills.pick_place.features import FEATURES, Geometry, as_vector, extract
+import pytest
+
+from rpent.skills.pick_place.features import FEATURES, PAD_HALF, Geometry, as_vector, extract, pinch_width
 
 
 def _box_geometry(w=0.04, l=0.10, h=0.03, com=(0.0, 0.0, 0.0)):
@@ -122,3 +124,80 @@ def test_particle_sides_has_a_dead_zone():
     pt = np.asarray(pose["pt"]) - np.asarray(pose["p"])
     com = np.array([pt + [0.0, 0.03, 0.0], pt + [0.0, -0.03, 0.0], pt + [0.05, 0.001, 0.0]])
     assert particle_sides({"mass": np.ones(3), "mu": np.ones(3), "com_obj": com}, pose).tolist() == [1, -1, 0]
+
+
+# ---------------------------------------------------------------- the exact pinch width
+def _box_vertices(w=0.04, l=0.10, h=0.03, yaw=0.0, centre=(0.0, 0.0, 0.0)):
+    """The 8 corners of a box (x = length l, y = width w, z = height h), turned by yaw about z."""
+    c, s = np.cos(yaw), np.sin(yaw)
+    R = np.array([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]])
+    corners = np.array([[x, y, z] for x in (-l / 2, l / 2) for y in (-w / 2, w / 2) for z in (-h / 2, h / 2)])
+    return corners @ R.T + np.asarray(centre, dtype=float)
+
+
+def _lp_width(hulls, point, yaw, pad_half=PAD_HALF):
+    """Reference: per hull, two linear programs for its extreme points along the closing axis in the pad's slab."""
+    from scipy.optimize import linprog
+    from scipy.spatial import ConvexHull
+
+    pt = np.asarray(point, dtype=float)
+    ex = np.array([np.cos(yaw), np.sin(yaw), 0.0])
+    ey = np.array([-ex[1], ex[0], 0.0])
+    pad_z, a, b = pt[2] + 0.004, pad_half[1], pad_half[2]
+    S = np.array([ey, -ey, [0.0, 0.0, 1.0], [0.0, 0.0, -1.0]])
+    s_rhs = np.array([a + ey @ pt, a - ey @ pt, pad_z + b, b - pad_z])
+    lo, hi = np.inf, -np.inf
+    for V in hulls:
+        eq = ConvexHull(V).equations
+        A, rhs = np.vstack([eq[:, :3], S]), np.concatenate([-eq[:, 3], s_rhs])
+        for sign in (1.0, -1.0):
+            r = linprog(sign * ex, A_ub=A, b_ub=rhs, bounds=[(None, None)] * 3, method="highs")
+            if r.status != 0:
+                break
+            v = float(ex @ (r.x - pt))
+            lo, hi = min(lo, v), max(hi, v)
+    return hi - lo if hi >= lo else float("nan")
+
+
+def test_exact_width_across_a_box():
+    assert pinch_width([_box_vertices()], np.zeros(3), np.pi / 2) == pytest.approx(0.04, abs=1e-9)
+
+
+def test_exact_width_of_a_tall_box_whose_face_centres_miss_the_pads():
+    """A tall box with one triangle pair per side: every side triangle's centre lies outside the pad's band, so the
+    face-centre width found nothing (Cheez-It d0 in corpus v7: 0.0 cm against 17.0 cm)."""
+    from scipy.spatial import ConvexHull
+
+    V = _box_vertices(h=0.20)
+    tri = V[ConvexHull(V).simplices]
+    C = tri.mean(1)
+    N = np.cross(tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0])
+    N /= np.linalg.norm(N, axis=1, keepdims=True)
+    g = Geometry(centres=C, normals=N, com=np.zeros(3), length=0.10, base_extent=0.02, com_height=0.10,
+                 footprint_half_width=float(np.hypot(0.05, 0.02)), hulls=(V,))
+    f = extract(g, point=np.zeros(3), yaw=np.pi / 2, destination="bin", **COMMON)
+    assert f["width"] == pytest.approx(0.04, abs=1e-9)
+
+
+def test_exact_width_of_two_hulls_spans_both():
+    """The pads close on the outer walls of a two-wall object (a mug's or a box's walls)."""
+    walls = [_box_vertices(w=0.01, l=0.05, h=0.03, centre=(0.0, y, 0.0)) for y in (-0.025, 0.025)]
+    assert pinch_width(walls, np.zeros(3), np.pi / 2) == pytest.approx(0.06, abs=1e-9)
+
+
+def test_exact_width_without_a_hull_in_the_slab_is_nan():
+    assert np.isnan(pinch_width([_box_vertices()], np.array([0.0, 0.0, 0.5]), 0.0))
+
+
+def test_exact_width_matches_a_linear_program():
+    rng = np.random.default_rng(3)
+    for _ in range(40):
+        hulls = []
+        for _ in range(int(rng.integers(1, 5))):
+            from scipy.spatial import ConvexHull
+
+            P = rng.uniform(-0.03, 0.03, size=(12, 3)) + rng.uniform(-0.02, 0.02, size=3)
+            hulls.append(P[ConvexHull(P).vertices])
+        point, yaw = rng.uniform(-0.01, 0.01, size=3), float(rng.uniform(-np.pi, np.pi))
+        want, got = _lp_width(hulls, point, yaw), pinch_width(hulls, point, yaw)
+        assert (np.isnan(want) and np.isnan(got)) or abs(got - want) < 1e-7, (want, got)

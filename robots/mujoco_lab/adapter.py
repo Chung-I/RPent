@@ -489,19 +489,24 @@ class MuJoCoLabEnv:
             N.append(n)
         return np.concatenate(C), np.concatenate(N)
 
-    def _hull_vertices_world(self) -> np.ndarray:
+    def _hull_vertex_list(self) -> list[np.ndarray]:
+        """Each collision hull's vertices in the world frame (MuJoCo collides each one's convex hull)."""
         sim = self.sim
         out = []
         for g in sim.hull_ids:
             mid = sim.m.geom_dataid[g]
             v0, nv = sim.m.mesh_vertadr[mid], sim.m.mesh_vertnum[mid]
             out.append(sim.m.mesh_vert[v0:v0 + nv] @ sim.d.geom_xmat[g].reshape(3, 3).T + sim.d.geom_xpos[g])
-        return np.concatenate(out)
+        return out
+
+    def _hull_vertices_world(self) -> np.ndarray:
+        return np.concatenate(self._hull_vertex_list())
 
     def geometry(self) -> Geometry:
         self._need()
         C, N = self.hull_faces_world()
-        V = self._hull_vertices_world()
+        hulls = self._hull_vertex_list()
+        V = np.concatenate(hulls)
         low = V[:, 2].min()
         support = V[np.abs(V[:, 2] - low) < 0.01][:, :2]
         if len(support) < 3:
@@ -517,7 +522,7 @@ class MuJoCoLabEnv:
             base = 0.0
         com = self.nominal_com()
         return Geometry(centres=C, normals=N, com=com, length=float(self.props["length"]), base_extent=base,
-                        com_height=float(com[2] - low), footprint_half_width=footprint_half)
+                        com_height=float(com[2] - low), footprint_half_width=footprint_half, hulls=tuple(hulls))
 
     def nominal_com(self) -> np.ndarray:
         """The centre of mass the skill may know: the mesh-density CoM of props.json in the current
@@ -532,18 +537,10 @@ class MuJoCoLabEnv:
         return yaw, ex, ey
 
     def pinch_width(self, point: np.ndarray, yaw: float) -> float:
-        sc = self.s["scene"]
-        C, _ = self.hull_faces_world()
-        ex = np.array([np.cos(yaw), np.sin(yaw), 0.0])
-        ey = np.array([-ex[1], ex[0], 0.0])
-        pad_z = point[2] + 0.004
-        band = np.abs(C[:, 2] - pad_z) < sc.PAD_HALF[2]
-        along = np.abs((C - point) @ ey) < sc.PAD_HALF[1]
-        sel = band & along
-        if not sel.any():
-            return float("nan")
-        s = (C[sel] - point) @ ex
-        return float(s.max() - s.min())
+        """The hulls' extent between the pads (features.pinch_width); nan when the pads close on nothing."""
+        from rpent.skills.pick_place.features import pinch_width
+
+        return pinch_width(self._hull_vertex_list(), point, yaw, self.s["scene"].PAD_HALF)
 
     def proposals(self, fractions: tuple[float, ...] = (0.3, 0.5, 0.7)) -> list[Proposal]:
         self._need()

@@ -17,12 +17,14 @@
 Ported from the experiment's ``t3g_features.features_for`` (pinch width, contact-face
 slope, CoM lever and height, load over pad capacity) and extended with the object's
 stability at rest and the destination's properties. Substrate independent: the
-caller supplies hull face centres and normals in the world frame.
+caller supplies hull face centres and normals, and each convex hull's vertices, in the
+world frame.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Sequence
 
 import numpy as np
 
@@ -42,7 +44,9 @@ FEATURES: tuple[str, ...] = (
 
 @dataclass
 class Geometry:
-    """What the features need from the object: hull faces, CoM, extents, all in the world frame."""
+    """What the features need from the object: hull faces, CoM, extents, all in the world frame. ``hulls``: each
+    convex hull's vertices, for the exact pinch width (without them the width comes from the face centres in
+    the pad's band, a lower bound)."""
 
     centres: np.ndarray
     normals: np.ndarray
@@ -51,6 +55,63 @@ class Geometry:
     base_extent: float
     com_height: float
     footprint_half_width: float
+    hulls: tuple[np.ndarray, ...] = ()
+
+
+def pinch_width(hulls: Sequence[np.ndarray], point, yaw: float, pad_half=PAD_HALF) -> float:
+    """The pinch width: the extent along the closing axis of the convex hulls inside the pads' swept slab
+    (|ey . (p - point)| <= pad_half[1] and |z - pad_z| <= pad_half[2], pad_z 4 mm above the point); nan when no
+    hull meets the slab. ``hulls``: each convex hull's vertices in the world frame.
+
+    The slab cuts each hull into a convex polytope, and a linear function is extreme at one of its vertices: a
+    hull vertex inside the slab, a hull edge crossing a slab face, or one of the slab's four corner lines (they
+    run along the closing axis) entering or leaving the hull. Face centres in the band miss a large face: on
+    760 corpus v7 rows that width was short by more than 5 mm, or nan, on 233 (31 %)."""
+    from scipy.spatial import ConvexHull, QhullError
+
+    pt = np.asarray(point, dtype=float)
+    ex = np.array([np.cos(yaw), np.sin(yaw), 0.0])
+    ey = np.array([-ex[1], ex[0], 0.0])
+    ez = np.array([0.0, 0.0, 1.0])
+    c0 = np.array([pt[0], pt[1], pt[2] + 0.004])          # the slab's centre line passes here
+    a, b, tol = float(pad_half[1]), float(pad_half[2]), 1e-12
+    vals: list[np.ndarray] = []
+    for V in hulls:
+        V = np.asarray(V, dtype=float)
+        try:
+            h = ConvexHull(V)
+        except QhullError:                                 # a flat hull: joggle it
+            h = ConvexHull(V, qhull_options="QJ")
+        R = V - c0
+        x, u, w = R @ ex, R @ ey, R @ ez
+        vals.append(x[(np.abs(u) <= a + tol) & (np.abs(w) <= b + tol)])
+        tri = h.simplices
+        E = np.unique(np.sort(np.concatenate([tri[:, [0, 1]], tri[:, [1, 2]], tri[:, [2, 0]]]), axis=1), axis=0)
+        i, j = E[:, 0], E[:, 1]
+        for q, o, lim, olim in ((u, w, a, b), (w, u, b, a)):
+            den = q[j] - q[i]
+            safe = np.where(np.abs(den) > 1e-15, den, np.inf)
+            for d in (lim, -lim):
+                t = (d - q[i]) / safe
+                ok = (np.abs(den) > 1e-15) & (t >= -tol) & (t <= 1 + tol) & (np.abs(o[i] + t * (o[j] - o[i])) <= olim + tol)
+                vals.append((x[i] + t * (x[j] - x[i]))[ok])
+        n, off = h.equations[:, :3], h.equations[:, 3]      # inside: n . p + off <= 0
+        ne = n @ ex
+        par = np.abs(ne) < 1e-15
+        for su in (a, -a):
+            for sw in (b, -b):
+                r = n @ (c0 + su * ey + sw * ez) + off          # along the line p0 + t ex: r + t ne <= 0
+                if np.any(r[par] > tol):
+                    continue
+                tb = -r[~par] / ne[~par]
+                up = ne[~par] > 0
+                if up.all() or not up.any():
+                    continue
+                hi, lo = tb[up].min(), tb[~up].max()
+                if lo <= hi + tol:
+                    vals.append(np.array([lo, hi]))
+    allv = np.concatenate(vals) if vals else np.zeros(0)
+    return float(allv.max() - allv.min()) if allv.size else float("nan")
 
 
 def extract(geometry: Geometry, point, yaw: float, mass: float, mu: float, force: float, v_lift: float,
@@ -68,12 +129,13 @@ def extract(geometry: Geometry, point, yaw: float, mass: float, mu: float, force
     sel = band & along
     if sel.any():
         s = (C[sel] - pt) @ ex
-        width = float(s.max() - s.min())
+        width = pinch_width(geometry.hulls, pt, yaw, pad_half) if len(geometry.hulls) else float(s.max() - s.min())
         cosang = np.abs(N[sel] @ ex)
         facing = cosang > 0.3
         slope = float(np.degrees(np.arccos(np.clip(cosang[facing], 0, 1))).mean()) if facing.any() else 90.0
     else:
-        width, slope = float("nan"), float("nan")
+        width = pinch_width(geometry.hulls, pt, yaw, pad_half) if len(geometry.hulls) else float("nan")
+        slope = float("nan")
     com = np.asarray(geometry.com, dtype=float)
     dest = DESTINATIONS[destination]
     com_height = float(geometry.com_height)
