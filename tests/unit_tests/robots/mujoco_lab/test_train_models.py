@@ -101,3 +101,23 @@ def test_load_rows_keeps_only_trainable_rows(tmp_path):
     _write([{"key": "a__d0", "error": "boom"}, {"key": "b__d0", "declined": "wider than the gripper opening"},
             {"key": "c__d0", "label": "placed_stable"}], path)
     assert [r["key"] for r in load_rows(str(path))] == ["c__d0"]
+
+
+def test_the_split_and_the_folds_keep_an_object_whose_rows_are_all_filtered(tmp_path):
+    """The split and the folds are drawn over the corpus objects (the rows without an error), so an object whose
+    pinches are all declined keeps its part and the other objects keep theirs (corpus v8 declines every pinch of
+    11 objects; drawn over the trainable rows, the v7 and v8 validation sets shared 4 of 14 objects)."""
+    from robots.mujoco_lab.train_models import corpus_objects, main
+    from rpent.skills.pick_place.evaluate import split_objects
+    from tests.unit_tests.skills.synthetic import synthetic_rows, with_pose
+
+    rows = with_pose(synthetic_rows(300))
+    cut = tmp_path / "c.jsonl"
+    _write([dict(r, declined="wider than the gripper opening") if r["object"] == "o3" else r for r in rows]
+           + [{"key": "z__d0", "object": "z", "error": "boom"}], cut)
+    objects = sorted({r["object"] for r in rows})
+    assert corpus_objects([str(cut)]) == objects
+    out = main(["--corpus", str(cut), "--out-dir", str(tmp_path / "m2"), "--n-belief", "4"])
+    assert out["split"] == split_objects(rows, seed=0)
+    folds = main(["--corpus", str(cut), "--out-dir", str(tmp_path / "folds"), "--folds", "3", "--n-belief", "4"])["folds"]
+    assert sorted(folds) == objects

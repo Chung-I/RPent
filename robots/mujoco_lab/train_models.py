@@ -22,7 +22,9 @@ objects in oracle and belief mode, and write a model bundle (models, metrics, ma
 belief mode with the lab prior (the corpus generator); ``--features nominal`` is milestone 1's
 recipe (nominal-CoM features, the parametric prior). When the training rows carry readouts, the
 readout model (likelihood.ReadoutModel) is fitted on them and written into the bundle; a retrain
-clears the bundle's tempers (posterior_check chooses them again).
+clears the bundle's tempers (posterior_check chooses them again). The models learn from the trainable
+rows (corpus.trainable); the object split and the folds are drawn over the corpus objects
+(``corpus_objects``), so an object whose rows are all declined or flagged keeps its part.
 
 ``--probe-corpus PATH`` (with or without ``--corpus``) fits the probe models (probes.ProbeModel) on
 the probe rows of the bundle's training objects, scores each kind classifier on the validation
@@ -66,6 +68,12 @@ TEMPER_GRID = "0.7,0.85,1,1.25,1.5,2,3"
 def load_rows(path: str) -> list[dict]:
     """The trainable rows of a corpus or probe corpus (corpus.trainable)."""
     return [r for r in map(json.loads, open(path)) if trainable(r)]
+
+
+def corpus_objects(paths) -> list[str]:
+    """The objects of the corpus rows without an error. The split and the folds are drawn over these, so a row
+    filter (declined, flagged) does not move an object to another part."""
+    return sorted({r["object"] for path in paths for r in map(json.loads, open(path)) if "error" not in r})
 
 
 def write_manifest(out_dir: str, **fields) -> dict:
@@ -181,7 +189,7 @@ def fold_tempers(bundle: str, a: argparse.Namespace) -> dict:
 def crossfit(a: argparse.Namespace) -> dict:
     """K fold bundles under ``a.out_dir`` (see the module docstring) and ``folds.json``."""
     rows = [r for path in a.corpus for r in load_rows(path)]
-    objects = sorted({r["object"] for r in rows})
+    objects = corpus_objects(a.corpus)
     if len(objects) < 2 * a.folds:
         raise SystemExit(f"{len(objects)} objects are too few for {a.folds} folds")
     folds = fold_assignment(objects, a.folds, a.seed)
@@ -220,7 +228,7 @@ def train_bundle(a: argparse.Namespace, split: dict | None = None, rows: list[di
         from robots.mujoco_lab.prior import lab_prior
 
         prior_fn, prior = lab_prior, "lab_generator"
-    split = split if split is not None else split_objects(rows, seed=a.seed)
+    split = split if split is not None else split_objects([{"object": o} for o in corpus_objects(a.corpus)], seed=a.seed)
     tr, va = rows_of(rows, split["train"]), rows_of(rows, split["val"])
     os.makedirs(a.out_dir, exist_ok=True)
     t0 = time.time()
