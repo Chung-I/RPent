@@ -31,6 +31,10 @@ the probe rows of the bundle's training objects, scores each kind classifier on 
 objects (Brier against the training kind rates), and writes the models, ``probe_metrics.json`` and
 the manifest's ``probe_models``; without ``--corpus`` the split is the bundle's.
 
+Every bundle carries the novelty guard (guard.KnnGuard, ``knn_guard.npz``, manifest key ``guard``), fit on its
+training rows. ``--guard`` alone fits it into an existing bundle (its manifest's corpus, features and split), or into
+each fold bundle of a folds directory.
+
 ``--folds K`` (with ``--corpus``) cross-fits: the corpus objects are split into K folds by a seeded
 shuffle (``folds.json`` maps object to fold); each ``fold_<k>/`` is a full bundle trained on the other
 folds' objects with the deployed recipe (an inner object split of them gives the validation objects,
@@ -61,6 +65,7 @@ READOUT_ROT = "readout_rot.joblib"
 PROBE_METRICS = "probe_metrics.json"
 PROBE_MODEL = "probe_{}.joblib"
 FOLDS = "folds.json"
+GUARD = "knn_guard.npz"
 INNER_VAL = 0.15 / 0.85           # the deployed bundle's validation share of its training objects (split_objects 0.70 / 0.15)
 TEMPER_GRID = "0.7,0.85,1,1.25,1.5,2,3"
 
@@ -122,6 +127,38 @@ def fit_probes(path: str, out_dir: str, split: dict, seed: int = 0) -> dict:
     return out
 
 
+def fit_bundle_guard(rows: list[dict], out_dir: str, features: str, seed: int = 0) -> dict:
+    """The novelty guard on a bundle's training rows, written to ``out_dir/GUARD``; returns its summary (the caller
+    names it in the manifest), or None when the rows hold fewer than two objects (the calibration needs two)."""
+    from rpent.skills.pick_place.guard import fit_guard
+
+    if len({r["object"] for r in rows}) < 2:
+        return None
+    g = fit_guard(rows, features, seed=seed)
+    g.save(os.path.join(out_dir, GUARD))
+    cal = g.calibration
+    return {"n_reference": len(g.reference), "n_features_used": len(g.use), "n_calibration": g.n_calibration, "k": g.k,
+            "alpha": g.alpha, "calibration_min": float(cal.min()), "calibration_median": float(np.median(cal)),
+            "calibration_max": float(cal.max())}
+
+
+def add_guard(out_dir: str, seed: int = 0) -> dict:
+    """``--guard``: fit the guard into an existing bundle from its manifest's corpus, features and split, or into
+    each fold bundle when ``out_dir`` holds a folds.json ({fold: summary})."""
+    if os.path.exists(os.path.join(out_dir, FOLDS)):
+        folds = json.load(open(os.path.join(out_dir, FOLDS)))
+        return {k: add_guard(os.path.join(out_dir, f"fold_{k}"), seed) for k in sorted(set(folds.values()))}
+    man = json.load(open(os.path.join(out_dir, MANIFEST)))
+    corpus = man["corpus"] if isinstance(man["corpus"], list) else [man["corpus"]]
+    rows = [r for path in corpus for r in load_rows(path)]
+    info = fit_bundle_guard(rows_of(rows, bundle_split(out_dir)["train"]), out_dir, man.get("features", "nominal"), seed)
+    write_manifest(out_dir, guard=GUARD if info else None)
+    if info is not None:
+        info["wandb"] = tracking.log_run("train_guard", {"bundle": out_dir, "corpus": corpus, "seed": seed}, info)
+    print(f"{out_dir}: {json.dumps(info)}", file=sys.stderr, flush=True)
+    return info
+
+
 def bundle_split(out_dir: str) -> dict:
     """The object split of an existing bundle (its metrics file)."""
     man_path = os.path.join(out_dir, MANIFEST)
@@ -141,9 +178,12 @@ def main(argv: list[str] | None = None) -> dict:
     ap.add_argument("--features", choices=("true", "nominal"), default="true")
     ap.add_argument("--folds", type=int, default=None, help="cross-fit: K object folds, one bundle per fold (needs --corpus)")
     ap.add_argument("--temper-grid", default=TEMPER_GRID, help="with --folds: the tempers each fold chooses from")
+    ap.add_argument("--guard", action="store_true", help="alone: fit the novelty guard into the existing bundle or folds directory")
     a = ap.parse_args(argv)
+    if a.guard and not a.corpus and not a.probe_corpus:
+        return {"guard": add_guard(a.out_dir, a.seed)}
     if not a.corpus and not a.probe_corpus:
-        ap.error("give --corpus, --probe-corpus, or both")
+        ap.error("give --corpus, --probe-corpus, or both (or --guard alone)")
     if a.folds is not None:
         if not a.corpus or a.folds < 2:
             ap.error("--folds needs --corpus and at least 2 folds")
@@ -245,6 +285,8 @@ def train_bundle(a: argparse.Namespace, split: dict | None = None, rows: list[di
         rm.save(os.path.join(a.out_dir, READOUT_MODEL), os.path.join(a.out_dir, READOUT_ROT))
         readout = {"terms": rm.to_json()["terms"], "side_error": rm.side_error, "stats": rm.stats}
     t3 = time.time()
+    guard = fit_bundle_guard(tr, a.out_dir, a.features, a.seed)
+    t4 = time.time()
     kind = "hazard" if haz["belief"]["brier"] <= clf["belief"]["brier"] else "classifier"
     out = {
         "corpus": a.corpus if len(a.corpus) > 1 else a.corpus[0], "n_rows": len(rows), "split": split, "n_train": len(tr), "n_val": len(va),
@@ -254,13 +296,16 @@ def train_bundle(a: argparse.Namespace, split: dict | None = None, rows: list[di
             "hazard": {"ece": haz["belief"]["ece"], "brier": haz["belief"]["brier"], "brier_const": haz["belief"]["brier_const"]},
         },
         "readout": readout,
-        "seconds": {"classifier": round(t1 - t0, 1), "hazard": round(t2 - t1, 1), "readout": round(t3 - t2, 1)},
+        "guard": guard,
+        "seconds": {"classifier": round(t1 - t0, 1), "hazard": round(t2 - t1, 1), "readout": round(t3 - t2, 1),
+                    "guard": round(t4 - t3, 1)},
     }
     with open(os.path.join(a.out_dir, METRICS), "w") as f:
         json.dump(out, f, indent=1)
     write_manifest(a.out_dir, features=a.features, prior=prior, kind=kind, success_model="success_model.joblib",
                    hazard_model="hazard_model.joblib", metrics=METRICS, corpus=out["corpus"], split_seed=a.seed,
-                   readout_model=READOUT_MODEL if readout else None, tempers={})      # new models: tempers are re-chosen
+                   readout_model=READOUT_MODEL if readout else None, guard=GUARD if guard else None,
+                   tempers={})                                                         # new models: tempers are re-chosen
     out["wandb"] = tracking.log_run("train_models", {"corpus": out["corpus"], "features": a.features, "prior": prior,
                                                      "seed": a.seed, "n_belief": a.n_belief, "out_dir": a.out_dir},
                                     {"acceptance_val_belief": out["acceptance_val_belief"], "kind_hazard": kind == "hazard",

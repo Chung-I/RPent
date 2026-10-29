@@ -94,8 +94,9 @@ def test_system_prompt_names_the_fields():
     from robots.mujoco_lab.prompts.system import RESULT_FIELDS, DESTINATIONS_TEXT
 
     for k in ("p_success", "p_held_to_release", "p_irreversible", "p_recoverable", "p_drop_height", "options",
-              "expected_cost", "recommendation", "decline_reason", "care", "inboard_place"):
+              "expected_cost", "recommendation", "decline_reason", "care", "inboard_place", "`guard`"):
         assert k in RESULT_FIELDS, k
+    assert "unlike the training objects" in RESULT_FIELDS
     for d in ("table_centre", "table_edge", "table_gap", "mouse_pad", "plate", "box", "bin"):
         assert d in DESTINATIONS_TEXT, d
 

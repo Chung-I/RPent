@@ -172,6 +172,24 @@ def test_probe_first_runs_the_recommended_probe_then_the_best_row():
     assert case["cost"] == pytest.approx(TIME_COST_PER_S * (PROBE_SECONDS["push"] + case["attempts"][0]["cost_s"]))
 
 
+def test_each_case_keeps_the_guard_check_of_its_first_assessment():
+    """The commit protocol runs the best row even after a guard decline; the case keeps the check, and the
+    summary counts the cases the guard checked and flagged."""
+    from robots.mujoco_lab.calibrate import guard_block, run_protocol
+    from tests.unit_tests.skills.test_tools import FlagGuard, _prims
+
+    prims = _prims()
+    prims.guard = FlagGuard(True)
+    case = run_protocol(prims, "commit", "table_centre", np.random.default_rng(0))
+    assert case["guard"]["flag"] is True and case["recommendation"] == "decline" and len(case["attempts"]) == 1
+    prims.guard = FlagGuard(False)
+    calm = run_protocol(prims, "commit", "table_centre", np.random.default_rng(0))
+    plain = run_protocol(_prims(), "commit", "table_centre", np.random.default_rng(0))
+    assert calm["guard"]["flag"] is False and plain["guard"] is None
+    assert guard_block([case, calm, plain, {"object": "c", "idx": 0, "error": "boom"}]) == {"n_checked": 2, "n_flagged": 1}
+    assert guard_block([plain]) is None
+
+
 def test_random_row_draws_among_the_same_destination_rows():
     from robots.mujoco_lab.calibrate import run_protocol
     from rpent.skills.pick_place.tools import assess_pick

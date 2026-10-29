@@ -59,7 +59,7 @@ def resolve_bundle(bundle: str | None = None) -> str | None:
 
 def load_bundle(bundle_dir: str, kind: str | None = None) -> dict[str, Any]:
     """The models a bundle's manifest names: the success model of its kind (or ``kind``), the prior,
-    and the readout and probe models when present."""
+    and the readout and probe models and the novelty guard when present."""
     man = json.load(open(os.path.join(bundle_dir, "manifest.json")))
     kind = kind or os.environ.get("RPENT_PICK_PLACE_MODEL_KIND") or man.get("kind", "classifier")
     path = os.path.join(bundle_dir, man["hazard_model" if kind == "hazard" else "success_model"])
@@ -88,9 +88,14 @@ def load_bundle(bundle_dir: str, kind: str | None = None) -> dict[str, Any]:
         if temper is not None:
             for pm in probe_models.values():
                 pm.temper = float(temper)
+    guard = None
+    if man.get("guard"):
+        from rpent.skills.pick_place.guard import KnnGuard
+
+        guard = KnnGuard.load(os.path.join(bundle_dir, man["guard"]))
     return {"manifest": man, "kind": kind, "model": model,
             "prior": lab_prior_fn if man.get("prior") == "lab_generator" else None,
-            "readout_model": readout, "probe_models": probe_models}
+            "readout_model": readout, "probe_models": probe_models, "guard": guard}
 
 
 def load_model(model_path: str | None = None, kind: str | None = None) -> Any:
@@ -127,7 +132,7 @@ def build_lab(sim_dir: str | None = None, model_path: str | None = None, render:
     if b is not None:
         B = load_bundle(b, model_kind)
         return MuJoCoLabPrimitives(env=env, model=B["model"], rng=rng, prior=B["prior"], readout_model=B["readout_model"],
-                                   probe_models=B["probe_models"], threshold=threshold, manifest=B["manifest"])
+                                   probe_models=B["probe_models"], threshold=threshold, manifest=B["manifest"], guard=B["guard"])
     return MuJoCoLabPrimitives(env=env, model=load_model(model_path, model_kind), rng=rng, threshold=threshold)
 
 

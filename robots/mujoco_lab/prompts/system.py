@@ -64,11 +64,17 @@ release height). The top-level numbers repeat the best row's values; `best_optio
   `expected_cost` is the probe's time, the push's tip risk and `expected_cost_after`.
 - `recommendation`: `probe` when the highest-ranked probe row ranks above the best row by more
   than twice `evoi_se` and has `evoi` above 0; else `commit` when the best row's `p_success` is at
-  least 0.7; else `decline`. `recommended_option` names the row it means. `decline_reason` says which outcome
+  least 0.7; else `decline`. The novelty guard overrides these: when it finds the object
+  unlike the training objects, the recommendation is `decline`, and `decline_reason` says so.
+  Then the rows' predictions are not trusted. `recommended_option` names the row it means. `decline_reason` says which outcome
   carries the cost. With no `option_id`, a `decline` recommendation executes nothing, and a
   `probe` recommendation executes nothing while the best row's `p_success` is below 0.7. Pass
   `option_id` `probe_push` or `probe_weigh`, or mode `probe_first`, to run the probe. Pass a
   row's `option_id` to run that row anyway.
+- `guard`: the novelty guard's check of the menu rows. `score` is the median distance to the 10
+  nearest training rows. `p` is the share of training objects that lie at least as far from the
+  other training objects (a small `p` means an unusual object). `flag` is true when `p` is at most
+  0.05. It is null when the skill runs without a guard.
 - Mode `probe_first` runs the recommended probes (at most two, while the recommendation is
   `probe`), then commits as above. Its result lists the probes in `probes`. It stops after a
   probe that throws the object or leaves it out of reach.

@@ -30,6 +30,9 @@ protocols are paired case by case), resets the lab, and runs one protocol throug
   recommendation, then the best row; it scores the probes' declared kinds when the recommendation
   rarely asks for a probe.
 
+Each case keeps the novelty guard's check of its first assessment (``guard``, None without a guard), and the
+summary counts the cases it checked and flagged; the commit protocol runs the best row after a guard decline too.
+
 Every assigned case is kept: a thrown probe or an object out of reach ends it with its cost. A case
 with a flagged probe or attempt, or whose reset did not reach rest (``artifact``, adapter.artifact: pad
 contacts that were not physical), stays in ``rows`` but every metric leaves it out and counts it. The
@@ -135,8 +138,8 @@ def run_protocol(prims: Any, protocol: str, destination: str, rng: np.random.Gen
     if protocol not in PROTOCOLS:
         raise ValueError(f"protocol must be one of {PROTOCOLS}, not {protocol!r}")
     store: dict[str, Any] = {}
-    case: dict[str, Any] = {"protocol": protocol, "recommendation": None, "best_option": None, "probes": [], "attempts": [],
-                            "cost": 0.0, "ended": None}
+    case: dict[str, Any] = {"protocol": protocol, "recommendation": None, "best_option": None, "guard": None, "probes": [],
+                            "attempts": [], "cost": 0.0, "ended": None}
 
     def end(reason: str, error: str | None = None) -> dict[str, Any]:
         case["ended"] = reason
@@ -154,7 +157,7 @@ def run_protocol(prims: Any, protocol: str, destination: str, rng: np.random.Gen
         return end("error", a["error"])
     if not a.get("assessed", True):
         return end("unreachable")
-    case["recommendation"], case["best_option"] = a.get("recommendation"), a.get("best_option")
+    case["recommendation"], case["best_option"], case["guard"] = a.get("recommendation"), a.get("best_option"), a.get("guard")
     if follow and a.get("recommendation") == "decline":
         return end("abstained")
     def probe(option_id: str) -> str | None:
@@ -280,7 +283,8 @@ def _primitives(bundle: str | None, threshold: float | None, model_kind: str | N
         else:
             B = load_bundle(bundle, model_kind)
             prims = MuJoCoLabPrimitives(env=env, model=B["model"], prior=B["prior"], readout_model=B["readout_model"],
-                                        probe_models=B["probe_models"], threshold=threshold, manifest=B["manifest"])
+                                        probe_models=B["probe_models"], threshold=threshold, manifest=B["manifest"],
+                                        guard=B["guard"])
         _STATE["prims"][key] = prims
     return _STATE["prims"][key]
 
@@ -471,6 +475,12 @@ def thrown_block(rows: list[dict[str, Any]]) -> dict[str, Any]:
     return {"n": len(recs), "n_thrown": int(y.sum()), "brier": b, "brier_const": bc, "below_const": None if bc is None else bool(b < bc)}
 
 
+def guard_block(rows: list[dict[str, Any]]) -> dict[str, int] | None:
+    """The cases whose first assessment the novelty guard checked, and those it flagged; None without a guard."""
+    checks = [r["guard"] for r in rows if r.get("guard") is not None]
+    return {"n_checked": len(checks), "n_flagged": sum(bool(c["flag"]) for c in checks)} if checks else None
+
+
 def probes_run(rows: list[dict[str, Any]]) -> dict[str, int]:
     c = Counter(p["probe"] for r in rows for p in (r.get("probes") or []))
     return {"push": c["push"], "weigh": c["weigh"], "cases_with_probes": sum(1 for r in rows if r.get("probes")), "cases": len(rows)}
@@ -555,7 +565,8 @@ def summarize(rows: list[dict[str, Any]], protocol: str, rng: np.random.Generato
            "first_attempt": b1, "second_attempt": calibration_block(second, rng) if protocol == "repair" else None}
     out.update({k: b1[k] for k in ("ece", "ece_ci95_object_bootstrap", "brier", "brier_const", "by_subgroup", "by_destination",
                                    "by_option", "outcomes", "per_class", "ece_iid_floor")})
-    out.update(probe_kind=probe_kind_block(ok), thrown=thrown_block(ok), probes_run=probes_run(ok), realized_cost=realized_cost(rows, rng))
+    out.update(probe_kind=probe_kind_block(ok), thrown=thrown_block(ok), probes_run=probes_run(ok), realized_cost=realized_cost(rows, rng),
+               guard=guard_block(ok))
     if nested and first and protocol != "random_row":
         out["nested"] = calibration_block(first, rng, preds=nested_isotonic(first))
     out["rows"] = rows
