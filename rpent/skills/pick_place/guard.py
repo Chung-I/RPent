@@ -43,9 +43,11 @@ TIE = 1e-12            # a p-value equal to ALPHA flags; a cumulative weight equ
 
 
 def weighted_median(values, weights=None) -> float:
-    """The weighted median; equal weights give np.median (the mean of the two middle values for an even count)."""
+    """The weighted median; equal weights give np.median (the mean of the two middle values for an even count). Values
+    without weight take no part."""
     v = np.asarray(values, dtype=float).ravel()
     w = np.ones_like(v) if weights is None else np.asarray(weights, dtype=float).ravel()
+    v, w = v[w > 0], w[w > 0]
     order = np.argsort(v, kind="stable")
     v, w = v[order], w[order]
     c = np.cumsum(w) / w.sum()
@@ -88,11 +90,11 @@ class KnnGuard:
     @classmethod
     def from_reference(cls, X_ref, calibration, k: int = K, alpha: float = ALPHA,
                        calibration_objects: Sequence[str] = ()) -> "KnnGuard":
-        """A guard whose reference rows are X_ref (standardized by their own mean and sd, constant columns dropped)."""
+        """A guard whose reference rows are X_ref (standardized by their own mean and sd, constant columns dropped: equal
+        minimum and maximum, as the sd of a constant 0.1 column is about 1e-17)."""
         X_ref = np.asarray(X_ref, dtype=float)
-        sd = X_ref.std(0)
-        use = np.flatnonzero(sd > 0)
-        mean, scale = X_ref[:, use].mean(0), sd[use]
+        use = np.flatnonzero(np.ptp(X_ref, axis=0) > 0)
+        mean, scale = X_ref[:, use].mean(0), X_ref[:, use].std(0)
         return cls(mean, scale, use, (X_ref[:, use] - mean) / scale, calibration, k, alpha, calibration_objects, X_ref.shape[1])
 
     @classmethod
@@ -110,9 +112,11 @@ class KnnGuard:
         return self._nn
 
     def distances(self, X) -> np.ndarray:
-        """Each row's mean distance to its K nearest reference rows."""
-        Z = (np.asarray(X, dtype=float).reshape(-1, self.n_features)[:, self.use] - self.mean) / self.scale
-        return self._neighbours().kneighbors(Z)[0].mean(1)
+        """Each row's mean distance to its K nearest reference rows (0 when no reference feature varies)."""
+        X = np.asarray(X, dtype=float).reshape(-1, self.n_features)
+        if len(self.use) == 0:
+            return np.zeros(len(X))
+        return self._neighbours().kneighbors((X[:, self.use] - self.mean) / self.scale)[0].mean(1)
 
     def score(self, X, weights=None) -> float:
         """The weighted median of the rows' distances."""

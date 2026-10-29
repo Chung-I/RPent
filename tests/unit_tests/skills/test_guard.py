@@ -158,3 +158,26 @@ def test_fit_guard_scores_each_training_object_once():
     rows = with_pose(synthetic_rows(300, n_objects=30))
     g = fit_guard(rows, "true", seed=0)
     assert sorted(g.calibration_objects) == sorted({r["object"] for r in rows}) and g.reference.shape[0] == 300
+
+
+def test_a_particle_without_weight_does_not_move_the_score():
+    """Codex review: at a cumulative weight of exactly 0.5 the median took the next value even when its weight was 0."""
+    assert weighted_median([1.0, 2.0, 5.0], [0.5, 0.0, 0.5]) == 3.0
+    g = KnnGuard.from_reference([[0.0], [1.0]], np.full(19, 3.0), k=1)
+    two = g.check(np.array([[1.0], [5.0]]), [0.5, 0.5])
+    three = g.check(np.array([[1.0], [2.0], [5.0]]), [0.5, 0.0, 0.5])
+    assert two["score"] == pytest.approx(4.0) and two["flag"] is True and three == two
+
+
+def test_a_feature_constant_at_an_inexact_value_is_dropped():
+    """Codex review: np.std of a constant 0.1 column is about 1e-17, not 0, so `sd > 0` kept it and blew up the scale."""
+    g = KnnGuard.from_reference(np.column_stack([np.arange(3.0), np.full(3, 0.1)]), np.ones(19), k=1)
+    assert g.use.tolist() == [0] and g.distances(np.array([[1.0, 0.2]]))[0] == pytest.approx(0.0)
+
+
+def test_a_reference_without_a_varying_feature_puts_every_row_at_distance_zero():
+    """Codex review: a reference whose features are all constant (one row, or identical rows) left no feature, and the
+    neighbour search failed. With no feature every row is at distance 0."""
+    assert KnnGuard.from_reference(np.ones((3, 2)), [1.0]).distances(np.zeros((4, 2))).tolist() == [0.0] * 4
+    g = KnnGuard.fit([[0.0], [1.0]], ["a", "b"])
+    assert g.calibration.tolist() == [0.0, 0.0] and g.check(np.array([[7.0]]))["flag"] is False
