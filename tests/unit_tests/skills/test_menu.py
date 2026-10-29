@@ -262,10 +262,12 @@ from rpent.skills.pick_place.probes import PROBE_SECONDS, weigh_force  # noqa: E
 from tests.unit_tests.skills.probe_stubs import FlatWeigh, MuGate, PerfectPush  # noqa: E402
 
 
-def _pmenu(model=None, probe_models=None, destination="table_centre", belief=None, care="normal"):
+def _pmenu(model=None, probe_models=None, destination="table_centre", belief=None, care="normal", guard=None, proposals=None,
+           rng=None):
     belief = belief if belief is not None else _particles(np.random.default_rng(0).uniform(0.1, 0.9, 400), np.ones(400))
-    return build_menu(model or MuGate(f_std=20.0), belief, _geometry(), [P(0.3), P(0.5), P(0.7)], 20.0, care, destination,
-                      plan_fn, np.random.default_rng(1), threshold=0.7, probe_models=probe_models)
+    return build_menu(model or MuGate(f_std=20.0), belief, _geometry(), proposals or [P(0.3), P(0.5), P(0.7)], 20.0, care,
+                      destination, plan_fn, rng if rng is not None else np.random.default_rng(1), threshold=0.7,
+                      probe_models=probe_models, guard=guard)
 
 
 def _by_id(options):
@@ -385,3 +387,86 @@ def test_probe_recommendation_needs_a_margin_beyond_the_monte_carlo_error(monkey
     monkeypatch.setattr(menu, "EVOI_Z", 1e6)
     options, rec = _pmenu(probe_models={"push": PerfectPush(), "weigh": FlatWeigh()})
     assert options[0].id == "probe_push" and rec != "probe"
+
+
+# ---------------------------------------------------------------- the novelty guard
+from rpent.skills.pick_place.features import FEATURES, particle_matrix  # noqa: E402
+from rpent.skills.pick_place.guard import fit_guard, flag_reason  # noqa: E402
+
+
+class StubGuard:
+    """Records the rows and weights the menu passes; flags when told to."""
+
+    def __init__(self, flag):
+        self.flag, self.seen = flag, []
+
+    def check(self, X, weights=None):
+        self.seen.append((np.asarray(X), np.asarray(weights)))
+        return {"guard": "knn", "score": 4.2, "p": 0.02 if self.flag else 0.4, "flag": self.flag, "alpha": 0.05, "k": 10,
+                "n_calibration": 60}
+
+
+SURE = StubModel({0.15: (0.8, 0.1), 0.05: (0.8, 0.1)})       # every row reaches the threshold: the menu would commit
+
+
+def _belief400():
+    return _particles(np.random.default_rng(0).uniform(0.1, 0.9, 400), np.ones(400))
+
+
+def test_a_guard_flag_declines_with_the_guard_reason_and_keeps_the_rows():
+    options, rec = _pmenu(SURE, guard=StubGuard(flag=True))
+    decline = options[-1]
+    assert rec == "decline" and decline.id == "decline" and decline.guard["flag"] is True
+    assert decline.reason == flag_reason(decline.guard)
+    assert {"commit_std", "slow_lift", "firm_grip", "regrasp_com"} <= {o.id for o in options}
+    assert all(o.pred is not None for o in options if o.kind in ("commit", "lower_risk"))
+
+
+def test_without_a_flag_the_recommendation_stands_and_the_check_is_reported():
+    options, rec = _pmenu(SURE, guard=StubGuard(flag=False))
+    assert rec == "commit" and options[-1].guard["flag"] is False and "unlike the training objects" not in options[-1].reason
+    options, rec = _pmenu(SURE)
+    assert rec == "commit" and options[-1].guard is None
+
+
+def test_a_guard_flag_overrides_a_probe_recommendation():
+    probes = {"push": PerfectPush(), "weigh": FlatWeigh()}
+    assert _pmenu(probe_models=probes)[1] == "probe"
+    options, rec = _pmenu(probe_models=probes, guard=StubGuard(flag=True))
+    assert rec == "decline" and options[0].id == "probe_push"
+
+
+def test_the_guard_sees_every_commit_and_lower_risk_row_for_every_particle():
+    g, belief = StubGuard(flag=False), _belief400()
+    options, _ = _pmenu(SURE, destination="table_edge", belief=belief, guard=g)
+    rows = [o for o in options if o.kind in ("commit", "lower_risk")]
+    assert "inboard_place" in {o.id for o in rows}
+    (X, w), = g.seen
+    expect = np.vstack([particle_matrix(o._base, belief.arrays(), o._pose, o.action["force"]) for o in rows])
+    assert X.shape == (len(rows) * 400, len(FEATURES)) and np.array_equal(X, expect)
+    assert np.allclose(w, np.tile(belief.weights / belief.weights.sum(), len(rows)) / len(rows))
+
+
+def test_the_guard_takes_no_random_draws():
+    a, b = np.random.default_rng(1), np.random.default_rng(1)
+    probes = {"push": PerfectPush(), "weigh": FlatWeigh()}
+    _pmenu(probe_models=probes, rng=a)
+    _pmenu(probe_models=probes, rng=b, guard=StubGuard(flag=True))
+    assert a.bit_generator.state == b.bit_generator.state
+
+
+def test_without_rows_the_guard_is_not_asked():
+    g = StubGuard(flag=True)
+    options, rec = _pmenu(SURE, guard=g, proposals=[P(0.3, width=0.12), P(0.5, width=0.13), P(0.7, width=0.12)])
+    assert [o.id for o in options] == ["decline"] and rec == "decline" and g.seen == [] and options[0].guard is None
+    assert options[0].reason == "every proposal is wider than the gripper opening"
+
+
+def test_a_fitted_guard_checks_the_menu():
+    from tests.unit_tests.skills.synthetic import synthetic_rows, with_pose
+
+    guard = fit_guard(with_pose(synthetic_rows(300)), "true", seed=0)
+    options, _ = _pmenu(SURE, guard=guard)
+    rec = options[-1].guard
+    assert set(rec) == {"guard", "score", "p", "flag", "alpha", "k", "n_calibration"} and np.isfinite(rec["score"])
+    assert 0.0 < rec["p"] <= 1.0 and rec["n_calibration"] == 30

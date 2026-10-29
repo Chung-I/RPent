@@ -90,6 +90,12 @@ def _probe_data(probe: dict[str, Any] | None) -> dict[str, Any] | None:
             "evoi": _r(probe["evoi"]), "evoi_se": _r(probe["evoi_se"]), "expected_cost_after": _r(probe["expected_cost_after"])}
 
 
+def _guard_data(check: dict[str, Any] | None) -> dict[str, Any] | None:
+    if check is None:
+        return None
+    return dict(check, score=_r(check["score"]), p=round(float(check["p"]), 4))
+
+
 @dataclass
 class Option:
     """One menu row: an action, its predicted outcomes and its expected cost. A probe row (kind
@@ -104,6 +110,7 @@ class Option:
     expected_cost: float | None
     reason: str = ""
     probe: dict[str, Any] | None = None
+    guard: dict[str, Any] | None = None    # the decline row: the novelty guard's check (guard.KnnGuard.check), else None
     _costs: Any = field(default=None, repr=False, compare=False)       # per-particle expected costs (not serialised)
     _base: dict[str, Any] | None = field(default=None, repr=False, compare=False)
     _pose: dict[str, Any] | None = field(default=None, repr=False, compare=False)
@@ -167,6 +174,13 @@ class Assessment:
                 return row.reason
         return ""
 
+    def guard(self) -> dict[str, Any] | None:
+        """The novelty guard's check (the decline row's), None when the menu ran without a guard or without rows."""
+        for row in self.options:
+            if row.kind == "decline":
+                return row.guard
+        return None
+
     def to_data(self) -> dict[str, Any]:
         best = self.best()
         pred = None if best is None else best.pred
@@ -195,4 +209,5 @@ class Assessment:
             "decline_reason": self.decline_reason(),
             "care": self.care,
             "visibility": _r(self.visibility),
+            "guard": _guard_data(self.guard()),
         }

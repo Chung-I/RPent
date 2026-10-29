@@ -499,6 +499,39 @@ def test_the_substrate_pinch_limit_reaches_the_menu():
     assert d["options"][0]["reason"] == "every proposal is wider than the gripper opening"
 
 
+class FlagGuard:
+    """A novelty guard stub: flags or not, whatever the rows."""
+
+    def __init__(self, flag=True):
+        self.flag = flag
+
+    def check(self, X, weights=None):
+        return {"guard": "knn", "score": 4.2, "p": 0.02 if self.flag else 0.4, "flag": self.flag, "alpha": 0.05, "k": 10,
+                "n_calibration": 60}
+
+
+def test_the_primitives_guard_reaches_the_menu():
+    prims = _prims()
+    prims.guard = FlagGuard(True)
+    d = assess_pick(object="mug", primitives=prims, store={}).data
+    assert d["recommendation"] == "decline" and d["guard"]["flag"] is True
+    assert d["decline_reason"].startswith("the object is unlike the training objects")
+    prims.guard = FlagGuard(False)
+    d = assess_pick(object="mug", care="high", primitives=prims, store={}).data
+    assert d["recommendation"] == "commit" and d["guard"]["flag"] is False
+    assert assess_pick(object="mug", primitives=_prims(), store={}).data["guard"] is None
+
+
+def test_a_guard_decline_runs_nothing_unless_a_row_is_named():
+    prims = _prims()
+    prims.guard = FlagGuard(True)
+    r = pick_and_place(object="mug", primitives=prims, store={}).data
+    assert r["placed"] is False and prims.env.calls == [] and "unlike the training objects" in r["reason"]
+    assert "option_id" in r["next"] and "care" not in r["next"]
+    r2 = pick_and_place(object="mug", option_id="commit_std", primitives=prims, store={}).data
+    assert r2["outcome"] == "placed_stable" and len(prims.env.calls) == 1
+
+
 def test_threshold_reaches_the_menu():
     prims = _prims(model=StubModel(ps=0.5))
     assert assess_pick(object="mug", primitives=prims, store={}).data["recommendation"] == "decline"

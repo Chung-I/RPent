@@ -27,7 +27,7 @@ from rpent.skills.pick_place.protocol import (
 EXPECTED_KEYS = {
     "assessed", "object", "destination", "best_option", "p_success", "p_held_to_release",
     "p_irreversible", "p_recoverable", "p_drop_height", "evidence", "options",
-    "recommendation", "recommended_option", "decline_reason", "care", "visibility",
+    "recommendation", "recommended_option", "decline_reason", "care", "visibility", "guard",
 }
 
 
@@ -86,6 +86,21 @@ def test_decline_only_assessment():
     assert d["p_irreversible"] is None and d["p_drop_height"] is None
     assert d["decline_reason"] == "every proposal is too wide"
     json.dumps(d)
+
+
+def test_the_assessment_reports_the_guard_check():
+    rec = {"guard": "knn", "score": 4.21234, "p": 0.02439, "flag": True, "alpha": 0.05, "k": 10, "n_calibration": 40}
+    decline = _decline("the object is unlike the training objects")
+    decline.guard = rec
+    a = Assessment(object="box", destination="bin", options=[_row(destination="bin"), decline], evidence=[],
+                   recommendation="decline", care="normal", visibility=1.0, episode=0)
+    d = a.to_data()
+    assert d["guard"] == {"guard": "knn", "score": 4.212, "p": 0.0244, "flag": True, "alpha": 0.05, "k": 10, "n_calibration": 40}
+    assert d["recommended_option"] is None and "guard" not in d["options"][-1]
+    json.dumps(d)
+    plain = Assessment(object="mug", destination="plate", options=[_row(), _decline()], evidence=[], recommendation="commit",
+                       care="normal", visibility=1.0, episode=0)
+    assert plain.to_data()["guard"] is None
 
 
 def test_best_ignores_rows_for_other_destinations():

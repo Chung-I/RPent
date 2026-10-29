@@ -17,7 +17,7 @@
 Resources the toolkit injects: ``primitives`` (``.env`` with the lab adapter's method set,
 ``.model`` a SuccessModel or HazardModel, ``.rng``, and optionally ``.prior(pose, n, rng)``, the
 substrate's prior over the hidden properties, ``.readout_model`` and ``.probe_models``, which turn
-attempts and probes into belief updates) and ``store`` (a dict that holds the per-episode
+attempts and probes into belief updates, and ``.guard``, the novelty guard (guard.KnnGuard)) and ``store`` (a dict that holds the per-episode
 assessments and beliefs; separate from RPent's EnvState).
 
 The belief lives in ``store["beliefs"][object_id]`` (``{"episode", "belief", "probes_run"}``) for one
@@ -166,7 +166,8 @@ def _assess(object: str, destination: str, care: str, primitives: Any, store: di
     probes = {p: m for p, m in (getattr(primitives, "probe_models", None) or {}).items() if p not in rec["probes_run"]}
     options, recommendation = build_menu(primitives.model, belief, geometry, proposals, f_std, care, destination,
                                          env.plan_trajectory, primitives.rng, pose_fn=pose_fn, max_open=pinch_limit(env),
-                                         threshold=getattr(primitives, "threshold", None), probe_models=probes or None)
+                                         threshold=getattr(primitives, "threshold", None), probe_models=probes or None,
+                                         guard=getattr(primitives, "guard", None))
     evidence = belief.summary() + [f"standard squeeze {f_std:.0f} N per pad", f"{len(proposals)} pinch proposals along the long axis"]
     if rec["probes_run"]:
         evidence.append(f"probes run this episode: {', '.join(sorted(rec['probes_run']))}")
@@ -183,7 +184,8 @@ def assess_pick(*, object: str, destination: str = "bin", care: str = "normal", 
     Returns the best menu row's probabilities (success, held to release, irreversible and
     recoverable failures, drop-height distribution), the evidence, the ranked menu of options
     with their expected costs, and a recommendation. Every probability is conditional on the
-    object and one menu row.
+    object and one menu row. The recommendation is decline when the novelty guard finds the
+    object unlike the training objects (``guard``).
 
     Args:
         object: The object's name as shown by view_env_state.
@@ -293,8 +295,9 @@ def _commit(a: Assessment, option_id: str | None, object: str, destination: str,
         best = a.best()
         if a.recommendation == "decline" or best is None:
             data = a.to_data()
+            flagged = bool((a.guard() or {}).get("flag"))
             data.update({"placed": False, "reason": f"recommendation is decline: {a.decline_reason()}",
-                         "next": "pass an option_id from the menu to execute anyway, or raise care"})
+                         "next": "pass an option_id from the menu to execute anyway" + ("" if flagged else ", or raise care")})
             return data
         if a.recommendation == "probe" and best.pred.p["placed_stable"] < _threshold(primitives):
             probe = a.best_overall()

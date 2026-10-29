@@ -30,6 +30,10 @@ that expected cost after it; it competes with the other rows in the same ranking
 estimated per simulated result against the best row now, so it is exactly 0 when no result can
 change that row; a probe is recommended only when its row beats the best row by more than EVOI_Z
 Monte Carlo errors.
+
+The novelty guard (``guard``, guard.KnnGuard) sees every commit and lower-risk row for every particle. When it flags
+the object as unlike the training objects, the menu declines and says why, whatever the threshold and the probe rows
+say; the rows stay in the menu, and the decline row keeps the guard's check either way.
 """
 
 from __future__ import annotations
@@ -42,6 +46,7 @@ from rpent.skills.pick_place.belief import N_PARTICLES, Belief, ParticleBelief
 from rpent.skills.pick_place.costs import CARE_SCALE, COST, TIME_COST_PER_S, expected_cost, particle_costs
 from rpent.skills.pick_place.destinations import DESTINATIONS, edge_distance
 from rpent.skills.pick_place.features import Geometry, extract, particle_features, particle_matrix
+from rpent.skills.pick_place.guard import flag_reason
 from rpent.skills.pick_place.probes import PROBE_SECONDS, weigh_force
 from rpent.skills.pick_place.protocol import Option, Prediction
 
@@ -172,6 +177,16 @@ def _probe_rows(probe_models: dict[str, Any], belief: ParticleBelief, geometry: 
     return rows
 
 
+def guard_queries(options: list[Option], belief: ParticleBelief) -> tuple[np.ndarray, np.ndarray]:
+    """The novelty guard's query: every commit and lower-risk row for every particle (particle_matrix, as the model
+    sees them), with the belief's weights within a row and the rows weighted equally."""
+    rows = [o for o in options if o.kind in ("commit", "lower_risk")]
+    a = belief.arrays()
+    w = np.asarray(belief.weights, dtype=float)
+    X = np.vstack([particle_matrix(o._base, a, o._pose, o.action["force"]) for o in rows])
+    return X, np.tile(w / w.sum(), len(rows)) / len(rows)
+
+
 def _rows(proposals: list[Any], f_std: float, destination: str, com_xy: np.ndarray):
     """Candidate rows: (id, kind, proposal, action, cost_s, reason)."""
     dest = DESTINATIONS[destination]
@@ -200,14 +215,15 @@ def build_menu(model: Any, belief: ParticleBelief | Belief, geometry: Geometry, 
                destination: str, plan_fn: Callable[..., list[Any]], rng: np.random.Generator,
                pose_fn: Callable[[Any], dict[str, Any]] | None = None, max_open: float = MAX_OPEN_WIDTH,
                threshold: float | None = None, n: int = N_PARTICLES,
-               probe_models: dict[str, Any] | None = None) -> tuple[list[Option], str]:
+               probe_models: dict[str, Any] | None = None, guard: Any = None) -> tuple[list[Option], str]:
     """The ranked menu and the recommendation. ``pose_fn(proposal)`` gives the pose the particles map
     through (default: ``geometry_pose``); a milestone 1 ``Belief`` becomes n particles at the
     nominal CoM; ``threshold`` None reads DEFAULT_THRESHOLD now, not at import; ``probe_models``
     ({probe: model}) adds a probe row per model. The recommendation is "probe" when the first row
     that is a probe or the best same-destination row is a probe with a positive value of information
     whose expected cost is below the best row's by more than EVOI_Z Monte Carlo errors (read at call
-    time), else "commit" when the best row reaches the threshold, else "decline"."""
+    time), else "commit" when the best row reaches the threshold, else "decline". A ``guard`` (guard.KnnGuard) that
+    flags the rows makes it "decline" with the guard's reason; the decline row keeps the guard's check."""
     threshold = DEFAULT_THRESHOLD if threshold is None else float(threshold)
     pose_fn = pose_fn or (lambda prop: geometry_pose(geometry, prop))
     usable = usable_proposals(proposals, max_open)
@@ -234,6 +250,7 @@ def build_menu(model: Any, belief: ParticleBelief | Belief, geometry: Geometry, 
             options += _probe_rows(probe_models, belief, geometry, mid, mid_pose, f_std, care, continuation, rng)
         options.sort(key=lambda o: o.expected_cost)
     same = [o for o in options if o.kind in ("commit", "lower_risk") and o.action["destination"] == destination]
+    check = None
     if same:
         best = same[0]
         worst = max(((k, best.pred.p[k] * COST[k]) for k in best.pred.p), key=lambda kv: kv[1])
@@ -243,8 +260,13 @@ def build_menu(model: Any, belief: ParticleBelief | Belief, geometry: Geometry, 
         if (first.kind == "probe" and first.probe["evoi"] > 0
                 and best.expected_cost - first.expected_cost > EVOI_Z * first.probe["evoi_se"]):
             recommendation = "probe"
+        if guard is not None:
+            check = guard.check(*guard_queries(options, belief))
+            if check["flag"]:
+                recommendation, reason = "decline", flag_reason(check)
     else:
         reason = decline_reason(proposals, max_open) if proposals and not usable else "no row reaches the requested destination"
         recommendation = "decline"
-    options.append(Option(id="decline", kind="decline", action={}, pred=None, cost_s=0.0, expected_cost=None, reason=reason))
+    options.append(Option(id="decline", kind="decline", action={}, pred=None, cost_s=0.0, expected_cost=None, reason=reason,
+                          guard=check))
     return options, recommendation
