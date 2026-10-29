@@ -148,3 +148,20 @@ def test_solved_reads_the_last_pick_result(tmp_path):
     tk2.execute_tool("pick_and_place", {"object": "mug", "destination": "table_centre"})
     assert tk2.solved() is False
     assert tk2.exploration_continuation() is None
+
+
+def test_system_prompt_states_the_cost_rule_and_damage():
+    """Milestone 2b: the cost rule with the abstain cost, numeric care, the eleven outcomes, the squeeze probe and a
+    damaged object."""
+    from robots.mujoco_lab.prompts.system import system_prompt
+    from rpent.skills.pick_place.protocol import DAMAGE, OUTCOMES
+
+    text = system_prompt()
+    assert len(OUTCOMES) == 11 and "eleven outcomes" in text
+    for k in OUTCOMES:
+        assert f"`{k}`" in text or k in text, k
+    for k in DAMAGE:
+        assert k in text.split("Outcomes:")[-1], k
+    for k in ("abstain cost", "`abstain_cost`", "`care_scale`", "a number above 0", "probe_squeeze", "k_hat",
+              "light_grip", "gentle_carry", "`damage`", "`meter_max`", "`damaged`", "object is damaged"):
+        assert k in text, k
