@@ -35,6 +35,7 @@ import importlib
 import math
 import os
 import sys
+import zlib
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
@@ -357,7 +358,8 @@ class MuJoCoLabEnv:
         self._onto_table()
         self.reset_info = self._settle_to_rest()
         self.obj, self.props, self.theta, self.com_end = o, props, th, com_end
-        self.rng = np.random.default_rng(seed)
+        # the reset's stream (the squeeze noise) is per seed and object: every object of a draw is reset with one seed
+        self.rng = np.random.default_rng([int(seed), zlib.crc32(object_id.encode())])
         self._refresh_baselines()
         self.episode += 1
 
@@ -1106,7 +1108,7 @@ class MuJoCoLabEnv:
     def probe_squeeze(self, proposal: Proposal, f_max: float) -> ProbeResult:
         """Close at the proposal with SQUEEZE_F0 a pad, ramp each pad's force to ``f_max`` over SQUEEZE_RAMP_S, hold
         SQUEEZE_HOLD_S, open, rise 10 cm and settle; no lift. Kinds: measured (reading ``squeeze_reading`` of the hidden
-        stiffness, eps from the reset's stream) and damaged (the meter's first threshold crossing). The trace's
+        stiffness, eps from the reset's stream, per seed and object) and damaged (the meter's first threshold crossing). The trace's
         steps carry the commanded force ``f_cmd`` and the meter's time ``t_meter``."""
         self._need()
         self._refresh_baselines()

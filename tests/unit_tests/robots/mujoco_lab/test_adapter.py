@@ -594,3 +594,15 @@ def test_squeeze_probe_reads_the_stiffness():
     assert res.kind == "measured" and res.damage is None
     assert res.reading["k_hat"] == pytest.approx(frag["k_n_per_mm"] * np.exp(0.10 * res.reading["eps"]))
     assert res.displacement_m < 0.02 and not res.thrown and max(x["z"] for x in res.trace) < 0.01
+
+
+def test_squeeze_noise_is_drawn_per_object():
+    """The corpus, the probe corpus and calibrate reset every object of a draw with one seed (seed x 1000 + idx), so
+    the squeeze's noise stream must include the object: two objects at one seed draw different eps; one object at its
+    seed repeats its own."""
+    env = _env()
+    eps = []
+    for oid in (SHORT, CRUSHABLE, SHORT):
+        env.reset(oid, seed=5)
+        eps.append(env.probe_squeeze(_mid(env), 5.0).reading["eps"])
+    assert eps[0] != eps[1] and eps[0] == eps[2]
