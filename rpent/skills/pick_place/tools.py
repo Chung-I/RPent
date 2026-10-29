@@ -242,8 +242,8 @@ def _run_probe(row: Option, object: str, destination: str, care: str, primitives
     before, after = _update(rec, entry, loc, primitives)
     return {"probed": probe, "placed": False, "kind": res.kind, "reading": dict(res.reading),
             "displacement_m": res.displacement_m, "tilt_deg": res.tilt_deg, "thrown": bool(res.thrown), "seconds": res.seconds,
-            "declared": row.to_data()["probe"], "belief_before": before.to_data(), "belief": after.to_data(),
-            "assessment": _reassess(object, destination, care, primitives, store)}
+            "artifact": bool(getattr(res, "artifact", False)), "declared": row.to_data()["probe"], "belief_before": before.to_data(),
+            "belief": after.to_data(), "assessment": _reassess(object, destination, care, primitives, store)}
 
 
 def _attempt(option: Option, object: str, destination: str, care: str, primitives: Any, store: dict[str, Any]) -> dict[str, Any]:
@@ -270,6 +270,7 @@ def _attempt(option: Option, object: str, destination: str, care: str, primitive
         "release": None if r.release is None else {k: r.release.get(k) for k in ("tilt_deg", "displacement_xy_m", "drop_height_m", "final_zone")},
         "option": option.id,
         "destination_used": act["destination"],
+        "artifact": bool(getattr(r, "artifact", False)),       # the substrate says the run's contacts were not physical
         "declared": {"p_success": declared["p"]["placed_stable"],
                      "p_irreversible": {k: declared["p"][k] for k in ("dropped_high", "rolled_off")},
                      "p_recoverable": {k: declared["p"][k] for k in ("tipped", "missed", "dropped_low", "not_lifted")},

@@ -18,7 +18,8 @@ The scene lives outside RPent; ``RPENT_MUJOCO_SIM_DIR`` names its folder. This
 module is the only place that imports MuJoCo. It offers what the pick_place skill
 needs: reset an object with hidden properties, locate it, propose pinches, measure
 geometry, plan the hand trajectory, execute pinch → lift → transport → set-down →
-release, and label the outcome.
+release, and label the outcome. A contact monitor flags the runs whose pad contacts
+were not physical, and those after a reset that did not reach rest (``artifact``).
 """
 
 from __future__ import annotations
@@ -72,6 +73,10 @@ REST_CAP_S = 3.0             # at most this long (an object still moving then st
 REST_WINDOW_S = 0.5          # at rest: over the last 0.5 s it moved under 1 mm and turned under 1 deg
 REST_MOVE_M = 0.001
 REST_TURN_DEG = 1.0
+REV_COS = -0.5               # the contact monitor (artifact): a pad-hull contact is reversed when its normal into the
+REV_N = 1.0                  # object points against the pad's closing direction (cosine below REV_COS) with more than
+REV_STEPS = 5                # REV_N newtons; a run is an artifact with reversed contacts in REV_STEPS squeeze substeps
+DEEP_M = 0.003               # or more, a pad penetration over DEEP_M, or a reset that did not reach rest
 
 def at_rest(poses: list[tuple[np.ndarray, np.ndarray]], hz: int) -> bool:
     """True when every (position, rotation matrix) of the history's last REST_WINDOW_S (one entry per
@@ -86,6 +91,13 @@ def at_rest(poses: list[tuple[np.ndarray, np.ndarray]], hz: int) -> bool:
         if np.linalg.norm(np.asarray(p) - p1) >= REST_MOVE_M or math.degrees(math.acos(float(np.clip(cos, -1.0, 1.0)))) >= REST_TURN_DEG:
             return False
     return True
+
+
+def artifact(rev_steps: int, deepest_mm: float, at_rest: bool = True) -> bool:
+    """True when a run's pad contacts were not physical: reversed contacts in REV_STEPS or more substeps of the
+    squeeze (the native convex collider on thin hull walls), or a pad penetration over DEEP_M (pads driven into
+    the object); or when the reset did not reach rest (an object that chatters on the table)."""
+    return rev_steps >= REV_STEPS or deepest_mm > 1000 * DEEP_M or not at_rest
 
 
 # Primitive fixtures built into every scene (the registry gives the place; this gives the shape).
@@ -175,6 +187,9 @@ class Rollout:
     planned: list[Segment]
     trace: list[dict[str, Any]] = field(default_factory=list)
     readouts: dict[str, Any] = field(default_factory=dict)
+    rev_steps: int = 0                  # the contact monitor (see MuJoCoLabEnv._watch_contacts and artifact)
+    deepest_mm: float = 0.0
+    artifact: bool = False
 
 
 def _steps(distance: float, speed: float, hz: float) -> int:
@@ -388,18 +403,46 @@ class MuJoCoLabEnv:
                     out[3 + k] += abs(float(f[0])) * sign * float(frame[0, 2])
         return out
 
+    def _watch_contacts(self) -> None:
+        """The contact monitor, after a physics substep while the grip squeezes: count the substep in
+        ``rev_steps`` when a pad-hull contact is reversed (REV_COS, REV_N), and keep the deepest pad
+        penetration in ``deepest_mm`` (the rule of the experiment's fix_impact/impact.py)."""
+        import mujoco
+
+        sim, w = self.sim, self._watch
+        hull, f, rev = set(sim.hull_ids), np.zeros(6), False
+        xh = sim.d.xmat[sim.hand].reshape(3, 3)[:, 0]
+        for i in range(sim.d.ncon):
+            c = sim.d.contact[i]
+            for pad, close_dir in ((sim.pad_l, xh), (sim.pad_r, -xh)):
+                if pad in (c.geom1, c.geom2) and ({c.geom1, c.geom2} - {pad}) & hull:
+                    w["deepest_mm"] = max(w["deepest_mm"], -1000 * float(c.dist))
+                    n = c.frame[:3] * (1.0 if c.geom1 == pad else -1.0)            # pad -> object
+                    if float(n @ close_dir) < REV_COS:
+                        mujoco.mj_contactForce(sim.m, sim.d, i, f)
+                        rev = rev or f[0] > REV_N
+        w["rev_steps"] += int(rev)
+
+    def _monitor(self) -> dict[str, Any]:
+        """The contact monitor's record of the run since the last trace began, and the artifact flag."""
+        w = self._watch
+        return {"rev_steps": int(w["rev_steps"]), "deepest_mm": float(w["deepest_mm"]),
+                "artifact": artifact(w["rev_steps"], w["deepest_mm"], bool(self.reset_info["at_rest"]))}
+
     def _install_meter(self) -> None:
         """Wrap the sim's control step: while a trace records (``_metering``), each step also keeps the mean
         of ``_pad_hull_sums`` over its physics substeps in ``_step_forces``. The substeps go through
         ``Sim.substep``, so a metered step moves the hand target smoothly too. The forces vary within a step,
         and a force sampled at the end of one can miss most of it: while the target still jumped once per
         step, a carried lift read 0.9 of the weight and a light object's lift step read below zero (the push
-        averages the same way, see _push_step). The wrapper holds its sim by a weak reference: a strong one
+        averages the same way, see _push_step). While the grip squeezes, each metered substep also feeds the
+        contact monitor (_watch_contacts). The wrapper holds its sim by a weak reference: a strong one
         ties each sim to itself, and a worker's old sims then live until the cycle collector runs."""
         import weakref
 
         ref, plain, sub = weakref.ref(self.sim), type(self.sim).step_ctrl, int(self.s["scene"].SUB)
         self._metering, self._step_forces = False, None
+        self._watch = {"rev_steps": 0, "deepest_mm": 0.0}
 
         def step_ctrl() -> None:
             sim = ref()
@@ -410,6 +453,8 @@ class MuJoCoLabEnv:
             for _ in range(sub):
                 sim.substep()
                 acc += self._pad_hull_sums()
+                if sim.d.ctrl[0] > 0:
+                    self._watch_contacts()
             self._step_forces = acc / sub
 
         self.sim.step_ctrl = step_ctrl
@@ -711,6 +756,7 @@ class MuJoCoLabEnv:
         pitch_of = self._pitch_meter(pt, yaw)
         pitch0: list[float] = []
         self._metering = True
+        self._watch = {"rev_steps": 0, "deepest_mm": 0.0}
 
         def turn(A: np.ndarray, B: np.ndarray) -> float:
             return float(np.degrees(np.arccos(np.clip(((A @ B.T).trace() - 1) / 2, -1, 1))))
@@ -852,7 +898,7 @@ class MuJoCoLabEnv:
             sim.step_ctrl()
             steps[0] += 1
         disp, tilt, thrown = self._probe_cost(p_start, R_start)
-        return ProbeResult("weigh", kind, reading, disp, tilt, thrown, steps[0] / hz, trace)
+        return ProbeResult("weigh", kind, reading, disp, tilt, thrown, steps[0] / hz, trace, **self._monitor())
 
     def probe_push(self) -> ProbeResult:
         """The t3_probes.push_probe motion: the open hand's leading pad, at a quarter of the object's
@@ -864,6 +910,7 @@ class MuJoCoLabEnv:
         self._need()
         self._refresh_baselines()
         sc, sim, hz = self.s["scene"], self.sim, self.s["scene"].CTRL_HZ
+        self._watch = {"rev_steps": 0, "deepest_mm": 0.0}             # the open hand never squeezes
         R, p = sim.obj_mat(), sim.obj_pos()
         axis = R @ np.asarray(self.props["axis"], dtype=float)
         yaw = float(np.arctan2(axis[1], axis[0]) + np.pi / 2)
@@ -912,7 +959,7 @@ class MuJoCoLabEnv:
             sim.step_ctrl()
             steps[0] += 1
         disp, tilt, thrown = self._probe_cost(p_start, R_start)
-        return ProbeResult("push", kind, reading, disp, tilt, thrown, steps[0] / hz, rec)
+        return ProbeResult("push", kind, reading, disp, tilt, thrown, steps[0] / hz, rec, **self._monitor())
 
     def _pitch_meter(self, pt: np.ndarray, yaw: float):
         """A function giving (z+ - z-) / 0.10 for the object-fixed points pt ± 0.05 ey (ey: the hand's
@@ -947,4 +994,4 @@ class MuJoCoLabEnv:
                       com_xy=sim.d.subtree_com[sim.obj][:2].tolist())
         out = label_rollout(trace, dest, release, final)
         return Rollout(out["label"], out["max_z"], out["drop_z"], out["loss_phase"], out["loss_step"], out["loss_t"],
-                       out["loss_speed"], final.zone, release, planned, trace, summarize(trace, out, v_lift))
+                       out["loss_speed"], final.zone, release, planned, trace, summarize(trace, out, v_lift), **self._monitor())

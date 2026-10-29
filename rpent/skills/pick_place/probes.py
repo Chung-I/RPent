@@ -65,6 +65,9 @@ class ProbeResult:
     thrown: bool
     seconds: float
     trace: list[dict[str, Any]] = field(default_factory=list, repr=False)
+    rev_steps: int = 0              # a substrate's contact monitor (mujoco_lab: adapter.artifact): artifact is True
+    deepest_mm: float = 0.0         # when the run's contacts were not physical; a substrate without one leaves the
+    artifact: bool = False          # defaults
 
     def to_data(self) -> dict[str, Any]:
         d = asdict(self)

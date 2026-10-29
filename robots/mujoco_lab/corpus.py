@@ -21,8 +21,10 @@ geometry, the features (true-θ, see features.extract), the planned trajectory
 and the outcome label with the loss record. One worker process per object.
 A drawn pinch the skill never offers (menu.unusable_reason: wider than the
 gripper opening, or off the object) does not run: its row says why
-("declined") and carries no outcome. ``trainable`` says which rows the models
-may learn from.
+("declined") and carries no outcome. Each rollout row carries the contact
+monitor (``rev_steps``, ``deepest_mm``) and its flag: ``artifact`` is True when
+the pad contacts were not physical or the reset did not reach rest
+(adapter.artifact). ``trainable`` says which rows the models may learn from.
 """
 
 from __future__ import annotations
@@ -51,8 +53,9 @@ RELEASE_KEYS = ("tilt_deg", "displacement_xy_m", "drop_height_m", "final_zone", 
 
 
 def trainable(row: dict[str, Any]) -> bool:
-    """A row the models may learn from: it ran (no error) and the skill would have offered its pinch."""
-    return "error" not in row and "declined" not in row
+    """A row the models may learn from: it ran (no error), the skill would have offered its pinch, and its
+    contacts were physical (no artifact flag)."""
+    return "error" not in row and "declined" not in row and not row.get("artifact")
 
 
 def case_rng(seed: int, object_id: str, idx: int) -> np.random.Generator:
@@ -163,6 +166,9 @@ def rollout_row(env, object_id: str, idx: int, seed: int, use_fixtures: bool = F
         "release": _release_summary(r.release),
         "planned": [s.to_dict() for s in r.planned],
         "readouts": r.readouts,
+        "rev_steps": r.rev_steps,
+        "deepest_mm": r.deepest_mm,
+        "artifact": r.artifact,
     }
 
 

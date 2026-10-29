@@ -562,3 +562,25 @@ def test_commit_mode_with_a_probe_recommendation():
     prims.threshold = 1.01
     r = pick_and_place(object="mug", destination="table_centre", primitives=prims, store={}).data
     assert r["placed"] is False and r["recommendation"] == "probe" and "probe_push" in r["next"] and len(env.calls) == 1
+
+
+def test_the_payloads_say_when_a_run_was_an_artifact():
+    """A substrate may flag a rollout or a probe whose contacts were not physical (the mujoco_lab monitor); the
+    payload carries the flag, False when the substrate gives none."""
+    import dataclasses
+
+    assert _commit(_prims(), {})["artifact"] is False
+    env = FakeEnv()
+    plain = env.execute
+
+    def flagged(*a, **k):
+        r = plain(*a, **k)
+        r.artifact = True
+        return r
+
+    env.execute = flagged
+    assert _commit(_prims(env), {})["artifact"] is True
+    penv = _ProbeEnv(probes=[dataclasses.replace(_push(), artifact=True)])
+    d = pick_and_place(object="mug", destination="table_centre", option_id="probe_push", primitives=_probe_prims(penv, push=PerfectPush()),
+                       store={}).data
+    assert d["probed"] == "push" and d["artifact"] is True

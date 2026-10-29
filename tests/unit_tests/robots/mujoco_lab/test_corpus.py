@@ -26,9 +26,10 @@ ROW_KEYS = {
     "key", "object", "theta", "com_end", "truth", "seed", "destination", "s", "force", "v_lift",
     "v_transport", "release_height", "width", "label", "max_z", "drop_z", "loss_phase", "loss_step", "fixture",
     "loss_t", "loss_speed", "zone", "release", "planned", "geometry", "features", "pose", "com_obj_true", "readouts",
-    "reset",
+    "reset", "rev_steps", "deepest_mm", "artifact",
 }
-OUTCOME_KEYS = {"label", "max_z", "drop_z", "loss_phase", "loss_step", "loss_t", "loss_speed", "zone", "release", "planned", "readouts"}
+OUTCOME_KEYS = {"label", "max_z", "drop_z", "loss_phase", "loss_step", "loss_t", "loss_speed", "zone", "release", "planned", "readouts",
+                "rev_steps", "deepest_mm", "artifact"}
 DECLINED_KEYS = (ROW_KEYS - OUTCOME_KEYS) | {"declined"}       # a pinch the skill never offers: no rollout
 
 
@@ -112,5 +113,6 @@ def test_a_pinch_wider_than_the_gripper_is_declined_without_a_rollout():
 def test_trainable_rows_ran_and_were_offered():
     from robots.mujoco_lab.corpus import trainable
 
-    assert [trainable(r) for r in ({"error": "boom"}, {"declined": "wider than the gripper opening"}, {"label": "placed_stable"})] \
-        == [False, False, True]
+    rows = ({"error": "boom"}, {"declined": "wider than the gripper opening"}, {"label": "placed_stable", "artifact": True},
+            {"label": "placed_stable", "artifact": False}, {"label": "placed_stable"})
+    assert [trainable(r) for r in rows] == [False, False, False, True, True]

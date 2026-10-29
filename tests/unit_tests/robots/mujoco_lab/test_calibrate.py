@@ -243,3 +243,32 @@ def test_the_class_rates_come_from_trainable_rows_only(tmp_path):
                                                        {"object": "b", "declined": "wider than the gripper opening"},
                                                        {"object": "c", "label": "tipped"})) + "\n")
     assert _corpus_labels(str(path)) == [("c", "tipped")]
+
+
+def test_an_artifact_case_is_left_out_of_the_metrics_and_counted():
+    """A case with a flagged attempt or probe, or whose reset did not reach rest, does not count."""
+    from robots.mujoco_lab.calibrate import case_artifact, compare, realized_cost, run_protocol, summarize
+    from tests.unit_tests.skills.test_tools import FakeEnv, _prims
+
+    env = FakeEnv()
+    plain = env.execute
+
+    def flagged(*a, **k):
+        r = plain(*a, **k)
+        r.artifact = True
+        return r
+
+    feats = {"features_fn": lambda row: {"lever": 0.5}}
+    clean = run_protocol(_prims(env=FakeEnv()), "commit", "table_centre", np.random.default_rng(0), **feats)
+    env.execute = flagged
+    bad = run_protocol(_prims(env=env), "commit", "table_centre", np.random.default_rng(0), **feats)
+    assert clean["artifact"] is False and bad["artifact"] is True and bad["attempts"][0]["artifact"] is True
+    assert case_artifact(clean, {"at_rest": False}) and not case_artifact(clean, {"at_rest": True}) and case_artifact(bad, {})
+    ctx = {"idx": 0, "destination": "table_centre", "truth": {"mass": 0.3, "mu": 0.5, "com_s": 0.5}}
+    rows = [dict(clean, object="a", **ctx), dict(bad, object="b", **ctx), {"object": "c", "idx": 0, "error": "boom"}]
+    rc = realized_cost(rows, np.random.default_rng(0))
+    assert rc["n"] == 1 and rc["n_errors"] == 1 and rc["n_artifacts"] == 1 and rc["mean"] == pytest.approx(clean["cost"])
+    s = summarize(rows, "commit", np.random.default_rng(0))
+    assert s["n"] == 3 and s["n_executed"] == 1 and s["errors"] == 1 and s["artifacts"] == 1
+    c = compare({"rows": rows}, {"rows": rows[:1] + [dict(bad, object="b", **ctx, artifact=False)]}, np.random.default_rng(0))
+    assert c["n_paired"] == 1 and c["artifacts"] == {"a": 1, "b": 0}

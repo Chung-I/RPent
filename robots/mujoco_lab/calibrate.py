@@ -30,7 +30,9 @@ protocols are paired case by case), resets the lab, and runs one protocol throug
   recommendation, then the best row; it scores the probes' declared kinds when the recommendation
   rarely asks for a probe.
 
-Every assigned case is kept: a thrown probe or an object out of reach ends it with its cost. The
+Every assigned case is kept: a thrown probe or an object out of reach ends it with its cost. A case
+with a flagged probe or attempt, or whose reset did not reach rest (``artifact``, adapter.artifact: pad
+contacts that were not physical), stays in ``rows`` but every metric leaves it out and counts it. The
 calibration blocks score the executed attempts (``first_attempt``, and ``second_attempt`` for repair):
 the seven-class Brier score against the training class rates, the ECE on P(placed_stable) with its
 object-bootstrap 95 % interval and the plug-in rule (pass when the upper bound is under 0.05, fail
@@ -111,7 +113,8 @@ def _probe_record(d: dict[str, Any], prims: Any, care: str) -> dict[str, Any]:
     stats = getattr(pm, "stats", None) or {}
     n = int(stats.get("n") or 0)
     return {"probe": d["probed"], "kind": d["kind"], "reading": d["reading"], "thrown": bool(d["thrown"]),
-            "displacement_m": d.get("displacement_m"), "tilt_deg": d.get("tilt_deg"), "declared": d.get("declared"),
+            "artifact": bool(d.get("artifact", False)), "displacement_m": d.get("displacement_m"), "tilt_deg": d.get("tilt_deg"),
+            "declared": d.get("declared"),
             "const_kind": {k: v / n for k, v in stats["kinds"].items()} if n and stats.get("kinds") else None,
             "const_thrown": stats["thrown"] / n if n and "thrown" in stats else None,
             "cost": probe_cost(d["probed"], d["kind"], d["thrown"], care)}
@@ -122,7 +125,7 @@ def _attempt_record(d: dict[str, Any], row: dict[str, Any], a: dict[str, Any], f
             "declared": {"p": row["p"], "p_drop_height": row["p_drop_height"], "expected_cost": row["expected_cost"]},
             "outcome": d["outcome"], "label": d["outcome"], "placed_at_requested": d["placed_at_requested"],
             "cost_s": row["cost_s"], "cost": attempt_cost(d["outcome"], row["cost_s"], care), "features": features,
-            "diagnosis": d.get("diagnosis")}
+            "diagnosis": d.get("diagnosis"), "artifact": bool(d.get("artifact", False))}
 
 
 def run_protocol(prims: Any, protocol: str, destination: str, rng: np.random.Generator, care: str = CARE, features_fn=None,
@@ -140,6 +143,7 @@ def run_protocol(prims: Any, protocol: str, destination: str, rng: np.random.Gen
         if error is not None:
             case["error"] = error
         case["cost"] = float(sum(p["cost"] for p in case["probes"]) + sum(t["cost"] for t in case["attempts"]))
+        case["artifact"] = any(x["artifact"] for x in case["probes"] + case["attempts"])
         return case
 
     def call(**kw) -> dict[str, Any]:
@@ -215,6 +219,11 @@ def case_draw(seed: int, object_id: str, idx: int, nominal_mass: float, use_fixt
     return theta, com_end, destination
 
 
+def case_artifact(case: dict[str, Any], reset_info: dict[str, Any]) -> bool:
+    """A case the metrics leave out: a probe or an attempt was flagged, or the reset did not reach rest."""
+    return bool(case.get("artifact")) or not reset_info.get("at_rest", True)
+
+
 def _stream(seed: int, object_id: str, idx: int, k: int) -> np.random.Generator:
     """A second and third stream per case (the menu's draws; the random row), independent of the case order."""
     return np.random.default_rng([int(seed), zlib.crc32(object_id.encode()), int(idx), int(k)])
@@ -240,6 +249,7 @@ def run_case(prims: Any, object_id: str, idx: int, seed: int, protocol: str = "c
                        act["v_transport"], act["destination"], act.get("release_height"))
 
     case = run_protocol(prims, protocol, destination, _stream(seed, object_id, idx, 2), features_fn=features_fn, follow=follow)
+    case["artifact"] = case_artifact(case, reset_info)
     row = {"object": object_id, "idx": idx, "destination": destination, "theta": theta, "com_end": com_end,
            "truth": {k: truth[k] for k in ("mass", "mu", "com_s")}, "reset": reset_info, **case}
     first = case["attempts"][0] if case["attempts"] else None
@@ -473,18 +483,29 @@ def _mean_ci(values: np.ndarray, inv: np.ndarray, n_objects: int, rng: np.random
     return [float(np.percentile(m, 2.5)), float(np.percentile(m, 97.5))]
 
 
+def _counted(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The cases the metrics count: no error and no artifact flag."""
+    return [r for r in rows if "error" not in r and not r.get("artifact")]
+
+
+def _excluded(rows: list[dict[str, Any]]) -> tuple[int, int]:
+    """(errors, artifact cases without an error)."""
+    return sum("error" in r for r in rows), sum("error" not in r and bool(r.get("artifact")) for r in rows)
+
+
 def realized_cost(rows: list[dict[str, Any]], rng: np.random.Generator, n_boot: int = N_BOOT) -> dict[str, Any]:
-    """The mean realized cost over every case (errors excepted and counted), its object-bootstrap 95 %
-    interval, and the mean by how the case ended."""
-    ok = [r for r in rows if "error" not in r]
+    """The mean realized cost over every case (errors and artifact cases excepted and counted), its
+    object-bootstrap 95 % interval, and the mean by how the case ended."""
+    ok = _counted(rows)
+    n_err, n_art = _excluded(rows)
     if not ok:
-        return {"n": 0, "n_errors": len(rows), "mean": None, "ci95_object_bootstrap": None, "by_end": {}}
+        return {"n": 0, "n_errors": n_err, "n_artifacts": n_art, "mean": None, "ci95_object_bootstrap": None, "by_end": {}}
     c = np.array([float(r["cost"]) for r in ok])
     _, inv = np.unique([r["object"] for r in ok], return_inverse=True)
     by_end: dict[str, list[float]] = defaultdict(list)
     for r, v in zip(ok, c):
         by_end[str(r.get("ended"))].append(float(v))
-    return {"n": len(ok), "n_errors": len(rows) - len(ok), "mean": float(c.mean()),
+    return {"n": len(ok), "n_errors": n_err, "n_artifacts": n_art, "mean": float(c.mean()),
             "ci95_object_bootstrap": _mean_ci(c, inv, int(inv.max()) + 1, rng, n_boot),
             "probe_part": float(np.mean([sum(p["cost"] for p in r.get("probes") or []) for r in ok])),
             "by_end": {e: {"n": len(v), "mean": float(np.mean(v))} for e, v in sorted(by_end.items())}}
@@ -521,7 +542,8 @@ def nested_isotonic(att: list[dict[str, Any]]) -> list[Prediction]:
 
 def summarize(rows: list[dict[str, Any]], protocol: str, rng: np.random.Generator, coverage_sims: int = 0,
               nested: bool = False) -> dict[str, Any]:
-    ok = [r for r in rows if "error" not in r]
+    ok = _counted(rows)
+    n_err, n_art = _excluded(rows)
     first = [_attempt_row(r, 0) for r in ok if r.get("attempts")]
     second = [_attempt_row(r, 1) for r in ok if len(r.get("attempts") or []) > 1]
     b1 = calibration_block(first, rng, coverage_sims)
@@ -529,7 +551,7 @@ def summarize(rows: list[dict[str, Any]], protocol: str, rng: np.random.Generato
     out = {"protocol": protocol, "n": len(rows), "n_executed": len(first),
            "recommendation_decline_rate": float(np.mean([x == "decline" for x in rec])) if rec else None,
            "recommendations": dict(Counter(rec)), "abstained": sum(1 for r in ok if r.get("ended") == "abstained"),
-           "errors": len(rows) - len(ok), "ended": dict(Counter(str(r.get("ended")) for r in ok)),
+           "errors": n_err, "artifacts": n_art, "ended": dict(Counter(str(r.get("ended")) for r in ok)),
            "first_attempt": b1, "second_attempt": calibration_block(second, rng) if protocol == "repair" else None}
     out.update({k: b1[k] for k in ("ece", "ece_ci95_object_bootstrap", "brier", "brier_const", "by_subgroup", "by_destination",
                                    "by_option", "outcomes", "per_class", "ece_iid_floor")})
@@ -541,10 +563,11 @@ def summarize(rows: list[dict[str, Any]], protocol: str, rng: np.random.Generato
 
 
 def compare(A: dict[str, Any], B: dict[str, Any], rng: np.random.Generator, n_boot: int = N_BOOT) -> dict[str, Any]:
-    """A − B over the paired cases (same object and idx): the mean realized cost and the first attempts'
-    ECE on P(placed_stable), each with a 95 % interval that resamples objects jointly for both."""
-    ka = {(r["object"], r["idx"]): r for r in A["rows"] if "error" not in r}
-    kb = {(r["object"], r["idx"]): r for r in B["rows"] if "error" not in r}
+    """A − B over the paired cases (same object and idx, counted in both: no error, no artifact): the mean
+    realized cost and the first attempts' ECE on P(placed_stable), each with a 95 % interval that resamples
+    objects jointly for both."""
+    ka = {(r["object"], r["idx"]): r for r in _counted(A["rows"])}
+    kb = {(r["object"], r["idx"]): r for r in _counted(B["rows"])}
     keys = sorted(set(ka) & set(kb))
     objs = sorted({o for o, _ in keys})
     oi = {o: i for i, o in enumerate(objs)}
@@ -565,6 +588,7 @@ def compare(A: dict[str, Any], B: dict[str, Any], rng: np.random.Generator, n_bo
     d = ece_from_sums(W, *sa) - ece_from_sums(W, *sb)
     return {"protocol_a": A.get("protocol"), "protocol_b": B.get("protocol"), "n_paired": len(keys), "n_objects": K,
             "unpaired": {"a_only": len(set(ka) - set(kb)), "b_only": len(set(kb) - set(ka))},
+            "artifacts": {"a": _excluded(A["rows"])[1], "b": _excluded(B["rows"])[1]},
             "realized_cost": {"a": float(ca.mean()), "b": float(cb.mean()), "diff": float((ca - cb).mean()),
                               "ci95_object_bootstrap": [float(np.percentile(boot, 2.5)), float(np.percentile(boot, 97.5))]},
             "ece_first_attempt": {"a": ea, "b": eb, "n_a": na, "n_b": nb, "diff": None if ea is None or eb is None else ea - eb,
@@ -615,8 +639,9 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
     out.update(kind=plan["kind"], objects=plan["objects"], folds=plan["folds"], seed=a.seed, repeats=a.repeats,
                source={"crossfit": a.crossfit, "bundle": a.bundle, "metrics": a.metrics}, seconds=round(time.time() - t0, 1))
     _write(out, a.out)
-    summary = {k: out[k] for k in ("protocol", "kind", "n", "n_executed", "abstained", "errors", "ece", "ece_ci95_object_bootstrap",
-                                   "brier", "brier_const", "ece_iid_floor", "outcomes", "probes_run", "probe_kind", "thrown")}
+    summary = {k: out[k] for k in ("protocol", "kind", "n", "n_executed", "abstained", "errors", "artifacts", "ece",
+                                   "ece_ci95_object_bootstrap", "brier", "brier_const", "ece_iid_floor", "outcomes", "probes_run",
+                                   "probe_kind", "thrown")}
     summary.update(realized_cost={k: out["realized_cost"][k] for k in ("n", "mean", "ci95_object_bootstrap")},
                    acceptance=out["first_attempt"]["acceptance"], seconds=out["seconds"])
     out["wandb"] = tracking.log_run("calibrate", {"protocol": a.protocol, "seed": a.seed, "repeats": a.repeats, "source": out["source"],

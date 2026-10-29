@@ -108,14 +108,16 @@ def test_rotation_threshold_matches_the_readouts():
 
 @pytest.fixture(scope="module")
 def probe_bundle(tiny_bundle, tmp_path_factory):
-    """The tiny bundle plus probe models fitted on a probe corpus of the same three objects."""
+    """The tiny bundle plus probe models fitted on a probe corpus of the same three objects; the rows are the
+    trainable ones, which the fit and the check use (the mug creeps at rest in some draws: those rows are flagged)."""
+    from robots.mujoco_lab.corpus import trainable
     from robots.mujoco_lab.probe_corpus import main as probe_main
     from robots.mujoco_lab.train_models import main as train_main
 
     pc = tmp_path_factory.mktemp("pp") / "p.jsonl"
     assert probe_main(["--out", str(pc), "--draws", "8", "--workers", "1", "--objects", "ycb__banana,ycb__brick,ycb__mug", "--seed", "7"]) >= 48
     out = train_main(["--probe-corpus", str(pc), "--out-dir", str(tiny_bundle)])
-    rows = [r for r in map(json.loads, open(pc)) if "error" not in r]
+    rows = [r for r in map(json.loads, open(pc)) if trainable(r)]
     return tiny_bundle, rows, out
 
 
