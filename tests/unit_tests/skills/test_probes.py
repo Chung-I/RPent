@@ -311,6 +311,17 @@ def test_an_object_with_no_damage_flag_has_no_damaged_kind():
     assert np.allclose(pm.terminal_risk(X), [0.1, 0.1 + 0.9 * 0.2])
 
 
+def test_a_milestone_2a_probe_model_adds_no_survival_term():
+    """A milestone 2a fit learned its kinds on every result, thrown ones included (its stats have no n_not_thrown), so
+    its kind term already holds the throws: a result that kept the object adds no survival term (final review)."""
+    pm = _const_model("weigh", PROBE_KINDS["weigh"], [0.8, 0.1, 0.1], p_thrown=0.3)
+    obs, X = {"probe": "weigh", "kind": "measured", "reading": {}}, np.zeros((2, 4))
+    pm.stats = {"n": 10, "kinds": {"measured": 8, "lower_bound": 1, "lost": 1}, "thrown": 3}
+    assert not pm.kinds_not_thrown and pm.loglik(obs, X, {}, 20.0, thrown=False)[1]["used"] == ["kind"]
+    pm.stats = dict(pm.stats, n_not_thrown=7)
+    assert pm.kinds_not_thrown and pm.loglik(obs, X, {}, 20.0, thrown=False)[1]["used"] == ["kind", "not_thrown"]
+
+
 def test_probe_models_learn_the_damaged_kind():
     """A probe corpus with damaged weigh rows gives the weigh's kind classifier a "damaged" class; the push, which
     damaged nothing, gets none."""

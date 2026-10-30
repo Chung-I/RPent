@@ -184,6 +184,14 @@ class ProbeModel:
     reading_rate: dict[str, float] = field(default_factory=dict)
     feature_names: tuple[str, ...] = FEATURES_M2           # the class default: a model saved before the schemas
 
+    @property
+    def kinds_not_thrown(self) -> bool:
+        """Whether the kinds (and readings) are those of the results not thrown, P(kind | not thrown), as every fit
+        since milestone 2b records (``n_not_thrown``). A milestone 2a fit learned them on every result: its stats
+        record ``n`` alone, and its kinds already hold the throws."""
+        stats = self.stats or {}
+        return "n" not in stats or "n_not_thrown" in stats
+
     def p_kind(self, X: np.ndarray) -> np.ndarray:
         """P(kind) per particle row of X, columns in ``classes`` order. The probe cannot damage an object whose public
         entry has every damage flag off (a model on the four flags: no crush, bruise or break threshold, not
@@ -231,9 +239,9 @@ class ProbeModel:
         ``temper`` overrides the model's (the posterior check's grid). ``terms`` (an entry's recorded
         used terms) replays exactly those terms, without the rejection rule (a belief refresh). ``P``:
         ``p_kind(X)`` when the caller has it already (the preposterior loop). ``thrown``: whether a real result threw the
-        object. The kinds are those of the results not thrown, so a result that kept the object (False) adds the term
-        log max(floor_p, 1 - P(thrown)) / temper ("not_thrown"). None (the preposterior, which weighs each particle's
-        survival itself) adds nothing, and so does a throw, which ends the case."""
+        object. When the kinds are those of the results not thrown (``kinds_not_thrown``), a result that kept the object
+        (False) adds the term log max(floor_p, 1 - P(thrown)) / temper ("not_thrown"). None (the preposterior, which
+        weighs each particle's survival itself) adds nothing, and so does a throw, which ends the case."""
         t = self.temper if temper is None else float(temper)
         want = (lambda term: True) if terms is None else (lambda term: term in terms)
         kind = obs["kind"]
@@ -258,7 +266,7 @@ class ProbeModel:
                 else:
                     ll = ll + law.logpdf(x, t)
                     used.append("reading")
-        if thrown is not None and not thrown and want("not_thrown"):
+        if thrown is not None and not thrown and self.kinds_not_thrown and want("not_thrown"):
             ll = ll + np.log(np.maximum(self.floor_p, 1.0 - self.risk(X))) / t
             used.append("not_thrown")
         return ll, {"used": used, "rejected": rejected}
