@@ -249,7 +249,8 @@ def test_probe_check_tells_the_likelihood_whether_the_probe_threw_the_object():
     assert pm.thrown == [False, False]
 
 
-def test_posterior_check_reports_fragility_and_fill_coverage(tmp_path, monkeypatch):
+def _fragility_check(tmp_path, monkeypatch):
+    """A squeeze case and four weigh cases (two validation, two training) on a three-particle prior."""
     from robots.mujoco_lab import posterior_check as pc
     from rpent.skills.pick_place.belief import ParticleBelief
     from tests.unit_tests.skills.synthetic import synthetic_pose, synthetic_rows
@@ -278,6 +279,11 @@ def test_posterior_check_reports_fragility_and_fill_coverage(tmp_path, monkeypat
     monkeypatch.setattr(pc, "load_rows", lambda path: rows)
     monkeypatch.setattr(pc.tracking, "log_run", lambda *a, **kw: None)
     common = ["--bundle", str(tmp_path), "--split", "val"]
+    return pc, common
+
+
+def test_posterior_check_reports_fragility_and_fill_coverage(tmp_path, monkeypatch):
+    pc, common = _fragility_check(tmp_path, monkeypatch)
     squeeze = pc.main(common + ["--probes", "C", "--out", str(tmp_path / "c.json")])["squeeze_f_damage"]
     assert squeeze["n"] == 1 and squeeze["post"]["coverage"] == 1.0
     assert squeeze["prior"]["log_width_median"] == pytest.approx(np.log(3.0))
@@ -310,3 +316,49 @@ def test_generator_truth_adds_the_liquid():
     assert generator_truth(dict(row, fill=0.0), classes)["mass"] == pytest.approx(0.4 * 1.5, rel=1e-12)
     with pytest.raises(ValueError, match="cavity"):
         generator_truth(row)
+
+
+def _hits(pattern):
+    """(hits, n) per object -> the hit list and its objects."""
+    hits = [h for k, n in pattern for h in [True] * k + [False] * (n - k)]
+    objects = [f"o{i}" for i, (_, n) in enumerate(pattern) for _ in range(n)]
+    return hits, objects
+
+
+def test_cell_verdict_rule():
+    """Plan 2b2 decision 9: pass when the coverage lies in [0.75, 0.85], fail when its 95 % object-bootstrap interval
+    lies wholly outside the band, otherwise undecided; under 30 cases or 4 objects, insufficient."""
+    from robots.mujoco_lab.posterior_check import cell_verdict
+
+    rng = np.random.default_rng(0)
+    v = cell_verdict(*_hits([(16, 20)] * 10), rng)
+    assert (v["verdict"], v["n"], v["n_objects"]) == ("pass", 200, 10) and v["coverage"] == pytest.approx(0.80)
+    v = cell_verdict(*_hits([(38, 40)] * 10), rng)
+    assert v["verdict"] == "fail" and v["ci"][0] > 0.85
+    v = cell_verdict(*_hits([(10, 10), (10, 10), (8, 10), (8, 10)]), rng)
+    assert v["coverage"] == pytest.approx(0.90) and v["ci"][0] <= 0.85 and v["verdict"] == "undecided"
+    assert cell_verdict(*_hits([(8, 10)] * 2), rng)["verdict"] == "insufficient"           # 20 cases
+    assert cell_verdict(*_hits([(8, 10)] * 3), rng)["verdict"] == "insufficient"           # 30 cases, 3 objects
+
+
+def test_judged_cells_are_what_each_probe_set_reads():
+    """A probe that reads no property cannot calibrate it: the squeeze is judged on the damage force only, the push
+    and the weigh on the mass and the friction, one attempt on all three."""
+    from robots.mujoco_lab.posterior_check import judged_keys
+
+    assert judged_keys(None) == ("mass", "mu", "com")
+    assert judged_keys("A") == judged_keys("B") == ("mass", "mu")
+    assert judged_keys("C") == ()
+
+
+def test_squeeze_cells_judge_only_the_damage_force(tmp_path, monkeypatch):
+    """Plan 2b2 decision 9 in the check's output: after a squeeze, the mass, the friction and the CoM are reported, not
+    judged, and the damage force is judged (here too few cases); after a weigh, the CoM is reported and the fill and
+    the P(filled) ECE need their minimums."""
+    pc, common = _fragility_check(tmp_path, monkeypatch)
+    b2 = pc.main(common + ["--probes", "C", "--out", str(tmp_path / "c.json")])["acceptance_b2"]
+    assert [b2[k]["verdict"] for k in ("mass", "mu", "com")] == ["reported"] * 3
+    assert b2["f_damage"]["verdict"] == "insufficient" and b2["f_damage"]["n"] == 1
+    b2 = pc.main(common + ["--probes", "B", "--out", str(tmp_path / "b.json")])["acceptance_b2"]
+    assert b2["com"]["verdict"] == "reported" and b2["mass"]["verdict"] == "insufficient"
+    assert b2["fill"]["verdict"] == "insufficient" and b2["p_filled_ece"]["verdict"] == "insufficient"

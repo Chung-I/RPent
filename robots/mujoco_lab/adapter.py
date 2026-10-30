@@ -290,7 +290,7 @@ class MuJoCoLabEnv:
 
     def __init__(self, sim_dir: str | None = None, render: bool = False, damage_meter: bool = True,
                  slosh_zeta: float | None = None, force_noise: float | None = None):
-        self.force_noise = force_noise_level(force_noise)
+        self.force_noise = force_noise
         self.s = load_sim(sim_dir)
         self.render = render
         self.damage_meter = bool(damage_meter)
@@ -1133,6 +1133,16 @@ class MuJoCoLabEnv:
         reading, sensor = self._force_reading(reading)
         return ProbeResult("push", "damaged" if damage else kind, reading, disp, tilt, thrown, steps[0] / hz, rec, **self._monitor(),
                            meter=meter, damage=damage, sensor=sensor)
+
+    @property
+    def force_noise(self) -> float:
+        """The sd of the force readings' error (see force_noise_level). A job sets its bundle's before a case
+        (plan 2b2 decision 8); None sets the lab default."""
+        return self._force_noise
+
+    @force_noise.setter
+    def force_noise(self, value: float | None) -> None:
+        self._force_noise = force_noise_level(value)
 
     def _force_reading(self, reading: dict[str, float]) -> tuple[dict[str, float], dict[str, Any]]:
         """A probe's force reading with the declared error: one eps from the force stream scales every value (the

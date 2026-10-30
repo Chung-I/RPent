@@ -222,7 +222,7 @@ def test_build_lab_passes_the_fill_and_the_fragility(monkeypatch):
     manifest = {"prior": "lab_generator_m2b", "classes": {"path": "fragility_classes.json"},
                 "thresholds": {"path": "thresholds_v1.json"}}
     bundle = {"model": StubModel(), "prior": None, "readout_model": None, "probe_models": {}, "guard": None,
-              "abstain_cost": 1.0, "manifest": manifest}
+              "abstain_cost": 1.0, "force_noise": 0.05, "manifest": manifest}
     monkeypatch.setattr(adapter, "MuJoCoLabEnv", Env)
     monkeypatch.setattr(robot_spec, "load_bundle", lambda b, kind=None: bundle)
     frag = {"k_n_per_mm": 2.0, "f_damage_n": 12.0, "v_bruise_ms": None, "v_break_ms": None}
@@ -230,6 +230,18 @@ def test_build_lab_passes_the_fill_and_the_fragility(monkeypatch):
     assert calls == {"object_id": "ycb__mug", "theta": {"mu": 0.4}, "seed": 3, "fill": 0.6, "frag": frag}
     th = Thresholds.from_json(f"{DATA}/thresholds_v1.json")
     assert prims.env.slosh_zeta == th.slosh_zeta and prims.env.slosh_scale == th.slosh_scale and th.slosh_scale
+    assert prims.force_noise == prims.env.force_noise == 0.05                 # the bundle's sensor (plan 2b2)
     calls.clear()
     robot_spec.build_lab(object_id="ycb__mug", theta={"mu": 0.4}, seed=3, bundle="b")
     assert calls["fill"] == 0.0 and calls["frag"] is None and calls["theta"] == {"mu": 0.4}
+
+
+def test_system_prompt_states_the_force_error():
+    """Plan 2b2 decision 1: the hand's force readings carry a declared 5 % error, so a slide's mass bound is approximate."""
+    from robots.mujoco_lab.prompts.system import system_prompt
+
+    text = system_prompt()
+    assert "the measured mass in kg, within about 5 %" in text
+    assert "can exceed the mass by a few percent" in text
+    assert "started to slide, within about 5 %" in text
+    assert "the pads' force readings carry an error of about 5 %" in text

@@ -129,3 +129,9 @@ def test_diagnosis_range_from_a_mixture_law():
     d = diagnose("not_lifted", _r(rose=False, fz_slip_max_n=3.0), ACT, BEFORE, AFTER, laws={"slip": Law.normal(-1.0, 1.0)},
                  mu_range=(0.1, 0.9))
     assert any("friction about 0.41" in s and "0.11 to 1.47" in s for s in d)
+
+
+def test_slip_weight_reads_as_approximate():
+    """The lift force carries the sensor's error (plan 2b2), so the weight it bounds is approximate."""
+    d = diagnose("not_lifted", _r(rose=False, fz_slip_max_n=3.0), ACT, BEFORE, AFTER)
+    assert any("or a weight above about 3.0 N" in s for s in d)

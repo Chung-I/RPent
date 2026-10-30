@@ -189,3 +189,15 @@ def test_planner_never_sees_the_sensor_record():
     hidden = {"sensor", "clean", "force_noise", "eps_force"}
     assert not hidden & set(p) and not hidden & set(p["reading"]) and set(p["reading"]) <= {"m_hat", "mu_hat", "m_lower"}
     assert not hidden & set(q) and not hidden & set(q["readouts"])
+
+
+def test_force_noise_can_be_set_between_cases():
+    """Plan 2b2 decision 8: a job sets the env's noise to its bundle's before a case; the setter checks the value."""
+    env = _env(force_noise=0.05)
+    env.force_noise = 0.0
+    r = _attempt(env)
+    assert r.sensor["force_noise"] == 0.0
+    assert all(r.readouts[k] == r.sensor["clean"][k] for k in READOUTS.values())
+    for bad in (-0.1, float("nan"), "x"):
+        with pytest.raises(ValueError):
+            env.force_noise = bad

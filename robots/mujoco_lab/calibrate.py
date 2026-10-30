@@ -307,6 +307,7 @@ def run_case(prims: Any, object_id: str, idx: int, seed: int, protocol: str = "c
     from robots.mujoco_lab.prior import fragility_world
 
     env = prims.env
+    env.force_noise = getattr(prims, "force_noise", None)       # the job's sensor (job_force_noise); None: the lab default
     world = fragility_world(getattr(prims, "manifest", None))
     theta, com_end, destination, hidden = case_draw(seed, object_id, idx, object_props(object_id)["mass"], use_fixtures,
                                                     fragility=world)
@@ -329,7 +330,7 @@ def run_case(prims: Any, object_id: str, idx: int, seed: int, protocol: str = "c
                         follow=follow)
     case["artifact"] = case_artifact(case, reset_info)
     row = {"object": object_id, "idx": idx, "destination": destination, "theta": theta, "com_end": com_end,
-           "fill": hidden["fill"], "theta_frag": hidden["frag"],
+           "fill": hidden["fill"], "theta_frag": hidden["frag"], "force_noise": env.force_noise,
            "truth": {k: truth[k] for k in ("mass", "mu", "com_s")}, "reset": reset_info, **case}
     first = case["attempts"][0] if case["attempts"] else None
     row.update(executed=first is not None, option=first and first["option"], outcome=first and first["outcome"],
@@ -343,9 +344,27 @@ def run_case(prims: Any, object_id: str, idx: int, seed: int, protocol: str = "c
 _STATE: dict[str, Any] = {}
 
 
+def job_force_noise(override: float | None, manifest: dict[str, Any] | None) -> float | None:
+    """A job's force noise (plan 2b2 decision 8): ``--force-noise`` when given, else the bundle's declared sensor
+    (robot_spec.manifest_force_noise: 0 for a bundle from before plan 2b2), else None (no bundle: the lab default)."""
+    if override is not None:
+        return float(override)
+    if manifest is None:
+        return None
+    from robots.mujoco_lab.robot_spec import manifest_force_noise
+
+    return manifest_force_noise(manifest)
+
+
+def run_force_noise(rows: list[dict[str, Any]]) -> float | list[float] | None:
+    """The force noise a run's cases read with: one level, the sorted levels when they differ, None without a case."""
+    levels = sorted({float(r["force_noise"]) for r in rows if r.get("force_noise") is not None})
+    return levels[0] if len(levels) == 1 else (levels or None)
+
+
 def _primitives(bundle: str | None, threshold: float | None, model_kind: str | None) -> Any:
-    """One lab env per process, and the primitives of each bundle on it (cached; the abstain cost is the bundle's
-    decision until a job sets it)."""
+    """One lab env per process, and the primitives of each bundle on it (cached). Every call returns them with the
+    bundle's abstain cost and force noise: a job sets its own after the call, and none stays for the next caller."""
     from robots.mujoco_lab.adapter import MuJoCoLabEnv
     from robots.mujoco_lab.robot_spec import load_bundle, load_model
     from robots.mujoco_lab.toolkit import MuJoCoLabPrimitives
@@ -361,15 +380,19 @@ def _primitives(bundle: str | None, threshold: float | None, model_kind: str | N
             B = load_bundle(bundle, model_kind)
             prims = MuJoCoLabPrimitives(env=env, model=B["model"], prior=B["prior"], readout_model=B["readout_model"],
                                         probe_models=B["probe_models"], threshold=threshold, manifest=B["manifest"],
-                                        guard=B["guard"], abstain_cost=B["abstain_cost"])
-        _STATE["prims"][key] = prims
-    return _STATE["prims"][key]
+                                        guard=B["guard"], abstain_cost=B["abstain_cost"], force_noise=B["force_noise"])
+        _STATE["prims"][key] = (prims, {"abstain_cost": prims.abstain_cost, "force_noise": prims.force_noise})
+    prims, own = _STATE["prims"][key]
+    for name, value in own.items():
+        setattr(prims, name, value)
+    return prims
 
 
 def _run_object(job: tuple[str, list[int], dict[str, Any]]) -> list[dict[str, Any]]:
     object_id, idxs, s = job
     prims = _primitives(s["bundle"], s["threshold"], s["model_kind"])
     prims.abstain_cost = s["abstain_cost"]       # every job sets it: the cached primitives keep no earlier run's value
+    prims.force_noise = job_force_noise(s.get("force_noise"), prims.manifest)
     rows = []
     for idx in idxs:
         t0 = time.time()
@@ -474,7 +497,7 @@ def run_cases(a: argparse.Namespace, plan: dict[str, Any]) -> list[dict[str, Any
         jobs.append((o, list(range(a.repeats)), {"bundle": bundle, "fold": fold, "const": plan["consts"][bundle], "seed": a.seed,
                                                  "protocol": a.protocol, "follow": a.follow_recommendation, "fixtures": a.fixtures,
                                                  "threshold": a.threshold, "model_kind": a.model_kind, "care": a.care,
-                                                 "abstain_cost": A}))
+                                                 "abstain_cost": A, "force_noise": getattr(a, "force_noise", None)}))
     rows: list[dict[str, Any]] = []
     if a.workers <= 1:
         for job in jobs:
@@ -768,6 +791,14 @@ def _abstain_arg(text: str) -> str | float:
     return x
 
 
+def _noise_arg(text: str) -> float:
+    """--force-noise: a finite number at least 0."""
+    x = _number(text)
+    if not (isinstance(x, float) and np.isfinite(x) and x >= 0):
+        raise argparse.ArgumentTypeError(f"force noise must be a finite number at least 0, not {text!r}")
+    return x
+
+
 def _number(text: str) -> str | float:
     try:
         return float(text)
@@ -793,6 +824,8 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
     ap.add_argument("--abstain-cost", type=_abstain_arg, default=None,
                     help="the cost of a case that ends without the object placed: a number, or none (the 2a rule); "
                          "default: the bundle's decision")
+    ap.add_argument("--force-noise", type=_noise_arg, default=None,
+                    help="the sd of the force readings' error (0: clean); default: each bundle's declared sensor")
     ap.add_argument("--model-kind", default=None)
     ap.add_argument("--fixtures", action="store_true", help="draw half the destinations from the inspected mesh fixtures")
     ap.add_argument("--workers", type=int, default=1)
@@ -814,7 +847,7 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
     rows = run_cases(a, plan)
     out = summarize(rows, a.protocol, rng, a.coverage_sims, nested=bool(a.crossfit))
     out.update(kind=plan["kind"], objects=plan["objects"], folds=plan["folds"], seed=a.seed, repeats=a.repeats,
-               care=a.care, care_scale=care_scale(a.care), abstain_cost=run_abstain_cost(a, plan),
+               care=a.care, care_scale=care_scale(a.care), abstain_cost=run_abstain_cost(a, plan), force_noise=run_force_noise(rows),
                source={"crossfit": a.crossfit, "bundle": a.bundle, "metrics": a.metrics}, seconds=round(time.time() - t0, 1))
     _write(out, a.out)
     summary = {k: out[k] for k in ("protocol", "kind", "care", "abstain_cost", "n", "n_executed", "abstained", "errors", "artifacts", "ece",

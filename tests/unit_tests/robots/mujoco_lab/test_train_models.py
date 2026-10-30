@@ -354,3 +354,62 @@ def test_train_models_refuses_nominal_features_with_the_m2b_schema(tmp_path):
     corpus.write_text("")
     with pytest.raises(SystemExit, match="nominal"):
         main(["--corpus", str(corpus), "--out-dir", str(tmp_path / "m"), "--features", "nominal", "--feature-schema", "m2b"])
+
+
+def test_train_writes_the_corpus_sensor(tmp_path):
+    """Plan 2b2 decision 8: the manifest declares the force noise of its corpus rows (a row without the field reads 0,
+    milestone 2b's clean readings); rows of two noise levels are an error; load_bundle returns the declared noise."""
+    from robots.mujoco_lab.robot_spec import load_bundle
+    from robots.mujoco_lab.train_models import corpus_sensor, main
+    from tests.unit_tests.skills.synthetic import synthetic_rows, with_pose
+
+    rows = with_pose(synthetic_rows(300))
+    assert corpus_sensor(rows) == {"force_noise": 0.0}
+    noisy = [dict(r, sensor={"force_noise": 0.05, "eps": {}, "clean": {}}) for r in rows]
+    assert corpus_sensor(noisy) == {"force_noise": 0.05}
+    with pytest.raises(ValueError, match="force noise"):
+        corpus_sensor(noisy[:150] + rows[150:])
+    corpus = tmp_path / "c.jsonl"
+    _write(noisy, corpus)
+    main(["--corpus", str(corpus), "--out-dir", str(tmp_path / "b"), "--n-belief", "4"])
+    assert json.load(open(tmp_path / "b" / "manifest.json"))["sensor"] == {"force_noise": 0.05}
+    assert load_bundle(str(tmp_path / "b"))["force_noise"] == 0.05
+    if os.environ.get("RPENT_MUJOCO_SIM_DIR"):                     # the robot spec's factory runs the bundle's sensor
+        from robots.mujoco_lab.robot_spec import build_lab
+
+        prims = build_lab(bundle=str(tmp_path / "b"))
+        assert prims.force_noise == 0.05 and prims.env.force_noise == 0.05
+
+
+def test_manifest_force_noise_reads_the_sensor():
+    from robots.mujoco_lab.robot_spec import manifest_force_noise
+
+    assert manifest_force_noise({}) == 0.0                         # a bundle from before plan 2b2: clean corpora
+    assert manifest_force_noise({"sensor": {"force_noise": 0.05}}) == 0.05
+
+
+@pytest.mark.parametrize("bad", [-0.1, float("nan"), "x", None])
+def test_bad_manifest_force_noise_is_rejected(bad):
+    from robots.mujoco_lab.robot_spec import manifest_force_noise
+
+    with pytest.raises(ValueError):
+        manifest_force_noise({"sensor": {"force_noise": bad}})
+
+
+def test_probe_models_refuse_another_sensor(tmp_path):
+    """Plan 2b2 decision 8: the probe corpus carries the bundle's declared force noise (a manifest without a sensor
+    declares 0); a squeeze row, with no force reading, has no say."""
+    from robots.mujoco_lab.train_models import corpus_sensor, fit_probes, write_manifest
+    from tests.unit_tests.skills.test_probes import _probe_rows
+
+    rows = [dict(r, sensor={"force_noise": 0.05, "eps": 0.0, "clean": {}}) for r in _probe_rows(400)]
+    assert corpus_sensor(rows + [dict(rows[0], probe="squeeze", sensor={})]) == {"force_noise": 0.05}
+    _write(rows, tmp_path / "p.jsonl")
+    objects = sorted({r["object"] for r in rows})
+    split = {"train": objects[:17], "val": objects[17:]}
+    os.makedirs(tmp_path / "b")
+    write_manifest(str(tmp_path / "b"), split_seed=0)
+    with pytest.raises(ValueError, match="force noise"):
+        fit_probes(str(tmp_path / "p.jsonl"), str(tmp_path / "b"), split)
+    write_manifest(str(tmp_path / "b"), sensor={"force_noise": 0.05})
+    fit_probes(str(tmp_path / "p.jsonl"), str(tmp_path / "b"), split)

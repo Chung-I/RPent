@@ -39,11 +39,13 @@ class MuJoCoLabPrimitives:
     milestone 1 parametric prior); ``readout_model`` and ``probe_models`` update the belief;
     ``threshold`` overrides the commit threshold; ``manifest`` is the loaded bundle's manifest; ``guard`` is the
     novelty guard (guard.KnnGuard) or None; ``abstain_cost`` is the cost rule's A (the bundle's decision; None: the
-    milestone 2a rule)."""
+    milestone 2a rule); ``force_noise`` is the bundle's sensor, the force noise its models learned with (None: the
+    env's own)."""
 
     def __init__(self, env: Any, model: Any, rng: np.random.Generator | None = None, prior: Any = None,
                  readout_model: Any = None, probe_models: dict[str, Any] | None = None, threshold: float | None = None,
-                 manifest: dict[str, Any] | None = None, guard: Any = None, abstain_cost: float | None = None):
+                 manifest: dict[str, Any] | None = None, guard: Any = None, abstain_cost: float | None = None,
+                 force_noise: float | None = None):
         self.env = env
         self.model = model
         self.rng = rng if rng is not None else np.random.default_rng(0)
@@ -54,6 +56,7 @@ class MuJoCoLabPrimitives:
         self.manifest = manifest
         self.guard = guard
         self.abstain_cost = abstain_cost
+        self.force_noise = force_noise
 
 
 class MuJoCoLabToolkit(Toolkit):

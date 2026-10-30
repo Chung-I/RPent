@@ -615,3 +615,64 @@ def test_damage_class_marked_insufficient_under_50_positives():
     assert all(out["per_class"][k] == {"n_pos": 0, "ece": "insufficient"} for k in DAMAGE[1:])
     out = calibrate.irreversible_block(att + [att[0]], np.random.default_rng(0))
     assert out["per_class"]["crushed"] == {"n_pos": 50, "ece": 1.0}
+
+
+def test_job_force_noise_follows_the_bundle():
+    """Plan 2b2 decision 8: a job runs a bundle with the sensor it declares, unless --force-noise overrides it."""
+    from robots.mujoco_lab.calibrate import job_force_noise
+
+    assert job_force_noise(None, {"decision": {"abstain_cost": 1.0}}) == 0.0   # m2b: no sensor, clean corpora
+    assert job_force_noise(None, {"sensor": {"force_noise": 0.05}}) == 0.05
+    assert job_force_noise(0.02, {"sensor": {"force_noise": 0.05}}) == 0.02
+    assert job_force_noise(None, None) is None                                  # no bundle: the env's own setting
+
+
+def test_calibrate_runs_a_bundle_with_its_declared_noise():
+    """The m2b bundle's job reads clean forces under the new lab default; an override reaches the rows."""
+    from robots.mujoco_lab.calibrate import _run_object
+    from robots.mujoco_lab.robot_spec import DATA_DIR
+
+    bundle = str(DATA_DIR / "m2b")
+    if not os.environ.get("RPENT_MUJOCO_SIM_DIR") or not os.path.exists(os.path.join(bundle, "success_model.joblib")):
+        pytest.skip("needs the sim and the m2b bundle's local models")
+    s = {"bundle": bundle, "fold": None, "const": None, "seed": 5, "protocol": "commit", "follow": False, "fixtures": False,
+         "threshold": None, "model_kind": None, "care": "normal", "abstain_cost": 1.0, "force_noise": None}
+    assert _run_object(("ycb__tomato_soup_can", [0], s))[0]["force_noise"] == 0.0
+    assert _run_object(("ycb__tomato_soup_can", [0], dict(s, force_noise=0.05)))[0]["force_noise"] == 0.05
+
+
+def test_force_noise_argument_is_checked():
+    """--force-noise takes a finite number >= 0 (argparse reports anything else)."""
+    import argparse
+
+    from robots.mujoco_lab.calibrate import _noise_arg
+
+    assert _noise_arg("0.05") == 0.05 and _noise_arg("0") == 0.0
+    for bad in ("-0.1", "nan", "inf", "x"):
+        with pytest.raises(argparse.ArgumentTypeError):
+            _noise_arg(bad)
+
+
+def test_run_records_its_force_noise():
+    """The output's force_noise: the one level its cases ran with (error rows carry none), the levels when they differ."""
+    from robots.mujoco_lab.calibrate import run_force_noise
+
+    assert run_force_noise([{"force_noise": 0.05}, {"error": "x"}, {"force_noise": 0.05}]) == 0.05
+    assert run_force_noise([{"force_noise": 0.05}, {"force_noise": 0.0}]) == [0.0, 0.05]
+    assert run_force_noise([{"error": "x"}]) is None
+
+
+def test_cached_primitives_come_back_with_the_bundle_settings():
+    """_primitives caches one primitives object per bundle; a job's --force-noise or --abstain-cost must not stay on
+    it for the next caller (the m2b probe pin read 0.05 after a job with an override)."""
+    from robots.mujoco_lab.calibrate import _primitives, _run_object
+    from robots.mujoco_lab.robot_spec import DATA_DIR
+
+    bundle = str(DATA_DIR / "m2b")
+    if not os.environ.get("RPENT_MUJOCO_SIM_DIR") or not os.path.exists(os.path.join(bundle, "success_model.joblib")):
+        pytest.skip("needs the sim and the m2b bundle's local models")
+    s = {"bundle": bundle, "fold": None, "const": None, "seed": 5, "protocol": "commit", "follow": False, "fixtures": False,
+         "threshold": None, "model_kind": None, "care": "normal", "abstain_cost": 3.0, "force_noise": 0.05}
+    _run_object(("ycb__tomato_soup_can", [0], s))
+    prims = _primitives(bundle, None, None)
+    assert prims.force_noise == 0.0 and prims.abstain_cost == 1.0

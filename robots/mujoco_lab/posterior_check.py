@@ -56,7 +56,7 @@ from robots.mujoco_lab.prior import com_hypothesis, joint_hidden, lab_prior
 from robots.mujoco_lab.robot_spec import load_bundle
 from robots.mujoco_lab.train_models import load_rows, write_manifest
 from rpent.skills.pick_place.belief import ParticleBelief
-from rpent.skills.pick_place.evaluate import _ece, row_base, row_pose, rows_of
+from rpent.skills.pick_place.evaluate import _ece, ece_ci, object_weights, row_base, row_pose, rows_of
 from rpent.skills.pick_place.features import model_names, particle_matrix, particle_sides
 from rpent.skills.pick_place.likelihood import as_law
 
@@ -64,6 +64,11 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 COVER = (0.75, 0.85)
 TARGET = 0.80
 KEYS = (("mass", "mass"), ("mu", "mu"), ("com", "com_frac"))
+MIN_CASES, MIN_OBJECTS = 30, 4    # plan 2b2 decision 9: a coverage cell below either is insufficient
+MIN_ECE_CASES = 50                # and a P(filled) ECE below this
+P_FILLED_ECE = 0.05
+N_BOOT = 2000
+JUDGED = {None: ("mass", "mu", "com"), "A": ("mass", "mu"), "B": ("mass", "mu"), "C": ()}
 
 
 def true_com_frac(row: dict[str, Any]) -> float:
@@ -251,6 +256,59 @@ def probe_property_report(cases: list[dict[str, Any]], temper: float, constant: 
     return out
 
 
+def cell_verdict(hits: list[bool], objects: list[str], rng: np.random.Generator, n_boot: int = N_BOOT) -> dict[str, Any]:
+    """One coverage cell (plan 2b2 decision 9): pass when the coverage lies in COVER; fail when its 95 % object-bootstrap
+    interval lies wholly outside COVER; otherwise undecided. Under MIN_CASES cases or MIN_OBJECTS objects it is
+    insufficient, with no interval."""
+    objs = sorted(set(objects))
+    out = {"n": len(hits), "n_objects": len(objs), "coverage": float(np.mean(hits)) if hits else None, "ci": None}
+    if len(hits) < MIN_CASES or len(objs) < MIN_OBJECTS:
+        return {**out, "verdict": "insufficient"}
+    inv = np.searchsorted(objs, objects)
+    W = object_weights(len(objs), n_boot, rng)
+    boot = (W @ np.bincount(inv, weights=np.asarray(hits, dtype=float), minlength=len(objs))) / (W @ np.bincount(inv, minlength=len(objs)))
+    ci = [float(np.percentile(boot, 2.5)), float(np.percentile(boot, 97.5))]
+    cov = out["coverage"]
+    verdict = "pass" if COVER[0] <= cov <= COVER[1] else "fail" if ci[0] > COVER[1] or ci[1] < COVER[0] else "undecided"
+    return {**out, "ci": ci, "verdict": verdict}
+
+
+def judged_keys(probes: str | None) -> tuple[str, ...]:
+    """The property cells a check judges: those its evidence reads (one attempt: all three; the push and the weigh:
+    the mass and the friction; the squeeze: none, only the damage force). The others are reported."""
+    return JUDGED[probes]
+
+
+def acceptance_b2(cases: list[dict[str, Any]], temper: float, probes: str | None, rng: np.random.Generator) -> dict[str, Any]:
+    """Plan 2b2 decision 9's (b): per property cell the coverage, its interval and verdict ("reported" for a cell the
+    probes do not read); after a squeeze, the damage force; after a weigh of a fillable object, the fill (filled
+    cases) and the P(filled) ECE (calibrate's plug-in rule at P_FILLED_ECE, from MIN_ECE_CASES cases)."""
+    from robots.mujoco_lab.calibrate import ece_rule
+
+    def cell(sel: list[dict[str, Any]], hit) -> dict[str, Any]:
+        return cell_verdict([bool(hit(c)) for c in sel], [c["object"] for c in sel], rng)
+
+    out: dict[str, Any] = {"bounds": list(COVER), "min_cases": MIN_CASES, "min_objects": MIN_OBJECTS}
+    for k, _ in KEYS:
+        v = cell(cases, lambda c: c["post"][temper][k])
+        out[k] = v if k in judged_keys(probes) else {**v, "verdict": "reported"}
+    squeezed = [c for c in cases if "squeeze_f_damage" in c]
+    if squeezed:
+        out["f_damage"] = cell(squeezed, lambda c: c["squeeze_f_damage"]["post"][temper]["hit"])
+    weighed = [c for c in cases if "weigh_fill" in c]
+    if weighed:
+        out["fill"] = cell([c for c in weighed if c["weigh_fill"]["filled"]], lambda c: c["weigh_fill"]["post"][temper]["hit"])
+        p = np.array([c["weigh_fill"]["post"][temper]["p_filled"] for c in weighed])
+        y = np.array([float(c["weigh_fill"]["filled"]) for c in weighed])
+        ece = {"n": len(weighed), "ece": _ece(p, y), "bound": P_FILLED_ECE, "ci": None}
+        if len(weighed) < MIN_ECE_CASES:
+            out["p_filled_ece"] = {**ece, "verdict": "insufficient"}
+        else:
+            ci = ece_ci(p, y, [c["object"] for c in weighed], rng, N_BOOT)
+            out["p_filled_ece"] = {**ece, "ci": ci, "verdict": ece_rule(ci, P_FILLED_ECE)}
+    return out
+
+
 def laws_of(bundle: dict[str, Any], probes: str | None) -> dict[str, dict[str, dict[str, Any]]]:
     """The reading laws the check used: term -> label -> (kind, core weight, sd1, sd2), or probe -> kind -> the same."""
     if probes:
@@ -356,6 +414,7 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
                        and (r.get("entry") or {}).get("fillable")]
         constant = float(np.mean([float(r.get("fill") or 0.0) > 0 for r in train_weigh])) if train_weigh else None
         out.update(probe_property_report(cases, temper, constant))
+    out["acceptance_b2"] = acceptance_b2(cases, temper, a.probes, np.random.default_rng(a.seed))
     with open(a.out, "w") as f:
         json.dump(out, f, indent=1)
     if a.choose_on:
@@ -366,7 +425,7 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
                                      "sim_cov80": out["sim_truth"]["cov80"],
                                      "grid": out["grid"], "width80_median": out["width80_median"], "n": len(cases)})
     print(json.dumps({k: out[k] for k in ("n", "temper", "feasible", "mass_cov80", "mu_cov80", "com_cov80", "prior_cov80",
-                                          "sim_truth", "acceptance_b", "width80_median", "terms", "seconds")}, indent=1))
+                                          "sim_truth", "acceptance_b", "acceptance_b2", "width80_median", "terms", "seconds")}, indent=1))
     return out
 
 

@@ -97,6 +97,17 @@ def corpus_objects(paths) -> list[str]:
     return sorted({r["object"] for path in paths for r in map(json.loads, open(path)) if "error" not in r})
 
 
+def corpus_sensor(rows: list[dict]) -> dict[str, float]:
+    """The sensor of a corpus's rows, for the manifest (plan 2b2 decision 8): {"force_noise": x}. A row without a
+    sensor record reads 0 (corpora from before plan 2b2 read clean forces); a record without a force noise (a squeeze:
+    no force reading) has no say; rows of two noise levels are an error."""
+    levels = {float(r["sensor"]["force_noise"]) if "sensor" in r else 0.0
+              for r in rows if "sensor" not in r or "force_noise" in (r["sensor"] or {})}
+    if len(levels) > 1:
+        raise ValueError(f"the rows mix force noise levels {sorted(levels)}: a bundle learns from one sensor")
+    return {"force_noise": levels.pop() if levels else 0.0}
+
+
 def write_manifest(out_dir: str, **fields) -> dict:
     """Create or update the bundle's manifest (paths are relative to the bundle directory)."""
     path = os.path.join(out_dir, MANIFEST)
@@ -143,7 +154,13 @@ def fit_probes(path: str, out_dir: str, split: dict, seed: int = 0, schema: str 
     (both on the results not thrown: the kind classifier's rows)."""
     from rpent.skills.pick_place.probes import fit_probe_models, true_matrix
 
+    from robots.mujoco_lab.robot_spec import manifest_force_noise
+
     rows = load_rows(path)
+    man_path = os.path.join(out_dir, MANIFEST)
+    declared = manifest_force_noise(json.load(open(man_path))) if os.path.exists(man_path) else 0.0
+    if corpus_sensor(rows)["force_noise"] != declared:
+        raise ValueError(f"the probe corpus's force noise {corpus_sensor(rows)['force_noise']} is not the bundle's {declared}")
     tr, va = rows_of(rows, split["train"]), rows_of(rows, split["val"])
     law_val = law_val_objects(split, seed)
     models = fit_probe_models(tr, seed=seed, names=FEATURE_SCHEMAS[bundle_schema(out_dir, schema)], val_objects=law_val)
@@ -164,7 +181,6 @@ def fit_probes(path: str, out_dir: str, split: dict, seed: int = 0, schema: str 
         pm.save(os.path.join(out_dir, PROBE_MODEL.format(probe)))
     with open(os.path.join(out_dir, PROBE_METRICS), "w") as f:
         json.dump(out, f, indent=1)
-    man_path = os.path.join(out_dir, MANIFEST)
     tempers = (json.load(open(man_path)).get("tempers") or {}) if os.path.exists(man_path) else {}
     write_manifest(out_dir, probe_models={p: PROBE_MODEL.format(p) for p in models}, probe_metrics=PROBE_METRICS, probe_corpus=path,
                    tempers={k: v for k, v in tempers.items() if k != "probe"})      # new probe models: their temper is re-chosen
@@ -373,7 +389,7 @@ def train_bundle(a: argparse.Namespace, split: dict | None = None, rows: list[di
     write_manifest(a.out_dir, features=a.features, prior=prior, kind=kind, success_model="success_model.joblib",
                    hazard_model="hazard_model.joblib" if eligible else None, metrics=METRICS, corpus=out["corpus"], split_seed=a.seed,
                    feature_schema=schema, outcome_schema=schema,
-                   decision={"abstain_cost": ABSTAIN_COST} if schema == "m2b" else None,
+                   decision={"abstain_cost": ABSTAIN_COST} if schema == "m2b" else None, sensor=corpus_sensor(rows),
                    readout_model=READOUT_MODEL if readout else None, guard=GUARD if guard else None,
                    tempers={}, **world)                                                # new models: tempers are re-chosen
     out["wandb"] = tracking.log_run("train_models", {"corpus": out["corpus"], "features": a.features, "prior": prior,

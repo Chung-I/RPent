@@ -108,7 +108,7 @@ def diagnose(label: str, readouts: dict[str, Any], action: dict[str, Any], befor
             mu, note = _friction(fz, force, laws.get("slip"), mu_range)
             if mu is not None:
                 lines.append(f"the pads slipped at {float(fz):.1f} N of lift force: friction about {mu:.2f} at {force:.0f} N per pad"
-                             f"{note}, or a weight above {float(fz):.1f} N")
+                             f"{note}, or a weight above about {float(fz):.1f} N")
             elif note == UNUSABLE:
                 lines.append("the pads' lift-force reading before the slip is not usable (not positive): the belief line carries the update")
             else:
