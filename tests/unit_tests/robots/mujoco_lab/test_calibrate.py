@@ -846,7 +846,9 @@ def test_the_case_records_its_first_menu_costs(monkeypatch):
 @needs_bundle
 def test_cases_file_runs_only_the_listed_cases(tmp_path):
     """Plan m4 decision 4: a cases file runs exactly its cases, the same cases a full run draws; it must be for the run's
-    seed, and its objects must have folds."""
+    seed, and its objects must have folds; the output records the file's sha256 (plan H3 decision 11)."""
+    import hashlib
+
     from robots.mujoco_lab.calibrate import main
 
     cf = tmp_path / "folds"
@@ -859,7 +861,8 @@ def test_cases_file_runs_only_the_listed_cases(tmp_path):
     base = ["--crossfit", str(cf), "--protocol", "commit", "--coverage-sims", "0"]
     res = main(base + ["--repeats", "11", "--cases", str(cases), "--seed", "13", "--out", str(tmp_path / "c.json")])
     assert [(r["object"], r["idx"]) for r in res["rows"]] == [("ycb__banana", 2), ("ycb__banana", 5)]
-    assert res["cases"] == {"path": str(cases), "n": 2} and res["objects"] == ["ycb__banana"]
+    assert res["cases"] == {"path": str(cases), "n": 2, "sha256": hashlib.sha256(cases.read_bytes()).hexdigest()}
+    assert res["objects"] == ["ycb__banana"]
     full = main(base + ["--repeats", "6", "--objects", "ycb__banana", "--seed", "13", "--out", str(tmp_path / "f.json")])
 
     def key(r):
@@ -874,7 +877,8 @@ def test_cases_file_runs_only_the_listed_cases(tmp_path):
 
 
 def test_the_output_records_its_code_revision(tmp_path):
-    """Plan m4 decision 9: every output says which code made it, and is written whole or not at all."""
+    """Plan m4 decision 9: every output says which code made it, and is written whole or not at all; an arm without a
+    forced probe records no forced-probe rule (plan H3 decision 11)."""
     import re
 
     from robots.mujoco_lab.calibrate import main
@@ -885,6 +889,7 @@ def test_the_output_records_its_code_revision(tmp_path):
     rev = saved["code"]["revision"]
     assert (rev is None or re.fullmatch(r"[0-9a-f]{40}", rev)) and saved["code"]["dirty"] in (True, False, None)
     assert saved["cases"] is None and not list(tmp_path.glob("*.tmp"))
+    assert saved["protocol"] == "commit" and saved["forced_rule"] is None
 
 
 
@@ -1073,3 +1078,159 @@ def test_compare_refuses_runs_with_different_spreads():
     with pytest.raises(ValueError, match="different spreads"):
         compare(a, dict(a, spread=0.25), np.random.default_rng(0))
     assert compare(a, dict(a, spread=1.0), np.random.default_rng(0))["n_paired"] == 1
+
+
+# ---------------------------------------------------------------- the forced probe and the sham (plan H3 decisions 5, 6)
+M2B2 = os.path.join(os.path.dirname(METRICS), "m2b2")      # the default bundle (H3 runs on it); BUNDLE stays m2
+needs_m2b2 = pytest.mark.skipif(not os.path.exists(os.path.join(M2B2, "success_model.joblib")), reason="the m2b2 bundle is not built")
+
+
+def _forced_menu(rec="probe", squeeze=False, guard=None, without="commit"):
+    a = _assessment(rec, probe=True)
+    a["options"] = a["options"] + [{"id": "probe_weigh", "kind": "probe", "action": {"probe": "weigh"}, "expected_cost": 0.7}]
+    if squeeze:
+        a["options"].append({"id": "probe_squeeze", "kind": "probe", "action": {"probe": "squeeze"}, "expected_cost": 0.8})
+    return dict(a, guard=guard, without_probe=without)
+
+
+class _ForcedScript(_Script):
+    """The scripted skill for the forced-probe arms: a probe payload names its option's probe; ``damage`` crushes the
+    object (the case ends) or, with ``restore``, comes back restored (the recovery mode); the sham goes through the same
+    script and adds the sham record."""
+
+    def __init__(self, assessments, outcomes, damage=False, restore=False):
+        super().__init__(assessments, outcomes)
+        self.damage, self.restore, self.shams = damage, restore, 0
+
+    def pick(self, **kw):
+        oid = str(kw.get("option_id"))
+        if not oid.startswith("probe_"):
+            return super().pick(**kw)
+        self.calls.append(oid)
+        nxt = self.assessments.pop(0) if self.assessments else _assessment("decline")
+        d = {"probed": oid[len("probe_"):], "kind": "measured", "reading": {"k_hat": 1.0}, "thrown": False, "assessment": nxt}
+        if self.damage:
+            d.update(kind="damaged", reading={}, damage={"label": "crushed", "channel": "force", "t": 1.0})
+            if self.restore:
+                d["restored"] = {"after": "probe", "event": "crushed", "check": {"same_case": True}}
+            else:
+                d["assessment"] = {"assessed": False, "reason": "object is damaged (crushed)"}
+        return SimpleNamespace(data=d)
+
+    def sham(self, **kw):
+        self.shams += 1
+        return dict(self.pick(**kw).data, sham=True, belief_hash_before="h0", belief_hash_after="h0", belief_hash_next="h0")
+
+
+def _forced(monkeypatch, assessments, outcomes, **kw):
+    from robots.mujoco_lab import calibrate
+
+    sc = _ForcedScript(assessments, outcomes, **kw)
+    monkeypatch.setattr(calibrate, "assess_pick", sc.assess)
+    monkeypatch.setattr(calibrate, "pick_and_place", sc.pick)
+    monkeypatch.setattr(calibrate, "sham_probe", sc.sham)
+    return sc
+
+
+def test_probe_once_runs_one_probe_then_no_more(monkeypatch):
+    """The forced probe runs at the first menu, then the policy without probes: a menu that recommends a probe again
+    commits by without_probe, or declines by it; the case records the forced probe, the decision after it and the
+    change, and first_menu keeps the decision without probes and the best row."""
+    from robots.mujoco_lab.calibrate import run_protocol
+
+    sc = _forced(monkeypatch, [_forced_menu(), _forced_menu(), _assessment("commit")], ["placed_stable"])
+    case = run_protocol(SimpleNamespace(abstain_cost=1.0), "probe_once", "table_centre", np.random.default_rng(0))
+    assert sc.calls == ["probe_weigh", "commit_std"] and len(case["probes"]) == 1 and case["ended"] == "placed"
+    assert case["forced_probe"] == "weigh" and case["post_probe"] == "commit_std" and case["changed"] == "same"
+    assert case["first_menu"]["without_probe"] == "commit" and case["first_menu"]["best_row"] == "commit_std"
+    sc = _forced(monkeypatch, [_forced_menu(), _forced_menu(without="decline")], [])
+    case = run_protocol(SimpleNamespace(abstain_cost=1.0), "probe_once", "table_centre", np.random.default_rng(0))
+    assert sc.calls == ["probe_weigh"] and case["ended"] == "abstained" and len(case["probes"]) == 1
+    assert case["post_probe"] == "decline" and case["changed"] == "decline" and sc.shams == 0
+
+
+def test_the_forced_probe_rule(monkeypatch):
+    """The squeeze when the first menu offers it, else the weigh; no probe after a guard flag or without either row
+    (then the policy without probes runs: post_probe and changed "no_probe"); sham_once forces the same probe through
+    the sham."""
+    from robots.mujoco_lab.calibrate import forced_probe, run_protocol
+
+    assert forced_probe(_forced_menu(squeeze=True)) == "probe_squeeze" and forced_probe(_forced_menu()) == "probe_weigh"
+    assert forced_probe(_forced_menu(squeeze=True, guard={"flag": True})) is None and forced_probe(_assessment("commit")) is None
+    sc = _forced(monkeypatch, [_forced_menu(rec="decline", guard={"flag": True}, without="decline")], [])
+    case = run_protocol(SimpleNamespace(abstain_cost=1.0), "sham_once", "table_centre", np.random.default_rng(0))
+    assert sc.calls == [] and case["forced_probe"] is None and case["post_probe"] == case["changed"] == "no_probe"
+    assert case["ended"] == "abstained" and case["probes"] == []
+    sc = _forced(monkeypatch, [_forced_menu(squeeze=True), _assessment("commit"), _assessment("commit")], ["placed_stable"])
+    case = run_protocol(SimpleNamespace(abstain_cost=1.0), "sham_once", "table_centre", np.random.default_rng(0))
+    assert sc.calls == ["probe_squeeze", "commit_std"] and sc.shams == 1 and case["forced_probe"] == "squeeze"
+    assert case["probes"][0]["sham"] is True and case["probes"][0]["belief_hash_before"] == case["probes"][0]["belief_hash_next"]
+
+
+def test_the_decision_change_categories(monkeypatch):
+    """plan H3 decision 6: same (the first menu's decision without probes), another commit row, a decline, terminal (the
+    probe crushed the object: the case ended, or the object was restored under the recovery mode) and no probe."""
+    from robots.mujoco_lab.calibrate import decision_change, run_protocol
+
+    first = {"without_probe": "commit", "best_row": "commit_std"}
+    assert [decision_change(first, p) for p in ("commit_std", "commit_low", "decline", "terminal", "no_probe")] == \
+        ["same", "other_row", "decline", "terminal", "no_probe"]
+    assert decision_change({"without_probe": "decline", "best_row": "commit_std"}, "decline") == "same"
+    assert decision_change({"without_probe": "decline", "best_row": "commit_std"}, "commit_std") == "other_row"
+    assert decision_change(first, "unreachable") is None and decision_change(first, "error") is None
+    other = dict(_forced_menu(rec="commit"), best_option="commit_low")
+    other["options"] = other["options"] + [_row("commit_low")]
+    sc = _forced(monkeypatch, [_forced_menu(), other], ["placed_stable"])
+    case = run_protocol(SimpleNamespace(abstain_cost=1.0), "probe_once", "table_centre", np.random.default_rng(0))
+    assert sc.calls == ["probe_weigh", "commit_low"] and case["post_probe"] == "commit_low" and case["changed"] == "other_row"
+    sc = _forced(monkeypatch, [_forced_menu(squeeze=True)], [], damage=True)
+    case = run_protocol(SimpleNamespace(abstain_cost=1.0), "probe_once", "table_centre", np.random.default_rng(0))
+    assert sc.calls == ["probe_squeeze"] and case["ended"] == "damaged" and case["post_probe"] == case["changed"] == "terminal"
+    sc = _forced(monkeypatch, [_forced_menu(squeeze=True), _assessment("commit"), _assessment("commit")], ["placed_stable"],
+                 damage=True, restore=True)
+    case = run_protocol(SimpleNamespace(abstain_cost=1.0, reset_s=20.0), "sham_once", "table_centre", np.random.default_rng(0))
+    assert sc.calls == ["probe_squeeze", "commit_std"] and case["ended"] == "placed" and case["restores"][0]["probe"] == "squeeze"
+    assert case["post_probe"] == case["changed"] == "terminal"
+
+
+@needs_m2b2
+def test_the_forced_probe_is_the_same_at_every_recovery_level(tmp_path):
+    """The rule reads only the menu's probe rows, which follow the object's public flags: every recovery level forces
+    the same physical probe, the squeeze on a crushable object (the jello box), the weigh on a rigid one (the soup can).
+    Each output records the rule (plan H3 decision 11)."""
+    from robots.mujoco_lab.calibrate import FORCED_RULE, main
+
+    forced, rules = [], []
+    for reset in (None, "20", "0"):
+        out = tmp_path / f"c{reset}.json"
+        main(["--bundle", M2B2, "--repeats", "1", "--out", str(out), "--objects", "ycb__jello,ycb__tomato_soup_can", "--seed", "2",
+              "--protocol", "probe_once", "--care", "10", "--abstain-cost", "10"] + ([] if reset is None else ["--reset-s", reset]))
+        forced.append({r["object"]: r["forced_probe"] for r in json.load(open(out))["rows"]})
+        rules.append(json.load(open(out))["forced_rule"])
+    assert forced[0] == forced[1] == forced[2] == {"ycb__jello": "squeeze", "ycb__tomato_soup_can": "weigh"}
+    assert rules == [FORCED_RULE] * 3 and "squeeze" in FORCED_RULE and "weigh" in FORCED_RULE
+
+
+@needs_m2b2
+def test_sham_once_leaves_the_belief_unchanged(tmp_path):
+    """Gates Gp and Gs on real cases: the sham's probe trace (kind, reading, thrown, displacement, tilt) and its charge
+    equal the real probe's on the same case, and its belief hashes before, after and at the next menu are equal (the
+    next menu missing only when the probe ended the case); a real probe carries no sham record."""
+    from robots.mujoco_lab.calibrate import main
+
+    rows = {}
+    for arm in ("probe_once", "sham_once"):
+        out = tmp_path / f"{arm}.json"
+        main(["--bundle", M2B2, "--repeats", "2", "--out", str(out), "--objects", "ycb__jello,ycb__tomato_soup_can", "--seed", "2",
+              "--protocol", arm, "--care", "10", "--abstain-cost", "10"])
+        rows[arm] = {(r["object"], r["idx"]): r for r in json.load(open(out))["rows"]}
+    trace, ran = ("probe", "kind", "reading", "thrown", "displacement_m", "tilt_deg", "cost"), 0
+    for key, real in rows["probe_once"].items():
+        sham = rows["sham_once"][key]
+        assert sham["forced_probe"] == real["forced_probe"] and len(sham["probes"]) == len(real["probes"]) == 1
+        p, q = real["probes"][0], sham["probes"][0]
+        assert {k: p[k] for k in trace} == {k: q[k] for k in trace} and "sham" not in p and q["sham"] is True
+        assert q["belief_hash_before"] == q["belief_hash_after"]
+        assert q["belief_hash_next"] == q["belief_hash_before"] or q["kind"] == "damaged" or q["thrown"]
+        ran += 1
+    assert ran == 4

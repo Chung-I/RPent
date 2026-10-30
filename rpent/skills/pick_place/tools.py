@@ -31,10 +31,17 @@ damages the object, is followed in the same call by ``env.restore()`` (the case'
 sensor streams go on), the damage latch is cleared, the record keeps ``restored`` (no probe after it), and the call
 returns the restored object's fresh assessment with the payload's ``restored`` record. The belief keeps what the event
 taught.
+
+The sham probe (``sham_probe``, plan H3 decision 5: calibrate's sham_once arm, not a planner tool) runs a probe row as
+pick_and_place would, with the same motion, time and risk, and discards the result: no reweight and no history entry.
+The probe still enters ``probes_run`` and ``probe_seq``, so every later menu sees what it sees after the real probe,
+and the payload records the belief's hash before, after and at the next assessment (gate Gs).
 """
 
 from __future__ import annotations
 
+import hashlib
+import json
 from typing import Any, Callable
 
 import numpy as np
@@ -318,12 +325,36 @@ def _restore(rec: dict[str, Any], env: Any, after: str, event: str) -> dict[str,
     return {"after": after, "event": event, "check": check}
 
 
-def _run_probe(row: Option, object: str, destination: str, care: str, primitives: Any, store: dict[str, Any]) -> dict[str, Any]:
+def _jsonable(x: Any) -> Any:
+    if isinstance(x, np.ndarray):
+        return x.tolist()
+    if isinstance(x, np.generic):
+        return x.item()
+    if isinstance(x, (set, frozenset)):
+        return sorted(x, key=str)
+    return str(x)
+
+
+def belief_hash(belief: ParticleBelief) -> str:
+    """The sha256 of the full belief state (plan H3 gate Gs): the particles (ancestors included), the weights, the
+    likelihood history, the flags, the visibility and the refresh state."""
+    h = hashlib.sha256(json.dumps({"particles": belief.particles, "history": belief.history, "flags": belief.flags,
+                                   "visibility": belief.visibility, "degenerate": belief.degenerate,
+                                   "importance_ess": belief.importance_ess}, sort_keys=True, default=_jsonable).encode())
+    h.update(np.asarray(belief.weights, dtype=float).tobytes())
+    return h.hexdigest()
+
+
+def _run_probe(row: Option, object: str, destination: str, care: str, primitives: Any, store: dict[str, Any],
+               sham: bool = False) -> dict[str, Any]:
     """Run one probe row, update the belief with its result, and return the probe payload. A probe that damages
-    the object ends the case (its fresh assessment says so); the reading's noise (HIDDEN_READING) stays out."""
+    the object ends the case (its fresh assessment says so); the reading's noise (HIDDEN_READING) stays out. ``sham``
+    (plan H3 decision 5): the same motion, damage latch, probe record and restore, but no update; the payload adds
+    ``sham`` and the belief's hashes before, after and at the next assessment (None when there is none)."""
     env = primitives.env
     loc = env.locate(object)
     rec = _belief_record(loc, env, primitives, store)
+    h0 = belief_hash(rec["belief"]) if sham else None
     probe, act = row.action["probe"], row.action
     if probe in ("weigh", "squeeze"):
         prop = next(p for p in env.proposals() if abs(p.s - act["s"]) < 1e-9)
@@ -338,14 +369,22 @@ def _run_probe(row: Option, object: str, destination: str, care: str, primitives
     reading = {k: v for k, v in dict(res.reading).items() if k not in HIDDEN_READING}
     entry = {"type": "probe", "option": row.id, "base": row._base, "pose": row._pose, "force": float(act["force"]), "planned": None,
              "obs": {"probe": probe, "kind": res.kind, "reading": dict(reading), "thrown": bool(res.thrown)}}
-    before, after = _update(rec, entry, loc, primitives)
+    if sham:
+        before = after = rec["belief"]
+    else:
+        before, after = _update(rec, entry, loc, primitives)
     out = {"probed": probe, "placed": False, "kind": res.kind, "reading": reading,
            "displacement_m": res.displacement_m, "tilt_deg": res.tilt_deg, "thrown": bool(res.thrown), "seconds": res.seconds,
            "artifact": bool(getattr(res, "artifact", False)), "damage": damage,
            "declared": row.to_data()["probe"], "belief_before": before.to_data(), "belief": after.to_data()}
+    if sham:
+        out.update(sham=True, belief_hash_before=h0, belief_hash_after=belief_hash(rec["belief"]))
     if getattr(primitives, "reset_s", None) is not None and (res.thrown or rec.get("damaged")):
         out["restored"] = _restore(rec, env, "probe", rec.get("damaged") or "thrown")
     out["assessment"] = _reassess(object, destination, care, primitives, store)
+    if sham:
+        nxt = _cache(store).get((loc["object_id"], destination, care, int(getattr(env, "episode", 0))))
+        out["belief_hash_next"] = None if nxt is None else belief_hash(nxt["belief"])
     return out
 
 
@@ -439,6 +478,38 @@ def _probe_brief(d: dict[str, Any]) -> dict[str, Any]:
     return {k: d[k] for k in ("probed", "kind", "reading", "displacement_m", "thrown", "artifact")}
 
 
+def _named_probe(option_id: str, a: Assessment, object: str, destination: str, care: str | float, primitives: Any,
+                 store: dict[str, Any], sham: bool = False) -> dict[str, Any]:
+    """The probe row ``option_id`` of the assessment ``a`` run (once per episode, as the probe sequence allows), or the
+    error payload; ``sham`` as in _run_probe."""
+    loc = primitives.env.locate(object)
+    rec = _belief_record(loc, primitives.env, primitives, store)
+    if PROBE_OPTIONS[option_id] in rec["probes_run"]:
+        return {"error": f"{option_id} already ran this episode; the menu shows what is left"}
+    refusal = _probe_refusal(PROBE_OPTIONS[option_id], rec, primitives)
+    if refusal is not None:
+        return {"error": refusal}
+    row = next((o for o in a.options if o.id == option_id), None)
+    if row is None:
+        return {"error": f"{option_id} is not on the menu: no row to the requested destination to probe for"}
+    return _run_probe(row, object, destination, care, primitives, store, sham=sham)
+
+
+def sham_probe(*, object: str, destination: str = "bin", option_id: str, care: str | float = "normal", primitives,
+               store) -> dict[str, Any]:
+    """The sham_once arm's probe (plan H3 decision 5; calibrate calls it, it is not a planner tool): the probe row
+    ``option_id`` runs as pick_and_place runs it (the same checks, motion, time and risk) and its result is discarded
+    (_run_probe's ``sham``). Returns the probe payload or an error payload."""
+    if option_id not in PROBE_OPTIONS:
+        return {"error": f"{option_id!r} is not a probe row (one of {sorted(PROBE_OPTIONS)})"}
+    if PROBE_OPTIONS[option_id] not in (getattr(primitives, "probe_models", None) or {}):
+        return {"error": "probe models are not loaded"}
+    err, a = _assess(object, destination, care, primitives, store)
+    if err is not None:
+        return err
+    return _named_probe(option_id, a, object, destination, care, primitives, store, sham=True)
+
+
 @tool(readonly=False, exclude=("primitives", "store"))
 def pick_and_place(*, object: str, destination: str = "bin", mode: str = "commit", option_id: str | None = None,
                    care: str | float = "normal", primitives, store) -> ToolResult:
@@ -473,17 +544,7 @@ def pick_and_place(*, object: str, destination: str = "bin", mode: str = "commit
     if mode == "assess_only":
         return ToolResult(data=a.to_data())
     if option_id in PROBE_OPTIONS:
-        loc = primitives.env.locate(object)
-        rec = _belief_record(loc, primitives.env, primitives, store)
-        if PROBE_OPTIONS[option_id] in rec["probes_run"]:
-            return ToolResult(data={"error": f"{option_id} already ran this episode; the menu shows what is left"})
-        refusal = _probe_refusal(PROBE_OPTIONS[option_id], rec, primitives)
-        if refusal is not None:
-            return ToolResult(data={"error": refusal})
-        row = next((o for o in a.options if o.id == option_id), None)
-        if row is None:
-            return ToolResult(data={"error": f"{option_id} is not on the menu: no row to the requested destination to probe for"})
-        return ToolResult(data=_run_probe(row, object, destination, care, primitives, store))
+        return ToolResult(data=_named_probe(option_id, a, object, destination, care, primitives, store))
     probes: list[dict[str, Any]] = []
     if mode == "probe_first" and probe_models:
         for _ in range(MAX_PROBES):

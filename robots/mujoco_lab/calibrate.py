@@ -36,12 +36,18 @@ protocols are paired case by case), resets the lab, and runs one protocol throug
   the probe rows (the payload's ``without_probe``), so it learns only from failed attempts (the retry baseline);
 * ``policy_probe_one`` (plan m4): the first menu's cheapest probe row whatever the recommendation (none after a
   guard flag), then the policy.
+* ``probe_once`` and ``sham_once`` (plan H3 decision 5): the first menu's squeeze row when it offers one, else its
+  weigh row (none after a guard flag: forced_probe), then the policy without probes; ``sham_once`` runs that probe
+  through tools.sham_probe (the same motion, time and risk, the result discarded). The case records
+  ``forced_probe``, ``post_probe`` (the decision after the probe: a commit row id, "decline", "terminal" or
+  "no_probe") and ``changed`` (decision_change against the first menu's decision without probes).
 
 Each case records its first menu's costs (``first_menu``: the best row's and the recommended option's expected
-cost), and each probe its place (``position`` among the case's probes, ``after_attempts``). ``--cases FILE``
-(``{"seed", "cases": {object: [idx, ...]}}``, for the run's seed) runs exactly the listed cases, which are the same
-cases a full run draws. The output records the code that made it (``code``: git HEAD and whether tracked files
-differed) and is written to a temporary file first, then renamed.
+cost, the decision without the probe rows and the best row), and each probe its place (``position`` among the
+case's probes, ``after_attempts``). ``--cases FILE`` (``{"seed", "cases": {object: [idx, ...]}}``, for the run's
+seed) runs exactly the listed cases, which are the same cases a full run draws; the output records the file's
+sha256. The output records the code that made it (``code``: git HEAD and whether tracked files differed) and, for
+the forced arms, their rule (``forced_rule``); it is written to a temporary file first, then renamed.
 
 Each case keeps the novelty guard's check of its first assessment (``guard``, None without a guard), and the
 summary counts the cases it checked and flagged; the commit protocol runs the best row after a guard decline too.
@@ -71,6 +77,7 @@ adds an isotonic map of P(placed_stable) fitted on the other folds' executions),
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import multiprocessing as mp
 import os
@@ -93,10 +100,13 @@ from rpent.skills.pick_place.evaluate import (_ece, coverage_design, ece_ci, ece
 from rpent.skills.pick_place.features import extract
 from rpent.skills.pick_place.probes import DAMAGED, PROBE_KINDS, PROBE_SECONDS
 from rpent.skills.pick_place.protocol import DAMAGE, IRREVERSIBLE, MOTION_OUTCOMES, OUTCOMES, RECOVERABLE, Prediction
-from rpent.skills.pick_place.tools import MAX_PROBES, _threshold, assess_pick, pick_and_place
+from rpent.skills.pick_place.tools import MAX_PROBES, PROBE_OPTIONS, _threshold, assess_pick, pick_and_place, sham_probe
 
-PROTOCOLS = ("commit", "probe_first", "repair", "random_row", "probe_all", "policy", "policy_no_probe", "policy_probe_one")
-POLICIES = ("policy", "policy_no_probe", "policy_probe_one")      # the protocols that run the policy loop
+PROTOCOLS = ("commit", "probe_first", "repair", "random_row", "probe_all", "policy", "policy_no_probe", "policy_probe_one",
+             "probe_once", "sham_once")
+FORCED = ("probe_once", "sham_once")      # plan H3 decision 5: one forced probe, then the policy without probes
+FORCED_RULE = "the first menu's squeeze row if offered, else its weigh row; none after a guard flag"      # forced_probe
+POLICIES = ("policy", "policy_no_probe", "policy_probe_one") + FORCED      # the protocols that run the policy loop
 POLICY_ATTEMPTS = 3               # policy: the attempts per case (a recoverable failure is reassessed)
 PROBE_ORDER = ("probe_push", "probe_weigh")     # probe_all: the order of scene A of the probe corpus
 CARE = "normal"                   # the default care of the realized cost
@@ -151,18 +161,45 @@ def _without_probe(a: dict[str, Any], prims: Any) -> str:
     return "commit" if float(row["expected_cost"]) <= float(A) and (floor is None or p >= float(floor)) else "decline"
 
 
-def _first_menu(a: dict[str, Any]) -> dict[str, float | None]:
-    """The first assessment's best row and recommended option costs (plan m4: the declared saving); None when missing."""
+def _first_menu(a: dict[str, Any]) -> dict[str, Any]:
+    """The first assessment's best row and recommended option costs (plan m4: the declared saving), its decision without
+    the probe rows and its best row (plan H3 decision 6); None when missing."""
     cost = {o["id"]: o.get("expected_cost") for o in a.get("options") or []}
-    return {"best_cost": cost.get(a.get("best_option")), "recommended_cost": cost.get(a.get("recommended_option"))}
+    return {"best_cost": cost.get(a.get("best_option")), "recommended_cost": cost.get(a.get("recommended_option")),
+            "without_probe": a.get("without_probe"), "best_row": a.get("best_option")}
+
+
+def forced_probe(a: dict[str, Any]) -> str | None:
+    """Plan H3 decision 5's rule at the first menu: its squeeze row when it offers one (a crushable or bruisable object),
+    else its weigh row; None after a guard flag or when it offers neither."""
+    if (a.get("guard") or {}).get("flag"):
+        return None
+    ids = {o["id"] for o in a.get("options") or [] if o.get("kind") == "probe"}
+    return next((p for p in ("probe_squeeze", "probe_weigh") if p in ids), None)
+
+
+def decision_change(first: dict[str, Any] | None, post: str | None) -> str | None:
+    """Plan H3 decision 6: what the forced probe did to the decision. "no_probe" and "terminal" as recorded; "same" when
+    the decision after the probe is the first menu's decision without probes (its best row, or decline); "decline";
+    "other_row" (another commit row, or a commit where the first menu declined); None after an error or an object out
+    of reach."""
+    if post in ("no_probe", "terminal"):
+        return post
+    if post in (None, "error", "unreachable") or first is None:
+        return None
+    before = "decline" if first.get("without_probe") == "decline" else first.get("best_row")
+    if post == before:
+        return "same"
+    return "decline" if post == "decline" else "other_row"
 
 
 def _probe_record(d: dict[str, Any], prims: Any, care: str | float, position: int = 0, after_attempts: int = 0) -> dict[str, Any]:
+    """One executed probe; a sham probe (plan H3) adds ``sham`` and the belief hashes."""
     pm = (getattr(prims, "probe_models", None) or {}).get(d["probed"])
     stats = getattr(pm, "stats", None) or {}
     n, kinds = int(stats.get("n") or 0), stats.get("kinds") or {}
     n_kinds = sum(int(v) for v in kinds.values())                     # the kind model's rows (2b: the results not thrown)
-    return {"probe": d["probed"], "position": position, "after_attempts": after_attempts, "kind": d["kind"], "reading": d["reading"],
+    out = {"probe": d["probed"], "position": position, "after_attempts": after_attempts, "kind": d["kind"], "reading": d["reading"],
             "thrown": bool(d["thrown"]), "damage": d.get("damage"),
             "artifact": bool(d.get("artifact", False)), "displacement_m": d.get("displacement_m"), "tilt_deg": d.get("tilt_deg"),
             "declared": d.get("declared"),
@@ -171,6 +208,9 @@ def _probe_record(d: dict[str, Any], prims: Any, care: str | float, position: in
             "const_thrown": stats["thrown"] / n if n and "thrown" in stats else None,
             "cost": probe_cost(d["probed"], d["kind"], d["thrown"], care, getattr(prims, "probe_time_scale", 1.0),
                                getattr(prims, "reset_s", None))}
+    if d.get("sham"):
+        out.update({k: d.get(k) for k in ("sham", "belief_hash_before", "belief_hash_after", "belief_hash_next")})
+    return out
 
 
 def _attempt_record(d: dict[str, Any], row: dict[str, Any], a: dict[str, Any], features: Any, care: str | float,
@@ -216,10 +256,14 @@ def run_protocol(prims: Any, protocol: str, destination: str, rng: np.random.Gen
     case["first_menu"] = _first_menu(a)
     if follow and a.get("recommendation") == "decline":
         return end("abstained")
-    def probe(option_id: str) -> str | None:
-        """Run one probe row; the reason the case ends, or None (``a`` is then the fresh assessment)."""
+    def probe(option_id: str, sham: bool = False) -> str | None:
+        """Run one probe row (``sham``: through tools.sham_probe); the reason the case ends, or None (``a`` is then the
+        fresh assessment)."""
         nonlocal a
-        d = call(option_id=option_id)
+        if sham:
+            d = sham_probe(object="object", destination=destination, option_id=option_id, care=care, primitives=prims, store=store)
+        else:
+            d = call(option_id=option_id)
         if "error" in d:
             case["error"] = d["error"]
             return "error"
@@ -236,6 +280,24 @@ def run_protocol(prims: Any, protocol: str, destination: str, rng: np.random.Gen
             return "error"
         return None if a.get("assessed", False) else "unreachable"
 
+    if protocol in FORCED:
+        forced = forced_probe(a)
+        case["forced_probe"] = None if forced is None else PROBE_OPTIONS[forced]
+        if forced is None:
+            case["post_probe"] = "no_probe"
+        else:
+            reason = probe(forced, sham=protocol == "sham_once")
+            if reason is not None:
+                case["post_probe"] = "terminal" if reason in ("damaged", "thrown") else reason
+                case["changed"] = decision_change(case["first_menu"], case["post_probe"])
+                return end(reason)
+            if case["restores"]:
+                case["post_probe"] = "terminal"         # restored after the probe (plan H3 decision 6)
+            else:
+                rec = a.get("recommendation")
+                rec = _without_probe(a, prims) if rec == "probe" else rec
+                case["post_probe"] = "decline" if rec == "decline" else a.get("best_option")
+        case["changed"] = decision_change(case["first_menu"], case["post_probe"])
     if protocol == "probe_first":
         while a.get("recommendation") == "probe" and len(case["probes"]) < max_probes:
             reason = probe(a["recommended_option"])
@@ -254,7 +316,7 @@ def run_protocol(prims: Any, protocol: str, destination: str, rng: np.random.Gen
             if reason is not None:
                 return end(reason)
     if protocol in POLICIES:
-        cap = 0 if protocol == "policy_no_probe" else max_probes
+        cap = 0 if protocol == "policy_no_probe" or protocol in FORCED else max_probes
         while True:
             rec = a.get("recommendation")
             if rec == "probe" and len(case["probes"]) >= cap:
@@ -892,6 +954,12 @@ def code_revision() -> dict[str, Any]:
     return {"revision": rev, "dirty": bool(status.strip())}
 
 
+def cases_sha256(path: str) -> str:
+    """The sha256 of a cases file's bytes (plan H3 decision 11: the output records it, h3 valid checks it)."""
+    with open(path, "rb") as f:
+        return hashlib.sha256(f.read()).hexdigest()
+
+
 def listed_cases(a: argparse.Namespace) -> dict[str, list[int]] | None:
     """--cases: {object: [idx, ...]} of a cases file written for this run's seed (SystemExit for another seed)."""
     if not getattr(a, "cases", None):
@@ -1009,6 +1077,7 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
         ap.error("--follow-recommendation applies to the commit protocol")
     if a.cases and a.objects:
         ap.error("--cases names the objects; drop --objects")
+    cases_hash = cases_sha256(a.cases) if a.cases else None
     plan = plan_cases(a)
     rows = run_cases(a, plan)
     out = summarize(rows, a.protocol, rng, a.coverage_sims, nested=bool(a.crossfit))
@@ -1016,7 +1085,8 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
                care=a.care, care_scale=care_scale(a.care), abstain_cost=run_abstain_cost(a, plan), force_noise=run_force_noise(rows),
                evoi=run_evoi(rows), probe_time_scale=run_probe_time_scale(rows), reset_s=run_reset_s(rows), spread=run_spread(rows),
                source={"crossfit": a.crossfit, "bundle": a.bundle, "metrics": a.metrics}, seconds=round(time.time() - t0, 1),
-               cases=None if not a.cases else {"path": a.cases, "n": len(rows)}, code=code_revision())
+               cases=None if not a.cases else {"path": a.cases, "n": len(rows), "sha256": cases_hash},
+               forced_rule=FORCED_RULE if a.protocol in FORCED else None, code=code_revision())
     _write(out, a.out)
     summary = {k: out[k] for k in ("protocol", "kind", "care", "abstain_cost", "n", "n_executed", "abstained", "errors", "artifacts", "ece",
                                    "ece_ci95_object_bootstrap", "brier", "brier_const", "ece_iid_floor", "outcomes", "probes_run",

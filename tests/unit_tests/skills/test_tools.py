@@ -1018,3 +1018,45 @@ def test_the_refresh_keeps_the_spread(monkeypatch):
         _commit(prims, store)
         assert any(f.startswith("refreshed from") for f in store["beliefs"]["ycb__mug"]["belief"].flags)
         assert len(calls) >= 2 and set(calls) == want
+
+
+# ---------------------------------------------------------------- the sham probe (plan H3 decision 5)
+def test_a_sham_probe_keeps_the_belief(monkeypatch):
+    """sham_probe (the sham_once arm, not a planner tool) runs the probe row's motion as the real probe does (the same
+    call and trace) and discards the result: the full belief state hashes equal before, after and in the next
+    assessment, whose menu equals the menu built from the pre-probe belief at the post-probe state with the same stream
+    state; the probe enters probes_run and probe_seq, so the next menu offers the rows a real probe leaves (the weigh
+    after a push); a second sham of the same probe is refused; a later refresh replays no sham result."""
+    import copy
+
+    from rpent.skills.pick_place.tools import belief_hash, sham_probe
+    from rpent.tools.base import Tool
+
+    assert not isinstance(sham_probe, Tool)                  # the toolkit registers Tool objects only: no planner sees it
+    pms = {"push": PerfectPush(), "weigh": FlatWeigh()}
+    real_env, sham_env = (_ProbeEnv([("placed_stable", _hold(0.2))], probes=[_push()]) for _ in range(2))
+    (real, rs), (sham, ss) = ((_bprims(e, probe_models=pms, model=MuGate(f_std=10.0)), {}) for e in (real_env, sham_env))
+    for prims, store in ((real, rs), (sham, ss)):
+        assess_pick(object="mug", destination="table_centre", primitives=prims, store=store)
+    r = pick_and_place(object="mug", destination="table_centre", option_id="probe_push", primitives=real, store=rs).data
+    rec = ss["beliefs"]["ycb__mug"]
+    pre = copy.deepcopy(rec["belief"])
+    h0, states, orig = belief_hash(pre), [], tools_mod._reassess
+    monkeypatch.setattr(tools_mod, "_reassess", lambda *a: (states.append(a[3].rng.bit_generator.state), orig(*a))[1])
+    d = sham_probe(object="mug", destination="table_centre", option_id="probe_push", primitives=sham, store=ss)
+    assert d["sham"] is True and d["belief_hash_before"] == d["belief_hash_after"] == d["belief_hash_next"] == h0
+    assert belief_hash(rec["belief"]) == h0 and rec["belief"].history == [] and len(rs["beliefs"]["ycb__mug"]["belief"].history) == 1
+    trace = ("probed", "kind", "reading", "displacement_m", "tilt_deg", "thrown", "seconds")
+    assert {k: d[k] for k in trace} == {k: r[k] for k in trace} and sham_env.probe_calls == real_env.probe_calls == ["push"]
+    assert rec["probes_run"] == {"push"} and rec["probe_seq"] == ["push"]
+    probe_rows = lambda a: [o["id"] for o in a["options"] if o["kind"] == "probe"]  # noqa: E731
+    assert probe_rows(d["assessment"]) == probe_rows(r["assessment"]) == ["probe_weigh"]
+    fresh = {"beliefs": {"ycb__mug": dict(rec, belief=pre, probes_run=set(rec["probes_run"]), probe_seq=list(rec["probe_seq"]))}}
+    sham.rng.bit_generator.state = states[0]
+    again = assess_pick(object="mug", destination="table_centre", primitives=sham, store=fresh).data
+    assert again["options"] == d["assessment"]["options"] and again["recommendation"] == d["assessment"]["recommendation"]
+    assert "already ran" in sham_probe(object="mug", destination="table_centre", option_id="probe_push", primitives=sham, store=ss)["error"]
+    monkeypatch.setattr(tools_mod, "REFRESH_ESS", float("inf"))
+    _commit(sham, ss)
+    b = ss["beliefs"]["ycb__mug"]["belief"]
+    assert any(f.startswith("refreshed from") for f in b.flags) and [e["type"] for e in b.history] == ["attempt"]
