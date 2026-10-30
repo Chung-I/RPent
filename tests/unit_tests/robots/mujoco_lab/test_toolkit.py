@@ -160,8 +160,11 @@ def test_system_prompt_states_the_cost_rule_and_damage():
     assert len(OUTCOMES) == 11 and "eleven outcomes" in text
     for k in OUTCOMES:
         assert f"`{k}`" in text or k in text, k
+    assert text.count("Outcomes (eleven outcomes):") == 1
     for k in DAMAGE:
-        assert k in text.split("Outcomes:")[-1], k
+        assert k in text.split("Outcomes (eleven outcomes):")[1], k
+    held = next(line for line in text.splitlines() if line.startswith("- `p_held_to_release`"))
+    assert "damage outcomes are left out" in held, held
     for k in ("abstain cost", "`abstain_cost`", "`care_scale`", "a number above 0", "probe_squeeze", "k_hat",
               "light_grip", "gentle_carry", "`damage`", "`meter_max`", "`damaged`", "object is damaged"):
         assert k in text, k

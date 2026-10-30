@@ -43,7 +43,8 @@ RESULT_FIELDS = """Result fields and their meaning. Every probability is conditi
 ONE menu row (a pinch point, a squeeze force, a lift and carry speed, a destination, a
 release height). The top-level numbers repeat the best row's values; `best_option` names it.
 - `p_success`: P(the object ends up standing stably at the destination).
-- `p_held_to_release`: P(the object stays in the pads through the lift and the carry).
+- `p_held_to_release`: P(the object stays in the pads through the lift and the carry). The damage outcomes are left out
+  (a damage label hides whether the object was held), so `p_irreversible` reports them.
 - `p_irreversible`: P(dropped_high), P(rolled_off) and the damage outcomes P(crushed), P(bruised),
   P(broken) and P(spilled): the outcomes that cannot be retried.
 - `p_recoverable`: P(tipped), P(missed), P(dropped_low), P(not_lifted).
