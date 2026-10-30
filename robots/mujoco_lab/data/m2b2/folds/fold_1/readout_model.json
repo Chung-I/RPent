@@ -1,0 +1,143 @@
+{
+ "version": 1,
+ "terms": {
+  "hold": {
+   "_pooled": [
+    -0.002235429260889653,
+    0.05072047650992368
+   ],
+   "bruised": [
+    0.001200636532427179,
+    0.05
+   ],
+   "crushed": [
+    0.004313537569063806,
+    0.05
+   ],
+   "dropped_low": [
+    -0.036351066551919296,
+    0.08627941217096446
+   ],
+   "missed": [
+    -0.006559110070080252,
+    0.050985466009086496
+   ],
+   "placed_stable": [
+    -0.002210879832714913,
+    0.05
+   ],
+   "rolled_off": [
+    7.664575366903261e-05,
+    0.05
+   ],
+   "spilled": [
+    0.010145332098885374,
+    0.05
+   ],
+   "tipped": [
+    -0.0029254919266988103,
+    0.05366598757608223
+   ]
+  },
+  "slip": {
+   "_pooled": [
+    0.02768443774309361,
+    0.13869295676706642
+   ],
+   "not_lifted": [
+    0.02768443774309361,
+    0.13856294924285256
+   ]
+  },
+  "loss": {
+   "_pooled": {
+    "kind": "mix2",
+    "w": 0.783875427647929,
+    "b1": -0.9562222800247508,
+    "sd1": 0.5485492439110184,
+    "b2": -2.7142076734949936,
+    "sd2": 0.885995231219086
+   },
+   "dropped_low": {
+    "kind": "mix2",
+    "w": 0.7799652860323569,
+    "b1": -0.9744713466017234,
+    "sd1": 0.5428822123969389,
+    "b2": -2.726073054735418,
+    "sd2": 0.8783330081081321
+   }
+  }
+ },
+ "side_error": 0.046343975283213185,
+ "temper": 1.0,
+ "floor_p": 0.0001,
+ "stats": {
+  "n_rows": 6442,
+  "terms": {
+   "hold": {
+    "n": 4343,
+    "by_label": {
+     "broken": 19,
+     "bruised": 187,
+     "crushed": 163,
+     "dropped_high": 28,
+     "dropped_low": 83,
+     "missed": 296,
+     "placed_stable": 2632,
+     "rolled_off": 446,
+     "spilled": 67,
+     "tipped": 422
+    },
+    "n_val": 697,
+    "kinds": {
+     "_pooled": "normal",
+     "bruised": "normal",
+     "crushed": "normal",
+     "dropped_low": "normal",
+     "missed": "normal",
+     "placed_stable": "normal",
+     "rolled_off": "normal",
+     "spilled": "normal",
+     "tipped": "normal"
+    }
+   },
+   "slip": {
+    "n": 628,
+    "by_label": {
+     "bruised": 1,
+     "not_lifted": 626,
+     "spilled": 1
+    },
+    "n_val": 129,
+    "kinds": {
+     "_pooled": "normal",
+     "not_lifted": "normal"
+    }
+   },
+   "loss": {
+    "n": 361,
+    "by_label": {
+     "bruised": 8,
+     "crushed": 1,
+     "dropped_high": 21,
+     "dropped_low": 318,
+     "spilled": 13
+    },
+    "n_val": 54,
+    "kinds": {
+     "_pooled": "mix2",
+     "dropped_low": "mix2"
+    }
+   }
+  },
+  "side": {
+   "n": 1942,
+   "mismatch": 0.046343975283213185
+  },
+  "rot": {
+   "n": 6442,
+   "rate": 0.3505122632722757
+  }
+ },
+ "rot_clf": "readout_rot.joblib"
+}

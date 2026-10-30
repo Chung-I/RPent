@@ -1,0 +1,215 @@
+{
+ "bundle": "/home/chungyili/Codes/RPent/robots/mujoco_lab/data/m2b2",
+ "split": "val",
+ "probes": "B",
+ "objects": [
+  "handal__hammer_6",
+  "handal__hammer_8",
+  "hope__ketchup_bottle",
+  "hope__parmesan_cheese_canister",
+  "hope__pineapple_slices_can",
+  "hope__tomato_sauce_can",
+  "hot3d__glasses",
+  "ycb__banana",
+  "ycb__mug",
+  "ycb__mustard",
+  "ycb__sugar_box",
+  "ycb__tomato_soup_can"
+ ],
+ "n": 264,
+ "n_particles": 2000,
+ "temper": 1.0,
+ "feasible": true,
+ "chosen_on": null,
+ "mass_cov80": 0.8143939393939394,
+ "mu_cov80": 0.7613636363636364,
+ "com_cov80": 0.7878787878787878,
+ "acceptance_b": {
+  "bounds": [
+   0.75,
+   0.85
+  ],
+  "pass": true
+ },
+ "prior_cov80": {
+  "mass": 0.7992424242424242,
+  "mu": 0.7424242424242424,
+  "com": 0.7878787878787878
+ },
+ "truth": "generator",
+ "sim_truth": {
+  "cov80": {
+   "mass": 0.8143939393939394,
+   "mu": 0.7613636363636364,
+   "com": 0.6174242424242424
+  },
+  "prior_cov80": {
+   "mass": 0.7992424242424242,
+   "mu": 0.7424242424242424,
+   "com": 0.7878787878787878
+  }
+ },
+ "by_kind": {
+  "damaged": {
+   "n": 42,
+   "mass_cov80": 0.7619047619047619,
+   "mu_cov80": 0.7142857142857143,
+   "com_cov80": 0.7380952380952381
+  },
+  "lower_bound": {
+   "n": 51,
+   "mass_cov80": 0.8235294117647058,
+   "mu_cov80": 0.7450980392156863,
+   "com_cov80": 0.803921568627451
+  },
+  "measured": {
+   "n": 171,
+   "mass_cov80": 0.8245614035087719,
+   "mu_cov80": 0.7777777777777778,
+   "com_cov80": 0.7953216374269005
+  }
+ },
+ "grid": {
+  "1.0": {
+   "mass": 0.8143939393939394,
+   "mu": 0.7613636363636364,
+   "com": 0.7878787878787878
+  }
+ },
+ "width80_median": {
+  "prior": {
+   "mass": 0.28258083587320393,
+   "mu": 0.6396195048105471,
+   "com": 0.19740641795003186
+  },
+  "posterior": {
+   "mass": 0.03293727463036075,
+   "mu": 0.6279794687941801,
+   "com": 0.1639637059625374
+  }
+ },
+ "terms": {
+  "used": {
+   "weigh_kind": 264,
+   "weigh_reading": 181,
+   "weigh_not_thrown": 264
+  },
+  "rejected": {}
+ },
+ "laws": {
+  "weigh": {
+   "measured": {
+    "kind": "normal",
+    "w": 1.0,
+    "sd1": 0.05,
+    "sd2": null
+   },
+   "lower_bound": {
+    "kind": "normal",
+    "w": 1.0,
+    "sd1": 0.13209363610712332,
+    "sd2": null
+   }
+  },
+  "push": {
+   "slid": {
+    "kind": "mix2",
+    "w": 0.802613009506685,
+    "sd1": 0.2984968441406292,
+    "sd2": 0.6748649323846226
+   }
+  },
+  "squeeze": {
+   "measured": {
+    "kind": "mix2",
+    "w": 0.5331440364222224,
+    "sd1": 0.07457914520488061,
+    "sd2": 0.0849514667712132
+   }
+  }
+ },
+ "seconds": 8.4,
+ "weigh_fill": {
+  "n": 17,
+  "n_filled": 10,
+  "constant_p_filled": 0.40816326530612246,
+  "prior": {
+   "filled_only_coverage": 0.9,
+   "filled_only_width_median": 0.47841926591735495,
+   "p_filled_when_filled": 0.49749999999999994,
+   "p_filled_when_empty": 0.5013571428571428,
+   "brier": 0.2521253970588235,
+   "brier_const": 0.2746404684322709,
+   "ece": 0.08914705882352947,
+   "acceptance": {
+    "brier_below_const": true,
+    "ece_le_005": false
+   }
+  },
+  "post": {
+   "filled_only_coverage": 0.8,
+   "filled_only_width_median": 0.22067929924118684,
+   "p_filled_when_filled": 0.7370983283244426,
+   "p_filled_when_empty": 0.3626477549319031,
+   "brier": 0.14900425918466928,
+   "brier_const": 0.2746404684322709,
+   "ece": 0.16746544898279647,
+   "acceptance": {
+    "brier_below_const": true,
+    "ece_le_005": false
+   }
+  }
+ },
+ "acceptance_b2": {
+  "bounds": [
+   0.75,
+   0.85
+  ],
+  "min_cases": 30,
+  "min_objects": 4,
+  "mass": {
+   "n": 264,
+   "n_objects": 12,
+   "coverage": 0.8143939393939394,
+   "ci": [
+    0.7773279352226721,
+    0.8521433940573045
+   ],
+   "verdict": "pass"
+  },
+  "mu": {
+   "n": 264,
+   "n_objects": 12,
+   "coverage": 0.7613636363636364,
+   "ci": [
+    0.6929133858267716,
+    0.8194836251621269
+   ],
+   "verdict": "pass"
+  },
+  "com": {
+   "n": 264,
+   "n_objects": 12,
+   "coverage": 0.7878787878787878,
+   "ci": [
+    0.70462431252022,
+    0.8507370464329641
+   ],
+   "verdict": "reported"
+  },
+  "fill": {
+   "n": 10,
+   "n_objects": 1,
+   "coverage": 0.8,
+   "ci": null,
+   "verdict": "insufficient"
+  },
+  "p_filled_ece": {
+   "n": 17,
+   "ece": 0.16746544898279647,
+   "bound": 0.05,
+   "ci": null,
+   "verdict": "insufficient"
+  }
+ }
+}

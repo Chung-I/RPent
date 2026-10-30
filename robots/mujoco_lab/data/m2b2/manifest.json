@@ -1,0 +1,45 @@
+{
+ "version": 2,
+ "features": "true",
+ "prior": "lab_generator_m2b",
+ "kind": "classifier",
+ "success_model": "success_model.joblib",
+ "hazard_model": null,
+ "metrics": "success_model_metrics.json",
+ "corpus": [
+  "/home/chungyili/Codes/RPent/robots/mujoco_lab/data/corpus_v10.jsonl",
+  "/home/chungyili/Codes/RPent/robots/mujoco_lab/data/corpus_fixtures_v10.jsonl"
+ ],
+ "split_seed": 0,
+ "feature_schema": "m2b",
+ "outcome_schema": "m2b",
+ "decision": {
+  "abstain_cost": 1.0,
+  "evoi": "heldout",
+  "probe_time_scale": 1.0
+ },
+ "sensor": {
+  "force_noise": 0.05
+ },
+ "readout_model": "readout_model.json",
+ "guard": "knn_guard.npz",
+ "tempers": {
+  "readout": 1.0,
+  "probe": 1.0
+ },
+ "classes": {
+  "path": "fragility_classes.json",
+  "sha256": "251d7f15be876d4a1cc5e818ad832c31e38f53966f6676e9199a5675a22eed44"
+ },
+ "thresholds": {
+  "path": "thresholds_v1.json",
+  "sha256": "389fcaae23380196a3344ffdde53cfa0a34e51a7ad3ab2514b6cad82f68509dc"
+ },
+ "probe_models": {
+  "weigh": "probe_weigh.joblib",
+  "push": "probe_push.joblib",
+  "squeeze": "probe_squeeze.joblib"
+ },
+ "probe_metrics": "probe_metrics.json",
+ "probe_corpus": "/home/chungyili/Codes/RPent/robots/mujoco_lab/data/probe_corpus_v9.jsonl"
+}
