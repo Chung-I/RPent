@@ -1,0 +1,4774 @@
+[
+ {
+  "object": "hope__popcorn_box",
+  "idx": 0,
+  "care": 1.0,
+  "destination": "table_centre",
+  "fill": 0.0,
+  "recommendation": "commit",
+  "rows": [
+   {
+    "id": "light_grip",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.9731608397902112,
+     "tipped": 0.010741633823994312,
+     "missed": 0.0036638193315920477,
+     "dropped_low": 0.004357643599321635,
+     "dropped_high": 0.0022929119080668295,
+     "rolled_off": 0.0005855920315191399,
+     "not_lifted": 0.0047989544512373064,
+     "crushed": 0.0003986050640566083,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 0.4643872792085284,
+    "reason": "half the squeeze: less crush and bruise risk, more slip",
+    "probe": null
+   },
+   {
+    "id": "commit_std",
+    "kind": "commit",
+    "p": {
+     "placed_stable": 0.9683730209265126,
+     "tipped": 0.007945034730401528,
+     "missed": 0.0035897983117417665,
+     "dropped_low": 0.0028820129117251856,
+     "dropped_high": 0.002154275022387945,
+     "rolled_off": 0.0005051895839194245,
+     "not_lifted": 0.003251659997876745,
+     "crushed": 0.011299008515433421,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 0.5174620206349982,
+    "reason": "",
+    "probe": null
+   },
+   {
+    "id": "gentle_carry",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.9670969174194027,
+     "tipped": 0.009324640316231265,
+     "missed": 0.0034906199016082346,
+     "dropped_low": 0.0026759804243681497,
+     "dropped_high": 0.002134351074175272,
+     "rolled_off": 0.00046857581955880314,
+     "not_lifted": 0.003247036174122591,
+     "crushed": 0.011561878870532137,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 0.5708418701311972,
+    "reason": "a gentle carry: less spill risk, slower",
+    "probe": null
+   },
+   {
+    "id": "probe_squeeze",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 0.6068850520504412,
+    "reason": "squeeze first: value of information 0.01, expected cost of the best row after it 0.46",
+    "probe": {
+     "p_kind": {
+      "measured": 1.0000000000000007
+     },
+     "p_thrown": 0.0,
+     "evoi": 0.007502227158086158,
+     "evoi_se": 0.0004462855565015914,
+     "expected_cost_after": 0.4568850520504412
+    }
+   },
+   {
+    "id": "regrasp_com",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.9683730209265126,
+     "tipped": 0.007945034730401528,
+     "missed": 0.0035897983117417665,
+     "dropped_low": 0.0028820129117251856,
+     "dropped_high": 0.002154275022387945,
+     "rolled_off": 0.0005051895839194245,
+     "not_lifted": 0.003251659997876745,
+     "crushed": 0.011299008515433421,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 0.6174620206349982,
+    "reason": "the standard pinch is already nearest the believed centre of mass",
+    "probe": null
+   },
+   {
+    "id": "probe_push",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 0.693904845060032,
+    "reason": "push first: value of information 0.00, expected cost of the best row after it 0.55",
+    "probe": {
+     "p_kind": {
+      "slid": 0.9265666584702212,
+      "tipped": 0.04294804097649518,
+      "no_breakaway": 0.002152003910137465,
+      "no_contact": 0.026471163786594244,
+      "damaged": 0.0018621328565519174
+     },
+     "p_thrown": 0.013910355486862409,
+     "evoi": 0.0,
+     "evoi_se": 0.0,
+     "expected_cost_after": 0.5515542266009842
+    }
+   },
+   {
+    "id": "slow_lift",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.9686077447077561,
+     "tipped": 0.008125379070230294,
+     "missed": 0.0036574258361537593,
+     "dropped_low": 0.0022556579859516314,
+     "dropped_high": 0.0021645741368760507,
+     "rolled_off": 0.0005417473019730528,
+     "not_lifted": 0.0032563139393641705,
+     "crushed": 0.011391157021695087,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 0.8175462674569827,
+    "reason": "slower lift and carry",
+    "probe": null
+   },
+   {
+    "id": "firm_grip",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.588699567896836,
+     "tipped": 0.0038897071808839372,
+     "missed": 0.0025597054465192506,
+     "dropped_low": 0.00203759960800198,
+     "dropped_high": 0.0020985884327982237,
+     "rolled_off": 0.000388210620268022,
+     "not_lifted": 0.002305272537806954,
+     "crushed": 0.39802134827688557,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 2.8234808172572317,
+    "reason": "twice the squeeze",
+    "probe": null
+   },
+   {
+    "id": "probe_weigh",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 3.106978059407723,
+    "reason": "weigh first: value of information 0.01, expected cost of the best row after it 2.91",
+    "probe": {
+     "p_kind": {
+      "measured": 0.5524451311434359,
+      "lower_bound": 0.005746493719806105,
+      "lost": 0.0,
+      "damaged": 0.44180837513675836
+     },
+     "p_thrown": 0.0011718750000000036,
+     "evoi": 0.007774779160917482,
+     "evoi_se": 0.0011674845994666498,
+     "expected_cost_after": 2.906978059407723
+    }
+   },
+   {
+    "id": "decline",
+    "kind": "decline",
+    "p": null,
+    "expected_cost": 1.0,
+    "reason": "best row costs 0.46 <= abstain 1.00: dropped_high carries the largest expected cost",
+    "probe": null
+   }
+  ]
+ },
+ {
+  "object": "hope__popcorn_box",
+  "idx": 1,
+  "care": 1.0,
+  "destination": "table_centre",
+  "fill": 0.0,
+  "recommendation": "commit",
+  "rows": [
+   {
+    "id": "light_grip",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.9731305460206403,
+     "tipped": 0.010440449056431277,
+     "missed": 0.0036378348443751635,
+     "dropped_low": 0.004238478786718138,
+     "dropped_high": 0.0022556358282321315,
+     "rolled_off": 0.000574952386851197,
+     "not_lifted": 0.005309212522276417,
+     "crushed": 0.0004128905544747058,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 0.46405821677581266,
+    "reason": "half the squeeze: less crush and bruise risk, more slip",
+    "probe": null
+   },
+   {
+    "id": "commit_std",
+    "kind": "commit",
+    "p": {
+     "placed_stable": 0.9645815357155261,
+     "tipped": 0.007599640819966254,
+     "missed": 0.003523522647948286,
+     "dropped_low": 0.0027296001970095116,
+     "dropped_high": 0.002130573993421457,
+     "rolled_off": 0.000489946743567623,
+     "not_lifted": 0.003290074628271118,
+     "crushed": 0.015655105254289946,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 0.5422943952199287,
+    "reason": "",
+    "probe": null
+   },
+   {
+    "id": "gentle_carry",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.9632839417622108,
+     "tipped": 0.008935491008965882,
+     "missed": 0.0034333553700902886,
+     "dropped_low": 0.0025193780537383524,
+     "dropped_high": 0.002114122450765294,
+     "rolled_off": 0.00045623163616245624,
+     "not_lifted": 0.003286738480167779,
+     "crushed": 0.01597074123789919,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 0.5959531285348023,
+    "reason": "a gentle carry: less spill risk, slower",
+    "probe": null
+   },
+   {
+    "id": "probe_squeeze",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 0.6070924668050066,
+    "reason": "squeeze first: value of information 0.01, expected cost of the best row after it 0.46",
+    "probe": {
+     "p_kind": {
+      "measured": 1.0000000000000007
+     },
+     "p_thrown": 0.0,
+     "evoi": 0.006965749970805472,
+     "evoi_se": 0.00035981529995321926,
+     "expected_cost_after": 0.4570924668050066
+    }
+   },
+   {
+    "id": "regrasp_com",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.9645815357155261,
+     "tipped": 0.007599640819966254,
+     "missed": 0.003523522647948286,
+     "dropped_low": 0.0027296001970095116,
+     "dropped_high": 0.002130573993421457,
+     "rolled_off": 0.000489946743567623,
+     "not_lifted": 0.003290074628271118,
+     "crushed": 0.015655105254289946,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 0.6422943952199287,
+    "reason": "the standard pinch is already nearest the believed centre of mass",
+    "probe": null
+   },
+   {
+    "id": "probe_push",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 0.6940709682212141,
+    "reason": "push first: value of information 0.00, expected cost of the best row after it 0.55",
+    "probe": {
+     "p_kind": {
+      "slid": 0.9234944716889791,
+      "tipped": 0.043454220457243946,
+      "no_breakaway": 0.0021996499713576997,
+      "no_contact": 0.028991186351143273,
+      "damaged": 0.0018604715312758972
+     },
+     "p_thrown": 0.013910355486862409,
+     "evoi": 0.0,
+     "evoi_se": 0.0,
+     "expected_cost_after": 0.5512212114179349
+    }
+   },
+   {
+    "id": "slow_lift",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.9647336819811043,
+     "tipped": 0.007816406927825812,
+     "missed": 0.003579910564610153,
+     "dropped_low": 0.0021514486928087767,
+     "dropped_high": 0.002149124126661584,
+     "rolled_off": 0.0005240769889087142,
+     "not_lifted": 0.003293459604914042,
+     "crushed": 0.015751891113166844,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 0.8425862751502833,
+    "reason": "slower lift and carry",
+    "probe": null
+   },
+   {
+    "id": "firm_grip",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.5750393818246785,
+     "tipped": 0.0035989817511471386,
+     "missed": 0.002472633343664807,
+     "dropped_low": 0.0019084973436322486,
+     "dropped_high": 0.0020850597150027057,
+     "rolled_off": 0.00037687456541831235,
+     "not_lifted": 0.0022658342849848578,
+     "crushed": 0.41225273717147076,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 2.907647005015717,
+    "reason": "twice the squeeze",
+    "probe": null
+   },
+   {
+    "id": "probe_weigh",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 3.1519221000218964,
+    "reason": "weigh first: value of information 0.01, expected cost of the best row after it 2.95",
+    "probe": {
+     "p_kind": {
+      "measured": 0.545810156316208,
+      "lower_bound": 0.004031005732192757,
+      "lost": 0.0,
+      "damaged": 0.4501588379515995
+     },
+     "p_thrown": 0.0011718750000000036,
+     "evoi": 0.00571116778638917,
+     "evoi_se": 0.0005835608641160455,
+     "expected_cost_after": 2.9519221000218963
+    }
+   },
+   {
+    "id": "decline",
+    "kind": "decline",
+    "p": null,
+    "expected_cost": 1.0,
+    "reason": "best row costs 0.46 <= abstain 1.00: dropped_high carries the largest expected cost",
+    "probe": null
+   }
+  ]
+ },
+ {
+  "object": "ycb__mug",
+  "idx": 0,
+  "care": 1.0,
+  "destination": "table_edge",
+  "fill": 0.0,
+  "recommendation": "decline",
+  "rows": [
+   {
+    "id": "firm_grip",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.8465533782507318,
+     "tipped": 0.00467063896879454,
+     "missed": 0.001911219777663947,
+     "dropped_low": 0.018522117237738365,
+     "dropped_high": 0.003082606344171614,
+     "rolled_off": 0.0018297899652988344,
+     "not_lifted": 0.03977678930520422,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0111887130076932,
+     "spilled": 0.0724647471427034
+    },
+    "expected_cost": 1.0412682746854025,
+    "reason": "twice the squeeze",
+    "probe": null
+   },
+   {
+    "id": "probe_weigh",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 1.1607833195845232,
+    "reason": "weigh first: value of information 0.17, expected cost of the best row after it 0.96",
+    "probe": {
+     "p_kind": {
+      "measured": 0.9472912360209483,
+      "lower_bound": 0.027388755329767717,
+      "lost": 0.0,
+      "damaged": 0.025320008649284055
+     },
+     "p_thrown": 0.0011718750000000036,
+     "evoi": 0.171527739236219,
+     "evoi_se": 0.014365789920405613,
+     "expected_cost_after": 0.9607833195845231
+    }
+   },
+   {
+    "id": "probe_push",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 1.2465269099471814,
+    "reason": "push first: value of information 0.03, expected cost of the best row after it 1.07",
+    "probe": {
+     "p_kind": {
+      "slid": 0.9064285341491918,
+      "tipped": 0.08044510085163535,
+      "no_breakaway": 0.002646180530628674,
+      "no_contact": 0.005447477738854553,
+      "damaged": 0.0050327067296898976
+     },
+     "p_thrown": 0.013910355486862409,
+     "evoi": 0.027164448338837303,
+     "evoi_se": 0.002522990287567815,
+     "expected_cost_after": 1.067200829045569
+    }
+   },
+   {
+    "id": "regrasp_com",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.8388258421292502,
+     "tipped": 0.006277368267139198,
+     "missed": 0.0018316833671038662,
+     "dropped_low": 0.02670241160948881,
+     "dropped_high": 0.005930675384122665,
+     "rolled_off": 0.003073439430109548,
+     "not_lifted": 0.018056009326180917,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.012371525596568874,
+     "spilled": 0.08693104489003557
+    },
+    "expected_cost": 1.2465470522817554,
+    "reason": "pinch nearer the believed centre of mass",
+    "probe": null
+   },
+   {
+    "id": "inboard_place",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.7599588197211976,
+     "tipped": 0.007029252566493894,
+     "missed": 0.0018896378543323206,
+     "dropped_low": 0.03205360715127846,
+     "dropped_high": 0.003736228732136891,
+     "rolled_off": 0.0004066085903867314,
+     "not_lifted": 0.08803553341847815,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0031641140951732772,
+     "spilled": 0.10372619787052154
+    },
+    "expected_cost": 1.3301971910012385,
+    "reason": "safer place, not the requested one",
+    "probe": null
+   },
+   {
+    "id": "commit_std",
+    "kind": "commit",
+    "p": {
+     "placed_stable": 0.7540785072214881,
+     "tipped": 0.006282616333990297,
+     "missed": 0.00209684109211759,
+     "dropped_low": 0.03022440866819851,
+     "dropped_high": 0.0038322509407313107,
+     "rolled_off": 0.0022351835619287136,
+     "not_lifted": 0.08663324711727503,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.01163633664585926,
+     "spilled": 0.10298060841841064
+    },
+    "expected_cost": 1.3312638802661052,
+    "reason": "",
+    "probe": null
+   },
+   {
+    "id": "gentle_carry",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.7509625259434909,
+     "tipped": 0.006302403305535871,
+     "missed": 0.0020341028734548656,
+     "dropped_low": 0.02990641691937015,
+     "dropped_high": 0.0036104492198863014,
+     "rolled_off": 0.0021281669239575627,
+     "not_lifted": 0.08593888898748896,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.017480148472843432,
+     "spilled": 0.10163689735397212
+    },
+    "expected_cost": 1.4045281515019115,
+    "reason": "a gentle carry: less spill risk, slower",
+    "probe": null
+   },
+   {
+    "id": "slow_lift",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.7630320564792868,
+     "tipped": 0.006470636439802081,
+     "missed": 0.002134435529669697,
+     "dropped_low": 0.01973091366221326,
+     "dropped_high": 0.0035402314943970906,
+     "rolled_off": 0.002484804289655058,
+     "not_lifted": 0.08860030792751832,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.009022261597555911,
+     "spilled": 0.10498435257990138
+    },
+    "expected_cost": 1.6097623329237045,
+    "reason": "slower lift and carry",
+    "probe": null
+   },
+   {
+    "id": "light_grip",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.5909600330229332,
+     "tipped": 0.007762903003679669,
+     "missed": 0.0021449125021324724,
+     "dropped_low": 0.04369491244096707,
+     "dropped_high": 0.00442861893503213,
+     "rolled_off": 0.002411491040026005,
+     "not_lifted": 0.1892773673542421,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.011600252854618272,
+     "spilled": 0.14771950884636809
+    },
+    "expected_cost": 1.7880807369811895,
+    "reason": "half the squeeze: less crush and bruise risk, more slip",
+    "probe": null
+   },
+   {
+    "id": "decline",
+    "kind": "decline",
+    "p": null,
+    "expected_cost": 1.0,
+    "reason": "best row costs 1.04 > abstain 1.00: spilled carries the largest expected cost",
+    "probe": null
+   }
+  ]
+ },
+ {
+  "object": "ycb__mug",
+  "idx": 1,
+  "care": 1.0,
+  "destination": "bin",
+  "fill": 0.0,
+  "recommendation": "commit",
+  "rows": [
+   {
+    "id": "firm_grip",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.8506725681579439,
+     "tipped": 0.007457205761766715,
+     "missed": 0.001302100014154523,
+     "dropped_low": 0.018318486837284372,
+     "dropped_high": 0.0036716693904346124,
+     "rolled_off": 0.00036498114591670597,
+     "not_lifted": 0.04853113092288273,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.007624976243728213,
+     "spilled": 0.0620568815258883
+    },
+    "expected_cost": 0.9692633314465422,
+    "reason": "twice the squeeze",
+    "probe": null
+   },
+   {
+    "id": "probe_weigh",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 1.1218520256803797,
+    "reason": "weigh first: value of information 0.17, expected cost of the best row after it 0.92",
+    "probe": {
+     "p_kind": {
+      "measured": 0.9487770034998637,
+      "lower_bound": 0.025982094627704688,
+      "lost": 0.0,
+      "damaged": 0.025240901872431866
+     },
+     "p_thrown": 0.0011718750000000036,
+     "evoi": 0.16609743401739593,
+     "evoi_se": 0.021019901982818296,
+     "expected_cost_after": 0.9218520256803797
+    }
+   },
+   {
+    "id": "regrasp_com",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.8407279590353874,
+     "tipped": 0.010774951250222396,
+     "missed": 0.0010921249737804875,
+     "dropped_low": 0.0335684598837151,
+     "dropped_high": 0.006342730075242455,
+     "rolled_off": 0.00042561696213178437,
+     "not_lifted": 0.021102407306707857,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.008989670627265856,
+     "spilled": 0.07697607988554564
+    },
+    "expected_cost": 1.178929268476613,
+    "reason": "pinch nearer the believed centre of mass",
+    "probe": null
+   },
+   {
+    "id": "probe_push",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 1.2184460635770304,
+    "reason": "push first: value of information 0.02, expected cost of the best row after it 1.04",
+    "probe": {
+     "p_kind": {
+      "slid": 0.9064342098564124,
+      "tipped": 0.0802116608627609,
+      "no_breakaway": 0.0026551186727193283,
+      "no_contact": 0.005445576702843936,
+      "damaged": 0.005253433905263581
+     },
+     "p_thrown": 0.013910355486862409,
+     "evoi": 0.02345113845295599,
+     "evoi_se": 0.003333955375780358,
+     "expected_cost_after": 1.0393501754310623
+    }
+   },
+   {
+    "id": "commit_std",
+    "kind": "commit",
+    "p": {
+     "placed_stable": 0.7524289813591117,
+     "tipped": 0.010080647458444614,
+     "missed": 0.001408986724187797,
+     "dropped_low": 0.03030379976689995,
+     "dropped_high": 0.004633870163800282,
+     "rolled_off": 0.00039675509355732334,
+     "not_lifted": 0.10436183555345835,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.007841803759455514,
+     "spilled": 0.0885433201210841
+    },
+    "expected_cost": 1.2486241160566358,
+    "reason": "",
+    "probe": null
+   },
+   {
+    "id": "gentle_carry",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.7506307221487174,
+     "tipped": 0.010123600113491695,
+     "missed": 0.0013709668564510459,
+     "dropped_low": 0.03005879641375486,
+     "dropped_high": 0.004334708900853648,
+     "rolled_off": 0.00038896777125488753,
+     "not_lifted": 0.10372415555340618,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.012026787602669866,
+     "spilled": 0.0873412946393991
+    },
+    "expected_cost": 1.3132435135825709,
+    "reason": "a gentle carry: less spill risk, slower",
+    "probe": null
+   },
+   {
+    "id": "slow_lift",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.7601826558610136,
+     "tipped": 0.010341180936759562,
+     "missed": 0.0014310820286285448,
+     "dropped_low": 0.020923516504532044,
+     "dropped_high": 0.004233620104942208,
+     "rolled_off": 0.00041913242710169186,
+     "not_lifted": 0.10658692385416198,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0060485893760706235,
+     "spilled": 0.08983329890679022
+    },
+    "expected_cost": 1.5284797896105113,
+    "reason": "slower lift and carry",
+    "probe": null
+   },
+   {
+    "id": "light_grip",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.5828098734604445,
+     "tipped": 0.01231907006097798,
+     "missed": 0.0014517391643954966,
+     "dropped_low": 0.0431813850745274,
+     "dropped_high": 0.005356531372988115,
+     "rolled_off": 0.0004212748807657872,
+     "not_lifted": 0.2177606762460454,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.007582597927342619,
+     "spilled": 0.12911685181251134
+    },
+    "expected_cost": 1.6954089389305183,
+    "reason": "half the squeeze: less crush and bruise risk, more slip",
+    "probe": null
+   },
+   {
+    "id": "drop_release",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.6260217111978656,
+     "tipped": 0.03455821329443667,
+     "missed": 0.0025236455923374618,
+     "dropped_low": 0.028230026051987524,
+     "dropped_high": 0.004591927497881374,
+     "rolled_off": 0.00047066920596995735,
+     "not_lifted": 0.09860619894930221,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.007450357485612829,
+     "spilled": 0.19754725072460588
+    },
+    "expected_cost": 1.8388942977858973,
+    "reason": "release 5 cm above the rim: faster, more tip risk",
+    "probe": null
+   },
+   {
+    "id": "decline",
+    "kind": "decline",
+    "p": null,
+    "expected_cost": 1.0,
+    "reason": "best row costs 0.97 <= abstain 1.00: spilled carries the largest expected cost",
+    "probe": null
+   }
+  ]
+ },
+ {
+  "object": "ycb__mug",
+  "idx": 2,
+  "care": 1.0,
+  "destination": "plate",
+  "fill": 0.0,
+  "recommendation": "commit",
+  "rows": [
+   {
+    "id": "firm_grip",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.8564038147642631,
+     "tipped": 0.0042579802540316574,
+     "missed": 0.001689478964300417,
+     "dropped_low": 0.016244355537865702,
+     "dropped_high": 0.0027081077149411514,
+     "rolled_off": 0.0010590143204109756,
+     "not_lifted": 0.03988947055726968,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0016933093023967188,
+     "spilled": 0.0760544685845207
+    },
+    "expected_cost": 0.9933072348819173,
+    "reason": "twice the squeeze",
+    "probe": null
+   },
+   {
+    "id": "probe_weigh",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 1.0997034926901097,
+    "reason": "weigh first: value of information 0.21, expected cost of the best row after it 0.90",
+    "probe": {
+     "p_kind": {
+      "measured": 0.9452595273898023,
+      "lower_bound": 0.02909313291078185,
+      "lost": 0.0,
+      "damaged": 0.02564733969941683
+     },
+     "p_thrown": 0.0011718750000000036,
+     "evoi": 0.21169523433066814,
+     "evoi_se": 0.023753290747686794,
+     "expected_cost_after": 0.8997034926901097
+    }
+   },
+   {
+    "id": "regrasp_com",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.845694996136977,
+     "tipped": 0.005500170061659273,
+     "missed": 0.0016289303475730732,
+     "dropped_low": 0.02983036800159638,
+     "dropped_high": 0.0044099346336189445,
+     "rolled_off": 0.0018949934037340694,
+     "not_lifted": 0.017006277893396714,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0017969510912609749,
+     "spilled": 0.09223737843018306
+    },
+    "expected_cost": 1.2014638990145357,
+    "reason": "pinch nearer the believed centre of mass",
+    "probe": null
+   },
+   {
+    "id": "drop_release",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.7602872728037976,
+     "tipped": 0.005865430653757121,
+     "missed": 0.0018804852177227087,
+     "dropped_low": 0.026637294716802547,
+     "dropped_high": 0.0030661193398059798,
+     "rolled_off": 0.0013871281559088649,
+     "not_lifted": 0.08669508830801047,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.00163327508316601,
+     "spilled": 0.11254790572102784
+    },
+    "expected_cost": 1.2106156234380334,
+    "reason": "release 5 cm above the rim: faster, more tip risk",
+    "probe": null
+   },
+   {
+    "id": "probe_push",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 1.2185052367492983,
+    "reason": "push first: value of information 0.05, expected cost of the best row after it 1.04",
+    "probe": {
+     "p_kind": {
+      "slid": 0.906394911361498,
+      "tipped": 0.0803306688756788,
+      "no_breakaway": 0.0026505490108110832,
+      "no_contact": 0.00552697288585973,
+      "damaged": 0.005096897866151989
+     },
+     "p_thrown": 0.013910355486862409,
+     "evoi": 0.0460720420816719,
+     "evoi_se": 0.004900936753404052,
+     "expected_cost_after": 1.0392919960341775
+    }
+   },
+   {
+    "id": "commit_std",
+    "kind": "commit",
+    "p": {
+     "placed_stable": 0.7629208900773915,
+     "tipped": 0.005817259778924063,
+     "missed": 0.0018654903441431073,
+     "dropped_low": 0.02656566012175565,
+     "dropped_high": 0.0031542065542506754,
+     "rolled_off": 0.0012726957111652971,
+     "not_lifted": 0.08665250848074936,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.001628744722305649,
+     "spilled": 0.11012254420931493
+    },
+    "expected_cost": 1.2955447303929888,
+    "reason": "",
+    "probe": null
+   },
+   {
+    "id": "gentle_carry",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.763422244139712,
+     "tipped": 0.005853229573511589,
+     "missed": 0.0018218113815166924,
+     "dropped_low": 0.02642950238020281,
+     "dropped_high": 0.003030007511528649,
+     "rolled_off": 0.0012109490830324611,
+     "not_lifted": 0.08630651070538767,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0024151421739407024,
+     "spilled": 0.10951060305116633
+    },
+    "expected_cost": 1.3446690636465537,
+    "reason": "a gentle carry: less spill risk, slower",
+    "probe": null
+   },
+   {
+    "id": "slow_lift",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.7686856791039018,
+     "tipped": 0.005982835676929767,
+     "missed": 0.0018892411599914902,
+     "dropped_low": 0.018128113527251695,
+     "dropped_high": 0.0029862836635610513,
+     "rolled_off": 0.0014059814926154763,
+     "not_lifted": 0.0879711338844346,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0012837108857529898,
+     "spilled": 0.11166702060556091
+    },
+    "expected_cost": 1.5880150614399406,
+    "reason": "slower lift and carry",
+    "probe": null
+   },
+   {
+    "id": "light_grip",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.5981241833505216,
+     "tipped": 0.007250131223613911,
+     "missed": 0.0019384379290987865,
+     "dropped_low": 0.03765233732475943,
+     "dropped_high": 0.003531974889375922,
+     "rolled_off": 0.001371534181855048,
+     "not_lifted": 0.18905656274072521,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0015435405455868317,
+     "spilled": 0.15953129781446324
+    },
+    "expected_cost": 1.773136741653718,
+    "reason": "half the squeeze: less crush and bruise risk, more slip",
+    "probe": null
+   },
+   {
+    "id": "decline",
+    "kind": "decline",
+    "p": null,
+    "expected_cost": 1.0,
+    "reason": "best row costs 0.99 <= abstain 1.00: spilled carries the largest expected cost",
+    "probe": null
+   }
+  ]
+ },
+ {
+  "object": "ycb__mug",
+  "idx": 3,
+  "care": 1.0,
+  "destination": "table_centre",
+  "fill": 0.8429044767346532,
+  "recommendation": "commit",
+  "rows": [
+   {
+    "id": "firm_grip",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.8589040570575585,
+     "tipped": 0.005095644738630565,
+     "missed": 0.0017051669057332659,
+     "dropped_low": 0.014767574978212851,
+     "dropped_high": 0.002977692654177016,
+     "rolled_off": 0.0003802493592559206,
+     "not_lifted": 0.037872968176590895,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0030341773019241795,
+     "spilled": 0.07526246882791614
+    },
+    "expected_cost": 0.98987375436968,
+    "reason": "twice the squeeze",
+    "probe": null
+   },
+   {
+    "id": "probe_weigh",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 1.0903017547923752,
+    "reason": "weigh first: value of information 0.21, expected cost of the best row after it 0.89",
+    "probe": {
+     "p_kind": {
+      "measured": 0.9497713036824474,
+      "lower_bound": 0.025319058435784948,
+      "lost": 0.0,
+      "damaged": 0.02490963788176908
+     },
+     "p_thrown": 0.0011718750000000036,
+     "evoi": 0.2141965865133097,
+     "evoi_se": 0.024841874555263693,
+     "expected_cost_after": 0.8903017547923753
+    }
+   },
+   {
+    "id": "regrasp_com",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.849096817875905,
+     "tipped": 0.0074020355358818376,
+     "missed": 0.0016241301826502882,
+     "dropped_low": 0.02731348430054264,
+     "dropped_high": 0.0056505251437990916,
+     "rolled_off": 0.0005008357795837641,
+     "not_lifted": 0.015974546541980147,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0035090676510226597,
+     "spilled": 0.08892855698863418
+    },
+    "expected_cost": 1.1881750332293581,
+    "reason": "pinch nearer the believed centre of mass",
+    "probe": null
+   },
+   {
+    "id": "probe_push",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 1.221312243731892,
+    "reason": "push first: value of information 0.04, expected cost of the best row after it 1.04",
+    "probe": {
+     "p_kind": {
+      "slid": 0.9059681760722513,
+      "tipped": 0.0806853101204851,
+      "no_breakaway": 0.0027089061625797835,
+      "no_contact": 0.005414951700879697,
+      "damaged": 0.005222655943804325
+     },
+     "p_thrown": 0.013910355486862409,
+     "evoi": 0.040423756845430835,
+     "evoi_se": 0.004497278420715115,
+     "expected_cost_after": 1.0417492949577505
+    }
+   },
+   {
+    "id": "commit_std",
+    "kind": "commit",
+    "p": {
+     "placed_stable": 0.769708424798285,
+     "tipped": 0.0070163998498694044,
+     "missed": 0.0018845721137907643,
+     "dropped_low": 0.024595104262904746,
+     "dropped_high": 0.0037230924751030852,
+     "rolled_off": 0.00041655657950036886,
+     "not_lifted": 0.0831636628373837,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0031707315109239962,
+     "spilled": 0.10632145557223822
+    },
+    "expected_cost": 1.2735286635358,
+    "reason": "",
+    "probe": null
+   },
+   {
+    "id": "gentle_carry",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.7694782524330962,
+     "tipped": 0.007074381470727133,
+     "missed": 0.0018373437944831316,
+     "dropped_low": 0.02443700447533826,
+     "dropped_high": 0.0035295557588159786,
+     "rolled_off": 0.0004083537931221694,
+     "not_lifted": 0.08278531562945896,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.004849994521472849,
+     "spilled": 0.10559979812348437
+    },
+    "expected_cost": 1.3272016461066585,
+    "reason": "a gentle carry: less spill risk, slower",
+    "probe": null
+   },
+   {
+    "id": "slow_lift",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.7755267271123047,
+     "tipped": 0.007178550993465289,
+     "missed": 0.001910008488067613,
+     "dropped_low": 0.016899278505247046,
+     "dropped_high": 0.00342821318915891,
+     "rolled_off": 0.0004384879641244478,
+     "not_lifted": 0.0844275867634254,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0024486980752247193,
+     "spilled": 0.10774244890898196
+    },
+    "expected_cost": 1.5629641449436382,
+    "reason": "slower lift and carry",
+    "probe": null
+   },
+   {
+    "id": "light_grip",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.608794440950387,
+     "tipped": 0.008726331980739077,
+     "missed": 0.0019355361107472962,
+     "dropped_low": 0.03586043260967925,
+     "dropped_high": 0.004353937725142856,
+     "rolled_off": 0.0004437306297207087,
+     "not_lifted": 0.1808611949763247,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0031451153895648053,
+     "spilled": 0.15587927962769435
+    },
+    "expected_cost": 1.7472687740995547,
+    "reason": "half the squeeze: less crush and bruise risk, more slip",
+    "probe": null
+   },
+   {
+    "id": "decline",
+    "kind": "decline",
+    "p": null,
+    "expected_cost": 1.0,
+    "reason": "best row costs 0.99 <= abstain 1.00: spilled carries the largest expected cost",
+    "probe": null
+   }
+  ]
+ },
+ {
+  "object": "ycb__tomato_soup_can",
+  "idx": 0,
+  "care": 1.0,
+  "destination": "table_edge",
+  "fill": 0.0,
+  "recommendation": "commit",
+  "rows": [
+   {
+    "id": "firm_grip",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.9105800703489411,
+     "tipped": 0.022743304511692947,
+     "missed": 0.002589369918344319,
+     "dropped_low": 0.015768670676650144,
+     "dropped_high": 0.005265958748089452,
+     "rolled_off": 0.01706798613396262,
+     "not_lifted": 0.025984639662318187,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 0.6551833189991658,
+    "reason": "twice the squeeze",
+    "probe": null
+   },
+   {
+    "id": "inboard_place",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.8409547999980574,
+     "tipped": 0.03313629842829109,
+     "missed": 0.002553300341393432,
+     "dropped_low": 0.02678402758689807,
+     "dropped_high": 0.006866666827110657,
+     "rolled_off": 0.002040691195595184,
+     "not_lifted": 0.08766421562265271,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 0.7598877242833807,
+    "reason": "safer place, not the requested one",
+    "probe": null
+   },
+   {
+    "id": "commit_std",
+    "kind": "commit",
+    "p": {
+     "placed_stable": 0.8266786682666373,
+     "tipped": 0.028765422752209217,
+     "missed": 0.0029959711061421142,
+     "dropped_low": 0.025984155161616024,
+     "dropped_high": 0.007052976033958253,
+     "rolled_off": 0.021389045728200988,
+     "not_lifted": 0.08713376095123644,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 0.8168438700397446,
+    "reason": "",
+    "probe": null
+   },
+   {
+    "id": "probe_weigh",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 0.8444188532322818,
+    "reason": "weigh first: value of information 0.02, expected cost of the best row after it 0.64",
+    "probe": {
+     "p_kind": {
+      "measured": 0.8977297122761546,
+      "lower_bound": 0.10227028772384447,
+      "lost": 0.0,
+      "damaged": 0.0
+     },
+     "p_thrown": 0.0011718750000000036,
+     "evoi": 0.017027922814930686,
+     "evoi_se": 0.003911277868159964,
+     "expected_cost_after": 0.6444188532322819
+    }
+   },
+   {
+    "id": "probe_push",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 0.859902006544894,
+    "reason": "push first: value of information 0.00, expected cost of the best row after it 0.73",
+    "probe": {
+     "p_kind": {
+      "slid": 0.9599705696231277,
+      "tipped": 0.0333264916736053,
+      "no_breakaway": 0.0022110296814594143,
+      "no_contact": 0.004491909021807428,
+      "damaged": 0.0
+     },
+     "p_thrown": 0.013910355486862409,
+     "evoi": 0.002492520826400056,
+     "evoi_se": 0.001448343789683638,
+     "expected_cost_after": 0.7270390982175985
+    }
+   },
+   {
+    "id": "gentle_carry",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.8263952656491346,
+     "tipped": 0.030551834850577046,
+     "missed": 0.002923406460422217,
+     "dropped_low": 0.025979936150678454,
+     "dropped_high": 0.006517903450806633,
+     "rolled_off": 0.020502374265478875,
+     "not_lifted": 0.08712927917290288,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 0.8617259399804221,
+    "reason": "a gentle carry: less spill risk, slower",
+    "probe": null
+   },
+   {
+    "id": "regrasp_com",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.768319548206477,
+     "tipped": 0.026880366204453127,
+     "missed": 0.0037512256827695895,
+     "dropped_low": 0.018738986755443696,
+     "dropped_high": 0.007069896460960662,
+     "rolled_off": 0.02035181534713248,
+     "not_lifted": 0.15488816134276326,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 0.9956036701480367,
+    "reason": "pinch nearer the believed centre of mass",
+    "probe": null
+   },
+   {
+    "id": "light_grip",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.6965714992405365,
+     "tipped": 0.028736416598088656,
+     "missed": 0.003191276872672285,
+     "dropped_low": 0.03409231307508077,
+     "dropped_high": 0.008019050498049683,
+     "rolled_off": 0.022059383039253446,
+     "not_lifted": 0.20733006067631815,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 1.0235057053299799,
+    "reason": "half the squeeze: less crush and bruise risk, more slip",
+    "probe": null
+   },
+   {
+    "id": "slow_lift",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.8342905343568187,
+     "tipped": 0.025846025077169224,
+     "missed": 0.003029148643936939,
+     "dropped_low": 0.018154149187237144,
+     "dropped_high": 0.005587182739670601,
+     "rolled_off": 0.024507173014200686,
+     "not_lifted": 0.08858578698096631,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 1.1075034608113643,
+    "reason": "slower lift and carry",
+    "probe": null
+   },
+   {
+    "id": "decline",
+    "kind": "decline",
+    "p": null,
+    "expected_cost": 1.0,
+    "reason": "best row costs 0.66 <= abstain 1.00: rolled_off carries the largest expected cost",
+    "probe": null
+   }
+  ]
+ },
+ {
+  "object": "ycb__tomato_soup_can",
+  "idx": 1,
+  "care": 1.0,
+  "destination": "bin",
+  "fill": 0.0,
+  "recommendation": "commit",
+  "rows": [
+   {
+    "id": "firm_grip",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.9102722384482608,
+     "tipped": 0.036768366506390246,
+     "missed": 0.0013703187332248074,
+     "dropped_low": 0.018175242136448163,
+     "dropped_high": 0.005828741113588245,
+     "rolled_off": 0.0012049397252015931,
+     "not_lifted": 0.02638015333688545,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 0.5944001697901944,
+    "reason": "twice the squeeze",
+    "probe": null
+   },
+   {
+    "id": "commit_std",
+    "kind": "commit",
+    "p": {
+     "placed_stable": 0.8224308877518471,
+     "tipped": 0.04770142682716225,
+     "missed": 0.0015928312739277506,
+     "dropped_low": 0.03094994994256759,
+     "dropped_high": 0.008029763935209659,
+     "rolled_off": 0.0015491617510756121,
+     "not_lifted": 0.08774597851820967,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 0.7495809379823417,
+    "reason": "",
+    "probe": null
+   },
+   {
+    "id": "probe_weigh",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 0.7934530104829329,
+    "reason": "weigh first: value of information 0.01, expected cost of the best row after it 0.59",
+    "probe": {
+     "p_kind": {
+      "measured": 0.9036806198426459,
+      "lower_bound": 0.09631938015735361,
+      "lost": 0.0,
+      "damaged": 0.0
+     },
+     "p_thrown": 0.0011718750000000036,
+     "evoi": 0.007281846608288065,
+     "evoi_se": 0.0018157435369870944,
+     "expected_cost_after": 0.593453010482933
+    }
+   },
+   {
+    "id": "drop_release",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.7486790526485032,
+     "tipped": 0.11731859660052786,
+     "missed": 0.002576958345431869,
+     "dropped_low": 0.03002894553219261,
+     "dropped_high": 0.007972071763226993,
+     "rolled_off": 0.0025262054004304216,
+     "not_lifted": 0.09089816970968648,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 0.7991859185027794,
+    "reason": "release 5 cm above the rim: faster, more tip risk",
+    "probe": null
+   },
+   {
+    "id": "gentle_carry",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.8204203246025246,
+     "tipped": 0.05063162200369751,
+     "missed": 0.0015528248927007392,
+     "dropped_low": 0.03088887691286243,
+     "dropped_high": 0.007402648756352655,
+     "rolled_off": 0.0014813444513431155,
+     "not_lifted": 0.08762235838051816,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 0.8008841444354741,
+    "reason": "a gentle carry: less spill risk, slower",
+    "probe": null
+   },
+   {
+    "id": "probe_push",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 0.8023075887669436,
+    "reason": "push first: value of information 0.00, expected cost of the best row after it 0.67",
+    "probe": {
+     "p_kind": {
+      "slid": 0.9601319410045189,
+      "tipped": 0.033175080887255175,
+      "no_breakaway": 0.0022025182486225363,
+      "no_contact": 0.004490459859603584,
+      "damaged": 0.0
+     },
+     "p_thrown": 0.013910355486862409,
+     "evoi": 0.0,
+     "evoi_se": 0.0,
+     "expected_cost_after": 0.6695939850481356
+    }
+   },
+   {
+    "id": "regrasp_com",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.7605473002235603,
+     "tipped": 0.04786680280655362,
+     "missed": 0.001994073560629694,
+     "dropped_low": 0.02238292562050981,
+     "dropped_high": 0.00797773093657546,
+     "rolled_off": 0.001976612243038813,
+     "not_lifted": 0.15725455460913215,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 0.9400954949667703,
+    "reason": "pinch nearer the believed centre of mass",
+    "probe": null
+   },
+   {
+    "id": "light_grip",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.6782053724339072,
+     "tipped": 0.04921618802373999,
+     "missed": 0.0017073209330227118,
+     "dropped_low": 0.04261941623204733,
+     "dropped_high": 0.00923683577187253,
+     "rolled_off": 0.001645517323364226,
+     "not_lifted": 0.21736934928204646,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 0.9784339928721099,
+    "reason": "half the squeeze: less crush and bruise risk, more slip",
+    "probe": null
+   },
+   {
+    "id": "slow_lift",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.8349809950323749,
+     "tipped": 0.04349473118991948,
+     "missed": 0.001620746840327083,
+     "dropped_low": 0.0218427923368327,
+     "dropped_high": 0.006240471930460989,
+     "rolled_off": 0.0017834442259749125,
+     "not_lifted": 0.09003681844411016,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 1.017115265338939,
+    "reason": "slower lift and carry",
+    "probe": null
+   },
+   {
+    "id": "decline",
+    "kind": "decline",
+    "p": null,
+    "expected_cost": 1.0,
+    "reason": "best row costs 0.59 <= abstain 1.00: tipped carries the largest expected cost",
+    "probe": null
+   }
+  ]
+ },
+ {
+  "object": "handal__hammer_1",
+  "idx": 0,
+  "care": 1.0,
+  "destination": "plate",
+  "fill": 0.0,
+  "recommendation": "decline",
+  "rows": [
+   {
+    "id": "probe_weigh",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 1.2058593750000008,
+    "reason": "weigh first: value of information 0.00, expected cost of the best row after it 1.01",
+    "probe": {
+     "p_kind": {
+      "measured": 0.03167432296674262,
+      "lower_bound": 0.9683256770332594,
+      "lost": 0.0,
+      "damaged": 0.0
+     },
+     "p_thrown": 0.0011718750000000036,
+     "evoi": 0.0,
+     "evoi_se": 0.0,
+     "expected_cost_after": 1.0058593750000009
+    }
+   },
+   {
+    "id": "probe_push",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 1.206840870527334,
+    "reason": "push first: value of information 0.00, expected cost of the best row after it 1.07",
+    "probe": {
+     "p_kind": {
+      "slid": 0.6092354830417748,
+      "tipped": 0.03781511478242073,
+      "no_breakaway": 0.33506133745377153,
+      "no_contact": 0.01788806472203275,
+      "damaged": 0.0
+     },
+     "p_thrown": 0.013910355486862409,
+     "evoi": 0.0,
+     "evoi_se": 0.0,
+     "expected_cost_after": 1.069551777434313
+    }
+   },
+   {
+    "id": "drop_release",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.021788572064055323,
+     "tipped": 0.017230093901863894,
+     "missed": 0.022157755138839663,
+     "dropped_low": 0.08495602601151524,
+     "dropped_high": 0.005025347577575382,
+     "rolled_off": 0.009749084824791148,
+     "not_lifted": 0.83909312048136,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 1.895974025240676,
+    "reason": "release 5 cm above the rim: faster, more tip risk",
+    "probe": null
+   },
+   {
+    "id": "light_grip",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.004561154014153588,
+     "tipped": 0.0053095444549357135,
+     "missed": 0.006097385036975967,
+     "dropped_low": 0.03164460843634089,
+     "dropped_high": 0.003171321838259449,
+     "rolled_off": 0.0022510911442123393,
+     "not_lifted": 0.9469648950751215,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 1.9390848963640188,
+    "reason": "half the squeeze: less crush and bruise risk, more slip",
+    "probe": null
+   },
+   {
+    "id": "commit_std",
+    "kind": "commit",
+    "p": {
+     "placed_stable": 0.021988115977090016,
+     "tipped": 0.017186816465018982,
+     "missed": 0.022109125287324623,
+     "dropped_low": 0.08483430316472101,
+     "dropped_high": 0.005792519058033092,
+     "rolled_off": 0.009723963639586287,
+     "not_lifted": 0.838365156408225,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 1.9989071206321838,
+    "reason": "",
+    "probe": null
+   },
+   {
+    "id": "gentle_carry",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.022015087523903163,
+     "tipped": 0.017236811054944148,
+     "missed": 0.021938716046000867,
+     "dropped_low": 0.08491794943531909,
+     "dropped_high": 0.005205469185224402,
+     "rolled_off": 0.00973572056672969,
+     "not_lifted": 0.8389502461878778,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 2.0462594608660702,
+    "reason": "a gentle carry: less spill risk, slower",
+    "probe": null
+   },
+   {
+    "id": "firm_grip",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.06666932010211933,
+     "tipped": 0.03185095271708419,
+     "missed": 0.05460969411209411,
+     "dropped_low": 0.14188097887917275,
+     "dropped_high": 0.009231033202781628,
+     "rolled_off": 0.022410107226158837,
+     "not_lifted": 0.6733479137605883,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 2.056551964631228,
+    "reason": "twice the squeeze",
+    "probe": null
+   },
+   {
+    "id": "regrasp_com",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.021988115977090016,
+     "tipped": 0.017186816465018982,
+     "missed": 0.022109125287324623,
+     "dropped_low": 0.08483430316472101,
+     "dropped_high": 0.005792519058033092,
+     "rolled_off": 0.009723963639586287,
+     "not_lifted": 0.838365156408225,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 2.098907120632184,
+    "reason": "the standard pinch is already nearest the believed centre of mass",
+    "probe": null
+   },
+   {
+    "id": "slow_lift",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.022960566797140376,
+     "tipped": 0.020735780744289493,
+     "missed": 0.022876373785306745,
+     "dropped_low": 0.06371157221901928,
+     "dropped_high": 0.005870046834150187,
+     "rolled_off": 0.010893612704768121,
+     "not_lifted": 0.8529520469153252,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 2.2946574811037292,
+    "reason": "slower lift and carry",
+    "probe": null
+   },
+   {
+    "id": "decline",
+    "kind": "decline",
+    "p": null,
+    "expected_cost": 1.0,
+    "reason": "best row costs 1.90 > abstain 1.00: not_lifted carries the largest expected cost",
+    "probe": null
+   }
+  ]
+ },
+ {
+  "object": "hot3d__spatula",
+  "idx": 0,
+  "care": 1.0,
+  "destination": "plate",
+  "fill": 0.0,
+  "recommendation": "decline",
+  "rows": [
+   {
+    "id": "probe_weigh",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 1.2058593750000008,
+    "reason": "weigh first: value of information 0.00, expected cost of the best row after it 1.01",
+    "probe": {
+     "p_kind": {
+      "measured": 0.048460431692079906,
+      "lower_bound": 0.9515395683079215,
+      "lost": 0.0,
+      "damaged": 0.0
+     },
+     "p_thrown": 0.0011718750000000036,
+     "evoi": 0.0,
+     "evoi_se": 0.0,
+     "expected_cost_after": 1.0058593750000009
+    }
+   },
+   {
+    "id": "probe_push",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 1.2636402724831697,
+    "reason": "push first: value of information 0.00, expected cost of the best row after it 1.07",
+    "probe": {
+     "p_kind": {
+      "slid": 0.866542256612005,
+      "tipped": 0.09541576222039228,
+      "no_breakaway": 0.022595794090244977,
+      "no_contact": 0.015446187077357764,
+      "damaged": 0.0
+     },
+     "p_thrown": 0.013910355486862409,
+     "evoi": 0.0,
+     "evoi_se": 0.0,
+     "expected_cost_after": 1.069551777434313
+    }
+   },
+   {
+    "id": "drop_release",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.02087403254943905,
+     "tipped": 0.03212022915876742,
+     "missed": 0.033115242463235606,
+     "dropped_low": 0.08566021353364252,
+     "dropped_high": 0.0045068634306371785,
+     "rolled_off": 0.0031263910323375637,
+     "not_lifted": 0.82059702783194,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 1.8784864388370504,
+    "reason": "release 5 cm above the rim: faster, more tip risk",
+    "probe": null
+   },
+   {
+    "id": "light_grip",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.006066447948551787,
+     "tipped": 0.011747288587984036,
+     "missed": 0.010091891479624814,
+     "dropped_low": 0.04611530189552975,
+     "dropped_high": 0.0035162580222895313,
+     "rolled_off": 0.0013117261186719907,
+     "not_lifted": 0.9211510859473477,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 1.9466034976930682,
+    "reason": "half the squeeze: less crush and bruise risk, more slip",
+    "probe": null
+   },
+   {
+    "id": "commit_std",
+    "kind": "commit",
+    "p": {
+     "placed_stable": 0.02103616504268847,
+     "tipped": 0.03205479368536256,
+     "missed": 0.033064078362822956,
+     "dropped_low": 0.08557903353325519,
+     "dropped_high": 0.005085038272213212,
+     "rolled_off": 0.003119765969087571,
+     "not_lifted": 0.82006112513457,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 1.9807163243125412,
+    "reason": "",
+    "probe": null
+   },
+   {
+    "id": "firm_grip",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.058074948335806856,
+     "tipped": 0.055705270180921064,
+     "missed": 0.07463678486570023,
+     "dropped_low": 0.11863363047302766,
+     "dropped_high": 0.006618997798290329,
+     "rolled_off": 0.0055174023156011505,
+     "not_lifted": 0.6808129660306519,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 1.9919892207686254,
+    "reason": "twice the squeeze",
+    "probe": null
+   },
+   {
+    "id": "gentle_carry",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.021062085467851373,
+     "tipped": 0.032162943877510924,
+     "missed": 0.0327100923924196,
+     "dropped_low": 0.08566275698403618,
+     "dropped_high": 0.004599678306147794,
+     "rolled_off": 0.0030881265590700286,
+     "not_lifted": 0.8207143164129642,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 2.028269890318686,
+    "reason": "a gentle carry: less spill risk, slower",
+    "probe": null
+   },
+   {
+    "id": "regrasp_com",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.02103616504268847,
+     "tipped": 0.03205479368536256,
+     "missed": 0.033064078362822956,
+     "dropped_low": 0.08557903353325519,
+     "dropped_high": 0.005085038272213212,
+     "rolled_off": 0.003119765969087571,
+     "not_lifted": 0.82006112513457,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 2.080716324312541,
+    "reason": "the standard pinch is already nearest the believed centre of mass",
+    "probe": null
+   },
+   {
+    "id": "slow_lift",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.021675008309430522,
+     "tipped": 0.03825971126833425,
+     "missed": 0.03412831068442554,
+     "dropped_low": 0.05348746310150048,
+     "dropped_high": 0.00519827979245181,
+     "rolled_off": 0.0034514029392428793,
+     "not_lifted": 0.8437998239046145,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 2.2693488023556103,
+    "reason": "slower lift and carry",
+    "probe": null
+   },
+   {
+    "id": "decline",
+    "kind": "decline",
+    "p": null,
+    "expected_cost": 1.0,
+    "reason": "best row costs 1.88 > abstain 1.00: not_lifted carries the largest expected cost",
+    "probe": null
+   }
+  ]
+ },
+ {
+  "object": "hot3d__storage_box",
+  "idx": 0,
+  "care": 1.0,
+  "destination": "table_centre",
+  "fill": 0.0,
+  "recommendation": "decline",
+  "rows": [
+   {
+    "id": "decline",
+    "kind": "decline",
+    "p": null,
+    "expected_cost": 1.0,
+    "reason": "every proposal is wider than the gripper opening",
+    "probe": null
+   }
+  ]
+ },
+ {
+  "object": "ycb__chocolate_pudding",
+  "idx": 0,
+  "care": 1.0,
+  "destination": "table_edge",
+  "fill": 0.0,
+  "recommendation": "commit",
+  "rows": [
+   {
+    "id": "light_grip",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.9453324657615428,
+     "tipped": 0.00920838916011203,
+     "missed": 0.0021930238881237114,
+     "dropped_low": 0.012393762755459763,
+     "dropped_high": 0.00499523739752081,
+     "rolled_off": 0.007454283931163991,
+     "not_lifted": 0.01805173542482043,
+     "crushed": 0.0003711016812561632,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 0.5515916928042677,
+    "reason": "half the squeeze: less crush and bruise risk, more slip",
+    "probe": null
+   },
+   {
+    "id": "commit_std",
+    "kind": "commit",
+    "p": {
+     "placed_stable": 0.9481758368974907,
+     "tipped": 0.006463756954120781,
+     "missed": 0.002040530288579172,
+     "dropped_low": 0.007707020069297007,
+     "dropped_high": 0.004082499362126342,
+     "rolled_off": 0.006139133255794729,
+     "not_lifted": 0.010076767304126318,
+     "crushed": 0.015314455868464307,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 0.6007542964984963,
+    "reason": "",
+    "probe": null
+   },
+   {
+    "id": "inboard_place",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.9528135962819109,
+     "tipped": 0.006954171957880624,
+     "missed": 0.0017250581422151299,
+     "dropped_low": 0.007892011869429725,
+     "dropped_high": 0.004085480103875304,
+     "rolled_off": 0.0005700224803092759,
+     "not_lifted": 0.010096587028487057,
+     "crushed": 0.01586307213589292,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 0.6213988128022456,
+    "reason": "safer place, not the requested one",
+    "probe": null
+   },
+   {
+    "id": "gentle_carry",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.9491499225814508,
+     "tipped": 0.006468724738846069,
+     "missed": 0.0019943371501289606,
+     "dropped_low": 0.006919055701250843,
+     "dropped_high": 0.0036169264894806794,
+     "rolled_off": 0.0058838086767528525,
+     "not_lifted": 0.0100884632762918,
+     "crushed": 0.01587876138579781,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 0.6481739094070776,
+    "reason": "a gentle carry: less spill risk, slower",
+    "probe": null
+   },
+   {
+    "id": "probe_squeeze",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 0.6753904131351915,
+    "reason": "squeeze first: value of information 0.03, expected cost of the best row after it 0.53",
+    "probe": {
+     "p_kind": {
+      "measured": 1.0000000000000007
+     },
+     "p_thrown": 0.0,
+     "evoi": 0.02620127966907617,
+     "evoi_se": 0.0012570071000802892,
+     "expected_cost_after": 0.5253904131351915
+    }
+   },
+   {
+    "id": "regrasp_com",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.9481758368974907,
+     "tipped": 0.006463756954120781,
+     "missed": 0.002040530288579172,
+     "dropped_low": 0.007707020069297007,
+     "dropped_high": 0.004082499362126342,
+     "rolled_off": 0.006139133255794729,
+     "not_lifted": 0.010076767304126318,
+     "crushed": 0.015314455868464307,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 0.7007542964984963,
+    "reason": "the standard pinch is already nearest the believed centre of mass",
+    "probe": null
+   },
+   {
+    "id": "probe_push",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 0.7691517353119824,
+    "reason": "push first: value of information 0.00, expected cost of the best row after it 0.64",
+    "probe": {
+     "p_kind": {
+      "slid": 0.893285049262588,
+      "tipped": 0.03238409172733447,
+      "no_breakaway": 0.0016906522188614,
+      "no_contact": 0.07080340782274111,
+      "damaged": 0.0018367989684747326
+     },
+     "p_thrown": 0.013910355486862409,
+     "evoi": 3.0459168432371902e-05,
+     "evoi_se": 1.5866994702302954e-05,
+     "expected_cost_after": 0.6372181178126943
+    }
+   },
+   {
+    "id": "slow_lift",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.9491390573069165,
+     "tipped": 0.006844463971989018,
+     "missed": 0.00204345750921568,
+     "dropped_low": 0.0052304984868443965,
+     "dropped_high": 0.004801549178226159,
+     "rolled_off": 0.0064460056894659334,
+     "not_lifted": 0.010101523647584694,
+     "crushed": 0.015393444209757561,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 0.9032351198721733,
+    "reason": "slower lift and carry",
+    "probe": null
+   },
+   {
+    "id": "probe_weigh",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 2.870013749337174,
+    "reason": "weigh first: value of information 0.02, expected cost of the best row after it 2.67",
+    "probe": {
+     "p_kind": {
+      "measured": 0.595445403995674,
+      "lower_bound": 0.01343275867410253,
+      "lost": 0.0,
+      "damaged": 0.39112183733022404
+     },
+     "p_thrown": 0.0011718750000000036,
+     "evoi": 0.01633854367168668,
+     "evoi_se": 0.0013931670114122026,
+     "expected_cost_after": 2.6700137493371736
+    }
+   },
+   {
+    "id": "firm_grip",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.5651161774711527,
+     "tipped": 0.00296488923000151,
+     "missed": 0.0015361522802761214,
+     "dropped_low": 0.00413160470082232,
+     "dropped_high": 0.003304535396285311,
+     "rolled_off": 0.0035692450081639647,
+     "not_lifted": 0.005637869684800926,
+     "crushed": 0.413739526228497,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 2.9494019367470794,
+    "reason": "twice the squeeze",
+    "probe": null
+   },
+   {
+    "id": "decline",
+    "kind": "decline",
+    "p": null,
+    "expected_cost": 1.0,
+    "reason": "best row costs 0.55 <= abstain 1.00: rolled_off carries the largest expected cost",
+    "probe": null
+   }
+  ]
+ },
+ {
+  "object": "fruits_veggies__orange1",
+  "idx": 0,
+  "care": 1.0,
+  "destination": "table_edge",
+  "fill": 0.0,
+  "recommendation": "decline",
+  "rows": [
+   {
+    "id": "probe_squeeze",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 1.1500000000000008,
+    "reason": "squeeze first: value of information 0.00, expected cost of the best row after it 1.00",
+    "probe": {
+     "p_kind": {
+      "measured": 1.0000000000000007
+     },
+     "p_thrown": 0.0,
+     "evoi": 0.0,
+     "evoi_se": 0.0,
+     "expected_cost_after": 1.0000000000000007
+    }
+   },
+   {
+    "id": "probe_push",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 1.2275924395119582,
+    "reason": "push first: value of information 0.00, expected cost of the best row after it 1.08",
+    "probe": {
+     "p_kind": {
+      "slid": 0.9323637793904436,
+      "tipped": 0.04587457039647545,
+      "no_breakaway": 0.012454984065173803,
+      "no_contact": 0.006709696727441672,
+      "damaged": 0.0025969694204657267
+     },
+     "p_thrown": 0.013910355486862409,
+     "evoi": 0.0,
+     "evoi_se": 0.0,
+     "expected_cost_after": 1.0823560006975048
+    }
+   },
+   {
+    "id": "commit_std",
+    "kind": "commit",
+    "p": {
+     "placed_stable": 0.7259477102766407,
+     "tipped": 0.02660799355023725,
+     "missed": 0.0023932509806227882,
+     "dropped_low": 0.023098513859953942,
+     "dropped_high": 0.003192113941026849,
+     "rolled_off": 0.0024228436862865654,
+     "not_lifted": 0.12668073644028413,
+     "crushed": 0.0,
+     "bruised": 0.08965683726494773,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 1.265851390795621,
+    "reason": "",
+    "probe": null
+   },
+   {
+    "id": "inboard_place",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.7280531213080035,
+     "tipped": 0.028614809348339612,
+     "missed": 0.001987060110245313,
+     "dropped_low": 0.023809867588820286,
+     "dropped_high": 0.003073924302782075,
+     "rolled_off": 0.00037673828272098144,
+     "not_lifted": 0.12525541578597804,
+     "crushed": 0.0,
+     "bruised": 0.08882906327311,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 1.300384952925456,
+    "reason": "safer place, not the requested one",
+    "probe": null
+   },
+   {
+    "id": "gentle_carry",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.7247346219794857,
+     "tipped": 0.026652664004043095,
+     "missed": 0.0023342243479982264,
+     "dropped_low": 0.02167463874696012,
+     "dropped_high": 0.0030299643285448116,
+     "rolled_off": 0.002321353005490891,
+     "not_lifted": 0.12688516514981468,
+     "crushed": 0.0,
+     "bruised": 0.0923673684376611,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 1.327962916552907,
+    "reason": "a gentle carry: less spill risk, slower",
+    "probe": null
+   },
+   {
+    "id": "regrasp_com",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.7259477102766407,
+     "tipped": 0.02660799355023725,
+     "missed": 0.0023932509806227882,
+     "dropped_low": 0.023098513859953942,
+     "dropped_high": 0.003192113941026849,
+     "rolled_off": 0.0024228436862865654,
+     "not_lifted": 0.12668073644028413,
+     "crushed": 0.0,
+     "bruised": 0.08965683726494773,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 1.365851390795621,
+    "reason": "the standard pinch is already nearest the believed centre of mass",
+    "probe": null
+   },
+   {
+    "id": "light_grip",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.5899993150033223,
+     "tipped": 0.02872559066371302,
+     "missed": 0.002745005635447621,
+     "dropped_low": 0.036080418715325156,
+     "dropped_high": 0.003880690889094294,
+     "rolled_off": 0.002848574828711699,
+     "not_lifted": 0.2533398234456161,
+     "crushed": 0.0,
+     "bruised": 0.08238058081876944,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 1.449770844416849,
+    "reason": "half the squeeze: less crush and bruise risk, more slip",
+    "probe": null
+   },
+   {
+    "id": "slow_lift",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.7308808718708792,
+     "tipped": 0.026301758849722235,
+     "missed": 0.0024263419405906026,
+     "dropped_low": 0.015514702980522488,
+     "dropped_high": 0.0028416238877919595,
+     "rolled_off": 0.0027592564625991065,
+     "not_lifted": 0.12899101480026642,
+     "crushed": 0.0,
+     "bruised": 0.09028442920762791,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 1.5572839870901842,
+    "reason": "slower lift and carry",
+    "probe": null
+   },
+   {
+    "id": "firm_grip",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.5572951162533117,
+     "tipped": 0.013914718473519251,
+     "missed": 0.0016896038934994244,
+     "dropped_low": 0.009948869866112441,
+     "dropped_high": 0.0025394475935857875,
+     "rolled_off": 0.001394197210458604,
+     "not_lifted": 0.048345995906596675,
+     "crushed": 0.0,
+     "bruised": 0.36487205080291607,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 2.7364595519679202,
+    "reason": "twice the squeeze",
+    "probe": null
+   },
+   {
+    "id": "probe_weigh",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 3.0999277442031357,
+    "reason": "weigh first: value of information 0.01, expected cost of the best row after it 2.90",
+    "probe": {
+     "p_kind": {
+      "measured": 0.5715708074936401,
+      "lower_bound": 0.04744020133943922,
+      "lost": 0.0,
+      "damaged": 0.3809889911669202
+     },
+     "p_thrown": 0.0011718750000000036,
+     "evoi": 0.008644229261350788,
+     "evoi_se": 0.0017629694758895574,
+     "expected_cost_after": 2.8999277442031355
+    }
+   },
+   {
+    "id": "decline",
+    "kind": "decline",
+    "p": null,
+    "expected_cost": 1.0,
+    "reason": "best row costs 1.27 > abstain 1.00: bruised carries the largest expected cost",
+    "probe": null
+   }
+  ]
+ },
+ {
+  "object": "hope__popcorn_box",
+  "idx": 0,
+  "care": 10.0,
+  "destination": "table_centre",
+  "fill": 0.0,
+  "recommendation": "commit",
+  "rows": [
+   {
+    "id": "light_grip",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.9731608397902112,
+     "tipped": 0.010741633823994312,
+     "missed": 0.0036638193315920477,
+     "dropped_low": 0.004357643599321635,
+     "dropped_high": 0.0022929119080668295,
+     "rolled_off": 0.0005855920315191399,
+     "not_lifted": 0.0047989544512373064,
+     "crushed": 0.0003986050640566083,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 0.6118571843724444,
+    "reason": "half the squeeze: less crush and bruise risk, more slip",
+    "probe": null
+   },
+   {
+    "id": "probe_squeeze",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 0.7500554862454595,
+    "reason": "squeeze first: value of information 0.01, expected cost of the best row after it 0.60",
+    "probe": {
+     "p_kind": {
+      "measured": 1.0000000000000007
+     },
+     "p_thrown": 0.0,
+     "evoi": 0.011801698126984199,
+     "evoi_se": 0.0008948809622591979,
+     "expected_cost_after": 0.6000554862454595
+    }
+   },
+   {
+    "id": "commit_std",
+    "kind": "commit",
+    "p": {
+     "placed_stable": 0.9683730209265126,
+     "tipped": 0.007945034730401528,
+     "missed": 0.0035897983117417665,
+     "dropped_low": 0.0028820129117251856,
+     "dropped_high": 0.002154275022387945,
+     "rolled_off": 0.0005051895839194245,
+     "not_lifted": 0.003251659997876745,
+     "crushed": 0.011299008515433421,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 1.1455933111133336,
+    "reason": "",
+    "probe": null
+   },
+   {
+    "id": "gentle_carry",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.9670969174194027,
+     "tipped": 0.009324640316231265,
+     "missed": 0.0034906199016082346,
+     "dropped_low": 0.0026759804243681497,
+     "dropped_high": 0.002134351074175272,
+     "rolled_off": 0.00046857581955880314,
+     "not_lifted": 0.003247036174122591,
+     "crushed": 0.011561878870532137,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 1.208258129523177,
+    "reason": "a gentle carry: less spill risk, slower",
+    "probe": null
+   },
+   {
+    "id": "regrasp_com",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.9683730209265126,
+     "tipped": 0.007945034730401528,
+     "missed": 0.0035897983117417665,
+     "dropped_low": 0.0028820129117251856,
+     "dropped_high": 0.002154275022387945,
+     "rolled_off": 0.0005051895839194245,
+     "not_lifted": 0.003251659997876745,
+     "crushed": 0.011299008515433421,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 1.2455933111133337,
+    "reason": "the standard pinch is already nearest the believed centre of mass",
+    "probe": null
+   },
+   {
+    "id": "slow_lift",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.9686077447077561,
+     "tipped": 0.008125379070230294,
+     "missed": 0.0036574258361537593,
+     "dropped_low": 0.0022556579859516314,
+     "dropped_high": 0.0021645741368760507,
+     "rolled_off": 0.0005417473019730528,
+     "not_lifted": 0.0032563139393641705,
+     "crushed": 0.011391157021695087,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 1.4519327981814711,
+    "reason": "slower lift and carry",
+    "probe": null
+   },
+   {
+    "id": "probe_push",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 1.5476486063510464,
+    "reason": "push first: value of information 0.00, expected cost of the best row after it 1.41",
+    "probe": {
+     "p_kind": {
+      "slid": 0.9265666584702212,
+      "tipped": 0.04294804097649518,
+      "no_breakaway": 0.002152003910137465,
+      "no_contact": 0.026471163786594244,
+      "damaged": 0.0018621328565519174
+     },
+     "p_thrown": 0.013910355486862409,
+     "evoi": 0.0,
+     "evoi_se": 0.0,
+     "expected_cost_after": 1.4052979878919987
+    }
+   },
+   {
+    "id": "firm_grip",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.588699567896836,
+     "tipped": 0.0038897071808839372,
+     "missed": 0.0025597054465192506,
+     "dropped_low": 0.00203759960800198,
+     "dropped_high": 0.0020985884327982237,
+     "rolled_off": 0.000388210620268022,
+     "not_lifted": 0.002305272537806954,
+     "crushed": 0.39802134827688557,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 20.84634744710506,
+    "reason": "twice the squeeze",
+    "probe": null
+   },
+   {
+    "id": "probe_weigh",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 23.09532193442605,
+    "reason": "weigh first: value of information 0.01, expected cost of the best row after it 22.90",
+    "probe": {
+     "p_kind": {
+      "measured": 0.5524451311434359,
+      "lower_bound": 0.005746493719806105,
+      "lost": 0.0,
+      "damaged": 0.44180837513675836
+     },
+     "p_thrown": 0.0011718750000000036,
+     "evoi": 0.014699001785197487,
+     "evoi_se": 0.002304375391764887,
+     "expected_cost_after": 22.89532193442605
+    }
+   },
+   {
+    "id": "decline",
+    "kind": "decline",
+    "p": null,
+    "expected_cost": 1.0,
+    "reason": "best row costs 0.61 <= abstain 1.00: dropped_high carries the largest expected cost",
+    "probe": null
+   }
+  ]
+ },
+ {
+  "object": "hope__popcorn_box",
+  "idx": 1,
+  "care": 10.0,
+  "destination": "table_centre",
+  "fill": 0.0,
+  "recommendation": "commit",
+  "rows": [
+   {
+    "id": "light_grip",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.9731305460206403,
+     "tipped": 0.010440449056431277,
+     "missed": 0.0036378348443751635,
+     "dropped_low": 0.004238478786718138,
+     "dropped_high": 0.0022556358282321315,
+     "rolled_off": 0.000574952386851197,
+     "not_lifted": 0.005309212522276417,
+     "crushed": 0.0004128905544747058,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 0.6100147614059241,
+    "reason": "half the squeeze: less crush and bruise risk, more slip",
+    "probe": null
+   },
+   {
+    "id": "probe_squeeze",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 0.7518231413374348,
+    "reason": "squeeze first: value of information 0.01, expected cost of the best row after it 0.60",
+    "probe": {
+     "p_kind": {
+      "measured": 1.0000000000000007
+     },
+     "p_thrown": 0.0,
+     "evoi": 0.008191620068488965,
+     "evoi_se": 0.0006709959826804788,
+     "expected_cost_after": 0.6018231413374348
+    }
+   },
+   {
+    "id": "commit_std",
+    "kind": "commit",
+    "p": {
+     "placed_stable": 0.9645815357155261,
+     "tipped": 0.007599640819966254,
+     "missed": 0.003523522647948286,
+     "dropped_low": 0.0027296001970095116,
+     "dropped_high": 0.002130573993421457,
+     "rolled_off": 0.000489946743567623,
+     "not_lifted": 0.003290074628271118,
+     "crushed": 0.015655105254289946,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 1.3646975648274848,
+    "reason": "",
+    "probe": null
+   },
+   {
+    "id": "gentle_carry",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.9632839417622108,
+     "tipped": 0.008935491008965882,
+     "missed": 0.0034333553700902886,
+     "dropped_low": 0.0025193780537383524,
+     "dropped_high": 0.002114122450765294,
+     "rolled_off": 0.00045623163616245624,
+     "not_lifted": 0.003286738480167779,
+     "crushed": 0.01597074123789919,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 1.4303024181520145,
+    "reason": "a gentle carry: less spill risk, slower",
+    "probe": null
+   },
+   {
+    "id": "regrasp_com",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.9645815357155261,
+     "tipped": 0.007599640819966254,
+     "missed": 0.003523522647948286,
+     "dropped_low": 0.0027296001970095116,
+     "dropped_high": 0.002130573993421457,
+     "rolled_off": 0.000489946743567623,
+     "not_lifted": 0.003290074628271118,
+     "crushed": 0.015655105254289946,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 1.464697564827485,
+    "reason": "the standard pinch is already nearest the believed centre of mass",
+    "probe": null
+   },
+   {
+    "id": "probe_push",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 1.5462516607021268,
+    "reason": "push first: value of information 0.00, expected cost of the best row after it 1.40",
+    "probe": {
+     "p_kind": {
+      "slid": 0.9234944716889791,
+      "tipped": 0.043454220457243946,
+      "no_breakaway": 0.0021996499713576997,
+      "no_contact": 0.028991186351143273,
+      "damaged": 0.0018604715312758972
+     },
+     "p_thrown": 0.013910355486862409,
+     "evoi": 0.0,
+     "evoi_se": 0.0,
+     "expected_cost_after": 1.4034019038988477
+    }
+   },
+   {
+    "id": "slow_lift",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.9647336819811043,
+     "tipped": 0.007816406927825812,
+     "missed": 0.003579910564610153,
+     "dropped_low": 0.0021514486928087767,
+     "dropped_high": 0.002149124126661584,
+     "rolled_off": 0.0005240769889087142,
+     "not_lifted": 0.003293459604914042,
+     "crushed": 0.015751891113166844,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 1.6717154254434545,
+    "reason": "slower lift and carry",
+    "probe": null
+   },
+   {
+    "id": "firm_grip",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.5750393818246785,
+     "tipped": 0.0035989817511471386,
+     "missed": 0.002472633343664807,
+     "dropped_low": 0.0019084973436322486,
+     "dropped_high": 0.0020850597150027057,
+     "rolled_off": 0.00037687456541831235,
+     "not_lifted": 0.0022658342849848578,
+     "crushed": 0.41225273717147076,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 21.569807220350846,
+    "reason": "twice the squeeze",
+    "probe": null
+   },
+   {
+    "id": "probe_weigh",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 23.51267954475523,
+    "reason": "weigh first: value of information 0.01, expected cost of the best row after it 23.31",
+    "probe": {
+     "p_kind": {
+      "measured": 0.545810156316208,
+      "lower_bound": 0.004031005732192757,
+      "lost": 0.0,
+      "damaged": 0.4501588379515995
+     },
+     "p_thrown": 0.0011718750000000036,
+     "evoi": 0.01052218631502485,
+     "evoi_se": 0.0013162905508327907,
+     "expected_cost_after": 23.31267954475523
+    }
+   },
+   {
+    "id": "decline",
+    "kind": "decline",
+    "p": null,
+    "expected_cost": 1.0,
+    "reason": "best row costs 0.61 <= abstain 1.00: dropped_high carries the largest expected cost",
+    "probe": null
+   }
+  ]
+ },
+ {
+  "object": "ycb__mug",
+  "idx": 0,
+  "care": 10.0,
+  "destination": "table_edge",
+  "fill": 0.0,
+  "recommendation": "decline",
+  "rows": [
+   {
+    "id": "probe_push",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 2.122978854745674,
+    "reason": "push first: value of information 0.00, expected cost of the best row after it 1.94",
+    "probe": {
+     "p_kind": {
+      "slid": 0.9064285341491918,
+      "tipped": 0.08044510085163535,
+      "no_breakaway": 0.002646180530628674,
+      "no_contact": 0.005447477738854553,
+      "damaged": 0.0050327067296898976
+     },
+     "p_thrown": 0.013910355486862409,
+     "evoi": 0.0,
+     "evoi_se": 0.0,
+     "expected_cost_after": 1.9436527738440614
+    }
+   },
+   {
+    "id": "probe_weigh",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 2.488286380692396,
+    "reason": "weigh first: value of information 0.03, expected cost of the best row after it 2.29",
+    "probe": {
+     "p_kind": {
+      "measured": 0.9472912360209483,
+      "lower_bound": 0.027388755329767717,
+      "lost": 0.0,
+      "damaged": 0.025320008649284055
+     },
+     "p_thrown": 0.0011718750000000036,
+     "evoi": 0.03482420751501221,
+     "evoi_se": 0.005057111002121041,
+     "expected_cost_after": 2.2882863806923956
+    }
+   },
+   {
+    "id": "firm_grip",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.8465533782507318,
+     "tipped": 0.00467063896879454,
+     "missed": 0.001911219777663947,
+     "dropped_low": 0.018522117237738365,
+     "dropped_high": 0.003082606344171614,
+     "rolled_off": 0.0018297899652988344,
+     "not_lifted": 0.03977678930520422,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0111887130076932,
+     "spilled": 0.0724647471427034
+    },
+    "expected_cost": 5.026731815379419,
+    "reason": "twice the squeeze",
+    "probe": null
+   },
+   {
+    "id": "regrasp_com",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.8388258421292502,
+     "tipped": 0.006277368267139198,
+     "missed": 0.0018316833671038662,
+     "dropped_low": 0.02670241160948881,
+     "dropped_high": 0.005930675384122665,
+     "rolled_off": 0.003073439430109548,
+     "not_lifted": 0.018056009326180917,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.012371525596568874,
+     "spilled": 0.08693104489003557
+    },
+    "expected_cost": 6.120347890819406,
+    "reason": "pinch nearer the believed centre of mass",
+    "probe": null
+   },
+   {
+    "id": "inboard_place",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.7599588197211976,
+     "tipped": 0.007029252566493894,
+     "missed": 0.0018896378543323206,
+     "dropped_low": 0.03205360715127846,
+     "dropped_high": 0.003736228732136891,
+     "rolled_off": 0.0004066085903867314,
+     "not_lifted": 0.08803553341847815,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0031641140951732772,
+     "spilled": 0.10372619787052154
+    },
+    "expected_cost": 6.326688908971068,
+    "reason": "safer place, not the requested one",
+    "probe": null
+   },
+   {
+    "id": "commit_std",
+    "kind": "commit",
+    "p": {
+     "placed_stable": 0.7540785072214881,
+     "tipped": 0.006282616333990297,
+     "missed": 0.00209684109211759,
+     "dropped_low": 0.03022440866819851,
+     "dropped_high": 0.0038322509407313107,
+     "rolled_off": 0.0022351835619287136,
+     "not_lifted": 0.08663324711727503,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.01163633664585926,
+     "spilled": 0.10298060841841064
+    },
+    "expected_cost": 6.762060960777953,
+    "reason": "",
+    "probe": null
+   },
+   {
+    "id": "slow_lift",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.7630320564792868,
+     "tipped": 0.006470636439802081,
+     "missed": 0.002134435529669697,
+     "dropped_low": 0.01973091366221326,
+     "dropped_high": 0.0035402314943970906,
+     "rolled_off": 0.002484804289655058,
+     "not_lifted": 0.08860030792751832,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.009022261597555911,
+     "spilled": 0.10498435257990138
+    },
+    "expected_cost": 7.011186581191629,
+    "reason": "slower lift and carry",
+    "probe": null
+   },
+   {
+    "id": "gentle_carry",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.7509625259434909,
+     "tipped": 0.006302403305535871,
+     "missed": 0.0020341028734548656,
+     "dropped_low": 0.02990641691937015,
+     "dropped_high": 0.0036104492198863014,
+     "rolled_off": 0.0021281669239575627,
+     "not_lifted": 0.08593888898748896,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.017480148472843432,
+     "spilled": 0.10163689735397212
+    },
+    "expected_cost": 7.023032940181586,
+    "reason": "a gentle carry: less spill risk, slower",
+    "probe": null
+   },
+   {
+    "id": "light_grip",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.5909600330229332,
+     "tipped": 0.007762903003679669,
+     "missed": 0.0021449125021324724,
+     "dropped_low": 0.04369491244096707,
+     "dropped_high": 0.00442861893503213,
+     "rolled_off": 0.002411491040026005,
+     "not_lifted": 0.1892773673542421,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.011600252854618272,
+     "spilled": 0.14771950884636809
+    },
+    "expected_cost": 9.265274962403193,
+    "reason": "half the squeeze: less crush and bruise risk, more slip",
+    "probe": null
+   },
+   {
+    "id": "decline",
+    "kind": "decline",
+    "p": null,
+    "expected_cost": 1.0,
+    "reason": "best row costs 5.03 > abstain 1.00: spilled carries the largest expected cost",
+    "probe": null
+   }
+  ]
+ },
+ {
+  "object": "ycb__mug",
+  "idx": 1,
+  "care": 10.0,
+  "destination": "bin",
+  "fill": 0.0,
+  "recommendation": "decline",
+  "rows": [
+   {
+    "id": "probe_push",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 2.133631501094822,
+    "reason": "push first: value of information 0.00, expected cost of the best row after it 1.95",
+    "probe": {
+     "p_kind": {
+      "slid": 0.9064342098564124,
+      "tipped": 0.0802116608627609,
+      "no_breakaway": 0.0026551186727193283,
+      "no_contact": 0.005445576702843936,
+      "damaged": 0.005253433905263581
+     },
+     "p_thrown": 0.013910355486862409,
+     "evoi": 0.0,
+     "evoi_se": 0.0,
+     "expected_cost_after": 1.9545356129488538
+    }
+   },
+   {
+    "id": "probe_weigh",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 2.443769792299795,
+    "reason": "weigh first: value of information 0.08, expected cost of the best row after it 2.24",
+    "probe": {
+     "p_kind": {
+      "measured": 0.9487770034998637,
+      "lower_bound": 0.025982094627704688,
+      "lost": 0.0,
+      "damaged": 0.025240901872431866
+     },
+     "p_thrown": 0.0011718750000000036,
+     "evoi": 0.07539009222770808,
+     "evoi_se": 0.008023287595312954,
+     "expected_cost_after": 2.243769792299795
+    }
+   },
+   {
+    "id": "firm_grip",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.8506725681579439,
+     "tipped": 0.007457205761766715,
+     "missed": 0.001302100014154523,
+     "dropped_low": 0.018318486837284372,
+     "dropped_high": 0.0036716693904346124,
+     "rolled_off": 0.00036498114591670597,
+     "not_lifted": 0.04853113092288273,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.007624976243728213,
+     "spilled": 0.0620568815258883
+    },
+    "expected_cost": 4.286596205215094,
+    "reason": "twice the squeeze",
+    "probe": null
+   },
+   {
+    "id": "regrasp_com",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.8407279590353874,
+     "tipped": 0.010774951250222396,
+     "missed": 0.0010921249737804875,
+     "dropped_low": 0.0335684598837151,
+     "dropped_high": 0.006342730075242455,
+     "rolled_off": 0.00042561696213178437,
+     "not_lifted": 0.021102407306707857,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.008989670627265856,
+     "spilled": 0.07697607988554564
+    },
+    "expected_cost": 5.351963658234971,
+    "reason": "pinch nearer the believed centre of mass",
+    "probe": null
+   },
+   {
+    "id": "commit_std",
+    "kind": "commit",
+    "p": {
+     "placed_stable": 0.7524289813591117,
+     "tipped": 0.010080647458444614,
+     "missed": 0.001408986724187797,
+     "dropped_low": 0.03030379976689995,
+     "dropped_high": 0.004633870163800282,
+     "rolled_off": 0.00039675509355732334,
+     "not_lifted": 0.10436183555345835,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.007841803759455514,
+     "spilled": 0.0885433201210841
+    },
+    "expected_cost": 5.812332827262011,
+    "reason": "",
+    "probe": null
+   },
+   {
+    "id": "gentle_carry",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.7506307221487174,
+     "tipped": 0.010123600113491695,
+     "missed": 0.0013709668564510459,
+     "dropped_low": 0.03005879641375486,
+     "dropped_high": 0.004334708900853648,
+     "rolled_off": 0.00038896777125488753,
+     "not_lifted": 0.10372415555340618,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.012026787602669866,
+     "spilled": 0.0873412946393991
+    },
+    "expected_cost": 5.997372664720558,
+    "reason": "a gentle carry: less spill risk, slower",
+    "probe": null
+   },
+   {
+    "id": "slow_lift",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.7601826558610136,
+     "tipped": 0.010341180936759562,
+     "missed": 0.0014310820286285448,
+     "dropped_low": 0.020923516504532044,
+     "dropped_high": 0.004233620104942208,
+     "rolled_off": 0.00041913242710169186,
+     "not_lifted": 0.10658692385416198,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0060485893760706235,
+     "spilled": 0.08983329890679022
+    },
+    "expected_cost": 6.052538626281224,
+    "reason": "slower lift and carry",
+    "probe": null
+   },
+   {
+    "id": "light_grip",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.5828098734604445,
+     "tipped": 0.01231907006097798,
+     "missed": 0.0014517391643954966,
+     "dropped_low": 0.0431813850745274,
+     "dropped_high": 0.005356531372988115,
+     "rolled_off": 0.0004212748807657872,
+     "not_lifted": 0.2177606762460454,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.007582597927342619,
+     "spilled": 0.12911685181251134
+    },
+    "expected_cost": 8.106885458642871,
+    "reason": "half the squeeze: less crush and bruise risk, more slip",
+    "probe": null
+   },
+   {
+    "id": "drop_release",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.6260217111978656,
+     "tipped": 0.03455821329443667,
+     "missed": 0.0025236455923374618,
+     "dropped_low": 0.028230026051987524,
+     "dropped_high": 0.004591927497881374,
+     "rolled_off": 0.00047066920596995735,
+     "not_lifted": 0.09860619894930221,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.007450357485612829,
+     "spilled": 0.19754725072460588
+    },
+    "expected_cost": 11.29160351891905,
+    "reason": "release 5 cm above the rim: faster, more tip risk",
+    "probe": null
+   },
+   {
+    "id": "decline",
+    "kind": "decline",
+    "p": null,
+    "expected_cost": 1.0,
+    "reason": "best row costs 4.29 > abstain 1.00: spilled carries the largest expected cost",
+    "probe": null
+   }
+  ]
+ },
+ {
+  "object": "ycb__mug",
+  "idx": 2,
+  "care": 10.0,
+  "destination": "plate",
+  "fill": 0.0,
+  "recommendation": "decline",
+  "rows": [
+   {
+    "id": "probe_push",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 2.126030925305922,
+    "reason": "push first: value of information 0.00, expected cost of the best row after it 1.95",
+    "probe": {
+     "p_kind": {
+      "slid": 0.906394911361498,
+      "tipped": 0.0803306688756788,
+      "no_breakaway": 0.0026505490108110832,
+      "no_contact": 0.00552697288585973,
+      "damaged": 0.005096897866151989
+     },
+     "p_thrown": 0.013910355486862409,
+     "evoi": 0.0,
+     "evoi_se": 0.0,
+     "expected_cost_after": 1.9468176845908014
+    }
+   },
+   {
+    "id": "probe_weigh",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 2.42056771606292,
+    "reason": "weigh first: value of information 0.12, expected cost of the best row after it 2.22",
+    "probe": {
+     "p_kind": {
+      "measured": 0.9452595273898023,
+      "lower_bound": 0.02909313291078185,
+      "lost": 0.0,
+      "damaged": 0.02564733969941683
+     },
+     "p_thrown": 0.0011718750000000036,
+     "evoi": 0.11889024509740671,
+     "evoi_se": 0.012733237027799686,
+     "expected_cost_after": 2.22056771606292
+    }
+   },
+   {
+    "id": "firm_grip",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.8564038147642631,
+     "tipped": 0.0042579802540316574,
+     "missed": 0.001689478964300417,
+     "dropped_low": 0.016244355537865702,
+     "dropped_high": 0.0027081077149411514,
+     "rolled_off": 0.0010590143204109756,
+     "not_lifted": 0.03988947055726968,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0016933093023967188,
+     "spilled": 0.0760544685845207
+    },
+    "expected_cost": 4.661477731384046,
+    "reason": "twice the squeeze",
+    "probe": null
+   },
+   {
+    "id": "regrasp_com",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.845694996136977,
+     "tipped": 0.005500170061659273,
+     "missed": 0.0016289303475730732,
+     "dropped_low": 0.02983036800159638,
+     "dropped_high": 0.0044099346336189445,
+     "rolled_off": 0.0018949934037340694,
+     "not_lifted": 0.017006277893396714,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0017969510912609749,
+     "spilled": 0.09223737843018306
+    },
+    "expected_cost": 5.716730489160403,
+    "reason": "pinch nearer the believed centre of mass",
+    "probe": null
+   },
+   {
+    "id": "commit_std",
+    "kind": "commit",
+    "p": {
+     "placed_stable": 0.7629208900773915,
+     "tipped": 0.005817259778924063,
+     "missed": 0.0018654903441431073,
+     "dropped_low": 0.02656566012175565,
+     "dropped_high": 0.0031542065542506754,
+     "rolled_off": 0.0012726957111652971,
+     "not_lifted": 0.08665250848074936,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.001628744722305649,
+     "spilled": 0.11012254420931493
+    },
+    "expected_cost": 6.5235633342596335,
+    "reason": "",
+    "probe": null
+   },
+   {
+    "id": "drop_release",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.7602872728037976,
+     "tipped": 0.005865430653757121,
+     "missed": 0.0018804852177227087,
+     "dropped_low": 0.026637294716802547,
+     "dropped_high": 0.0030661193398059798,
+     "rolled_off": 0.0013871281559088649,
+     "not_lifted": 0.08669508830801047,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.00163327508316601,
+     "spilled": 0.11254790572102784
+    },
+    "expected_cost": 6.549164896933925,
+    "reason": "release 5 cm above the rim: faster, more tip risk",
+    "probe": null
+   },
+   {
+    "id": "gentle_carry",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.763422244139712,
+     "tipped": 0.005853229573511589,
+     "missed": 0.0018218113815166924,
+     "dropped_low": 0.02642950238020281,
+     "dropped_high": 0.003030007511528649,
+     "rolled_off": 0.0012109490830324611,
+     "not_lifted": 0.08630651070538767,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0024151421739407024,
+     "spilled": 0.10951060305116633
+    },
+    "expected_cost": 6.572170645531621,
+    "reason": "a gentle carry: less spill risk, slower",
+    "probe": null
+   },
+   {
+    "id": "slow_lift",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.7686856791039018,
+     "tipped": 0.005982835676929767,
+     "missed": 0.0018892411599914902,
+     "dropped_low": 0.018128113527251695,
+     "dropped_high": 0.0029862836635610513,
+     "rolled_off": 0.0014059814926154763,
+     "not_lifted": 0.0879711338844346,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0012837108857529898,
+     "spilled": 0.11166702060556091
+    },
+    "expected_cost": 6.86844991057701,
+    "reason": "slower lift and carry",
+    "probe": null
+   },
+   {
+    "id": "light_grip",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.5981241833505216,
+     "tipped": 0.007250131223613911,
+     "missed": 0.0019384379290987865,
+     "dropped_low": 0.03765233732475943,
+     "dropped_high": 0.003531974889375922,
+     "rolled_off": 0.001371534181855048,
+     "not_lifted": 0.18905656274072521,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0015435405455868317,
+     "spilled": 0.15953129781446324
+    },
+    "expected_cost": 9.242162376061366,
+    "reason": "half the squeeze: less crush and bruise risk, more slip",
+    "probe": null
+   },
+   {
+    "id": "decline",
+    "kind": "decline",
+    "p": null,
+    "expected_cost": 1.0,
+    "reason": "best row costs 4.66 > abstain 1.00: spilled carries the largest expected cost",
+    "probe": null
+   }
+  ]
+ },
+ {
+  "object": "ycb__mug",
+  "idx": 3,
+  "care": 10.0,
+  "destination": "table_centre",
+  "fill": 0.8429044767346532,
+  "recommendation": "decline",
+  "rows": [
+   {
+    "id": "probe_push",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 2.1325810702692847,
+    "reason": "push first: value of information 0.00, expected cost of the best row after it 1.95",
+    "probe": {
+     "p_kind": {
+      "slid": 0.9059681760722513,
+      "tipped": 0.0806853101204851,
+      "no_breakaway": 0.0027089061625797835,
+      "no_contact": 0.005414951700879697,
+      "damaged": 0.005222655943804325
+     },
+     "p_thrown": 0.013910355486862409,
+     "evoi": 0.0,
+     "evoi_se": 0.0,
+     "expected_cost_after": 1.9530181214951434
+    }
+   },
+   {
+    "id": "probe_weigh",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 2.406720801624048,
+    "reason": "weigh first: value of information 0.10, expected cost of the best row after it 2.21",
+    "probe": {
+     "p_kind": {
+      "measured": 0.9497713036824474,
+      "lower_bound": 0.025319058435784948,
+      "lost": 0.0,
+      "damaged": 0.02490963788176908
+     },
+     "p_thrown": 0.0011718750000000036,
+     "evoi": 0.09589529336977044,
+     "evoi_se": 0.010931058208732893,
+     "expected_cost_after": 2.206720801624048
+    }
+   },
+   {
+    "id": "firm_grip",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.8589040570575585,
+     "tipped": 0.005095644738630565,
+     "missed": 0.0017051669057332659,
+     "dropped_low": 0.014767574978212851,
+     "dropped_high": 0.002977692654177016,
+     "rolled_off": 0.0003802493592559206,
+     "not_lifted": 0.037872968176590895,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0030341773019241795,
+     "spilled": 0.07526246882791614
+    },
+    "expected_cost": 4.664330220816977,
+    "reason": "twice the squeeze",
+    "probe": null
+   },
+   {
+    "id": "regrasp_com",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.849096817875905,
+     "tipped": 0.0074020355358818376,
+     "missed": 0.0016241301826502882,
+     "dropped_low": 0.02731348430054264,
+     "dropped_high": 0.0056505251437990916,
+     "rolled_off": 0.0005008357795837641,
+     "not_lifted": 0.015974546541980147,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0035090676510226597,
+     "spilled": 0.08892855698863418
+    },
+    "expected_cost": 5.624679383566145,
+    "reason": "pinch nearer the believed centre of mass",
+    "probe": null
+   },
+   {
+    "id": "commit_std",
+    "kind": "commit",
+    "p": {
+     "placed_stable": 0.769708424798285,
+     "tipped": 0.0070163998498694044,
+     "missed": 0.0018845721137907643,
+     "dropped_low": 0.024595104262904746,
+     "dropped_high": 0.0037230924751030852,
+     "rolled_off": 0.00041655657950036886,
+     "not_lifted": 0.0831636628373837,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0031707315109239962,
+     "spilled": 0.10632145557223822
+    },
+    "expected_cost": 6.386961289735256,
+    "reason": "",
+    "probe": null
+   },
+   {
+    "id": "gentle_carry",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.7694782524330962,
+     "tipped": 0.007074381470727133,
+     "missed": 0.0018373437944831316,
+     "dropped_low": 0.02443700447533826,
+     "dropped_high": 0.0035295557588159786,
+     "rolled_off": 0.0004083537931221694,
+     "not_lifted": 0.08278531562945896,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.004849994521472849,
+     "spilled": 0.10559979812348437
+    },
+    "expected_cost": 6.474648244966951,
+    "reason": "a gentle carry: less spill risk, slower",
+    "probe": null
+   },
+   {
+    "id": "slow_lift",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.7755267271123047,
+     "tipped": 0.007178550993465289,
+     "missed": 0.001910008488067613,
+     "dropped_low": 0.016899278505247046,
+     "dropped_high": 0.00342821318915891,
+     "rolled_off": 0.0004384879641244478,
+     "not_lifted": 0.0844275867634254,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0024486980752247193,
+     "spilled": 0.10774244890898196
+    },
+    "expected_cost": 6.695567311130691,
+    "reason": "slower lift and carry",
+    "probe": null
+   },
+   {
+    "id": "light_grip",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.608794440950387,
+     "tipped": 0.008726331980739077,
+     "missed": 0.0019355361107472962,
+     "dropped_low": 0.03586043260967925,
+     "dropped_high": 0.004353937725142856,
+     "rolled_off": 0.0004437306297207087,
+     "not_lifted": 0.1808611949763247,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0031451153895648053,
+     "spilled": 0.15587927962769435
+    },
+    "expected_cost": 9.119261625845077,
+    "reason": "half the squeeze: less crush and bruise risk, more slip",
+    "probe": null
+   },
+   {
+    "id": "decline",
+    "kind": "decline",
+    "p": null,
+    "expected_cost": 1.0,
+    "reason": "best row costs 4.66 > abstain 1.00: spilled carries the largest expected cost",
+    "probe": null
+   }
+  ]
+ },
+ {
+  "object": "ycb__tomato_soup_can",
+  "idx": 0,
+  "care": 10.0,
+  "destination": "table_edge",
+  "fill": 0.0,
+  "recommendation": "decline",
+  "rows": [
+   {
+    "id": "inboard_place",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.8409547999980574,
+     "tipped": 0.03313629842829109,
+     "missed": 0.002553300341393432,
+     "dropped_low": 0.02678402758689807,
+     "dropped_high": 0.006866666827110657,
+     "rolled_off": 0.002040691195595184,
+     "not_lifted": 0.08766421562265271,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 1.1607188353051434,
+    "reason": "safer place, not the requested one",
+    "probe": null
+   },
+   {
+    "id": "probe_weigh",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 1.2514553278990312,
+    "reason": "weigh first: value of information 0.01, expected cost of the best row after it 1.05",
+    "probe": {
+     "p_kind": {
+      "measured": 0.8977297122761546,
+      "lower_bound": 0.10227028772384447,
+      "lost": 0.0,
+      "damaged": 0.0
+     },
+     "p_thrown": 0.0011718750000000036,
+     "evoi": 0.007138422100970885,
+     "evoi_se": 0.0015998674559329856,
+     "expected_cost_after": 1.0514553278990313
+    }
+   },
+   {
+    "id": "firm_grip",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.9105800703489411,
+     "tipped": 0.022743304511692947,
+     "missed": 0.002589369918344319,
+     "dropped_low": 0.015768670676650144,
+     "dropped_high": 0.005265958748089452,
+     "rolled_off": 0.01706798613396262,
+     "not_lifted": 0.025984639662318187,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 1.660210838691509,
+    "reason": "twice the squeeze",
+    "probe": null
+   },
+   {
+    "id": "probe_push",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 1.8283806826704196,
+    "reason": "push first: value of information 0.00, expected cost of the best row after it 1.70",
+    "probe": {
+     "p_kind": {
+      "slid": 0.9599705696231277,
+      "tipped": 0.0333264916736053,
+      "no_breakaway": 0.0022110296814594143,
+      "no_contact": 0.004491909021807428,
+      "damaged": 0.0
+     },
+     "p_thrown": 0.013910355486862409,
+     "evoi": 0.0,
+     "evoi_se": 0.0,
+     "expected_cost_after": 1.6955177743431242
+    }
+   },
+   {
+    "id": "gentle_carry",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.8263952656491346,
+     "tipped": 0.030551834850577046,
+     "missed": 0.002923406460422217,
+     "dropped_low": 0.025979936150678454,
+     "dropped_high": 0.006517903450806633,
+     "rolled_off": 0.020502374265478875,
+     "not_lifted": 0.08712927917290288,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 2.0776384372132704,
+    "reason": "a gentle carry: less spill risk, slower",
+    "probe": null
+   },
+   {
+    "id": "commit_std",
+    "kind": "commit",
+    "p": {
+     "placed_stable": 0.8266786682666373,
+     "tipped": 0.028765422752209217,
+     "missed": 0.0029959711061421142,
+     "dropped_low": 0.025984155161616024,
+     "dropped_high": 0.007052976033958253,
+     "rolled_off": 0.021389045728200988,
+     "not_lifted": 0.08713376095123644,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 2.0967348493369102,
+    "reason": "",
+    "probe": null
+   },
+   {
+    "id": "regrasp_com",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.768319548206477,
+     "tipped": 0.026880366204453127,
+     "missed": 0.0037512256827695895,
+     "dropped_low": 0.018738986755443696,
+     "dropped_high": 0.007069896460960662,
+     "rolled_off": 0.02035181534713248,
+     "not_lifted": 0.15488816134276326,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 2.229580701512228,
+    "reason": "pinch nearer the believed centre of mass",
+    "probe": null
+   },
+   {
+    "id": "light_grip",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.6965714992405365,
+     "tipped": 0.028736416598088656,
+     "missed": 0.003191276872672285,
+     "dropped_low": 0.03409231307508077,
+     "dropped_high": 0.008019050498049683,
+     "rolled_off": 0.022059383039253446,
+     "not_lifted": 0.20733006067631815,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 2.3770352145086204,
+    "reason": "half the squeeze: less crush and bruise risk, more slip",
+    "probe": null
+   },
+   {
+    "id": "slow_lift",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.8342905343568187,
+     "tipped": 0.025846025077169224,
+     "missed": 0.003029148643936939,
+     "dropped_low": 0.018154149187237144,
+     "dropped_high": 0.005587182739670601,
+     "rolled_off": 0.024507173014200686,
+     "not_lifted": 0.08858578698096631,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 2.4617494697355724,
+    "reason": "slower lift and carry",
+    "probe": null
+   },
+   {
+    "id": "decline",
+    "kind": "decline",
+    "p": null,
+    "expected_cost": 1.0,
+    "reason": "best row costs 1.66 > abstain 1.00: rolled_off carries the largest expected cost",
+    "probe": null
+   }
+  ]
+ },
+ {
+  "object": "ycb__tomato_soup_can",
+  "idx": 1,
+  "care": 10.0,
+  "destination": "bin",
+  "fill": 0.0,
+  "recommendation": "commit",
+  "rows": [
+   {
+    "id": "firm_grip",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.9102722384482608,
+     "tipped": 0.036768366506390246,
+     "missed": 0.0013703187332248074,
+     "dropped_low": 0.018175242136448163,
+     "dropped_high": 0.005828741113588245,
+     "rolled_off": 0.0012049397252015931,
+     "not_lifted": 0.02638015333688545,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 0.9109158075357372,
+    "reason": "twice the squeeze",
+    "probe": null
+   },
+   {
+    "id": "probe_weigh",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 1.060349248566624,
+    "reason": "weigh first: value of information 0.11, expected cost of the best row after it 0.86",
+    "probe": {
+     "p_kind": {
+      "measured": 0.9036806198426459,
+      "lower_bound": 0.09631938015735361,
+      "lost": 0.0,
+      "damaged": 0.0
+     },
+     "p_thrown": 0.0011718750000000036,
+     "evoi": 0.10926470450715708,
+     "evoi_se": 0.018517061204848483,
+     "expected_cost_after": 0.8603492485666239
+    }
+   },
+   {
+    "id": "commit_std",
+    "kind": "commit",
+    "p": {
+     "placed_stable": 0.8224308877518471,
+     "tipped": 0.04770142682716225,
+     "missed": 0.0015928312739277506,
+     "dropped_low": 0.03094994994256759,
+     "dropped_high": 0.008029763935209659,
+     "rolled_off": 0.0015491617510756121,
+     "not_lifted": 0.08774597851820967,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 1.1806325938651787,
+    "reason": "",
+    "probe": null
+   },
+   {
+    "id": "gentle_carry",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.8204203246025246,
+     "tipped": 0.05063162200369751,
+     "missed": 0.0015528248927007392,
+     "dropped_low": 0.03088887691286243,
+     "dropped_high": 0.007402648756352655,
+     "rolled_off": 0.0014813444513431155,
+     "not_lifted": 0.08762235838051816,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 1.2006638387817838,
+    "reason": "a gentle carry: less spill risk, slower",
+    "probe": null
+   },
+   {
+    "id": "drop_release",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.7486790526485032,
+     "tipped": 0.11731859660052786,
+     "missed": 0.002576958345431869,
+     "dropped_low": 0.03002894553219261,
+     "dropped_high": 0.007972071763226993,
+     "rolled_off": 0.0025262054004304216,
+     "not_lifted": 0.09089816970968648,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 1.2716083908673632,
+    "reason": "release 5 cm above the rim: faster, more tip risk",
+    "probe": null
+   },
+   {
+    "id": "slow_lift",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.8349809950323749,
+     "tipped": 0.04349473118991948,
+     "missed": 0.001620746840327083,
+     "dropped_low": 0.0218427923368327,
+     "dropped_high": 0.006240471930460989,
+     "rolled_off": 0.0017834442259749125,
+     "not_lifted": 0.09003681844411016,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 1.3781914923785545,
+    "reason": "slower lift and carry",
+    "probe": null
+   },
+   {
+    "id": "regrasp_com",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.7605473002235603,
+     "tipped": 0.04786680280655362,
+     "missed": 0.001994073560629694,
+     "dropped_low": 0.02238292562050981,
+     "dropped_high": 0.00797773093657546,
+     "rolled_off": 0.001976612243038813,
+     "not_lifted": 0.15725455460913215,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 1.3880409380494128,
+    "reason": "pinch nearer the believed centre of mass",
+    "probe": null
+   },
+   {
+    "id": "light_grip",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.6782053724339072,
+     "tipped": 0.04921618802373999,
+     "missed": 0.0017073209330227118,
+     "dropped_low": 0.04261941623204733,
+     "dropped_high": 0.00923683577187253,
+     "rolled_off": 0.001645517323364226,
+     "not_lifted": 0.21736934928204646,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 1.4681398821577638,
+    "reason": "half the squeeze: less crush and bruise risk, more slip",
+    "probe": null
+   },
+   {
+    "id": "probe_push",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 1.735272024815076,
+    "reason": "push first: value of information 0.01, expected cost of the best row after it 1.60",
+    "probe": {
+     "p_kind": {
+      "slid": 0.9601319410045189,
+      "tipped": 0.033175080887255175,
+      "no_breakaway": 0.0022025182486225363,
+      "no_contact": 0.004490459859603584,
+      "damaged": 0.0
+     },
+     "p_thrown": 0.013910355486862409,
+     "evoi": 0.005114353568029059,
+     "evoi_se": 0.0032671850010181523,
+     "expected_cost_after": 1.6025584210962678
+    }
+   },
+   {
+    "id": "decline",
+    "kind": "decline",
+    "p": null,
+    "expected_cost": 1.0,
+    "reason": "best row costs 0.91 <= abstain 1.00: dropped_high carries the largest expected cost",
+    "probe": null
+   }
+  ]
+ },
+ {
+  "object": "handal__hammer_1",
+  "idx": 0,
+  "care": 10.0,
+  "destination": "plate",
+  "fill": 0.0,
+  "recommendation": "decline",
+  "rows": [
+   {
+    "id": "probe_weigh",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 1.2585937500000022,
+    "reason": "weigh first: value of information 0.00, expected cost of the best row after it 1.06",
+    "probe": {
+     "p_kind": {
+      "measured": 0.03167432296674262,
+      "lower_bound": 0.9683256770332594,
+      "lost": 0.0,
+      "damaged": 0.0
+     },
+     "p_thrown": 0.0011718750000000036,
+     "evoi": 0.0,
+     "evoi_se": 0.0,
+     "expected_cost_after": 1.0585937500000022
+    }
+   },
+   {
+    "id": "probe_push",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 1.8328068674361448,
+    "reason": "push first: value of information 0.00, expected cost of the best row after it 1.70",
+    "probe": {
+     "p_kind": {
+      "slid": 0.6092354830417748,
+      "tipped": 0.03781511478242073,
+      "no_breakaway": 0.33506133745377153,
+      "no_contact": 0.01788806472203275,
+      "damaged": 0.0
+     },
+     "p_thrown": 0.013910355486862409,
+     "evoi": 0.0,
+     "evoi_se": 0.0,
+     "expected_cost_after": 1.6955177743431242
+    }
+   },
+   {
+    "id": "light_grip",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.004561154014153588,
+     "tipped": 0.0053095444549357135,
+     "missed": 0.006097385036975967,
+     "dropped_low": 0.03164460843634089,
+     "dropped_high": 0.003171321838259449,
+     "rolled_off": 0.0022510911442123393,
+     "not_lifted": 0.9469648950751215,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 2.1830934805752493,
+    "reason": "half the squeeze: less crush and bruise risk, more slip",
+    "probe": null
+   },
+   {
+    "id": "drop_release",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.021788572064055323,
+     "tipped": 0.017230093901863894,
+     "missed": 0.022157755138839663,
+     "dropped_low": 0.08495602601151524,
+     "dropped_high": 0.005025347577575382,
+     "rolled_off": 0.009749084824791148,
+     "not_lifted": 0.83909312048136,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 2.56082348334717,
+    "reason": "release 5 cm above the rim: faster, more tip risk",
+    "probe": null
+   },
+   {
+    "id": "commit_std",
+    "kind": "commit",
+    "p": {
+     "placed_stable": 0.021988115977090016,
+     "tipped": 0.017186816465018982,
+     "missed": 0.022109125287324623,
+     "dropped_low": 0.08483430316472101,
+     "dropped_high": 0.005792519058033092,
+     "rolled_off": 0.009723963639586287,
+     "not_lifted": 0.838365156408225,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 2.6971488420250562,
+    "reason": "",
+    "probe": null
+   },
+   {
+    "id": "gentle_carry",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.022015087523903163,
+     "tipped": 0.017236811054944148,
+     "missed": 0.021938716046000867,
+     "dropped_low": 0.08491794943531909,
+     "dropped_high": 0.005205469185224402,
+     "rolled_off": 0.00973572056672969,
+     "not_lifted": 0.8389502461878778,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 2.7186129997040043,
+    "reason": "a gentle carry: less spill risk, slower",
+    "probe": null
+   },
+   {
+    "id": "regrasp_com",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.021988115977090016,
+     "tipped": 0.017186816465018982,
+     "missed": 0.022109125287324623,
+     "dropped_low": 0.08483430316472101,
+     "dropped_high": 0.005792519058033092,
+     "rolled_off": 0.009723963639586287,
+     "not_lifted": 0.838365156408225,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 2.797148842025056,
+    "reason": "the standard pinch is already nearest the believed centre of mass",
+    "probe": null
+   },
+   {
+    "id": "slow_lift",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.022960566797140376,
+     "tipped": 0.020735780744289493,
+     "missed": 0.022876373785306745,
+     "dropped_low": 0.06371157221901928,
+     "dropped_high": 0.005870046834150187,
+     "rolled_off": 0.010893612704768121,
+     "not_lifted": 0.8529520469153252,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 3.0490221603550527,
+    "reason": "slower lift and carry",
+    "probe": null
+   },
+   {
+    "id": "firm_grip",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.06666932010211933,
+     "tipped": 0.03185095271708419,
+     "missed": 0.05460969411209411,
+     "dropped_low": 0.14188097887917275,
+     "dropped_high": 0.009231033202781628,
+     "rolled_off": 0.022410107226158837,
+     "not_lifted": 0.6733479137605883,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 3.4804032839335495,
+    "reason": "twice the squeeze",
+    "probe": null
+   },
+   {
+    "id": "decline",
+    "kind": "decline",
+    "p": null,
+    "expected_cost": 1.0,
+    "reason": "best row costs 2.18 > abstain 1.00: not_lifted carries the largest expected cost",
+    "probe": null
+   }
+  ]
+ },
+ {
+  "object": "hot3d__spatula",
+  "idx": 0,
+  "care": 10.0,
+  "destination": "plate",
+  "fill": 0.0,
+  "recommendation": "decline",
+  "rows": [
+   {
+    "id": "probe_weigh",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 1.2585937500000022,
+    "reason": "weigh first: value of information 0.00, expected cost of the best row after it 1.06",
+    "probe": {
+     "p_kind": {
+      "measured": 0.048460431692079906,
+      "lower_bound": 0.9515395683079215,
+      "lost": 0.0,
+      "damaged": 0.0
+     },
+     "p_thrown": 0.0011718750000000036,
+     "evoi": 0.0,
+     "evoi_se": 0.0,
+     "expected_cost_after": 1.0585937500000022
+    }
+   },
+   {
+    "id": "probe_push",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 1.8896062693919808,
+    "reason": "push first: value of information 0.00, expected cost of the best row after it 1.70",
+    "probe": {
+     "p_kind": {
+      "slid": 0.866542256612005,
+      "tipped": 0.09541576222039228,
+      "no_breakaway": 0.022595794090244977,
+      "no_contact": 0.015446187077357764,
+      "damaged": 0.0
+     },
+     "p_thrown": 0.013910355486862409,
+     "evoi": 0.0,
+     "evoi_se": 0.0,
+     "expected_cost_after": 1.6955177743431242
+    }
+   },
+   {
+    "id": "light_grip",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.006066447948551787,
+     "tipped": 0.011747288587984036,
+     "missed": 0.010091891479624814,
+     "dropped_low": 0.04611530189552975,
+     "dropped_high": 0.0035162580222895313,
+     "rolled_off": 0.0013117261186719907,
+     "not_lifted": 0.9211510859473477,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 2.1638627840363367,
+    "reason": "half the squeeze: less crush and bruise risk, more slip",
+    "probe": null
+   },
+   {
+    "id": "drop_release",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.02087403254943905,
+     "tipped": 0.03212022915876742,
+     "missed": 0.033115242463235606,
+     "dropped_low": 0.08566021353364252,
+     "dropped_high": 0.0045068634306371785,
+     "rolled_off": 0.0031263910323375637,
+     "not_lifted": 0.82059702783194,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 2.2219828896709135,
+    "reason": "release 5 cm above the rim: faster, more tip risk",
+    "probe": null
+   },
+   {
+    "id": "commit_std",
+    "kind": "commit",
+    "p": {
+     "placed_stable": 0.02103616504268847,
+     "tipped": 0.03205479368536256,
+     "missed": 0.033064078362822956,
+     "dropped_low": 0.08557903353325519,
+     "dropped_high": 0.005085038272213212,
+     "rolled_off": 0.003119765969087571,
+     "not_lifted": 0.82006112513457,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 2.3499325151710764,
+    "reason": "",
+    "probe": null
+   },
+   {
+    "id": "gentle_carry",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.021062085467851373,
+     "tipped": 0.032162943877510924,
+     "missed": 0.0327100923924196,
+     "dropped_low": 0.08566275698403618,
+     "dropped_high": 0.004599678306147794,
+     "rolled_off": 0.0030881265590700286,
+     "not_lifted": 0.8207143164129642,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 2.3742211092534884,
+    "reason": "a gentle carry: less spill risk, slower",
+    "probe": null
+   },
+   {
+    "id": "regrasp_com",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.02103616504268847,
+     "tipped": 0.03205479368536256,
+     "missed": 0.033064078362822956,
+     "dropped_low": 0.08557903353325519,
+     "dropped_high": 0.005085038272213212,
+     "rolled_off": 0.003119765969087571,
+     "not_lifted": 0.82006112513457,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 2.4499325151710765,
+    "reason": "the standard pinch is already nearest the believed centre of mass",
+    "probe": null
+   },
+   {
+    "id": "firm_grip",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.058074948335806856,
+     "tipped": 0.055705270180921064,
+     "missed": 0.07463678486570023,
+     "dropped_low": 0.11863363047302766,
+     "dropped_high": 0.006618997798290329,
+     "rolled_off": 0.0055174023156011505,
+     "not_lifted": 0.6808129660306519,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 2.538127225893742,
+    "reason": "twice the squeeze",
+    "probe": null
+   },
+   {
+    "id": "slow_lift",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.021675008309430522,
+     "tipped": 0.03825971126833425,
+     "missed": 0.03412831068442554,
+     "dropped_low": 0.05348746310150048,
+     "dropped_high": 0.00519827979245181,
+     "rolled_off": 0.0034514029392428793,
+     "not_lifted": 0.8437998239046145,
+     "crushed": 0.0,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 2.6585845252818716,
+    "reason": "slower lift and carry",
+    "probe": null
+   },
+   {
+    "id": "decline",
+    "kind": "decline",
+    "p": null,
+    "expected_cost": 1.0,
+    "reason": "best row costs 2.16 > abstain 1.00: not_lifted carries the largest expected cost",
+    "probe": null
+   }
+  ]
+ },
+ {
+  "object": "hot3d__storage_box",
+  "idx": 0,
+  "care": 10.0,
+  "destination": "table_centre",
+  "fill": 0.0,
+  "recommendation": "decline",
+  "rows": [
+   {
+    "id": "decline",
+    "kind": "decline",
+    "p": null,
+    "expected_cost": 1.0,
+    "reason": "every proposal is wider than the gripper opening",
+    "probe": null
+   }
+  ]
+ },
+ {
+  "object": "ycb__chocolate_pudding",
+  "idx": 0,
+  "care": 10.0,
+  "destination": "table_edge",
+  "fill": 0.0,
+  "recommendation": "decline",
+  "rows": [
+   {
+    "id": "light_grip",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.9453324657615428,
+     "tipped": 0.00920838916011203,
+     "missed": 0.0021930238881237114,
+     "dropped_low": 0.012393762755459763,
+     "dropped_high": 0.00499523739752081,
+     "rolled_off": 0.007454283931163991,
+     "not_lifted": 0.01805173542482043,
+     "crushed": 0.0003711016812561632,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 1.1285197282516113,
+    "reason": "half the squeeze: less crush and bruise risk, more slip",
+    "probe": null
+   },
+   {
+    "id": "probe_squeeze",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 1.1470135070597358,
+    "reason": "squeeze first: value of information 0.00, expected cost of the best row after it 1.00",
+    "probe": {
+     "p_kind": {
+      "measured": 1.0000000000000007
+     },
+     "p_thrown": 0.0,
+     "evoi": 0.002986492940264939,
+     "evoi_se": 0.00041625401886305675,
+     "expected_cost_after": 0.9970135070597357
+    }
+   },
+   {
+    "id": "inboard_place",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.9528135962819109,
+     "tipped": 0.006954171957880624,
+     "missed": 0.0017250581422151299,
+     "dropped_low": 0.007892011869429725,
+     "dropped_high": 0.004085480103875304,
+     "rolled_off": 0.0005700224803092759,
+     "not_lifted": 0.010096587028487057,
+     "crushed": 0.01586307213589292,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 1.544734675205733,
+    "reason": "safer place, not the requested one",
+    "probe": null
+   },
+   {
+    "id": "commit_std",
+    "kind": "commit",
+    "p": {
+     "placed_stable": 0.9481758368974907,
+     "tipped": 0.006463756954120781,
+     "missed": 0.002040530288579172,
+     "dropped_low": 0.007707020069297007,
+     "dropped_high": 0.004082499362126342,
+     "rolled_off": 0.006139133255794729,
+     "not_lifted": 0.010076767304126318,
+     "crushed": 0.015314455868464307,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 1.7498782783858382,
+    "reason": "",
+    "probe": null
+   },
+   {
+    "id": "gentle_carry",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.9491499225814508,
+     "tipped": 0.006468724738846069,
+     "missed": 0.0019943371501289606,
+     "dropped_low": 0.006919055701250843,
+     "dropped_high": 0.0036169264894806794,
+     "rolled_off": 0.0058838086767528525,
+     "not_lifted": 0.0100884632762918,
+     "crushed": 0.01587876138579781,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 1.7902512542484879,
+    "reason": "a gentle carry: less spill risk, slower",
+    "probe": null
+   },
+   {
+    "id": "regrasp_com",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.9481758368974907,
+     "tipped": 0.006463756954120781,
+     "missed": 0.002040530288579172,
+     "dropped_low": 0.007707020069297007,
+     "dropped_high": 0.004082499362126342,
+     "rolled_off": 0.006139133255794729,
+     "not_lifted": 0.010076767304126318,
+     "crushed": 0.015314455868464307,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 1.8498782783858383,
+    "reason": "the standard pinch is already nearest the believed centre of mass",
+    "probe": null
+   },
+   {
+    "id": "probe_push",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 1.917985635214948,
+    "reason": "push first: value of information 0.00, expected cost of the best row after it 1.79",
+    "probe": {
+     "p_kind": {
+      "slid": 0.893285049262588,
+      "tipped": 0.03238409172733447,
+      "no_breakaway": 0.0016906522188614,
+      "no_contact": 0.07080340782274111,
+      "damaged": 0.0018367989684747326
+     },
+     "p_thrown": 0.013910355486862409,
+     "evoi": 2.8178720730198877e-05,
+     "evoi_se": 7.576067960943396e-06,
+     "expected_cost_after": 1.78605201771566
+    }
+   },
+   {
+    "id": "slow_lift",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.9491390573069165,
+     "tipped": 0.006844463971989018,
+     "missed": 0.00204345750921568,
+     "dropped_low": 0.0052304984868443965,
+     "dropped_high": 0.004801549178226159,
+     "rolled_off": 0.0064460056894659334,
+     "not_lifted": 0.010101523647584694,
+     "crushed": 0.015393444209757561,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 2.1020800783574076,
+    "reason": "slower lift and carry",
+    "probe": null
+   },
+   {
+    "id": "probe_weigh",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 20.784766782961768,
+    "reason": "weigh first: value of information 0.01, expected cost of the best row after it 20.58",
+    "probe": {
+     "p_kind": {
+      "measured": 0.595445403995674,
+      "lower_bound": 0.01343275867410253,
+      "lost": 0.0,
+      "damaged": 0.39112183733022404
+     },
+     "p_thrown": 0.0011718750000000036,
+     "evoi": 0.0070015383933473415,
+     "evoi_se": 0.0008427613451987723,
+     "expected_cost_after": 20.58476678296177
+    }
+   },
+   {
+    "id": "firm_grip",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.5651161774711527,
+     "tipped": 0.00296488923000151,
+     "missed": 0.0015361522802761214,
+     "dropped_low": 0.00413160470082232,
+     "dropped_high": 0.003304535396285311,
+     "rolled_off": 0.0035692450081639647,
+     "not_lifted": 0.005637869684800926,
+     "crushed": 0.413739526228497,
+     "bruised": 0.0,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 21.877000735229657,
+    "reason": "twice the squeeze",
+    "probe": null
+   },
+   {
+    "id": "decline",
+    "kind": "decline",
+    "p": null,
+    "expected_cost": 1.0,
+    "reason": "best row costs 1.13 > abstain 1.00: rolled_off carries the largest expected cost",
+    "probe": null
+   }
+  ]
+ },
+ {
+  "object": "fruits_veggies__orange1",
+  "idx": 0,
+  "care": 10.0,
+  "destination": "table_edge",
+  "fill": 0.0,
+  "recommendation": "decline",
+  "rows": [
+   {
+    "id": "probe_squeeze",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 1.1500000000000008,
+    "reason": "squeeze first: value of information 0.00, expected cost of the best row after it 1.00",
+    "probe": {
+     "p_kind": {
+      "measured": 1.0000000000000007
+     },
+     "p_thrown": 0.0,
+     "evoi": 0.0,
+     "evoi_se": 0.0,
+     "expected_cost_after": 1.0000000000000007
+    }
+   },
+   {
+    "id": "probe_push",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 1.968796445789502,
+    "reason": "push first: value of information 0.00, expected cost of the best row after it 1.82",
+    "probe": {
+     "p_kind": {
+      "slid": 0.9323637793904436,
+      "tipped": 0.04587457039647545,
+      "no_breakaway": 0.012454984065173803,
+      "no_contact": 0.006709696727441672,
+      "damaged": 0.0025969694204657267
+     },
+     "p_thrown": 0.013910355486862409,
+     "evoi": 0.0,
+     "evoi_se": 0.0,
+     "expected_cost_after": 1.8235600069750486
+    }
+   },
+   {
+    "id": "inboard_place",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.7280531213080035,
+     "tipped": 0.028614809348339612,
+     "missed": 0.001987060110245313,
+     "dropped_low": 0.023809867588820286,
+     "dropped_high": 0.003073924302782075,
+     "rolled_off": 0.00037673828272098144,
+     "not_lifted": 0.12525541578597804,
+     "crushed": 0.0,
+     "bruised": 0.08882906327311,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 5.452972616563044,
+    "reason": "safer place, not the requested one",
+    "probe": null
+   },
+   {
+    "id": "light_grip",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.5899993150033223,
+     "tipped": 0.02872559066371302,
+     "missed": 0.002745005635447621,
+     "dropped_low": 0.036080418715325156,
+     "dropped_high": 0.003880690889094294,
+     "rolled_off": 0.002848574828711699,
+     "not_lifted": 0.2533398234456161,
+     "crushed": 0.0,
+     "bruised": 0.08238058081876944,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 5.459713938562743,
+    "reason": "half the squeeze: less crush and bruise risk, more slip",
+    "probe": null
+   },
+   {
+    "id": "commit_std",
+    "kind": "commit",
+    "p": {
+     "placed_stable": 0.7259477102766407,
+     "tipped": 0.02660799355023725,
+     "missed": 0.0023932509806227882,
+     "dropped_low": 0.023098513859953942,
+     "dropped_high": 0.003192113941026849,
+     "rolled_off": 0.0024228436862865654,
+     "not_lifted": 0.12668073644028413,
+     "crushed": 0.0,
+     "bruised": 0.08965683726494773,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 5.5530821609473735,
+    "reason": "",
+    "probe": null
+   },
+   {
+    "id": "regrasp_com",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.7259477102766407,
+     "tipped": 0.02660799355023725,
+     "missed": 0.0023932509806227882,
+     "dropped_low": 0.023098513859953942,
+     "dropped_high": 0.003192113941026849,
+     "rolled_off": 0.0024228436862865654,
+     "not_lifted": 0.12668073644028413,
+     "crushed": 0.0,
+     "bruised": 0.08965683726494773,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 5.653082160947373,
+    "reason": "the standard pinch is already nearest the believed centre of mass",
+    "probe": null
+   },
+   {
+    "id": "gentle_carry",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.7247346219794857,
+     "tipped": 0.026652664004043095,
+     "missed": 0.0023342243479982264,
+     "dropped_low": 0.02167463874696012,
+     "dropped_high": 0.0030299643285448116,
+     "rolled_off": 0.002321353005490891,
+     "not_lifted": 0.12688516514981468,
+     "crushed": 0.0,
+     "bruised": 0.0923673684376611,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 5.725303776279263,
+    "reason": "a gentle carry: less spill risk, slower",
+    "probe": null
+   },
+   {
+    "id": "slow_lift",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.7308808718708792,
+     "tipped": 0.026301758849722235,
+     "missed": 0.0024263419405906026,
+     "dropped_low": 0.015514702980522488,
+     "dropped_high": 0.0028416238877919595,
+     "rolled_off": 0.0027592564625991065,
+     "not_lifted": 0.12899101480026642,
+     "crushed": 0.0,
+     "bruised": 0.09028442920762791,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 5.872122917201039,
+    "reason": "slower lift and carry",
+    "probe": null
+   },
+   {
+    "id": "firm_grip",
+    "kind": "lower_risk",
+    "p": {
+     "placed_stable": 0.5572951162533117,
+     "tipped": 0.013914718473519251,
+     "missed": 0.0016896038934994244,
+     "dropped_low": 0.009948869866112441,
+     "dropped_high": 0.0025394475935857875,
+     "rolled_off": 0.001394197210458604,
+     "not_lifted": 0.048345995906596675,
+     "crushed": 0.0,
+     "bruised": 0.36487205080291607,
+     "broken": 0.0,
+     "spilled": 0.0
+    },
+    "expected_cost": 19.33271585428114,
+    "reason": "twice the squeeze",
+    "probe": null
+   },
+   {
+    "id": "probe_weigh",
+    "kind": "probe",
+    "p": null,
+    "expected_cost": 20.28571973464486,
+    "reason": "weigh first: value of information 0.00, expected cost of the best row after it 20.09",
+    "probe": {
+     "p_kind": {
+      "measured": 0.5715708074936401,
+      "lower_bound": 0.04744020133943922,
+      "lost": 0.0,
+      "damaged": 0.3809889911669202
+     },
+     "p_thrown": 0.0011718750000000036,
+     "evoi": 0.0,
+     "evoi_se": 0.0,
+     "expected_cost_after": 20.08571973464486
+    }
+   },
+   {
+    "id": "decline",
+    "kind": "decline",
+    "p": null,
+    "expected_cost": 1.0,
+    "reason": "best row costs 5.46 > abstain 1.00: bruised carries the largest expected cost",
+    "probe": null
+   }
+  ]
+ }
+]
