@@ -167,3 +167,13 @@ def test_prediction_holds_eleven_classes():
     d = Assessment(object="mug", destination="plate", options=[_row(), _decline()], evidence=[], recommendation="commit",
                    care="normal", visibility=1.0, episode=0).to_data()
     assert set(d["p_irreversible"]) == set(IRREVERSIBLE) and set(d["options"][0]["p"]) == set(OUTCOMES)
+
+
+def test_held_to_release_leaves_out_the_damage_outcomes():
+    """A damage label hides whether the object stayed in the pads (a crush is held, a break may follow a drop): held to
+    release counts the outcomes known held, placed_stable, tipped, missed and rolled_off."""
+    import pytest
+
+    p = {k: 0.0 for k in OUTCOMES}
+    p.update(placed_stable=0.4, tipped=0.1, missed=0.05, rolled_off=0.05, broken=0.3, not_lifted=0.1)
+    assert Prediction(p=p).held_to_release() == pytest.approx(0.6)

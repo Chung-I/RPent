@@ -82,7 +82,9 @@ class Prediction:
                           expected_loss_t=(sum(wi * t for wi, t in lt) / wl) if wl > 0 else None)
 
     def held_to_release(self) -> float:
-        return 1.0 - self.p["not_lifted"] - self.p["dropped_low"] - self.p["dropped_high"]
+        """P(an outcome known to keep the object in the pads to the release). A damage label hides that (a crush is
+        held, a break may follow a drop), so the damage outcomes are left out."""
+        return sum(self.p.get(k, 0.0) for k in ("placed_stable", "tipped", "missed", "rolled_off"))
 
 
 def _probe_data(probe: dict[str, Any] | None) -> dict[str, Any] | None:
