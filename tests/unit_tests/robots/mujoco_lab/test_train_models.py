@@ -413,3 +413,27 @@ def test_probe_models_refuse_another_sensor(tmp_path):
         fit_probes(str(tmp_path / "p.jsonl"), str(tmp_path / "b"), split)
     write_manifest(str(tmp_path / "b"), sensor={"force_noise": 0.05})
     fit_probes(str(tmp_path / "p.jsonl"), str(tmp_path / "b"), split)
+
+
+def test_bundle_decision_selects_the_estimator(tmp_path):
+    """Plan 2b2 decision 2: a bundle declares its probe-value estimator (decision.evoi, written by --evoi); a bundle
+    without the field keeps the plug-in, so m2 and m2b reproduce; another name is an error."""
+    from robots.mujoco_lab.robot_spec import load_bundle, manifest_evoi
+    from robots.mujoco_lab.train_models import main
+    from tests.unit_tests.skills.synthetic import synthetic_rows, with_pose
+
+    assert manifest_evoi({}) == "plugin" and manifest_evoi({"decision": {"abstain_cost": 1.0}}) == "plugin"
+    assert manifest_evoi({"decision": {"abstain_cost": 1.0, "evoi": "heldout"}}) == "heldout"
+    for bad in ("split", None, 3):
+        with pytest.raises(ValueError, match="evoi"):
+            manifest_evoi({"decision": {"evoi": bad}})
+    corpus = tmp_path / "c.jsonl"
+    _write(with_pose(synthetic_rows(300)), corpus)
+    main(["--corpus", str(corpus), "--out-dir", str(tmp_path / "p"), "--n-belief", "4"])
+    main(["--corpus", str(corpus), "--out-dir", str(tmp_path / "h"), "--n-belief", "4", "--evoi", "heldout"])
+    assert "evoi" not in (json.load(open(tmp_path / "p" / "manifest.json")).get("decision") or {})
+    assert load_bundle(str(tmp_path / "p"))["evoi"] == "plugin"
+    assert json.load(open(tmp_path / "h" / "manifest.json"))["decision"]["evoi"] == "heldout"
+    assert load_bundle(str(tmp_path / "h"))["evoi"] == "heldout"
+    with pytest.raises(SystemExit):
+        main(["--corpus", str(corpus), "--out-dir", str(tmp_path / "x"), "--n-belief", "4", "--evoi", "split"])

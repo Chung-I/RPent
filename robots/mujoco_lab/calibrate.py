@@ -331,6 +331,7 @@ def run_case(prims: Any, object_id: str, idx: int, seed: int, protocol: str = "c
     case["artifact"] = case_artifact(case, reset_info)
     row = {"object": object_id, "idx": idx, "destination": destination, "theta": theta, "com_end": com_end,
            "fill": hidden["fill"], "theta_frag": hidden["frag"], "force_noise": env.force_noise,
+           "evoi": getattr(prims, "evoi", "plugin"),
            "truth": {k: truth[k] for k in ("mass", "mu", "com_s")}, "reset": reset_info, **case}
     first = case["attempts"][0] if case["attempts"] else None
     row.update(executed=first is not None, option=first and first["option"], outcome=first and first["outcome"],
@@ -354,6 +355,12 @@ def job_force_noise(override: float | None, manifest: dict[str, Any] | None) -> 
     from robots.mujoco_lab.robot_spec import manifest_force_noise
 
     return manifest_force_noise(manifest)
+
+
+def run_evoi(rows: list[dict[str, Any]]) -> str | list[str] | None:
+    """The probe-value estimator a run's cases used: one name, the sorted names when they differ, None without cases."""
+    names = sorted({r["evoi"] for r in rows if r.get("evoi") is not None})
+    return None if not names else names[0] if len(names) == 1 else names
 
 
 def run_force_noise(rows: list[dict[str, Any]]) -> float | list[float] | None:
@@ -380,7 +387,8 @@ def _primitives(bundle: str | None, threshold: float | None, model_kind: str | N
             B = load_bundle(bundle, model_kind)
             prims = MuJoCoLabPrimitives(env=env, model=B["model"], prior=B["prior"], readout_model=B["readout_model"],
                                         probe_models=B["probe_models"], threshold=threshold, manifest=B["manifest"],
-                                        guard=B["guard"], abstain_cost=B["abstain_cost"], force_noise=B["force_noise"])
+                                        guard=B["guard"], abstain_cost=B["abstain_cost"], force_noise=B["force_noise"],
+                                        evoi=B["evoi"])
         _STATE["prims"][key] = (prims, {"abstain_cost": prims.abstain_cost, "force_noise": prims.force_noise})
     prims, own = _STATE["prims"][key]
     for name, value in own.items():
@@ -848,6 +856,7 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
     out = summarize(rows, a.protocol, rng, a.coverage_sims, nested=bool(a.crossfit))
     out.update(kind=plan["kind"], objects=plan["objects"], folds=plan["folds"], seed=a.seed, repeats=a.repeats,
                care=a.care, care_scale=care_scale(a.care), abstain_cost=run_abstain_cost(a, plan), force_noise=run_force_noise(rows),
+               evoi=run_evoi(rows),
                source={"crossfit": a.crossfit, "bundle": a.bundle, "metrics": a.metrics}, seconds=round(time.time() - t0, 1))
     _write(out, a.out)
     summary = {k: out[k] for k in ("protocol", "kind", "care", "abstain_cost", "n", "n_executed", "abstained", "errors", "artifacts", "ece",

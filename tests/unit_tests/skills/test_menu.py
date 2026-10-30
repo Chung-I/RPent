@@ -280,7 +280,7 @@ def test_probe_rows_present_when_models_exist():
     for pid, probe in (("probe_push", "push"), ("probe_weigh", "weigh")):
         o = rows[pid]
         assert o.kind == "probe" and o.pred is None and o.action == {"probe": probe, "s": 0.5, "force": weigh_force(20.0)}
-        assert set(o.probe) == {"p_kind", "p_thrown", "evoi", "evoi_se", "expected_cost_after"}
+        assert set(o.probe) == {"p_kind", "p_thrown", "evoi", "evoi_se", "expected_cost_after", "estimator"}
         tip = o.probe["p_kind"]["tipped"] * COST["tipped"] if probe == "push" else 0.0
         assert o.expected_cost == pytest.approx(TIME_COST_PER_S * PROBE_SECONDS[probe] + tip + o.probe["expected_cost_after"])
     assert rows["probe_push"].probe["p_kind"]["tipped"] == pytest.approx(0.1)
@@ -837,3 +837,201 @@ def test_probe_value_weighs_each_particles_survival_once():
                     abstain_cost=1.0)
     T = COST["dropped_high"] * care_scale("normal") + 1.0
     assert v["evoi"] == pytest.approx(0.3) and v["expected_cost_after"] == pytest.approx(0.45 * T + 0.15 + 0.1)
+
+
+# ---------------------------------------------------------------- plan 2b2 decision 2: the held-out preposterior
+_TYPE_COSTS = np.array([[0.2, 3.0], [1.0, 1.0], [0.6, 2.0]])     # three rows x two types (no abstain row)
+
+
+class _GaussReading:
+    """A weigh that never damages or throws, whose kind tells nothing and whose reading is X[i, 0] + sd x N(0, 1). The
+    kind-only replay (``terms`` without "reading") is flat."""
+
+    probe = "weigh"
+    classes = ("measured",)
+
+    def __init__(self, sd):
+        self.sd = sd
+
+    def p_kind(self, X):
+        return np.ones((len(X), 1))
+
+    def risk(self, X):
+        return np.zeros(len(X))
+
+    def terminal_risk(self, X):
+        return np.zeros(len(X))
+
+    def sample(self, x_row, particle, force, rng, p=None):
+        return {"probe": "weigh", "kind": "measured", "reading": {"y": float(x_row[0]) + self.sd * float(rng.standard_normal())},
+                "thrown": False}
+
+    def loglik(self, obs, X, arrays, force, temper=None, terms=None, P=None):
+        if terms is not None and "reading" not in terms:
+            return np.zeros(len(X)), {"used": ["kind"], "rejected": []}
+        z = (obs["reading"]["y"] - np.asarray(X, dtype=float)[:, 0]) / self.sd
+        return -0.5 * z ** 2, {"used": ["kind", "reading"], "rejected": []}
+
+
+def _typed(n, rng, null=False):
+    """n equally weighted particles of two types (half each in the population), the rows' costs by type, and X with the
+    reading's centre in column 0: the type, or with ``null`` a draw independent of it."""
+    t = rng.integers(0, 2, n)
+    X = np.zeros((n, 3))
+    X[:, 0] = rng.standard_normal(n) if null else t
+    return _particles(np.full(n, 0.5), np.ones(n)), list(_TYPE_COSTS[:, t]), X
+
+
+def test_heldout_value_is_not_positive_for_an_uninformative_result():
+    """Two particles, a flat weigh, rows (0, 2) and (0.9, 0.9): row b is the second (0.9 against 1.0), and the plug-in
+    keeps it (value 0). Held out, particle 1 is scored with the row chosen from particle 0 alone (the first, cost 2
+    for particle 1): 0.5 x (0.9 - 2) = -0.55 for every result, and the cost after the probe is 0.9 + 0.55."""
+    b = _particles([0.2, 0.5], [0.5, 0.5])
+    C = [np.array([0.0, 2.0]), np.array([0.9, 0.9])]
+    v = probe_value(b, C, FlatWeigh(), np.zeros((2, 3)), 20.0, "normal", np.random.default_rng(0), k=50, estimator="heldout")
+    assert v["estimator"] == "heldout" and v["evoi"] == pytest.approx(-0.55) and v["plugin_evoi"] == 0.0
+    assert v["expected_cost_after"] == pytest.approx(0.9 + 0.55) and v["evoi_se"] == pytest.approx(0.0, abs=1e-12)
+    p = probe_value(b, C, FlatWeigh(), np.zeros((2, 3)), 20.0, "normal", np.random.default_rng(0), k=50)
+    assert p["estimator"] == "plugin" and p["evoi"] == 0.0 and "plugin_evoi" not in p
+
+
+def test_heldout_value_finds_no_value_in_a_reading_independent_of_the_costs():
+    """Each particle's reading centre is independent of its type, so the reading is worth 0 in the population. The
+    plug-in finds value in the particles' chance correlation (the optimizer's curse); the held-out value does not.
+    Over 80 beliefs of 50 particles (sigma 0.5), the held-out mean is at most 2 between-belief errors above 0, and the
+    plug-in's mean on the same draws is more than 2 above."""
+    rng = np.random.default_rng(11)
+    vals = []
+    for _ in range(80):
+        b, C, X = _typed(50, rng, null=True)
+        v = probe_value(b, C, _GaussReading(0.5), X, 20.0, "normal", rng, k=200, estimator="heldout")
+        vals.append((v["evoi"], v["plugin_evoi"]))
+    m, se = np.mean(vals, axis=0), np.std(vals, axis=0, ddof=1) / np.sqrt(len(vals))
+    assert m[0] <= 2 * se[0] and m[1] > 2 * se[1], (m, se)
+
+
+def test_heldout_value_matches_the_exact_value_of_a_perfect_reading():
+    """The throw-risk push of test_evoi_counts_each_particles_throw_risk reads the side of mu 0.3 exactly: value 0.3 f.
+    Removing one particle never changes the row chosen for a side, so the held-out value equals the plug-in's on the
+    same draws and lies within 3 Monte Carlo errors of the exact value (the cost after it likewise)."""
+    b = _particles(np.random.default_rng(0).uniform(0.1, 0.9, 400), np.ones(400))
+    mu = b.arrays()["mu"]
+    f = float(np.mean(mu > 0.3))
+    C = [np.where(mu > 0.3, 0.4, 5.4), np.full(400, 0.7)]
+    X = np.zeros((400, 3))
+    X[:, 0] = mu
+    v = probe_value(b, C, RiskyPush(), X, 20.0, "normal", np.random.default_rng(3), k=4000, estimator="heldout")
+    assert v["evoi"] == pytest.approx(v["plugin_evoi"], abs=1e-12)
+    assert abs(v["evoi"] - 0.3 * f) <= 3 * v["evoi_se"]
+    assert abs(v["expected_cost_after"] - (f * 0.4 + (1 - f) * (2.5 + 0.35))) <= 3 * v["evoi_se"]
+
+
+def test_heldout_value_matches_the_quadrature_value_of_a_noisy_reading():
+    """Two types (half each), a Gaussian reading of the type (sigma 1): the population's value is 0.0571 by quadrature
+    (plans/2026-10-30-grasp-place-milestone2b2-evoi-check.py in daily-logs). Over 20 beliefs of 2,000 particles the
+    held-out mean is within 3 between-belief errors of it."""
+    rng = np.random.default_rng(12)
+    vals = []
+    for _ in range(20):
+        b, C, X = _typed(2000, rng)
+        vals.append(probe_value(b, C, _GaussReading(1.0), X, 20.0, "normal", rng, k=200, estimator="heldout")["evoi"])
+    assert abs(np.mean(vals) - 0.0571) <= 3 * np.std(vals, ddof=1) / np.sqrt(len(vals)), vals
+
+
+def test_reading_value_isolates_the_reading_from_survival():
+    """The weigh of test_probe_value_weighs_each_particles_survival_once: only the survival informs (plug-in value 0.3).
+    Its reading tells nothing, so the reading value is 0 for both estimators. Held out, the total is -0.1: particle 0,
+    the one the weigh damages with P 0.9, is scored at weight 0.05 with the row chosen from particle 1 alone (3.0
+    against abstaining's 1.0); particle 1 is scored with row b."""
+    b = _particles([0.2, 0.5], [0.5, 0.5])
+    X = np.array([[0.9, 0.0, 0.0], [0.0, 0.0, 0.0]])
+    for est in ("plugin", "heldout"):
+        v = probe_value(b, [np.array([3.0, 0.2])], _SurvivalWeigh(), X, 20.0, "normal", np.random.default_rng(0), k=50,
+                        abstain_cost=1.0, estimator=est, reading_value=True)
+        assert v["reading_gain"] == 0.0 and v["reading_gain_se"] == 0.0
+    assert v["evoi"] == pytest.approx(-0.1) and v["plugin_evoi"] == pytest.approx(0.3) and v["plugin_reading_gain"] == 0.0
+
+
+def test_reading_value_is_the_reading_s_share_of_the_value():
+    """The Gaussian reading of the quadrature test with a flat kind: all of the value is the reading's, so the reading
+    value equals the total for both estimators (the kind-only rule keeps row b)."""
+    b, C, X = _typed(400, np.random.default_rng(13))
+    for est in ("plugin", "heldout"):
+        v = probe_value(b, C, _GaussReading(0.5), X, 20.0, "normal", np.random.default_rng(14), k=200, estimator=est,
+                        reading_value=True)
+        assert v["reading_gain"] == pytest.approx(v["evoi"], abs=1e-12) and v["evoi"] > 0.1
+    assert v["plugin_reading_gain"] == pytest.approx(v["plugin_evoi"], abs=1e-12)
+
+
+class _KindTellsReadingRejected:
+    """A weigh whose kind tells the type in X[:, 0] (P(measured) 0.1 for type 0, 0.9 for type 1) and whose reading is
+    always rejected; it never damages or throws."""
+
+    probe = "weigh"
+    classes = ("measured", "lower_bound")
+
+    def p_kind(self, X):
+        p = np.where(np.asarray(X, dtype=float)[:, 0] > 0.5, 0.9, 0.1)
+        return np.column_stack([p, 1.0 - p])
+
+    def risk(self, X):
+        return np.zeros(len(X))
+
+    def terminal_risk(self, X):
+        return np.zeros(len(X))
+
+    def sample(self, x_row, particle, force, rng, p=None):
+        p = self.p_kind(np.asarray(x_row, dtype=float).reshape(1, -1))[0] if p is None else np.asarray(p, dtype=float)
+        return {"probe": "weigh", "kind": self.classes[int(rng.choice(2, p=p / p.sum()))], "reading": {"m_hat": -1.0},
+                "thrown": False}
+
+    def loglik(self, obs, X, arrays, force, temper=None, terms=None, P=None):
+        P = self.p_kind(X) if P is None else np.asarray(P, dtype=float)
+        return np.log(P[:, self.classes.index(obs["kind"])]), {"used": ["kind"], "rejected": ["reading"]}
+
+
+def test_rejected_reading_term_has_no_reading_value():
+    """The kind is worth about 0.5 x (1.0 - 0.48) = 0.26 (a lower_bound result makes the first row the cheapest); a
+    rejected reading adds nothing, so its value is exactly 0."""
+    b, C, X = _typed(400, np.random.default_rng(15))
+    for est in ("plugin", "heldout"):
+        v = probe_value(b, C, _KindTellsReadingRejected(), X, 20.0, "normal", np.random.default_rng(16), k=200, estimator=est,
+                        reading_value=True)
+        assert v["evoi"] > 0.15 and v["reading_gain"] == 0.0 and v["reading_gain_se"] == 0.0
+
+
+def test_heldout_estimator_handles_a_belief_on_one_particle():
+    """A belief whose weight sits on one particle, and a perfect push whose result names the particle when it is
+    alone on its side: the held-out value is 0 (a chooser with no posterior weight keeps row b), with no exception and
+    no nan; the plug-in finds value in the lone particle."""
+    point = _particles(np.linspace(0.1, 0.9, 50), [1.0] + [0.0] * 49)
+    C = [np.where(point.arrays()["mu"] > 0.3, 0.4, 5.4), np.full(50, 0.7)]
+    for rv in (False, True):
+        v = probe_value(point, C, PerfectPush(), np.zeros((50, 3)), 20.0, "normal", np.random.default_rng(0), estimator="heldout",
+                        reading_value=rv)
+        assert v["evoi"] == 0.0 and v["evoi_se"] == 0.0 and np.isfinite(v["expected_cost_after"])
+    lone = _particles([0.9] + [0.1] * 9, np.ones(10))
+    C = [np.where(lone.arrays()["mu"] > 0.3, 0.4, 5.4), np.full(10, 0.7)]
+    v = probe_value(lone, C, PerfectPush(), np.zeros((10, 3)), 20.0, "normal", np.random.default_rng(0), k=400, estimator="heldout",
+                    reading_value=True)
+    assert v["evoi"] == 0.0 and v["reading_gain"] == 0.0 and v["plugin_evoi"] > 0.0 and np.isfinite(v["expected_cost_after"])
+
+
+def test_unknown_estimator_is_rejected():
+    b = _particles([0.2, 0.5], [0.5, 0.5])
+    with pytest.raises(ValueError, match="estimator"):
+        probe_value(b, [np.array([0.0, 2.0])], FlatWeigh(), np.zeros((2, 3)), 20.0, "normal", np.random.default_rng(0),
+                    estimator="split")
+    with pytest.raises(ValueError, match="estimator"):
+        build_menu(MuGate(f_std=20.0), b, _geometry(), [P(0.3), P(0.5), P(0.7)], 20.0, "normal", "table_centre", plan_fn,
+                   np.random.default_rng(1), probe_models={"push": PerfectPush()}, evoi="split")
+
+
+def test_menu_values_its_probe_rows_with_the_named_estimator():
+    """build_menu's evoi names the probe rows' estimator; the plug-in is the default (m2 and m2b reproduce)."""
+    for kw, want in (({}, "plugin"), ({"evoi": "heldout"}, "heldout")):
+        options, _ = build_menu(MuGate(f_std=20.0), _particles(np.random.default_rng(0).uniform(0.1, 0.9, 400), np.ones(400)),
+                                _geometry(), [P(0.3), P(0.5), P(0.7)], 20.0, "normal", "table_centre", plan_fn,
+                                np.random.default_rng(1), threshold=0.7, probe_models={"push": PerfectPush(), "weigh": FlatWeigh()},
+                                **kw)
+        assert {o.probe["estimator"] for o in options if o.kind == "probe"} == {want}

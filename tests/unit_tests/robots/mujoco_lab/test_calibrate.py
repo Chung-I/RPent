@@ -637,7 +637,8 @@ def test_calibrate_runs_a_bundle_with_its_declared_noise():
         pytest.skip("needs the sim and the m2b bundle's local models")
     s = {"bundle": bundle, "fold": None, "const": None, "seed": 5, "protocol": "commit", "follow": False, "fixtures": False,
          "threshold": None, "model_kind": None, "care": "normal", "abstain_cost": 1.0, "force_noise": None}
-    assert _run_object(("ycb__tomato_soup_can", [0], s))[0]["force_noise"] == 0.0
+    row = _run_object(("ycb__tomato_soup_can", [0], s))[0]
+    assert row["force_noise"] == 0.0 and row["evoi"] == "plugin"             # m2b declares no estimator: the plug-in
     assert _run_object(("ycb__tomato_soup_can", [0], dict(s, force_noise=0.05)))[0]["force_noise"] == 0.05
 
 
@@ -676,3 +677,23 @@ def test_cached_primitives_come_back_with_the_bundle_settings():
     _run_object(("ycb__tomato_soup_can", [0], s))
     prims = _primitives(bundle, None, None)
     assert prims.force_noise == 0.0 and prims.abstain_cost == 1.0
+
+
+def test_cached_primitives_take_the_bundle_estimator(monkeypatch):
+    """Plan 2b2 decision 2: calibrate's primitives value probes with the bundle's estimator."""
+    from robots.mujoco_lab import calibrate, robot_spec
+
+    bundle = {"model": None, "prior": None, "readout_model": None, "probe_models": {}, "guard": None, "abstain_cost": 1.0,
+              "force_noise": 0.05, "evoi": "heldout", "manifest": {}}
+    monkeypatch.setattr(robot_spec, "load_bundle", lambda b, kind=None: bundle)
+    monkeypatch.setattr(calibrate, "_STATE", {"env": object(), "prims": {}})
+    assert calibrate._primitives("b", None, None).evoi == "heldout"
+
+
+def test_run_records_its_estimator():
+    """The output's evoi: the probe-value estimator its cases ran with (one name, or the names when they differ)."""
+    from robots.mujoco_lab.calibrate import run_evoi
+
+    assert run_evoi([{"evoi": "heldout"}, {"error": "x"}, {"evoi": "heldout"}]) == "heldout"
+    assert run_evoi([{"evoi": "heldout"}, {"evoi": "plugin"}]) == ["heldout", "plugin"]
+    assert run_evoi([{"error": "x"}]) is None

@@ -27,10 +27,11 @@ Probe rows (push, weigh, and the squeeze for a crushable or bruisable object at 
 probe models) are valued by preposterior analysis: the expected cost of the best continuation row after the probe's
 result, over results simulated from the belief (``probe_value``). Every probe may end the case, thrown or damaged
 (``terminal_risk``), at the irreversible cost and A. A probe row's expected cost is its time, the push's tip risk and
-that expected cost after it; it competes with the other rows in the same ranking. The value is
+that expected cost after it; it competes with the other rows in the same ranking. The plug-in value is
 estimated per simulated result against the best row now, so it is exactly 0 when no result can
-change that row; a probe is recommended only when its row beats the best row by more than EVOI_Z
-Monte Carlo errors.
+change that row; the held-out value (``evoi="heldout"``, plan 2b2) scores each particle with the row chosen without it,
+so it is not biased upward by a chance correlation and can be below 0. A probe is recommended only when its value is
+above 0 and its row beats the best row by more than EVOI_Z Monte Carlo errors.
 
 The cost rule (milestone 2b, ``abstain_cost`` a number A): every row's expected cost adds A x (1 - P(placed_stable)),
 the cost of leaving the task undone, and abstaining costs A. The recommendation is the cheapest of the best row
@@ -74,6 +75,8 @@ PROBE_DESTINATION = "table_centre"
 EVOI_K = 200                                 # simulated probe results per probe row
 EVOI_Z = 2.0                                 # a probe is recommended when it beats the best row by more than this many errors
 EVOI_EPS = 1e-9
+ESTIMATORS = ("plugin", "heldout")           # probe_value's estimators (plan 2b2 decision 2); a bundle declares one
+HELDOUT_REST = 1e-12                         # a held-out chooser whose rest of the weight is below this share keeps row b
 
 
 def unusable_reason(width: float, max_open: float = MAX_OPEN_WIDTH) -> str | None:
@@ -134,8 +137,22 @@ def believed_com_world(belief: ParticleBelief, pose: dict[str, Any]) -> np.ndarr
     return belief.weights @ C
 
 
+def _check_estimator(estimator: str) -> str:
+    if estimator not in ESTIMATORS:
+        raise ValueError(f"unknown probe-value estimator {estimator!r}; known: {', '.join(ESTIMATORS)}")
+    return estimator
+
+
+def heldout_rows(C: np.ndarray, u: np.ndarray, best: int) -> np.ndarray:
+    """Per particle l, the row chosen by the weights u without l: argmin_r (C_r . u - u_l C_r,l), one (rows x particles)
+    argmin; row ``best`` where the rest of u is (numerically) 0, so a chooser with no weight never falls back to a prior."""
+    a = np.argmin((C @ u)[:, None] - C * u[None, :], axis=0)
+    return np.where(u.sum() - u > HELDOUT_REST * u.sum(), a, best)
+
+
 def probe_value(belief: ParticleBelief, continuation_costs: list[np.ndarray], probe_model: Any, X_probe: np.ndarray, force: float,
-                care: str | float, rng: np.random.Generator, k: int = EVOI_K, abstain_cost: float | None = None) -> dict[str, Any]:
+                care: str | float, rng: np.random.Generator, k: int = EVOI_K, abstain_cost: float | None = None,
+                estimator: str = "plugin", reading_value: bool = False) -> dict[str, Any]:
     """The preposterior value of one probe against the cheapest continuation row now (row b, per-particle
     costs C_b). With an abstain cost A, abstaining is a continuation row that costs A for every particle, and T
     below adds A. The probe ends the case, thrown or damaged, with each particle's risk r (``terminal_risk``; the case
@@ -148,7 +165,20 @@ def probe_value(belief: ParticleBelief, continuation_costs: list[np.ndarray], pr
     for a particle the probe damages for sure). Each particle's survival enters once, in the weight (1 - r_l): the
     likelihood is that of a kept result, so the mean gain is the exact value of the result at temper 1. Returns the belief's P(kind) and P(thrown), ``evoi`` (the mean
     gain, floored at 0), ``evoi_se`` (its Monte Carlo error) and ``expected_cost_after`` (the cost when the result is
-    not used, minus the mean gain)."""
+    not used, minus the mean gain).
+
+    That plug-in value chooses row a and scores it on the same particles, so it finds value in a chance correlation
+    between a reading and the costs (the optimizer's curse). ``estimator`` "heldout" (plan 2b2 decision 2) scores each
+    particle l with the row chosen by the posterior without l (``heldout_rows``): the result's gain is
+    sum_l w'_l (1 - r_l) (C_b,l - C_a-l,l). The target is the population the particles sample: for equally weighted
+    particles drawn from it, the held-out cost after the probe is in expectation at least the population's optimal
+    cost after it (up to the self-normalized importance bias, O(1/ESS), for a weighted belief). Its ``evoi`` is the raw
+    mean (it can be below 0) and ``plugin_evoi`` the plug-in's on the same draws; no extra randomness is drawn.
+    ``reading_value`` adds ``reading_gain`` and ``reading_gain_se``: per result, the saving of the row chosen from the
+    whole result over the row chosen from its kind and survival only (the likelihood replayed without its reading term;
+    0 when the reading term was not used), scored as the estimator scores, with ``plugin_reading_gain`` beside a held-out
+    one. An unknown estimator raises ValueError."""
+    _check_estimator(estimator)
     C = np.asarray(continuation_costs, dtype=float).reshape(len(continuation_costs), -1)
     if abstain_cost is not None:
         C = np.vstack([C, np.full(C.shape[1], float(abstain_cost))])
@@ -166,20 +196,43 @@ def probe_value(belief: ParticleBelief, continuation_costs: list[np.ndarray], pr
     keep = 1.0 - risk
     terminal = COST["dropped_high"] * care_scale(care) + (0.0 if abstain_cost is None else float(abstain_cost))
     unused = float(w @ (risk * terminal + keep * C[best]))
-    gains = np.zeros(int(k))
+    heldout = estimator == "heldout"
+    cols = np.arange(C.shape[1])
+    gains, held = np.zeros(int(k)), np.zeros(int(k))
+    read, read_held = np.zeros(int(k)), np.zeros(int(k))
     for j, i in enumerate(rng.choice(len(w), size=int(k), p=w)):
         if not total[i, 0] > 0:
             continue
         obs = probe_model.sample(X_probe[i], belief.particles[i], force, rng, p=Q[i])
-        ll, _ = probe_model.loglik(obs, X_probe, a, force, P=Q)
+        ll, info = probe_model.loglik(obs, X_probe, a, force, P=Q)
         wk = belief.reweight(ll).weights * keep      # w'(1 - r): the belief given the result and the object kept
         pick = int(np.argmin(C @ wk))
         if pick != best:
             gains[j] = float(wk @ (C[best] - C[pick]))
-    gain = float(np.mean(gains)) if len(gains) else 0.0
-    se = float(np.std(gains, ddof=1) / np.sqrt(len(gains))) if len(gains) > 1 else 0.0
-    return {"p_kind": dict(zip(probe_model.classes, (w @ P).tolist())), "p_thrown": float(w @ thrown),
-            "evoi": gain if gain > EVOI_EPS else 0.0, "evoi_se": se, "expected_cost_after": unused - gain}
+        if heldout:
+            rows_l = heldout_rows(C, wk, best)
+            held[j] = float(wk @ (C[best] - C[rows_l, cols]))
+        if reading_value and "reading" in info["used"]:
+            terms = [t for t in info["used"] if t != "reading"]
+            uk = belief.reweight(probe_model.loglik(obs, X_probe, a, force, P=Q, terms=terms)[0]).weights * keep
+            read[j] = float(wk @ (C[int(np.argmin(C @ uk))] - C[pick]))
+            if heldout:
+                read_held[j] = float(wk @ (C[heldout_rows(C, uk, best), cols] - C[rows_l, cols]))
+    mean = lambda g: float(np.mean(g)) if len(g) else 0.0  # noqa: E731
+    err = lambda g: float(np.std(g, ddof=1) / np.sqrt(len(g))) if len(g) > 1 else 0.0  # noqa: E731
+    gain = mean(gains)
+    out = {"p_kind": dict(zip(probe_model.classes, (w @ P).tolist())), "p_thrown": float(w @ thrown), "estimator": estimator}
+    if heldout:
+        out.update(evoi=mean(held), evoi_se=err(held), expected_cost_after=unused - mean(held),
+                   plugin_evoi=gain if gain > EVOI_EPS else 0.0)
+    else:
+        out.update(evoi=gain if gain > EVOI_EPS else 0.0, evoi_se=err(gains), expected_cost_after=unused - gain)
+    if reading_value:
+        r = read_held if heldout else read
+        out.update(reading_gain=mean(r), reading_gain_se=err(r))
+        if heldout:
+            out["plugin_reading_gain"] = mean(read)
+    return out
 
 
 def push_tip_charge(belief: ParticleBelief, probe_model: Any, X_probe: np.ndarray) -> float:
@@ -196,7 +249,7 @@ def push_tip_charge(belief: ParticleBelief, probe_model: Any, X_probe: np.ndarra
 
 def _probe_rows(probe_models: dict[str, Any], belief: ParticleBelief, geometry: Geometry, mid: Any, pose: dict[str, Any],
                 f_std: float, care: str | float, continuation: list[Option], rng: np.random.Generator,
-                abstain_cost: float | None = None) -> list[Option]:
+                abstain_cost: float | None = None, estimator: str = "plugin") -> list[Option]:
     """One row per probe model, at the middle proposal: the push and the weigh with the weigh squeeze, the squeeze
     (only for a crushable or bruisable object, by the pose's public entry) at ``squeeze_cap``. The continuation costs
     are those of the current pose (the push moves the object up to 4 cm, the weigh lifts it 2 cm, the squeeze
@@ -212,7 +265,7 @@ def _probe_rows(probe_models: dict[str, Any], belief: ParticleBelief, geometry: 
         base = extract(geometry, mid.point, mid.yaw, PLACEHOLDER["mass"], PLACEHOLDER["mu"], force, PROBE_V_LIFT, 0.0,
                        PROBE_DESTINATION, None, belief.visibility)
         X = particle_matrix(base, a, pose, force, model_names(pm))
-        v = probe_value(belief, costs, pm, X, force, care, rng, abstain_cost=abstain_cost)
+        v = probe_value(belief, costs, pm, X, force, care, rng, abstain_cost=abstain_cost, estimator=estimator)
         tip = push_tip_charge(belief, pm, X) if probe == "push" else 0.0
         cost = TIME_COST_PER_S * PROBE_SECONDS[probe] + tip + v["expected_cost_after"]
         reason = f"{probe} first: value of information {v['evoi']:.2f}, expected cost of the best row after it {v['expected_cost_after']:.2f}"
@@ -267,7 +320,7 @@ def build_menu(model: Any, belief: ParticleBelief | Belief, geometry: Geometry, 
                pose_fn: Callable[[Any], dict[str, Any]] | None = None, max_open: float = MAX_OPEN_WIDTH,
                threshold: float | None = None, n: int = N_PARTICLES,
                probe_models: dict[str, Any] | None = None, guard: Any = None,
-               abstain_cost: float | None = None) -> tuple[list[Option], str]:
+               abstain_cost: float | None = None, evoi: str = "plugin") -> tuple[list[Option], str]:
     """The ranked menu and the recommendation. ``pose_fn(proposal)`` gives the pose the particles map
     through (default: ``geometry_pose``); a milestone 1 ``Belief`` becomes n particles at the
     nominal CoM; ``threshold`` None reads DEFAULT_THRESHOLD now, not at import; ``probe_models``
@@ -276,7 +329,9 @@ def build_menu(model: Any, belief: ParticleBelief | Belief, geometry: Geometry, 
     whose expected cost is below the best row's by more than EVOI_Z Monte Carlo errors (read at call
     time), else "commit" when the best row reaches the threshold, else "decline". A ``guard`` (guard.KnnGuard) that
     flags the rows makes it "decline" with the guard's reason; the decline row keeps the guard's check. With
-    ``abstain_cost`` a number, the cost rule of the module docstring decides instead, and the decline row costs it."""
+    ``abstain_cost`` a number, the cost rule of the module docstring decides instead, and the decline row costs it.
+    ``evoi`` names probe_value's estimator ("plugin" or "heldout"; another name raises ValueError)."""
+    _check_estimator(evoi)
     pose_fn = pose_fn or (lambda prop: geometry_pose(geometry, prop))
     usable = usable_proposals(proposals, max_open)
     options: list[Option] = []
@@ -303,7 +358,8 @@ def build_menu(model: Any, belief: ParticleBelief | Belief, geometry: Geometry, 
                                   _planned=planned))
         continuation = [o for o in options if o.action["destination"] == destination and o.id != "inboard_place"]
         if probe_models and continuation:
-            options += _probe_rows(probe_models, belief, geometry, mid, mid_pose, f_std, care, continuation, rng, abstain_cost)
+            options += _probe_rows(probe_models, belief, geometry, mid, mid_pose, f_std, care, continuation, rng, abstain_cost,
+                                   estimator=evoi)
         options.sort(key=lambda o: o.expected_cost)
     same = [o for o in options if o.kind in ("commit", "lower_risk") and o.action["destination"] == destination]
     check = None

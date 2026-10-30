@@ -154,7 +154,8 @@ def update_belief(belief: ParticleBelief, entry: dict[str, Any], primitives: Any
 def _assess(object: str, destination: str, care: str | float, primitives: Any,
             store: dict[str, Any]) -> tuple[dict[str, Any] | None, Assessment | None]:
     """Build (or reuse) the assessment. Returns (error-or-semantic payload, None) or (None, assessment).
-    ``primitives.abstain_cost`` (when set) selects the cost rule (menu.build_menu)."""
+    ``primitives.abstain_cost`` (when set) selects the cost rule and ``primitives.evoi`` (when set) the probe-value
+    estimator (menu.build_menu)."""
     if destination not in DESTINATIONS:
         return {"error": f"unknown destination {destination!r}; known: {sorted(DESTINATIONS)}"}, None
     try:
@@ -186,7 +187,8 @@ def _assess(object: str, destination: str, care: str | float, primitives: Any,
     options, recommendation = build_menu(primitives.model, belief, geometry, proposals, f_std, care, destination,
                                          env.plan_trajectory, primitives.rng, pose_fn=pose_fn, max_open=pinch_limit(env),
                                          threshold=getattr(primitives, "threshold", None), probe_models=probes or None,
-                                         guard=getattr(primitives, "guard", None), abstain_cost=abstain)
+                                         guard=getattr(primitives, "guard", None), abstain_cost=abstain,
+                                         evoi=getattr(primitives, "evoi", "plugin"))
     evidence = belief.summary() + [f"standard squeeze {f_std:.0f} N per pad", f"{len(proposals)} pinch proposals along the long axis"]
     if rec["probes_run"]:
         evidence.append(f"probes run this episode: {', '.join(sorted(rec['probes_run']))}")

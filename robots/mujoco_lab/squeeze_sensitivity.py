@@ -19,7 +19,13 @@ Each cell changes sigma and the stiffness/damage-force correlation, replays k_ha
 (z, eps), and refits only the squeeze reading law on training objects. The kind and thrown
 models, outcome model and temper stay fixed. Continuations use the recorded middle pinch
 pose and the menu's rows to table_centre; the probe corpus records no other proposal poses.
-The reported standard error is Monte Carlo error of the mean EVOI, conditional on these cases.
+
+Each case is valued with the bundle's estimator (``--estimator`` overrides it) and reports the reading's own value
+beside the total (probe_value's reading_value: the saving of the whole result over its kind and survival). Per cell
+(``cell_summary``, plan 2b2 decision 3): the means of both, each with its between-case error (the sd of the per-case
+values over sqrt(cases), which includes the particle draws) and its Monte Carlo error conditional on these cases; the
+plug-in's means on the same draws; and at rho 0 the upward-bias screen: the mean reading value is at most 2
+between-case errors above 0.
 """
 
 from __future__ import annotations
@@ -43,7 +49,7 @@ from rpent.skills.pick_place.costs import particle_costs
 from rpent.skills.pick_place.evaluate import row_pose, rows_of
 from rpent.skills.pick_place.features import model_names, particle_matrix
 from rpent.skills.pick_place.likelihood import fit_law
-from rpent.skills.pick_place.menu import EVOI_K, _rows, estimate, probe_value
+from rpent.skills.pick_place.menu import ESTIMATORS, EVOI_K, _rows, estimate, probe_value
 from rpent.skills.pick_place.probes import log_ratio, squeeze_cap
 
 
@@ -102,8 +108,9 @@ def reading_model(pm: Any, rows: list[dict[str, Any]], split: dict[str, list[str
     return replace(pm, reading={**pm.reading, "measured": law})
 
 
-def case_value(row: dict[str, Any], bundle: dict[str, Any], prior: Any, pm: Any, n: int, seed: int) -> dict[str, Any]:
-    """The squeeze row's value against the menu continuations at the recorded middle pinch."""
+def case_value(row: dict[str, Any], bundle: dict[str, Any], prior: Any, pm: Any, n: int, seed: int,
+               estimator: str = "plugin") -> dict[str, Any]:
+    """The squeeze row's value against the menu continuations at the recorded middle pinch, with its reading value."""
     rng = np.random.default_rng(seed)
     pose = dict(row_pose(row), object_id=row["object"])
     belief = prior(pose, n, rng)
@@ -116,7 +123,33 @@ def case_value(row: dict[str, Any], bundle: dict[str, Any], prior: Any, pm: Any,
         costs.append(particle_costs(per, seconds, "normal", bundle["abstain_cost"]))
     force = squeeze_cap(belief, f_std)
     X = particle_matrix(row["base"], belief.arrays(), pose, force, model_names(pm))
-    return probe_value(belief, costs, pm, X, force, "normal", rng, abstain_cost=bundle["abstain_cost"])
+    return probe_value(belief, costs, pm, X, force, "normal", rng, abstain_cost=bundle["abstain_cost"], estimator=estimator,
+                       reading_value=True)
+
+
+def cell_summary(values: list[dict[str, Any]], rho: str) -> dict[str, Any]:
+    """One cell's summary of its per-case probe values (see the module docstring)."""
+    n = len(values)
+
+    def mean_se(key: str) -> tuple[float, float | None]:
+        x = np.array([v[key] for v in values], dtype=float)
+        return float(x.mean()), float(x.std(ddof=1) / np.sqrt(n)) if n > 1 else None
+
+    estimator = values[0]["estimator"]
+    plugin = estimator == "plugin"
+    reading, reading_se = mean_se("reading_gain")
+    total, total_se = mean_se("evoi")
+    screen = None
+    if rho != "final" and float(rho) == 0 and reading_se is not None:
+        screen = bool(reading <= 2.0 * reading_se)
+    return {"estimator": estimator, "n_cases": n,
+            "mean_reading_value": reading, "reading_between_case_se": reading_se,
+            "reading_mc_se": float(np.sqrt(sum(v["reading_gain_se"] ** 2 for v in values)) / n),
+            "mean_evoi": total, "evoi_between_case_se": total_se,
+            "evoi_mc_se": float(np.sqrt(sum(v["evoi_se"] ** 2 for v in values)) / n),
+            "plugin_mean_reading_value": reading if plugin else mean_se("plugin_reading_gain")[0],
+            "plugin_mean_evoi": total if plugin else mean_se("plugin_evoi")[0],
+            "reading_value_at_most_2_se_above_0": screen}
 
 
 def main(argv: list[str] | None = None) -> dict[str, Any]:
@@ -129,6 +162,7 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
     ap.add_argument("--rhos", default="0,0.5,final")
     ap.add_argument("--n", type=int, default=2000, help="prior particles per case")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--estimator", choices=ESTIMATORS, default=None, help="the probe-value estimator (default: the bundle's)")
     ap.add_argument("--out", required=True)
     a = ap.parse_args(argv)
     if a.n < 2:
@@ -148,6 +182,7 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
         ap.error("sensitivity requires an m2b bundle with a squeeze model")
     if getattr(bundle["model"], "kind", "classifier") != "classifier":
         ap.error("sensitivity requires the classifier bundle")
+    estimator = a.estimator or bundle["evoi"]
     metrics = json.load(open(os.path.join(a.bundle, bundle["manifest"]["metrics"])))
     split = metrics["split"]
     rows = [r for r in load_rows(a.probe_corpus) if r.get("probe") == "squeeze"]
@@ -162,15 +197,11 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
             validation = [r for r in rows_of(replay, split[a.split]) if r["entry"].get("class") == "crushable"]
             if not validation:
                 ap.error(f"no crushable squeeze cases in split {a.split!r}")
-            values = [case_value(r, bundle, prior, pm, a.n, a.seed + j) for j, r in enumerate(validation)]
-            mean = float(np.mean([v["evoi"] for v in values]))
-            se = float(np.sqrt(sum(v["evoi_se"] ** 2 for v in values)) / len(values))
+            values = [case_value(r, bundle, prior, pm, a.n, a.seed + j, estimator) for j, r in enumerate(validation)]
             cells.append({"sigma": sigma, "rho": rho, "rho_by_law": {k: v["rho"] for k, v in law.laws.items() if "rho" in v},
-                          "n_cases": len(values), "mean_evoi": mean, "evoi_mc_se": se,
-                          "zero_within_2_mc_se": bool(abs(mean) <= 2 * se) if rho != "final" and float(rho) == 0 else None,
-                          "reading_law": pm.reading["measured"].to_json()})
+                          **cell_summary(values, rho), "reading_law": pm.reading["measured"].to_json()})
     out = {"bundle": a.bundle, "probe_corpus": a.probe_corpus, "thresholds": {"path": a.thresholds, "sha256": sha256_of(a.thresholds)},
-           "split": a.split, "n_particles": a.n, "evoi_samples_per_case": EVOI_K, "seed": a.seed,
+           "split": a.split, "n_particles": a.n, "evoi_samples_per_case": EVOI_K, "seed": a.seed, "estimator": estimator,
            "care": "normal", "abstain_cost": bundle["abstain_cost"], "continuations": "middle pinch to table_centre",
            "cells": cells}
     with open(a.out, "w") as f:

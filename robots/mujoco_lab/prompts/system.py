@@ -72,8 +72,9 @@ release height). The top-level numbers repeat the best row's values; `best_optio
   object (the result kind `damaged`), and a probe that damages it ends the case. A probe row's
   `probe` field has `p_kind` (the probabilities of its result kinds), `p_thrown` (P(the probe
   knocks the object off the table or more than 10 cm away)), `evoi` (the value of information:
-  the expected fall in the best row's expected cost after the probe; 0 when no result can change
-  the best row), `evoi_se` (the Monte Carlo error of `evoi`) and `expected_cost_after`. Its
+  the expected fall in the best row's expected cost after the probe, an estimate that can be below 0
+  when the probe is unlikely to change the best row), `evoi_se` (the Monte Carlo error of `evoi`)
+  and `expected_cost_after`. Its
   `expected_cost` is the probe's time, the push's tip risk and `expected_cost_after`.
 - `recommendation`: with `abstain_cost` A, `commit` when the best row's `expected_cost` is at most
   A, and `probe` instead when the cheapest probe row's `expected_cost` is below the smaller of the

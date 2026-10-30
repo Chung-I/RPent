@@ -793,3 +793,16 @@ def test_squeeze_payload_hides_the_reading_noise():
     d = pick_and_place(object="mug", destination="table_centre", option_id="probe_squeeze", primitives=prims, store=store).data
     assert d["kind"] == "measured" and d["reading"] == {"k_hat": 2.0}
     assert store["beliefs"]["ycb__mug"]["belief"].history[-1]["obs"]["reading"] == {"k_hat": 2.0}
+
+
+def test_bundle_estimator_reaches_the_executed_menu():
+    """Plan 2b2 decision 2: the primitives' evoi (the bundle's decision) values the probe rows of the menu that the
+    tools build and execute; primitives without one keep the plug-in."""
+    for evoi, want in ((None, "plugin"), ("heldout", "heldout")):
+        env = _ProbeEnv(results=[("placed_stable", {})], probes=[_push(high=1.0)])
+        prims, store = _probe_prims(env, push=PerfectPush(), weigh=FlatWeigh()), {}
+        if evoi is not None:
+            prims.evoi = evoi
+        assess_pick(object="mug", destination="table_centre", primitives=prims, store=store)
+        rows = [o for c in store["pick_place"].values() for o in c["menu"].values() if o.kind == "probe"]
+        assert rows and {o.probe["estimator"] for o in rows} == {want}

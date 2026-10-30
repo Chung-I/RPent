@@ -222,7 +222,7 @@ def test_build_lab_passes_the_fill_and_the_fragility(monkeypatch):
     manifest = {"prior": "lab_generator_m2b", "classes": {"path": "fragility_classes.json"},
                 "thresholds": {"path": "thresholds_v1.json"}}
     bundle = {"model": StubModel(), "prior": None, "readout_model": None, "probe_models": {}, "guard": None,
-              "abstain_cost": 1.0, "force_noise": 0.05, "manifest": manifest}
+              "abstain_cost": 1.0, "force_noise": 0.05, "evoi": "heldout", "manifest": manifest}
     monkeypatch.setattr(adapter, "MuJoCoLabEnv", Env)
     monkeypatch.setattr(robot_spec, "load_bundle", lambda b, kind=None: bundle)
     frag = {"k_n_per_mm": 2.0, "f_damage_n": 12.0, "v_bruise_ms": None, "v_break_ms": None}
@@ -231,6 +231,7 @@ def test_build_lab_passes_the_fill_and_the_fragility(monkeypatch):
     th = Thresholds.from_json(f"{DATA}/thresholds_v1.json")
     assert prims.env.slosh_zeta == th.slosh_zeta and prims.env.slosh_scale == th.slosh_scale and th.slosh_scale
     assert prims.force_noise == prims.env.force_noise == 0.05                 # the bundle's sensor (plan 2b2)
+    assert prims.evoi == "heldout"                                            # the bundle's estimator (plan 2b2)
     calls.clear()
     robot_spec.build_lab(object_id="ycb__mug", theta={"mu": 0.4}, seed=3, bundle="b")
     assert calls["fill"] == 0.0 and calls["frag"] is None and calls["theta"] == {"mu": 0.4}
@@ -245,3 +246,19 @@ def test_system_prompt_states_the_force_error():
     assert "can exceed the mass by a few percent" in text
     assert "started to slide, within about 5 %" in text
     assert "the pads' force readings carry an error of about 5 %" in text
+
+
+def test_primitives_keep_the_plugin_estimator_by_default():
+    from robots.mujoco_lab.toolkit import MuJoCoLabPrimitives
+
+    assert MuJoCoLabPrimitives(env=None, model=None).evoi == "plugin"
+    assert MuJoCoLabPrimitives(env=None, model=None, evoi="heldout").evoi == "heldout"
+
+
+def test_system_prompt_says_the_value_of_information_is_an_estimate():
+    """Plan 2b2 decision 2: the held-out estimate can be below 0, and the plug-in's is not exactly 0 for every useless
+    probe any more than it is exact for a useful one."""
+    from robots.mujoco_lab.prompts.system import system_prompt
+
+    text = system_prompt()
+    assert "an estimate that can be below 0" in text and "0 when no result can change the best row" not in text
