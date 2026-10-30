@@ -253,6 +253,7 @@ def rollout_row(env, object_id: str, idx: int, seed: int, use_fixtures: bool = F
         "release": _release_summary(r.release),
         "planned": [s.to_dict() for s in r.planned],
         "readouts": r.readouts,
+        "sensor": r.sensor,
         "rev_steps": r.rev_steps,
         "deepest_mm": r.deepest_mm,
         "artifact": r.artifact,

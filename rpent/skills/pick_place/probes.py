@@ -95,6 +95,8 @@ class ProbeResult:
     artifact: bool = False          # defaults
     meter: dict[str, Any] = field(default_factory=dict)      # a substrate's damage meter (mujoco_lab: meter.py) and its
     damage: dict[str, Any] | None = None                      # first threshold crossing; kind "damaged" when there is one
+    sensor: dict[str, Any] = field(default_factory=dict)      # a substrate's record of its reading's noise (mujoco_lab: the
+                                                              # force noise, its eps, the clean reading); never a planner's
 
     def to_data(self) -> dict[str, Any]:
         d = asdict(self)

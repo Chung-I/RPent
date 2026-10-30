@@ -93,11 +93,12 @@ def test_probes_refresh_the_baselines():
 @pytest.mark.parametrize("obj", ["ycb__brick", "ycb__mug"])
 def test_weigh_probe_reads_the_weight_within_two_percent(obj):
     """The hand follows its mocap target in jumps, so a force sampled at the end of a lift step reads
-    0.9 of the weight; the reading comes from the still hold."""
+    0.9 of the weight; the reading comes from the still hold. The physics is the clean reading; the declared force
+    error (plan 2b2) is checked in test_force_noise."""
     env = _env()
     env.reset(obj, {"mu": 0.8, "mass_scale": 1.0, "com_s": None, "v_lift": 0.15}, seed=0)
     res = _weigh(env)
-    assert res.kind == "measured" and res.reading["m_hat"] == pytest.approx(env.truth()["mass"], rel=0.02)
+    assert res.kind == "measured" and res.sensor["clean"]["m_hat"] == pytest.approx(env.truth()["mass"], rel=0.02)
 
 
 def test_push_reads_a_slippery_brick():

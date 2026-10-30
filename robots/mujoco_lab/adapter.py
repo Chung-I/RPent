@@ -95,7 +95,29 @@ SQUEEZE_F0 = 1.0             # the squeeze probe: close with 1 N a pad, ramp to 
 SQUEEZE_RAMP_S = 2.0
 SQUEEZE_HOLD_S = 0.3
 SQUEEZE_NOISE = 0.10         # its reading: k_hat = k exp(0.10 eps) (plan 2b, decision 9: a synthetic sensor)
+PAD_FORCE_NOISE = 0.05       # every force reading of the hand is x exp(0.05 eps) (plan 2b2, decision 1): the error the
+                             # skill's laws assume (likelihood.SD_FLOOR); the sim's forces are exact to 0.01 %
+FORCE_STREAM = 1             # the force readings' stream per reset: (seed, crc32(object), FORCE_STREAM)
+FORCE_NOISE_ENV = "RPENT_LAB_FORCE_NOISE"
 LIQUID_ANCHOR = '<freejoint name="obj_free"/>'
+
+def force_noise_level(value: float | None = None) -> float:
+    """The lab's force noise: ``value``, else RPENT_LAB_FORCE_NOISE, else PAD_FORCE_NOISE; a finite number at least 0
+    (0 gives the clean readings of milestone 2b)."""
+    raw = os.environ.get(FORCE_NOISE_ENV, PAD_FORCE_NOISE) if value is None else value
+    try:
+        sd = float(raw)
+    except (TypeError, ValueError):
+        raise ValueError(f"the force noise must be a number at least 0, not {raw!r}") from None
+    if not (math.isfinite(sd) and sd >= 0.0):
+        raise ValueError(f"the force noise must be a finite number at least 0, not {raw!r}")
+    return sd
+
+
+def noisy_force(value: float | None, eps: float, sd: float) -> float | None:
+    """A force reading with the declared error: value x exp(sd eps); None stays None."""
+    return None if value is None else float(value) * math.exp(float(sd) * float(eps))
+
 
 def at_rest(poses: list[tuple[np.ndarray, np.ndarray]], hz: int) -> bool:
     """True when every (position, rotation matrix) of the history's last REST_WINDOW_S (one entry per
@@ -212,6 +234,7 @@ class Rollout:
     meter: dict[str, Any] = field(default_factory=dict)     # the damage meter's channels (meter.DamageMeter); {} when off
     motion_label: str | None = None                          # the motion rules' label; ``label`` is it unless damage
     damage: dict[str, Any] | None = None                     # the first threshold crossing: label, channel, t
+    sensor: dict[str, Any] = field(default_factory=dict)     # the force noise, its eps and the clean readouts; no planner sees it
 
 
 def _with_liquid(xml: str, liq: dict[str, Any]) -> str:
@@ -266,7 +289,8 @@ class MuJoCoLabEnv:
     """One object on the table with hidden properties, the pads, and the place fixtures."""
 
     def __init__(self, sim_dir: str | None = None, render: bool = False, damage_meter: bool = True,
-                 slosh_zeta: float | None = None):
+                 slosh_zeta: float | None = None, force_noise: float | None = None):
+        self.force_noise = force_noise_level(force_noise)
         self.s = load_sim(sim_dir)
         self.render = render
         self.damage_meter = bool(damage_meter)
@@ -362,6 +386,8 @@ class MuJoCoLabEnv:
         self.obj, self.props, self.theta, self.com_end = o, props, th, com_end
         # the reset's stream (the squeeze noise) is per seed and object: every object of a draw is reset with one seed
         self.rng = np.random.default_rng([int(seed), zlib.crc32(object_id.encode())])
+        # the force readings' own stream, so the squeeze's stays as it was
+        self.force_rng = np.random.default_rng([int(seed), zlib.crc32(object_id.encode()), FORCE_STREAM])
         self._refresh_baselines()
         self.episode += 1
 
@@ -1028,6 +1054,7 @@ class MuJoCoLabEnv:
                      on_step=on_step)
         self._metering = False
         kind, reading = self.weigh_reading(trace, force)
+        reading, sensor = self._force_reading(reading)
         steps = [len(trace)]
         sim.grip(-20.0)
         for _ in range(int(WEIGH_OPEN_S * hz)):
@@ -1040,7 +1067,7 @@ class MuJoCoLabEnv:
         meter, damage = self._meter_end()
         disp, tilt, thrown = self._probe_cost(p_start, R_start)
         return ProbeResult("weigh", "damaged" if damage else kind, reading, disp, tilt, thrown, steps[0] / hz, trace, **self._monitor(),
-                           meter=meter, damage=damage)
+                           meter=meter, damage=damage, sensor=sensor)
 
     def probe_push(self) -> ProbeResult:
         """The t3_probes.push_probe motion: the open hand's leading pad, at a quarter of the object's
@@ -1103,8 +1130,17 @@ class MuJoCoLabEnv:
             steps[0] += 1
         meter, damage = self._meter_end()
         disp, tilt, thrown = self._probe_cost(p_start, R_start)
+        reading, sensor = self._force_reading(reading)
         return ProbeResult("push", "damaged" if damage else kind, reading, disp, tilt, thrown, steps[0] / hz, rec, **self._monitor(),
-                           meter=meter, damage=damage)
+                           meter=meter, damage=damage, sensor=sensor)
+
+    def _force_reading(self, reading: dict[str, float]) -> tuple[dict[str, float], dict[str, Any]]:
+        """A probe's force reading with the declared error: one eps from the force stream scales every value (the
+        weigh's m_hat, or its mu_hat and m_lower from one slide force; the push's f_break), drawn also when the
+        reading is empty, so the stream stays aligned. Returns the reading and the sensor record."""
+        eps = float(self.force_rng.standard_normal())
+        noisy = {k: noisy_force(v, eps, self.force_noise) for k, v in reading.items()}
+        return noisy, {"force_noise": self.force_noise, "eps": eps, "clean": dict(reading)}
 
     @staticmethod
     def squeeze_reading(k: float | None, rng: np.random.Generator) -> dict[str, float]:
@@ -1194,6 +1230,17 @@ class MuJoCoLabEnv:
                       tipped=bool(release is not None and self._tipped(release, low)), held=bool(any(pads)),
                       com_xy=sim.d.subtree_com[sim.obj][:2].tolist())
         out = label_rollout(trace, dest, release, final)
+        readouts, sensor = self._force_readouts(summarize(trace, out, v_lift))
         return Rollout(final_label(out["label"], damage), out["max_z"], out["drop_z"], out["loss_phase"], out["loss_step"],
-                       out["loss_t"], out["loss_speed"], final.zone, release, planned, trace, summarize(trace, out, v_lift),
-                       **self._monitor(), meter=meter or {}, motion_label=out["label"], damage=damage)
+                       out["loss_t"], out["loss_speed"], final.zone, release, planned, trace, readouts,
+                       **self._monitor(), meter=meter or {}, motion_label=out["label"], damage=damage, sensor=sensor)
+
+    def _force_readouts(self, readouts: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+        """The attempt's force readouts with the declared error: three eps from the force stream, in the order hold,
+        slip, loss, drawn also for a reading that does not exist. Returns the readouts and the sensor record."""
+        eps, clean, out = {}, {}, dict(readouts)
+        for term, key in (("hold", "fz_hold_n"), ("slip", "fz_slip_max_n"), ("loss", "fz_at_loss_n")):
+            eps[term] = float(self.force_rng.standard_normal())
+            clean[key] = readouts.get(key)
+            out[key] = noisy_force(clean[key], eps[term], self.force_noise)
+        return out, {"force_noise": self.force_noise, "eps": eps, "clean": clean}

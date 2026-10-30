@@ -28,9 +28,10 @@ ROW_KEYS = {
     "loss_t", "loss_speed", "zone", "release", "planned", "geometry", "features", "pose", "com_obj_true", "readouts",
     "reset", "rev_steps", "deepest_mm", "artifact",
     "a_transport", "entry", "theta_frag", "fill", "spill_angle_deg", "meter", "motion_label", "damage",      # corpus v9
+    "sensor",                                                                                                  # corpus v10
 }
 OUTCOME_KEYS = {"label", "max_z", "drop_z", "loss_phase", "loss_step", "loss_t", "loss_speed", "zone", "release", "planned", "readouts",
-                "rev_steps", "deepest_mm", "artifact", "meter", "motion_label", "damage"}
+                "rev_steps", "deepest_mm", "artifact", "meter", "motion_label", "damage", "sensor"}
 DECLINED_KEYS = (ROW_KEYS - OUTCOME_KEYS) | {"declined"}       # a pinch the skill never offers: no rollout
 
 
