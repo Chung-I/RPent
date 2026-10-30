@@ -278,3 +278,11 @@ def test_system_prompt_names_the_probe_time_scale():
 
     text = system_prompt()
     assert "`probe_time_scale`" in text and "`probe_time_scale` times 0.05" in text
+
+
+def test_system_prompt_says_probes_come_before_the_first_attempt():
+    """Plan m4 decision 1: probe rows only where the probe models have data."""
+    from robots.mujoco_lab.prompts.system import system_prompt
+
+    text = " ".join(system_prompt().split())
+    assert "Probe rows appear only before the first attempt of an episode; after the push only the weigh may follow." in text

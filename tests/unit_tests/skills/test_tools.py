@@ -839,3 +839,64 @@ def test_the_assessment_reports_the_probe_time_scale():
             prims.probe_time_scale = s
         d = assess_pick(object="mug", destination="table_centre", primitives=prims, store={}).data
         assert d["probe_time_scale"] == want
+
+
+# ---------------------------------------------------------------- probe rows where the probe models have data (milestone 4)
+def _weigh(m_hat=0.3):
+    return ProbeResult(probe="weigh", kind="measured", reading={"m_hat": m_hat}, displacement_m=0.0, tilt_deg=0.0, thrown=False, seconds=4.0)
+
+
+def test_no_probe_row_after_an_attempt():
+    """Plan m4 decision 1: the probe models cover probes from rest, so no probe row follows an attempt."""
+    env = _ProbeEnv(results=[("missed", {})])
+    prims, store = _probe_prims(env, push=PerfectPush(), weigh=FlatWeigh()), {}
+    a = assess_pick(object="mug", destination="table_centre", primitives=prims, store=store).data
+    assert {o["id"] for o in a["options"] if o["kind"] == "probe"} == {"probe_push", "probe_weigh"}
+    r = pick_and_place(object="mug", destination="table_centre", option_id="commit_std", primitives=prims, store=store).data
+    fresh = r["assessment"]
+    assert r["outcome"] == "missed" and fresh["assessed"] is True
+    assert not any(o["kind"] == "probe" for o in fresh["options"]) and fresh["recommendation"] in ("commit", "decline")
+    assert "no probe after an attempt: the probe models cover probes from rest" in fresh["evidence"]
+    e = pick_and_place(object="mug", destination="table_centre", option_id="probe_weigh", primitives=prims, store=store).data
+    assert "before the first attempt" in e["error"] and env.probe_calls == []
+
+
+def test_after_the_push_only_the_weigh_is_offered():
+    """Plan m4 decision 1: the probe corpus has every probe from rest and the weigh after the push (scene A), nothing else."""
+    env = _ProbeEnv(probes=[_push(high=1.0)])
+    prims, store = _probe_prims(env, push=PerfectPush(), weigh=FlatWeigh()), {}
+    r = pick_and_place(object="mug", destination="table_centre", option_id="probe_push", primitives=prims, store=store).data
+    assert [o["id"] for o in r["assessment"]["options"] if o["kind"] == "probe"] == ["probe_weigh"]
+    env = _ProbeEnv(probes=[_weigh()])
+    prims, store = _probe_prims(env, push=PerfectPush(), weigh=FlatWeigh()), {}
+    r = pick_and_place(object="mug", destination="table_centre", option_id="probe_weigh", primitives=prims, store=store).data
+    assert r["probed"] == "weigh" and not any(o["kind"] == "probe" for o in r["assessment"]["options"])
+    e = pick_and_place(object="mug", destination="table_centre", option_id="probe_push", primitives=prims, store=store).data
+    assert "cannot follow" in e["error"] and env.probe_calls == ["weigh"]
+
+
+def test_the_assessment_carries_without_probe():
+    """Plan m4 decision 2: the payload says what the menu recommends without its probe rows (the 2a rule here: the best
+    row's P(placed_stable) at the threshold)."""
+    env = _ProbeEnv()
+    prims = _probe_prims(env, push=PerfectPush(), weigh=FlatWeigh())
+    d = assess_pick(object="mug", destination="table_centre", primitives=prims, store={}).data
+    assert d["recommendation"] == "probe" and d["without_probe"] == "commit"
+    prims.threshold = 1.01
+    d = assess_pick(object="mug", destination="table_centre", primitives=prims, store={}).data
+    assert d["recommendation"] == "probe" and d["without_probe"] == "decline"
+    d = assess_pick(object="mug", primitives=_prims(), store={}).data
+    assert d["recommendation"] == "commit" and d["without_probe"] == "commit"
+
+
+@pytest.mark.parametrize("evoi", ["plugin", "heldout"])
+def test_menu_rng_use_does_not_depend_on_the_probe_time_scale(evoi):
+    """Plan m4 gate G1b's premise: the probe time scale changes the probe rows' costs only, never what the menu draws, so
+    an arm that runs no probe acts the same at every s."""
+    out = []
+    for s in (1.0, 0.0):
+        prims = _probe_prims(_ProbeEnv(), push=PerfectPush(), weigh=FlatWeigh())
+        prims.probe_time_scale, prims.abstain_cost, prims.evoi = s, 1.0, evoi
+        d = assess_pick(object="mug", destination="table_centre", primitives=prims, store={}).data
+        out.append((prims.rng.bit_generator.state, [o for o in d["options"] if o["kind"] != "probe"], d["without_probe"]))
+    assert out[0] == out[1]

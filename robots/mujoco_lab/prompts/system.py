@@ -69,8 +69,9 @@ release height). The top-level numbers repeat the best row's values; `best_optio
   sets it back (about 4 s). `probe_squeeze` (only for a crushable or bruisable object) closes the
   pads at the middle pinch, raises the squeeze to a capped force, holds it and opens, with no lift
   (about 3 s); the cap is half the standard squeeze or the belief's 10 % quantile of the damage force,
-  whichever is lower. Nothing is placed. Each probe runs once per episode. Every probe can damage the
-  object (the result kind `damaged`), and a probe that damages it ends the case. A probe row's
+  whichever is lower. Nothing is placed. Each probe runs once per episode. Probe rows appear only
+  before the first attempt of an episode; after the push only the weigh may follow. Every probe can
+  damage the object (the result kind `damaged`), and a probe that damages it ends the case. A probe row's
   `probe` field has `p_kind` (the probabilities of its result kinds), `p_thrown` (P(the probe
   knocks the object off the table or more than 10 cm away)), `evoi` (the value of information:
   the expected fall in the best row's expected cost after the probe, an estimate that can be below 0

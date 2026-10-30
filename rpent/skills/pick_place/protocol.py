@@ -152,6 +152,7 @@ class Assessment:
     care_scale: float = 1.0                      # the factor on the irreversible costs (costs.care_scale)
     abstain_cost: float | None = None            # the cost rule's A; None: the milestone 2a rule
     probe_time_scale: float = 1.0                # the factor on a probe's time charge (plan 2b2 decision 4)
+    without_probe: str | None = None             # the recommendation without the probe rows (menu.without_probe)
     extras: dict[str, Any] = field(default_factory=dict)
 
     def best(self) -> Option | None:
@@ -213,6 +214,7 @@ class Assessment:
             "options": [row.to_data() for row in self.options],
             "recommendation": self.recommendation,
             "recommended_option": None if self.recommended() is None else self.recommended().id,
+            "without_probe": self.without_probe,
             "decline_reason": self.decline_reason(),
             "care": self.care,
             "care_scale": self.care_scale,

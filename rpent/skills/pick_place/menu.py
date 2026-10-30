@@ -405,6 +405,24 @@ def build_menu(model: Any, belief: ParticleBelief | Belief, geometry: Geometry, 
     return options, recommendation
 
 
+def without_probe(options: list[Option], recommendation: str, destination: str, care: str | float, abstain_cost: float | None,
+                  threshold: float | None) -> str:
+    """The recommendation of the same menu without its probe rows, from the unrounded costs: the recommendation itself
+    unless it is probe (a guard flag has already declined); else the cost rule on the best row (commit when it costs at
+    most A and reaches the floor, if one is set), or without an abstain cost the milestone 2a rule (P(placed_stable) at
+    the threshold). The policy that never probes follows it (plan m4 decision 2)."""
+    if recommendation != "probe":
+        return recommendation
+    same = [o for o in options if o.kind in ("commit", "lower_risk") and o.action.get("destination") == destination]
+    if not same:
+        return "decline"
+    best = min(same, key=lambda o: o.expected_cost)
+    if abstain_cost is None:
+        floor = DEFAULT_THRESHOLD if threshold is None else float(threshold)
+        return "commit" if best.pred.p["placed_stable"] >= floor else "decline"
+    return _cost_rule([o for o in options if o.kind != "probe"], best, care, float(abstain_cost), threshold)[0]
+
+
 def _cost_rule(options: list[Option], best: Option, care: str | float, A: float, floor: float | None) -> tuple[str, str]:
     """(recommendation, decline reason) under the cost rule: commit when the best row costs at most A (and reaches
     the floor, if one is set), a probe that beats the cheaper of the two by more than EVOI_Z errors, else decline."""

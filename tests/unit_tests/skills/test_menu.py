@@ -1106,3 +1106,29 @@ def test_heldout_rows_of_distinct_draws_are_the_per_particle_rows():
     assert np.array_equal(heldout_rows(C, u, 2, groups=groups), heldout_rows(C, u, 2))
     u[5:] = 0.0                                                     # the first five keep all the weight
     assert np.array_equal(heldout_rows(C, u, 2, groups=groups), heldout_rows(C, u, 2))
+
+
+# ---------------------------------------------------------------- the exact no-probe recommendation (milestone 4)
+from rpent.skills.pick_place.protocol import Option  # noqa: E402
+
+
+def _row(id_, kind, cost, p_ok=0.9):
+    pred = None if kind == "probe" else Prediction(p={**{k: 0.0 for k in OUTCOMES}, "placed_stable": p_ok, "not_lifted": 1.0 - p_ok})
+    action = {"probe": "push"} if kind == "probe" else {"destination": "table_centre"}
+    return Option(id=id_, kind=kind, action=action, pred=pred, cost_s=8.0, expected_cost=cost)
+
+
+def test_without_probe_uses_the_unrounded_cost():
+    """Plan m4 decision 2: the recommendation without the probe rows comes from the unrounded costs (the payload rounds
+    to 0.001, so a best row within 0.0005 of A read back from it can go either way)."""
+    from rpent.skills.pick_place.menu import without_probe
+
+    probe = _row("probe_push", "probe", 0.5)
+    assert without_probe([probe, _row("commit_std", "commit", 1.0004)], "probe", "table_centre", "normal", 1.0, None) == "decline"
+    assert without_probe([probe, _row("commit_std", "commit", 0.9996)], "probe", "table_centre", "normal", 1.0, None) == "commit"
+    assert without_probe([_row("commit_std", "commit", 0.9996)], "decline", "table_centre", "normal", 1.0, None) == "decline"
+    assert without_probe([_row("commit_std", "commit", 5.0)], "commit", "table_centre", "normal", 1.0, None) == "commit"
+    assert without_probe([probe, _row("commit_std", "commit", 0.9, p_ok=0.6)], "probe", "table_centre", "normal", 1.0, 0.7) == "decline"
+    assert without_probe([probe, _row("commit_std", "commit", 5.0, p_ok=0.75)], "probe", "table_centre", "normal", None, 0.7) == "commit"
+    assert without_probe([probe, _row("commit_std", "commit", 5.0, p_ok=0.65)], "probe", "table_centre", "normal", None, 0.7) == "decline"
+    assert without_probe([probe], "probe", "table_centre", "normal", 1.0, None) == "decline"

@@ -20,8 +20,8 @@ substrate's prior over the hidden properties, ``.readout_model`` and ``.probe_mo
 attempts and probes into belief updates, and ``.guard``, the novelty guard (guard.KnnGuard)) and ``store`` (a dict that holds the per-episode
 assessments and beliefs; separate from RPent's EnvState).
 
-The belief lives in ``store["beliefs"][object_id]`` (``{"episode", "belief", "probes_run"}``) for one
-episode; every attempt appends a history entry ``{"type", "base", "pose", "force", "planned", "obs",
+The belief lives in ``store["beliefs"][object_id]`` (``{"episode", "belief", "probes_run", "probe_seq", "attempted"}``)
+for one episode; every attempt appends a history entry ``{"type", "base", "pose", "force", "planned", "obs",
 "used_terms", "rejected_terms"}`` and reweights it (``update_belief``), and every cached assessment is
 then stale. A probe or an attempt that damages the object ends the case: the record keeps the damage label
 (``"damaged"``) and the object gets no menu for the rest of the episode.
@@ -38,7 +38,7 @@ from rpent.skills.pick_place.costs import care_scale, prediction_matrix, probe_t
 from rpent.skills.pick_place.destinations import DESTINATIONS
 from rpent.skills.pick_place.diagnose import diagnose
 from rpent.skills.pick_place.features import A_TRANSPORT, model_names, particle_matrix, particle_sides
-from rpent.skills.pick_place.menu import build_menu, estimate, geometry_pose, pinch_limit
+from rpent.skills.pick_place.menu import build_menu, estimate, geometry_pose, pinch_limit, without_probe
 from rpent.skills.pick_place.probes import DAMAGED
 from rpent.skills.pick_place.protocol import DAMAGE, IRREVERSIBLE, OUTCOMES, RECOVERABLE, Assessment, Option
 from rpent.tools.base import ToolResult, tool
@@ -48,6 +48,10 @@ MIN_FORCE_N = 10.0
 MODES = ("commit", "assess_only", "probe_first")
 PROBE_OPTIONS = {"probe_push": "push", "probe_weigh": "weigh", "probe_squeeze": "squeeze"}
 MAX_PROBES = 2                    # probe_first runs at most this many probes per call
+PROBE_FOLLOWS = {"push": ("weigh",)}   # the probes that may follow a probe: the probe models cover probes from rest
+                                       # and the weigh after the push (the probe corpus's scenes); primitives.probe_follows
+                                       # overrides it
+AFTER_ATTEMPT = "no probe after an attempt: the probe models cover probes from rest"
 REFRESH_ESS = MIN_ESS             # update_belief refreshes when the effective particles fall below this
 FLOOR_P = 1e-4                    # the outcome term's floor without a readout model
 OUT_OF_REACH = {"assessed": False, "reason": "object is out of reach (floor or bin)", "next": "report it; the skill cannot reach it"}
@@ -93,9 +97,33 @@ def _belief_record(loc: dict[str, Any], env: Any, primitives: Any, store: dict[s
     episode = int(getattr(env, "episode", 0))
     rec = _beliefs(store).get(loc["object_id"])
     if rec is None or rec["episode"] != episode:
-        rec = {"episode": episode, "belief": _prior_belief(loc, env, primitives), "probes_run": set()}
+        rec = {"episode": episode, "belief": _prior_belief(loc, env, primitives), "probes_run": set(), "probe_seq": [],
+               "attempted": False}
         _beliefs(store)[loc["object_id"]] = rec
     return rec
+
+
+def _probes_allowed(rec: dict[str, Any], primitives: Any) -> set[str] | None:
+    """The probes the menu may offer now (plan m4 decision 1): every probe before the first one, after one probe those
+    that may follow it (PROBE_FOLLOWS), none after two probes or after an attempt. None: no restriction yet."""
+    if rec.get("attempted"):
+        return set()
+    seq = rec.get("probe_seq") or []
+    if not seq:
+        return None
+    follows = getattr(primitives, "probe_follows", None) or PROBE_FOLLOWS
+    return set(follows.get(seq[-1], ())) if len(seq) == 1 else set()
+
+
+def _probe_refusal(probe: str, rec: dict[str, Any], primitives: Any) -> str | None:
+    """Why a named probe is not offered now, or None when the sequence allows it."""
+    allowed = _probes_allowed(rec, primitives)
+    if allowed is None or probe in allowed:
+        return None
+    if rec.get("attempted"):
+        return f"probe_{probe} is not offered: probes run only before the first attempt of an episode ({AFTER_ATTEMPT})"
+    return (f"probe_{probe} cannot follow the {rec['probe_seq'][-1]}: the probe models cover probes from rest and the weigh "
+            "after the push")
 
 
 def _damage_of(loc: dict[str, Any], env: Any, store: dict[str, Any]) -> str | None:
@@ -185,7 +213,9 @@ def _assess(object: str, destination: str, care: str | float, primitives: Any,
     belief = _belief_record(loc, env, primitives, store)["belief"]
     rec = _belief_record(loc, env, primitives, store)
     f_std = standard_force(env.nominal_mass(loc["object_id"]))
-    probes = {p: m for p, m in (getattr(primitives, "probe_models", None) or {}).items() if p not in rec["probes_run"]}
+    allowed = _probes_allowed(rec, primitives)
+    probes = {p: m for p, m in (getattr(primitives, "probe_models", None) or {}).items()
+              if p not in rec["probes_run"] and (allowed is None or p in allowed)}
     options, recommendation = build_menu(primitives.model, belief, geometry, proposals, f_std, care, destination,
                                          env.plan_trajectory, primitives.rng, pose_fn=pose_fn, max_open=pinch_limit(env),
                                          threshold=getattr(primitives, "threshold", None), probe_models=probes or None,
@@ -194,9 +224,12 @@ def _assess(object: str, destination: str, care: str | float, primitives: Any,
     evidence = belief.summary() + [f"standard squeeze {f_std:.0f} N per pad", f"{len(proposals)} pinch proposals along the long axis"]
     if rec["probes_run"]:
         evidence.append(f"probes run this episode: {', '.join(sorted(rec['probes_run']))}")
+    if rec.get("attempted") and getattr(primitives, "probe_models", None):
+        evidence.append(AFTER_ATTEMPT)
     a = Assessment(object=object, destination=destination, options=options, evidence=evidence,
                    recommendation=recommendation, care=care, visibility=belief.visibility, episode=key[3], care_scale=scale,
-                   abstain_cost=None if abstain is None else float(abstain), probe_time_scale=time_scale)
+                   abstain_cost=None if abstain is None else float(abstain), probe_time_scale=time_scale,
+                   without_probe=without_probe(options, recommendation, destination, care, abstain, getattr(primitives, "threshold", None)))
     cache[key] = {"assessment": a, "menu": {o.id: o for o in options}, "belief": belief}
     return None, a
 
@@ -265,6 +298,7 @@ def _run_probe(row: Option, object: str, destination: str, care: str, primitives
     else:
         res = env.probe_push()
     rec["probes_run"].add(probe)
+    rec["probe_seq"].append(probe)
     damage = getattr(res, "damage", None)
     if res.kind == DAMAGED or damage:
         rec["damaged"] = (damage or {}).get("label") or DAMAGED
@@ -295,6 +329,7 @@ def _attempt(option: Option, object: str, destination: str, care: str, primitive
     act = option.action
     r = env.execute(prop, act["force"], act["v_lift"], act["v_transport"], act["destination"], act.get("release_height"),
                     a_transport=act.get("a_transport", A_TRANSPORT))
+    rec["attempted"] = True
     if r.label in DAMAGE:
         rec["damaged"] = r.label
     declared = option.to_data()
@@ -373,7 +408,7 @@ def pick_and_place(*, object: str, destination: str = "bin", mode: str = "commit
     With no option_id the best row for the requested destination runs, unless the
     recommendation is decline or probe (then nothing runs; pass an option_id to override). Rows that change the destination
     (inboard_place) run only when named. option_id "probe_push", "probe_weigh" or "probe_squeeze" runs that probe
-    (once per episode): the object is pushed, lifted 2 cm and set back, or squeezed in place; the belief is updated,
+    (once per episode, before the first attempt; after the push only the weigh): the object is pushed, lifted 2 cm and set back, or squeezed in place; the belief is updated,
     and nothing is placed. A probe or an attempt that damages the object ends the case: every later call this
     episode returns "object is damaged". mode "probe_first" runs the recommended probes (at most two, while the
     recommendation is probe), then commits as above; mode "assess_only" returns the assessment
@@ -400,8 +435,12 @@ def pick_and_place(*, object: str, destination: str = "bin", mode: str = "commit
         return ToolResult(data=a.to_data())
     if option_id in PROBE_OPTIONS:
         loc = primitives.env.locate(object)
-        if PROBE_OPTIONS[option_id] in _belief_record(loc, primitives.env, primitives, store)["probes_run"]:
+        rec = _belief_record(loc, primitives.env, primitives, store)
+        if PROBE_OPTIONS[option_id] in rec["probes_run"]:
             return ToolResult(data={"error": f"{option_id} already ran this episode; the menu shows what is left"})
+        refusal = _probe_refusal(PROBE_OPTIONS[option_id], rec, primitives)
+        if refusal is not None:
+            return ToolResult(data={"error": refusal})
         row = next((o for o in a.options if o.id == option_id), None)
         if row is None:
             return ToolResult(data={"error": f"{option_id} is not on the menu: no row to the requested destination to probe for"})
