@@ -31,6 +31,7 @@ fragility.liquid), the object may carry a hidden fragility (``reset(frag=...)``)
 
 from __future__ import annotations
 
+import copy
 import importlib
 import math
 import os
@@ -312,6 +313,8 @@ class MuJoCoLabEnv:
         self.rest_low_z = 0.0
         self.fixtures_in_scene: list[str] = [f["name"] for f in PRIMITIVE_FIXTURES]
         self.fixture: str | None = None
+        self._case: dict[str, Any] | None = None      # the last reset's arguments (restore rebuilds from them)
+        self._start: dict[str, Any] | None = None     # the last reset's start state (restore_check compares with it)
 
     # ------------------------------------------------------------------ setup
     @staticmethod
@@ -348,6 +351,54 @@ class MuJoCoLabEnv:
               fixture: str | None = None, fill: float = 0.0, frag: dict[str, Any] | None = None) -> None:
         """``fill``: the share of a fillable object's cavity that holds water (0: empty); ``frag``: its hidden
         fragility (fragility.map_latent's keys; None: nothing can damage it)."""
+        self._build(object_id, theta, com_end, fixture, fill, frag)
+        # the reset's stream (the squeeze noise) is per seed and object: every object of a draw is reset with one seed
+        self.rng = np.random.default_rng([int(seed), zlib.crc32(object_id.encode())])
+        # the force readings' own stream, so the squeeze's stays as it was
+        self.force_rng = np.random.default_rng([int(seed), zlib.crc32(object_id.encode()), FORCE_STREAM])
+        self._refresh_baselines()
+        self.episode += 1
+        self._case = {"object_id": object_id, "theta": copy.deepcopy(theta), "com_end": com_end, "fixture": fixture, "fill": fill,
+                      "frag": copy.deepcopy(frag)}
+        self._start = self._state()
+
+    def restore(self) -> dict[str, Any]:
+        """The recovery mode (plan H3 decision 3): rebuild the last reset's start state, the object with its hidden
+        properties, CoM end, fixture, fill and fragility, settled at rest with the hand at home and nothing damaged.
+        The episode stays and the sensor streams (``rng``, ``force_rng``) go on: no reseed, no rewind. Returns
+        restore_check() (plan H3 gate Gr)."""
+        if self._case is None:
+            raise RuntimeError("call reset() first")
+        self._build(**self._case)
+        self._refresh_baselines()
+        return self.restore_check()
+
+    def _state(self) -> dict[str, Any]:
+        sim = self.sim
+        return {"pos": sim.obj_pos().copy(), "mat": sim.obj_mat().copy(), "qpos": sim.d.qpos.copy(), "qvel": sim.d.qvel.copy(),
+                "mocap": np.concatenate([sim.d.mocap_pos.ravel(), sim.d.mocap_quat.ravel()]), "theta": copy.deepcopy(self.theta),
+                "fill": self.fill, "frag": copy.deepcopy(self.frag), "fixture": self.fixture, "episode": self.episode}
+
+    def restore_check(self) -> dict[str, Any]:
+        """The scene against the last reset's start state: the object's position error (mm) and rotation error (deg),
+        the largest joint-position, joint-velocity and mocap differences, whether theta, fill, fragility and the
+        fixture are the reset's (``same_case``), whether the episode is, and whether the scene came to rest."""
+        s0, s1 = self._start, self._state()
+
+        def diff(a: np.ndarray, b: np.ndarray) -> float:
+            return float(np.max(np.abs(a - b), initial=0.0)) if a.shape == b.shape else math.inf
+
+        cos = (np.trace(s0["mat"].T @ s1["mat"]) - 1.0) / 2.0
+        return {"pos_err_mm": float(1000.0 * np.linalg.norm(s1["pos"] - s0["pos"])),
+                "rot_err_deg": math.degrees(math.acos(float(np.clip(cos, -1.0, 1.0)))),
+                "qpos_err": diff(s1["qpos"], s0["qpos"]), "qvel_err": diff(s1["qvel"], s0["qvel"]), "mocap_err": diff(s1["mocap"], s0["mocap"]),
+                "same_case": bool(s1["theta"] == s0["theta"] and s1["fill"] == s0["fill"] and s1["frag"] == s0["frag"]
+                                  and s1["fixture"] == s0["fixture"]),
+                "episode": s1["episode"] == s0["episode"], "at_rest": bool(self.reset_info.get("at_rest"))}
+
+    def _build(self, object_id: str, theta: dict[str, Any] | None, com_end: int, fixture: str | None, fill: float,
+               frag: dict[str, Any] | None) -> None:
+        """One case's scene settled at rest: everything reset() does except the streams and the episode."""
         sc, gr, ob, t3 = self.s["scene"], self.s["grasp"], self.s["objects"], self.s["t3_make"]
         o = ob.BY_ID[object_id]
         props = object_props(object_id)
@@ -384,12 +435,6 @@ class MuJoCoLabEnv:
         self._onto_table()
         self.reset_info = self._settle_to_rest()
         self.obj, self.props, self.theta, self.com_end = o, props, th, com_end
-        # the reset's stream (the squeeze noise) is per seed and object: every object of a draw is reset with one seed
-        self.rng = np.random.default_rng([int(seed), zlib.crc32(object_id.encode())])
-        # the force readings' own stream, so the squeeze's stays as it was
-        self.force_rng = np.random.default_rng([int(seed), zlib.crc32(object_id.encode()), FORCE_STREAM])
-        self._refresh_baselines()
-        self.episode += 1
 
     def _onto_table(self) -> None:
         """An object that left the table in its rest-pose drop (it toppled and rolled off) comes back with

@@ -25,6 +25,12 @@ for one episode; every attempt appends a history entry ``{"type", "base", "pose"
 "used_terms", "rejected_terms"}`` and reweights it (``update_belief``), and every cached assessment is
 then stale. A probe or an attempt that damages the object ends the case: the record keeps the damage label
 (``"damaged"``) and the object gets no menu for the rest of the episode.
+
+The recovery mode (``primitives.reset_s``, plan H3 decision 3): an irreversible attempt, or a probe that throws or
+damages the object, is followed in the same call by ``env.restore()`` (the case's start state; the episode and the
+sensor streams go on), the damage latch is cleared, the record keeps ``restored`` (no probe after it), and the call
+returns the restored object's fresh assessment with the payload's ``restored`` record. The belief keeps what the event
+taught.
 """
 
 from __future__ import annotations
@@ -52,6 +58,7 @@ PROBE_FOLLOWS = {"push": ("weigh",)}   # the probes that may follow a probe: the
                                        # and the weigh after the push (the probe corpus's scenes); primitives.probe_follows
                                        # overrides it
 AFTER_ATTEMPT = "no probe after an attempt: the probe models cover probes from rest"
+AFTER_RESTORE = "no probe after a restore: the probe models cover probes from rest of an untouched object"
 REFRESH_ESS = MIN_ESS             # update_belief refreshes when the effective particles fall below this
 FLOOR_P = 1e-4                    # the outcome term's floor without a readout model
 OUT_OF_REACH = {"assessed": False, "reason": "object is out of reach (floor or bin)", "next": "report it; the skill cannot reach it"}
@@ -105,8 +112,9 @@ def _belief_record(loc: dict[str, Any], env: Any, primitives: Any, store: dict[s
 
 def _probes_allowed(rec: dict[str, Any], primitives: Any) -> set[str] | None:
     """The probes the menu may offer now (plan m4 decision 1): every probe before the first one, after one probe those
-    that may follow it (PROBE_FOLLOWS), none after two probes or after an attempt. None: no restriction yet."""
-    if rec.get("attempted"):
+    that may follow it (PROBE_FOLLOWS), none after two probes, after an attempt or after a restore (plan H3). None: no
+    restriction yet."""
+    if rec.get("attempted") or rec.get("restored"):
         return set()
     seq = rec.get("probe_seq") or []
     if not seq:
@@ -120,6 +128,8 @@ def _probe_refusal(probe: str, rec: dict[str, Any], primitives: Any) -> str | No
     allowed = _probes_allowed(rec, primitives)
     if allowed is None or probe in allowed:
         return None
+    if rec.get("restored"):
+        return f"probe_{probe} is not offered: {AFTER_RESTORE}"
     if rec.get("attempted"):
         return f"probe_{probe} is not offered: probes run only before the first attempt of an episode ({AFTER_ATTEMPT})"
     return (f"probe_{probe} cannot follow the {rec['probe_seq'][-1]}: the probe models cover probes from rest and the weigh "
@@ -229,6 +239,8 @@ def _assess(object: str, destination: str, care: str | float, primitives: Any,
         evidence.append(f"probes run this episode: {', '.join(sorted(rec['probes_run']))}")
     if rec.get("attempted") and getattr(primitives, "probe_models", None):
         evidence.append(AFTER_ATTEMPT)
+    if rec.get("restored"):
+        evidence.append(f"restored after {rec['restored']['event']} ({rec['restored']['after']}); {AFTER_RESTORE}")
     a = Assessment(object=object, destination=destination, options=options, evidence=evidence,
                    recommendation=recommendation, care=care, visibility=belief.visibility, episode=key[3], care_scale=scale,
                    abstain_cost=None if abstain is None else float(abstain), probe_time_scale=time_scale, reset_s=reset_s,
@@ -289,6 +301,16 @@ def _update(rec: dict[str, Any], entry: dict[str, Any], loc: dict[str, Any], pri
     return before, after
 
 
+def _restore(rec: dict[str, Any], env: Any, after: str, event: str) -> dict[str, Any]:
+    """The recovery mode (plan H3 decision 3): the lab rebuilds the case's start state (env.restore()), the damage
+    latch is cleared and the record keeps ``restored``; the belief stays. The caller reassesses next (_reassess clears
+    the cached assessments). Returns the payload's record: after, event and the lab's check (plan H3 gate Gr)."""
+    check = env.restore()
+    rec.pop("damaged", None)
+    rec["restored"] = {"after": after, "event": event}
+    return {"after": after, "event": event, "check": check}
+
+
 def _run_probe(row: Option, object: str, destination: str, care: str, primitives: Any, store: dict[str, Any]) -> dict[str, Any]:
     """Run one probe row, update the belief with its result, and return the probe payload. A probe that damages
     the object ends the case (its fresh assessment says so); the reading's noise (HIDDEN_READING) stays out."""
@@ -310,11 +332,14 @@ def _run_probe(row: Option, object: str, destination: str, care: str, primitives
     entry = {"type": "probe", "option": row.id, "base": row._base, "pose": row._pose, "force": float(act["force"]), "planned": None,
              "obs": {"probe": probe, "kind": res.kind, "reading": dict(reading), "thrown": bool(res.thrown)}}
     before, after = _update(rec, entry, loc, primitives)
-    return {"probed": probe, "placed": False, "kind": res.kind, "reading": reading,
-            "displacement_m": res.displacement_m, "tilt_deg": res.tilt_deg, "thrown": bool(res.thrown), "seconds": res.seconds,
-            "artifact": bool(getattr(res, "artifact", False)), "damage": damage,
-            "declared": row.to_data()["probe"], "belief_before": before.to_data(),
-            "belief": after.to_data(), "assessment": _reassess(object, destination, care, primitives, store)}
+    out = {"probed": probe, "placed": False, "kind": res.kind, "reading": reading,
+           "displacement_m": res.displacement_m, "tilt_deg": res.tilt_deg, "thrown": bool(res.thrown), "seconds": res.seconds,
+           "artifact": bool(getattr(res, "artifact", False)), "damage": damage,
+           "declared": row.to_data()["probe"], "belief_before": before.to_data(), "belief": after.to_data()}
+    if getattr(primitives, "reset_s", None) is not None and (res.thrown or rec.get("damaged")):
+        out["restored"] = _restore(rec, env, "probe", rec.get("damaged") or "thrown")
+    out["assessment"] = _reassess(object, destination, care, primitives, store)
+    return out
 
 
 def _meter_max(meter: dict[str, Any] | None) -> dict[str, float]:
@@ -341,7 +366,7 @@ def _attempt(option: Option, object: str, destination: str, care: str, primitive
     entry = {"type": "attempt", "option": option.id, "base": option._base, "pose": option._pose, "force": float(act["force"]),
              "planned": option._planned, "obs": {"label": r.label, "readouts": readouts, "force": float(act["force"])}}
     before, after = _update(rec, entry, loc, primitives)
-    return {
+    out = {
         "placed": r.label == "placed_stable",
         "placed_at_requested": r.label == "placed_stable" and act["destination"] == destination,
         "outcome": r.label,
@@ -363,8 +388,11 @@ def _attempt(option: Option, object: str, destination: str, care: str, primitive
                               mu_range=(float(np.min(before.arrays()["mu"])), float(np.max(before.arrays()["mu"])))),
         "belief_before": before.to_data(),
         "belief": after.to_data(),
-        "assessment": _reassess(object, destination, care, primitives, store),
     }
+    if getattr(primitives, "reset_s", None) is not None and r.label in IRREVERSIBLE:
+        out["restored"] = _restore(rec, env, "attempt", r.label)
+    out["assessment"] = _reassess(object, destination, care, primitives, store)
+    return out
 
 
 def _commit(a: Assessment, option_id: str | None, object: str, destination: str, care: str, primitives: Any,

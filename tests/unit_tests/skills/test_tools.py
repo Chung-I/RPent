@@ -917,3 +917,83 @@ def test_the_reset_reaches_the_menu_and_the_payload():
     prims.reset_s = -1.0
     assert "reset" in assess_pick(object="mug", destination="table_centre", primitives=prims, store={}).data["error"]
 
+
+
+# ---------------------------------------------------------------- the restore (plan H3 decision 3)
+PERFECT_CHECK = {"pos_err_mm": 0.0, "rot_err_deg": 0.0, "qpos_err": 0.0, "qvel_err": 0.0, "mocap_err": 0.0, "same_case": True,
+                 "episode": True, "at_rest": True}
+
+
+class _RestoreEnv(_DamageEnv):
+    """A damage env that counts restore() calls."""
+
+    def __init__(self, results):
+        super().__init__(results)
+        self.restores = 0
+
+    def restore(self):
+        self.restores += 1
+        return dict(PERFECT_CHECK)
+
+
+def test_recovery_restores_after_an_irreversible_attempt():
+    """Under reset_s an irreversible outcome (dropped_high, or a damage label) is followed by env.restore(), the damage
+    latch is cleared and the call returns the restored object's fresh assessment; without reset_s nothing is restored,
+    and a recoverable outcome is never restored."""
+    for label in ("dropped_high", "spilled"):
+        env = _RestoreEnv([(label, _hold(0.3))])
+        prims, store = _bprims(env), {}
+        prims.reset_s = 20.0
+        d = _commit(prims, store)
+        assert env.restores == 1 and d["restored"] == {"after": "attempt", "event": label, "check": PERFECT_CHECK}
+        assert d["assessment"]["assessed"] is True and "damaged" not in store["beliefs"]["ycb__mug"]
+        assert store["beliefs"]["ycb__mug"]["restored"] == {"after": "attempt", "event": label}
+        env = _RestoreEnv([(label, _hold(0.3))])
+        assert "restored" not in _commit(_bprims(env), {}) and env.restores == 0
+    env = _RestoreEnv([("tipped", _hold(0.3))])
+    prims = _bprims(env)
+    prims.reset_s = 20.0
+    assert "restored" not in _commit(prims, {}) and env.restores == 0
+
+
+def test_the_belief_survives_a_restore():
+    """The restore keeps what the event taught: the posterior after the dropped attempt is the belief of the fresh
+    assessment, and its history ends with the attempt."""
+    env = _RestoreEnv([("dropped_high", _hold(0.3))])
+    prims, store = _bprims(env), {}
+    prims.reset_s = 20.0
+    d = _commit(prims, store)
+    rec = store["beliefs"]["ycb__mug"]
+    assert env.restores == 1 and rec["episode"] == env.episode
+    assert rec["belief"].history[-1]["obs"]["label"] == "dropped_high" and rec["attempted"] is True
+    assert store["pick_place"][KEY]["belief"] is rec["belief"] and d["belief"] == rec["belief"].to_data()
+
+
+class _RestoreProbeEnv(_SqueezeEnv):
+    """A crushable probe env whose restore() brings a thrown object back within reach."""
+
+    def __init__(self, results=(), probes=()):
+        super().__init__(results, probes)
+        self.restores = 0
+
+    def restore(self):
+        self.restores += 1
+        self.reachable = True
+        return dict(PERFECT_CHECK)
+
+
+def test_no_probe_after_a_restore():
+    """Under reset_s a thrown push and a crushing squeeze are restored; the fresh menu then offers no probe, and a named
+    probe is refused with the reason (an erased push no longer allows the weigh)."""
+    for probe, res in (("push", _push(thrown=True)), ("squeeze", _squeeze())):
+        env = _RestoreProbeEnv(probes=[res])
+        prims, store = _bprims(env, probe_models={"push": PerfectPush(), "weigh": FlatWeigh(), "squeeze": FlatSqueeze()},
+                               model=MuGate(f_std=10.0)), {}
+        prims.reset_s = 20.0
+        d = pick_and_place(object="mug", destination="table_centre", option_id=f"probe_{probe}", primitives=prims, store=store).data
+        assert env.restores == 1 and d["restored"]["after"] == "probe"
+        assert d["restored"]["event"] == ("thrown" if probe == "push" else "crushed")
+        a = d["assessment"]
+        assert a["assessed"] is True and not [o for o in a["options"] if o["kind"] == "probe"]
+        e = pick_and_place(object="mug", destination="table_centre", option_id="probe_weigh", primitives=prims, store=store).data
+        assert "no probe after a restore" in e["error"]

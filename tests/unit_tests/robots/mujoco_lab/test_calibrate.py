@@ -885,3 +885,105 @@ def test_the_output_records_its_code_revision(tmp_path):
     rev = saved["code"]["revision"]
     assert (rev is None or re.fullmatch(r"[0-9a-f]{40}", rev)) and saved["code"]["dirty"] in (True, False, None)
     assert saved["cases"] is None and not list(tmp_path.glob("*.tmp"))
+
+
+
+# ---------------------------------------------------------------- the recovery mode (plan H3 decision 3)
+class _RestoringScript(_Script):
+    """A scripted case under the recovery mode: an irreversible attempt, or a thrown probe (``thrown``), comes back
+    restored with the skill's restore record."""
+
+    def __init__(self, assessments, outcomes, thrown=False):
+        super().__init__(assessments, outcomes)
+        self.thrown = thrown
+
+    def pick(self, **kw):
+        d = super().pick(**kw).data
+        if "probed" in d and self.thrown:
+            d.update(thrown=True, restored={"after": "probe", "event": "thrown", "check": {"same_case": True}})
+        elif d.get("outcome") in ("dropped_high", "rolled_off", "crushed", "bruised", "broken", "spilled"):
+            d["restored"] = {"after": "attempt", "event": d["outcome"], "check": {"same_case": True}}
+        return SimpleNamespace(data=d)
+
+
+def _restoring(monkeypatch, assessments, outcomes, thrown=False):
+    from robots.mujoco_lab import calibrate
+
+    sc = _RestoringScript(assessments, outcomes, thrown)
+    monkeypatch.setattr(calibrate, "assess_pick", sc.assess)
+    monkeypatch.setattr(calibrate, "pick_and_place", sc.pick)
+    return sc
+
+
+def test_recovery_retries_after_an_irreversible_event(monkeypatch):
+    """Under reset_s 20 a dropped_high comes back restored and the policy retries: dropped_high then placed costs
+    0.05 x (8 + 8) + 1.0 and ends placed; absorbing, the same script ends after the drop at 5 kappa + A + 0.05 x 8."""
+    from robots.mujoco_lab.calibrate import run_protocol
+    from rpent.skills.pick_place.costs import TIME_COST_PER_S
+
+    sc = _restoring(monkeypatch, [_assessment("commit")] * 3, ["dropped_high", "placed_stable"])
+    case = run_protocol(SimpleNamespace(abstain_cost=10.0, reset_s=20.0), "policy", "table_centre", np.random.default_rng(0), care=10.0)
+    assert sc.calls == ["commit_std", "commit_std"] and case["ended"] == "placed"
+    assert case["cost"] == pytest.approx(TIME_COST_PER_S * 16.0 + 1.0)
+    assert [(r["after"], r["event"]) for r in case["restores"]] == [("attempt", "dropped_high")]
+    sc = _scripted(monkeypatch, [_assessment("commit")] * 3, ["dropped_high", "placed_stable"])
+    case = run_protocol(SimpleNamespace(abstain_cost=10.0), "policy", "table_centre", np.random.default_rng(0), care=10.0)
+    assert sc.calls == ["commit_std"] and case["ended"] == "failed" and case["restores"] == []
+    assert case["cost"] == pytest.approx(50.0 + 10.0 + TIME_COST_PER_S * 8.0)
+
+
+def test_a_restored_probe_does_not_end_the_case(monkeypatch):
+    """Under reset_s a thrown probe costs its time and the reset (0.05 x 20), the object comes back, and the case goes
+    on to the next assessment's row."""
+    from robots.mujoco_lab.calibrate import run_protocol
+    from rpent.skills.pick_place.costs import TIME_COST_PER_S
+    from rpent.skills.pick_place.probes import PROBE_SECONDS
+
+    sc = _restoring(monkeypatch, [_assessment("probe", probe=True), _assessment("commit"), _assessment("commit")], ["placed_stable"],
+                    thrown=True)
+    case = run_protocol(SimpleNamespace(abstain_cost=10.0, reset_s=20.0), "policy", "table_centre", np.random.default_rng(0), care=10.0)
+    assert sc.calls == ["probe_push", "commit_std"] and case["ended"] == "placed"
+    assert case["probes"][0]["cost"] == pytest.approx(TIME_COST_PER_S * (PROBE_SECONDS["push"] + 20.0))
+    assert case["cost"] == pytest.approx(TIME_COST_PER_S * (PROBE_SECONDS["push"] + 20.0 + 8.0))
+    assert [(r["after"], r["event"]) for r in case["restores"]] == [("probe", "thrown")]
+
+
+def test_the_reset_prices_the_realized_costs():
+    from robots.mujoco_lab.calibrate import attempt_cost, probe_cost
+    from rpent.skills.pick_place.costs import TIME_COST_PER_S
+    from rpent.skills.pick_place.probes import PROBE_SECONDS
+
+    assert attempt_cost("dropped_high", 8.0, 10.0, reset_s=20.0) == pytest.approx(TIME_COST_PER_S * 28.0)
+    assert attempt_cost("dropped_high", 8.0, 10.0) == pytest.approx(50.0 + TIME_COST_PER_S * 8.0)
+    assert attempt_cost("tipped", 8.0, 10.0, reset_s=20.0) == attempt_cost("tipped", 8.0, 10.0)
+    assert probe_cost("squeeze", "damaged", False, 10.0, reset_s=0.0) == pytest.approx(TIME_COST_PER_S * PROBE_SECONDS["squeeze"])
+
+
+def test_reset_argument_reaches_the_workers_and_the_output(tmp_path):
+    import argparse
+
+    from robots.mujoco_lab.calibrate import _reset_arg, attempt_cost, main, run_reset_s
+
+    assert _reset_arg("20") == 20.0 and _reset_arg("0") == 0.0
+    for bad in ("-1", "nan", "inf", "x"):
+        with pytest.raises(argparse.ArgumentTypeError):
+            _reset_arg(bad)
+    assert run_reset_s([{"reset_s": 20.0}, {"error": "x"}]) == 20.0 and run_reset_s([{"reset_s": None}]) is None
+    out = tmp_path / "c.json"
+    main(["--metrics", METRICS, "--repeats", "1", "--out", str(out), "--objects", "ycb__banana", "--seed", "2", "--care", "10",
+          "--abstain-cost", "2", "--reset-s", "20"])
+    saved = json.load(open(out))
+    assert saved["reset_s"] == 20.0 and saved["rows"][0]["reset_s"] == 20.0
+    t = saved["rows"][0]["attempts"][0]
+    assert t["cost"] == pytest.approx(attempt_cost(t["outcome"], t["cost_s"], 10.0, reset_s=20.0))
+
+
+def test_compare_refuses_runs_with_different_reset_times():
+    """plan H3: a file without the field reads as absorbing (no reset)."""
+    from robots.mujoco_lab.calibrate import compare
+
+    row = {"object": "o", "idx": 0, "cost": 1.0, "attempts": []}
+    a = {"protocol": "policy", "care_scale": 1.0, "abstain_cost": 1.0, "rows": [row]}
+    with pytest.raises(ValueError, match="different costs"):
+        compare(a, dict(a, reset_s=20.0), np.random.default_rng(0))
+    assert compare(a, dict(a, reset_s=None), np.random.default_rng(0))["n_paired"] == 1

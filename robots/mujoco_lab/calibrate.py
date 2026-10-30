@@ -85,7 +85,7 @@ import numpy as np
 
 from robots.mujoco_lab import tracking
 from robots.mujoco_lab.corpus import apply_damage, case_rng, damage_rng, draw_damage, draw_theta, trainable
-from rpent.skills.pick_place.costs import COST, TIME_COST_PER_S, care_scale, probe_time_scale
+from rpent.skills.pick_place.costs import COST, TIME_COST_PER_S, care_scale, irreversible_cost, probe_time_scale, reset_time
 from rpent.skills.pick_place.destinations import MESH_IDS, PRIMITIVE_IDS
 from rpent.skills.pick_place.evaluate import (_ece, coverage_design, ece_ci, ece_from_sums, ece_iid_floor,
                                               object_sums, object_weights, per_class, score)
@@ -106,19 +106,24 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 
 # ---------------------------------------------------------------- costs
 
-def attempt_cost(outcome: str, cost_s: float, care: str | float = CARE) -> float:
-    """An executed row: its outcome's cost (care scales the irreversible ones) and its time."""
+def attempt_cost(outcome: str, cost_s: float, care: str | float = CARE, reset_s: float | None = None) -> float:
+    """An executed row: its outcome's cost (care scales the irreversible ones; under the recovery mode, ``reset_s``,
+    an irreversible one costs the reset's time, plan H3) and its time."""
+    if reset_s is not None and outcome in IRREVERSIBLE:
+        return float(irreversible_cost(care, reset_s) + TIME_COST_PER_S * float(cost_s))
     return float(COST[outcome] * (care_scale(care) if outcome in IRREVERSIBLE else 1.0) + TIME_COST_PER_S * float(cost_s))
 
 
-def probe_cost(probe: str, kind: str, thrown: bool, care: str | float = CARE, time_scale: float = 1.0) -> float:
+def probe_cost(probe: str, kind: str, thrown: bool, care: str | float = CARE, time_scale: float = 1.0,
+               reset_s: float | None = None) -> float:
     """An executed probe: its time (times ``time_scale``, plan 2b2 decision 4), a tipped push, and a thrown or damaged
-    object, charged once (the probe row's expected-cost terms; the case adds A when it ends, see run_protocol)."""
+    object, charged once (the probe row's expected-cost terms; the case adds A when it ends, see run_protocol); under the
+    recovery mode (``reset_s``, plan H3) that object costs the reset's time instead."""
     c = probe_time_scale(time_scale) * TIME_COST_PER_S * PROBE_SECONDS[probe]
     if probe == "push" and kind == "tipped":
         c += COST["tipped"]
     if thrown or kind == DAMAGED:
-        c += COST["dropped_high"] * care_scale(care)
+        c += COST["dropped_high"] * care_scale(care) if reset_s is None else irreversible_cost(care, reset_s)
     return float(c)
 
 
@@ -163,14 +168,16 @@ def _probe_record(d: dict[str, Any], prims: Any, care: str | float, position: in
             "const_kind": {k: v / n_kinds for k, v in kinds.items()} if n_kinds else None,
             "kinds_not_thrown": bool(getattr(pm, "kinds_not_thrown", True)),
             "const_thrown": stats["thrown"] / n if n and "thrown" in stats else None,
-            "cost": probe_cost(d["probed"], d["kind"], d["thrown"], care, getattr(prims, "probe_time_scale", 1.0))}
+            "cost": probe_cost(d["probed"], d["kind"], d["thrown"], care, getattr(prims, "probe_time_scale", 1.0),
+                               getattr(prims, "reset_s", None))}
 
 
-def _attempt_record(d: dict[str, Any], row: dict[str, Any], a: dict[str, Any], features: Any, care: str | float) -> dict[str, Any]:
+def _attempt_record(d: dict[str, Any], row: dict[str, Any], a: dict[str, Any], features: Any, care: str | float,
+                    reset_s: float | None = None) -> dict[str, Any]:
     return {"option": d["option"], "kind": row["kind"], "action": row["action"], "recommendation": a.get("recommendation"),
             "declared": {"p": row["p"], "p_drop_height": row["p_drop_height"], "expected_cost": row["expected_cost"]},
             "outcome": d["outcome"], "label": d["outcome"], "placed_at_requested": d["placed_at_requested"],
-            "cost_s": row["cost_s"], "cost": attempt_cost(d["outcome"], row["cost_s"], care), "features": features,
+            "cost_s": row["cost_s"], "cost": attempt_cost(d["outcome"], row["cost_s"], care, reset_s), "features": features,
             "diagnosis": d.get("diagnosis"), "artifact": bool(d.get("artifact", False))}
 
 
@@ -183,7 +190,8 @@ def run_protocol(prims: Any, protocol: str, destination: str, rng: np.random.Gen
         raise ValueError(f"protocol must be one of {PROTOCOLS}, not {protocol!r}")
     store: dict[str, Any] = {}
     case: dict[str, Any] = {"protocol": protocol, "recommendation": None, "best_option": None, "guard": None, "first_menu": None,
-                            "probes": [], "attempts": [], "cost": 0.0, "ended": None}
+                            "probes": [], "attempts": [], "restores": [], "cost": 0.0, "ended": None}
+    reset_s = getattr(prims, "reset_s", None)      # plan H3: the recovery mode restores after an irreversible event
 
     def end(reason: str, error: str | None = None) -> dict[str, Any]:
         case["ended"] = reason
@@ -215,9 +223,11 @@ def run_protocol(prims: Any, protocol: str, destination: str, rng: np.random.Gen
             case["error"] = d["error"]
             return "error"
         case["probes"].append(_probe_record(d, prims, care, len(case["probes"]), len(case["attempts"])))
-        if d["kind"] == DAMAGED or d.get("damage"):
+        if d.get("restored") is not None:
+            case["restores"].append(dict(d["restored"], probe=d["probed"]))
+        elif d["kind"] == DAMAGED or d.get("damage"):
             return "damaged"
-        if d["thrown"]:
+        elif d["thrown"]:
             return "thrown"
         a = d["assessment"]
         if "error" in a:
@@ -262,10 +272,12 @@ def run_protocol(prims: Any, protocol: str, destination: str, rng: np.random.Gen
             d = call(option_id=row["id"])
             if "outcome" not in d:
                 return end("error", str(d.get("error") or d.get("reason")))
-            case["attempts"].append(_attempt_record(d, row, a, features, care))
+            case["attempts"].append(_attempt_record(d, row, a, features, care, reset_s))
+            if d.get("restored") is not None:
+                case["restores"].append(dict(d["restored"], option=row["id"]))
             if d["outcome"] == "placed_stable":
                 return end("placed")
-            if d["outcome"] not in RECOVERABLE or len(case["attempts"]) >= POLICY_ATTEMPTS:
+            if (d["outcome"] not in RECOVERABLE and d.get("restored") is None) or len(case["attempts"]) >= POLICY_ATTEMPTS:
                 return end("failed")
             a = d["assessment"]
             if "error" in a:
@@ -284,7 +296,9 @@ def run_protocol(prims: Any, protocol: str, destination: str, rng: np.random.Gen
         d = call(option_id=row["id"])
         if "outcome" not in d:
             return end("error", str(d.get("error") or d.get("reason")))
-        case["attempts"].append(_attempt_record(d, row, a, features, care))
+        case["attempts"].append(_attempt_record(d, row, a, features, care, reset_s))
+        if d.get("restored") is not None:
+            case["restores"].append(dict(d["restored"], option=row["id"]))
         if d["outcome"] == "placed_stable":
             return end("placed")
         a = d["assessment"]
@@ -362,6 +376,7 @@ def run_case(prims: Any, object_id: str, idx: int, seed: int, protocol: str = "c
     row = {"object": object_id, "idx": idx, "destination": destination, "theta": theta, "com_end": com_end,
            "fill": hidden["fill"], "theta_frag": hidden["frag"], "force_noise": env.force_noise,
            "evoi": getattr(prims, "evoi", "plugin"), "probe_time_scale": getattr(prims, "probe_time_scale", 1.0),
+           "reset_s": getattr(prims, "reset_s", None),
            "truth": {k: truth[k] for k in ("mass", "mu", "com_s")}, "reset": reset_info, **case}
     first = case["attempts"][0] if case["attempts"] else None
     row.update(executed=first is not None, option=first and first["option"], outcome=first and first["outcome"],
@@ -419,6 +434,11 @@ def run_probe_time_scale(rows: list[dict[str, Any]]) -> float | list[float] | No
     return _run_value(rows, "probe_time_scale", float)
 
 
+def run_reset_s(rows: list[dict[str, Any]]) -> float | list[float] | None:
+    """The recovery mode's reset seconds a run's cases ran with (plan H3); None: absorbing."""
+    return _run_value(rows, "reset_s", float)
+
+
 def _primitives(bundle: str | None, threshold: float | None, model_kind: str | None) -> Any:
     """One lab env per process, and the primitives of each bundle on it (cached). Every call returns them with the
     bundle's abstain cost, force noise and probe time scale: a job sets its own after the call, and none stays for the
@@ -454,6 +474,7 @@ def _run_object(job: tuple[str, list[int], dict[str, Any]]) -> list[dict[str, An
     prims.abstain_cost = s["abstain_cost"]       # every job sets it: the cached primitives keep no earlier run's value
     prims.force_noise = job_force_noise(s.get("force_noise"), prims.manifest)
     prims.probe_time_scale = job_probe_time_scale(s.get("probe_time_scale"), prims.manifest)
+    prims.reset_s = s.get("reset_s")             # plan H3: every job sets it (None: absorbing)
     rows = []
     for idx in idxs:
         t0 = time.time()
@@ -566,7 +587,8 @@ def run_cases(a: argparse.Namespace, plan: dict[str, Any]) -> list[dict[str, Any
                                                  "protocol": a.protocol, "follow": a.follow_recommendation, "fixtures": a.fixtures,
                                                  "threshold": a.threshold, "model_kind": a.model_kind, "care": a.care,
                                                  "abstain_cost": A, "force_noise": getattr(a, "force_noise", None),
-                                                 "probe_time_scale": getattr(a, "probe_time_scale", None)}))
+                                                 "probe_time_scale": getattr(a, "probe_time_scale", None),
+                                                 "reset_s": getattr(a, "reset_s", None)}))
     rows: list[dict[str, Any]] = []
     if a.workers <= 1:
         for job in jobs:
@@ -799,12 +821,12 @@ def summarize(rows: list[dict[str, Any]], protocol: str, rng: np.random.Generato
 def compare(A: dict[str, Any], B: dict[str, Any], rng: np.random.Generator, n_boot: int = N_BOOT) -> dict[str, Any]:
     """A − B over the paired cases (same object and idx, counted in both: no error, no artifact): the mean
     realized cost and the first attempts' ECE on P(placed_stable), each with a 95 % interval that resamples
-    objects jointly for both. The two runs must use the same costs (care scale, abstain cost, probe time scale; files
-    from before these fields read as care normal, no abstain cost and scale 1)."""
+    objects jointly for both. The two runs must use the same costs (care scale, abstain cost, probe time scale, reset
+    time; files from before these fields read as care normal, no abstain cost, scale 1 and no reset)."""
     costs_a, costs_b = ((R.get("care_scale", 1.0), R.get("abstain_cost"),
-                         1.0 if R.get("probe_time_scale") is None else R["probe_time_scale"]) for R in (A, B))
+                         1.0 if R.get("probe_time_scale") is None else R["probe_time_scale"], R.get("reset_s")) for R in (A, B))
     if costs_a != costs_b:
-        raise ValueError(f"the runs use different costs (care_scale, abstain_cost, probe_time_scale): a {costs_a}, b {costs_b}")
+        raise ValueError(f"the runs use different costs (care_scale, abstain_cost, probe_time_scale, reset_s): a {costs_a}, b {costs_b}")
     ka = {(r["object"], r["idx"]): r for r in _counted(A["rows"])}
     kb = {(r["object"], r["idx"]): r for r in _counted(B["rows"])}
     keys = sorted(set(ka) & set(kb))
@@ -902,6 +924,14 @@ def _scale_arg(text: str) -> float:
         raise argparse.ArgumentTypeError(str(exc)) from exc
 
 
+def _reset_arg(text: str) -> float:
+    """--reset-s: a finite number of seconds at least 0 (plan H3)."""
+    try:
+        return reset_time(_number(text))
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
+
+
 def _number(text: str) -> str | float:
     try:
         return float(text)
@@ -932,6 +962,9 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
                     help="the sd of the force readings' error (0: clean); default: each bundle's declared sensor")
     ap.add_argument("--probe-time-scale", type=_scale_arg, default=None,
                     help="the factor on every probe's time charge (0: none); default: each bundle's decision (else 1)")
+    ap.add_argument("--reset-s", type=_reset_arg, default=None,
+                    help="plan H3, the recovery mode: an irreversible event costs 0.05 per second of this reset and the object is restored "
+                         "(default: absorbing)")
     ap.add_argument("--model-kind", default=None)
     ap.add_argument("--fixtures", action="store_true", help="draw half the destinations from the inspected mesh fixtures")
     ap.add_argument("--workers", type=int, default=1)
@@ -956,7 +989,7 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
     out = summarize(rows, a.protocol, rng, a.coverage_sims, nested=bool(a.crossfit))
     out.update(kind=plan["kind"], objects=plan["objects"], folds=plan["folds"], seed=a.seed, repeats=a.repeats,
                care=a.care, care_scale=care_scale(a.care), abstain_cost=run_abstain_cost(a, plan), force_noise=run_force_noise(rows),
-               evoi=run_evoi(rows), probe_time_scale=run_probe_time_scale(rows),
+               evoi=run_evoi(rows), probe_time_scale=run_probe_time_scale(rows), reset_s=run_reset_s(rows),
                source={"crossfit": a.crossfit, "bundle": a.bundle, "metrics": a.metrics}, seconds=round(time.time() - t0, 1),
                cases=None if not a.cases else {"path": a.cases, "n": len(rows)}, code=code_revision())
     _write(out, a.out)
