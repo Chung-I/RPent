@@ -296,6 +296,21 @@ def test_terminal_risk_counts_a_damaging_throw_once():
     assert np.allclose(_const_model("weigh", PROBE_KINDS["weigh"], [0.8, 0.1, 0.1], p_thrown=0.05).terminal_risk(X), 0.05)
 
 
+def test_an_object_with_no_damage_flag_has_no_damaged_kind():
+    """A probe cannot damage an object whose public entry has every damage flag off (steel: no crush, bruise or break
+    threshold, not fillable). Its "damaged" column is 0 and the row renormalised, so the terminal risk is the throw
+    alone; an object with a flag keeps the classifier's P(damaged) (final review, plan 2b)."""
+    from rpent.skills.pick_place.features import FEATURES_M2B
+
+    pm = _const_model("weigh", PROBE_KINDS["weigh"] + ("damaged",), [0.6, 0.1, 0.1, 0.2], p_thrown=0.1)
+    pm.feature_names = FEATURES_M2B
+    X = np.zeros((2, len(FEATURES_M2B)))
+    X[1, FEATURES_M2B.index("frag_crush")] = 1.0
+    P = pm.p_kind(X)
+    assert np.allclose(P[0], [0.75, 0.125, 0.125, 0.0]) and np.allclose(P[1], [0.6, 0.1, 0.1, 0.2])
+    assert np.allclose(pm.terminal_risk(X), [0.1, 0.1 + 0.9 * 0.2])
+
+
 def test_probe_models_learn_the_damaged_kind():
     """A probe corpus with damaged weigh rows gives the weigh's kind classifier a "damaged" class; the push, which
     damaged nothing, gets none."""

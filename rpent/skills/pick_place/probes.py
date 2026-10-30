@@ -48,7 +48,7 @@ from sklearn.model_selection import GroupKFold
 from rpent.skills.pick_place.evaluate import MIN_CLASS_ROWS, row_pose
 from rpent.skills.pick_place.features import FEATURES_M2, FRAG_KEYS, G, particle_matrix
 from rpent.skills.pick_place.likelihood import Law, as_law, fit_law
-from rpent.skills.pick_place.success_model import N_FOLDS, _Calibrator, _fit_gbm
+from rpent.skills.pick_place.success_model import DAMAGE_FLAG, N_FOLDS, _Calibrator, _fit_gbm
 
 PROBE_SECONDS = {"weigh": 4.0, "push": 2.0, "squeeze": 3.0}
 PROBE_KINDS = {"weigh": ("measured", "lower_bound", "lost"), "push": ("slid", "tipped", "no_breakaway", "no_contact"),
@@ -185,8 +185,24 @@ class ProbeModel:
     feature_names: tuple[str, ...] = FEATURES_M2           # the class default: a model saved before the schemas
 
     def p_kind(self, X: np.ndarray) -> np.ndarray:
-        """P(kind) per particle row of X, columns in ``classes`` order."""
-        return self.clf.predict(X)
+        """P(kind) per particle row of X, columns in ``classes`` order. The probe cannot damage an object whose public
+        entry has every damage flag off (a model on the four flags: no crush, bruise or break threshold, not
+        fillable), so that row's "damaged" column is 0 and the row renormalised, as the success model masks."""
+        P = self.clf.predict(X)
+        names = list(self.feature_names)
+        flags = [names.index(f) for f in DAMAGE_FLAG.values() if f in names]
+        if DAMAGED not in self.classes or len(flags) < len(DAMAGE_FLAG):
+            return P
+        safe = np.all(np.asarray(X, dtype=float).reshape(len(P), -1)[:, flags] <= 0.0, axis=1)
+        if not safe.any():
+            return P
+        j = self.classes.index(DAMAGED)
+        P = np.array(P, dtype=float)
+        P[safe, j] = 0.0
+        s = P[safe].sum(axis=1, keepdims=True)
+        rest = np.where(np.arange(len(self.classes)) == j, 0.0, 1.0 / (len(self.classes) - 1))
+        P[safe] = np.where(s > 0, P[safe] / np.where(s > 0, s, 1.0), rest)
+        return P
 
     def risk(self, X: np.ndarray) -> np.ndarray:
         """P(the probe throws the object: off the table or more than 10 cm away) per row."""
