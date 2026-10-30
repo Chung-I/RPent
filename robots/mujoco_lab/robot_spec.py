@@ -42,11 +42,11 @@ DEFAULT_METRICS_PATH = str(DATA_DIR / "success_model_metrics.json")
 DEFAULT_BUNDLE = DATA_DIR / "m2b2"               # plan 2b2 decision 6; data/m2 and data/m2b stay; milestone 1's files stay in data/
 
 
-def lab_prior_fn(pose: dict[str, Any], n: int = 2000, rng: np.random.Generator | None = None):
-    """The lab prior: the corpus generator itself (robots.mujoco_lab.prior.lab_prior)."""
+def lab_prior_fn(pose: dict[str, Any], n: int = 2000, rng: np.random.Generator | None = None, spread: float = 1.0):
+    """The lab prior: the corpus generator itself (robots.mujoco_lab.prior.lab_prior), at the spread factor."""
     from robots.mujoco_lab.prior import lab_prior
 
-    return lab_prior(pose, n, rng)
+    return lab_prior(pose, n, rng, spread)
 
 
 def resolve_bundle(bundle: str | None = None) -> str | None:

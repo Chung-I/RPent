@@ -40,10 +40,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import multiprocessing as mp
 import os
 import sys
 import zlib
+from numbers import Real
 from typing import Any
 
 import numpy as np
@@ -93,6 +95,47 @@ def draw_theta(rng: np.random.Generator, nominal_mass: float) -> tuple[dict[str,
     }
     com_end = 1 if rng.random() < 0.5 else -1
     return theta, com_end
+
+
+def spread_factor(f: Any) -> float:
+    """The spread factor of plan H3 decision 4: a finite number in (0, 1] (1: the corpus ranges)."""
+    if isinstance(f, Real) and not isinstance(f, bool) and math.isfinite(float(f)) and 0.0 < float(f) <= 1.0:
+        return float(f)
+    raise ValueError(f"the spread factor must be a number in (0, 1], not {f!r}")
+
+
+def shrunk_range(bounds: tuple[float, float], f: float, log: bool = False) -> tuple[float, float]:
+    """A range shrunk by the factor f around its midpoint (on the log scale when ``log``), the range shrink_theta maps
+    its draws onto; f = 1 returns ``bounds`` itself, so the draws stay bit for bit."""
+    f = spread_factor(f)
+    if f == 1.0:
+        return bounds
+    lo, hi = (math.log(b) for b in bounds) if log else bounds
+    mid, half = (lo + hi) / 2.0, f * (hi - lo) / 2.0
+    return (math.exp(mid - half), math.exp(mid + half)) if log else (mid - half, mid + half)
+
+
+def _shrink(x: float, bounds: tuple[float, float], f: float, log: bool = False) -> float:
+    lo, hi = (math.log(b) for b in bounds) if log else bounds
+    mid = (lo + hi) / 2.0
+    v = mid + f * ((math.log(x) if log else x) - mid)
+    return math.exp(v) if log else v
+
+
+def shrink_theta(theta: dict[str, Any], f: float, filled: bool) -> dict[str, Any]:
+    """A case's hidden properties under the spread factor f (plan H3 decision 4, quantile-coupled): the mass scale on
+    the log scale around the log-midpoint of its range (a filled container's own range when ``filled``), mu and a
+    non-None com_s around their midpoints; every other key unchanged. A (log-)uniform draw keeps its quantile, so the
+    shrunk value is a draw of the narrow range (shrunk_range) and the case stream stays. f = 1 returns an equal dict."""
+    f = spread_factor(f)
+    out = dict(theta)
+    if f == 1.0:
+        return out
+    out["mass_scale"] = _shrink(float(theta["mass_scale"]), FILLED_MASS_SCALE_RANGE if filled else MASS_SCALE_RANGE, f, log=True)
+    out["mu"] = _shrink(float(theta["mu"]), MU_RANGE, f)
+    if theta.get("com_s") is not None:
+        out["com_s"] = _shrink(float(theta["com_s"]), COM_S_RANGE, f)
+    return out
 
 
 def draw_action(rng: np.random.Generator, f_std: float, use_fixtures: bool = False) -> dict[str, Any]:

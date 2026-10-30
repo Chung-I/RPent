@@ -79,6 +79,13 @@ def _beliefs(store: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return store.setdefault("beliefs", {})
 
 
+def _spread_kw(primitives: Any) -> dict[str, float]:
+    """The prior's spread argument (plan H3 decision 4): none at f = 1 or without ``primitives.spread``, so a prior
+    without the argument keeps working."""
+    f = getattr(primitives, "spread", None)
+    return {} if f is None or float(f) == 1.0 else {"spread": float(f)}
+
+
 def _prior_belief(loc: dict[str, Any], env: Any, primitives: Any, n: int = N_PARTICLES,
                   rng: np.random.Generator | None = None) -> ParticleBelief:
     """The substrate's prior (``primitives.prior``) when it has one, else the milestone 1 prior as
@@ -86,7 +93,7 @@ def _prior_belief(loc: dict[str, Any], env: Any, primitives: Any, n: int = N_PAR
     rng = primitives.rng if rng is None else rng
     prior = getattr(primitives, "prior", None)
     if prior is not None and hasattr(env, "pose_info"):
-        return prior(env.pose_info(), n, rng)
+        return prior(env.pose_info(), n, rng, **_spread_kw(primitives))
     parametric = Belief.prior(loc["volume"], loc["material"], loc.get("hollow", False), length=loc.get("extent"))
     com = env.pose_info()["com_obj_nominal"] if hasattr(env, "pose_info") else list(map(float, env.geometry().com))
     return ParticleBelief.from_parametric(parametric, com, n, rng)
@@ -182,7 +189,7 @@ def update_belief(belief: ParticleBelief, entry: dict[str, Any], primitives: Any
     if post.effective_size() >= REFRESH_ESS:
         return post
     if prior_fn is None and getattr(primitives, "prior", None) is not None:
-        prior_fn = lambda n, rng: primitives.prior(entry["pose"], n, rng)  # noqa: E731
+        prior_fn = lambda n, rng: primitives.prior(entry["pose"], n, rng, **_spread_kw(primitives))  # noqa: E731
     if prior_fn is None:
         return post._replace(degenerate=True, flags=post.flags + ["fewer than 100 effective particles and no prior to refresh from"])
     replay = lambda fresh, e: entry_loglik(fresh, e, primitives, terms=e["used_terms"])[0]  # noqa: E731

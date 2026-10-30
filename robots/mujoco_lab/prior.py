@@ -38,7 +38,7 @@ from typing import Any, Callable
 import numpy as np
 
 from robots.mujoco_lab.corpus import (COM_S_RANGE, FILL_RANGE, FILLED_MASS_SCALE_RANGE, MASS_SCALE_RANGE, MU_RANGE, P_COM_SHIFT,
-                                      P_EMPTY)
+                                      P_EMPTY, shrunk_range)
 from robots.mujoco_lab.fragility import (DATA, Thresholds, entry_of, liquid, liquid_arrays, load_classes, map_latent_arrays,
                                          spill_angle)
 from rpent.skills.pick_place.belief import ParticleBelief
@@ -72,16 +72,17 @@ def com_hypothesis(pivot: dict[str, Any], com_obj_nominal, target_s: float | Non
     return com[0].tolist(), float(f[0])
 
 
-def lab_prior(pose: dict[str, Any], n: int, rng: np.random.Generator) -> ParticleBelief:
+def lab_prior(pose: dict[str, Any], n: int, rng: np.random.Generator, spread: float = 1.0) -> ParticleBelief:
     """n draws of the corpus generator (``corpus.draw_theta``) as equally weighted particles: mass scale
     log-uniform, friction uniform, with p 0.5 the CoM-shift branch (a target fraction and an end),
-    mass = nominal x scale x (1 + f)."""
+    mass = nominal x scale x (1 + f). ``spread`` (plan H3 decision 4): the ranges corpus.shrink_theta maps the truth
+    onto (corpus.shrunk_range)."""
     rng = rng if rng is not None else np.random.default_rng(0)
-    lo, hi = MASS_SCALE_RANGE
+    lo, hi = shrunk_range(MASS_SCALE_RANGE, spread, log=True)
     scale = np.exp(rng.uniform(np.log(lo), np.log(hi), n))
-    mu = rng.uniform(*MU_RANGE, n)
+    mu = rng.uniform(*shrunk_range(MU_RANGE, spread), n)
     branch = rng.random(n) >= P_COM_SHIFT                     # draw_theta: com_s is None with p P_COM_SHIFT
-    target = rng.uniform(*COM_S_RANGE, n)
+    target = rng.uniform(*shrunk_range(COM_S_RANGE, spread), n)
     end = np.where(rng.random(n) < 0.5, 1, -1)
     com, f, frac = _com_hypotheses(pose["pivot"], pose["com_obj_nominal"], target, end, branch)
     mass = float(pose["nominal_mass"]) * scale * (1.0 + f)
@@ -106,22 +107,23 @@ def joint_hidden(pose: dict[str, Any], entry: dict[str, Any], theta: dict[str, A
 
 def make_prior(classes: dict[str, dict[str, Any]], thresholds: Thresholds) -> Callable[..., ParticleBelief]:
     """The m2b lab prior: ``prior_fn(pose, n, rng)`` draws n particles of the joint generator for the object
-    ``pose["object_id"]`` (an id with no entry, or none, is class none and says so in the belief's flags)."""
+    ``pose["object_id"]`` (an id with no entry, or none, is class none and says so in the belief's flags). ``spread``
+    (plan H3 decision 4): each branch's ranges as corpus.shrink_theta maps the truth (corpus.shrunk_range)."""
 
-    def prior_fn(pose: dict[str, Any], n: int = 2000, rng: np.random.Generator | None = None) -> ParticleBelief:
+    def prior_fn(pose: dict[str, Any], n: int = 2000, rng: np.random.Generator | None = None, spread: float = 1.0) -> ParticleBelief:
         rng = rng if rng is not None else np.random.default_rng(0)
         entry, evidence = entry_of(str(pose.get("object_id")), classes)
-        lo, hi = MASS_SCALE_RANGE
+        lo, hi = shrunk_range(MASS_SCALE_RANGE, spread, log=True)
         scale = np.exp(rng.uniform(np.log(lo), np.log(hi), n))
-        mu = rng.uniform(*MU_RANGE, n)
+        mu = rng.uniform(*shrunk_range(MU_RANGE, spread), n)
         branch = rng.random(n) >= P_COM_SHIFT
-        target = rng.uniform(*COM_S_RANGE, n)
+        target = rng.uniform(*shrunk_range(COM_S_RANGE, spread), n)
         end = np.where(rng.random(n) < 0.5, 1, -1)
         fill = np.zeros(n)
         if entry.get("fillable"):
             filled = rng.random(n) >= P_EMPTY
             fill = np.where(filled, rng.uniform(*FILL_RANGE, n), 0.0)
-            lo, hi = FILLED_MASS_SCALE_RANGE
+            lo, hi = shrunk_range(FILLED_MASS_SCALE_RANGE, spread, log=True)
             scale = np.where(filled, np.exp(rng.uniform(np.log(lo), np.log(hi), n)), scale)
             branch = branch & ~filled
         frag = map_latent_arrays(rng.standard_normal((n, 3)), entry, thresholds)

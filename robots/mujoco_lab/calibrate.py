@@ -84,7 +84,8 @@ from typing import Any
 import numpy as np
 
 from robots.mujoco_lab import tracking
-from robots.mujoco_lab.corpus import apply_damage, case_rng, damage_rng, draw_damage, draw_theta, trainable
+from robots.mujoco_lab.corpus import (apply_damage, case_rng, damage_rng, draw_damage, draw_theta, shrink_theta, spread_factor,
+                                      trainable)
 from rpent.skills.pick_place.costs import COST, TIME_COST_PER_S, care_scale, irreversible_cost, probe_time_scale, reset_time
 from rpent.skills.pick_place.destinations import MESH_IDS, PRIMITIVE_IDS
 from rpent.skills.pick_place.evaluate import (_ece, coverage_design, ece_ci, ece_from_sums, ece_iid_floor,
@@ -311,11 +312,14 @@ def run_protocol(prims: Any, protocol: str, destination: str, rng: np.random.Gen
 
 
 def case_draw(seed: int, object_id: str, idx: int, nominal_mass: float, use_fixtures: bool = False,
-              fragility: tuple[dict[str, Any], Any] | None = None) -> tuple[dict[str, Any], int, str, dict[str, Any]]:
+              fragility: tuple[dict[str, Any], Any] | None = None,
+              spread: float = 1.0) -> tuple[dict[str, Any], int, str, dict[str, Any]]:
     """The case's hidden properties, CoM end, destination and hidden damage state {fill, frag, spill_angle_deg}: one
     stream per (seed, object, idx). In an m2b world (``fragility`` = (classes, thresholds)) the fill and the fragility
     come from the corpus's damage stream with the corpus rule (corpus.draw_damage, apply_damage), so a case hides what
-    the corpus row of that (seed, object, idx) hides; an m2 case is empty and cannot be damaged."""
+    the corpus row of that (seed, object, idx) hides; an m2 case is empty and cannot be damaged. Under a spread factor
+    (plan H3 decision 4) corpus.shrink_theta maps the hidden properties after every draw: the stream and every other
+    value stay."""
     from robots.mujoco_lab.fragility import entry_of
 
     rng = case_rng(seed, object_id, idx)
@@ -330,7 +334,7 @@ def case_draw(seed: int, object_id: str, idx: int, nominal_mass: float, use_fixt
         d = draw_damage(damage_rng(seed, object_id, idx), entry_of(object_id, classes)[0], th, 1.0)
         theta, _ = apply_damage(theta, {}, d)
         hidden = {"fill": d["fill"], "frag": d["theta_frag"], "spill_angle_deg": d["spill_angle_deg"]}
-    return theta, com_end, destination, hidden
+    return shrink_theta(theta, spread, hidden["fill"] > 0), com_end, destination, hidden
 
 
 def case_artifact(case: dict[str, Any], reset_info: dict[str, Any]) -> bool:
@@ -354,7 +358,7 @@ def run_case(prims: Any, object_id: str, idx: int, seed: int, protocol: str = "c
     env.force_noise = getattr(prims, "force_noise", None)       # the job's sensor (job_force_noise); None: the lab default
     world = fragility_world(getattr(prims, "manifest", None))
     theta, com_end, destination, hidden = case_draw(seed, object_id, idx, object_props(object_id)["mass"], use_fixtures,
-                                                    fragility=world)
+                                                    fragility=world, spread=getattr(prims, "spread", 1.0))
     if world is not None:
         env.slosh_zeta = world[1].slosh_zeta
         env.slosh_scale = world[1].slosh_scale
@@ -376,7 +380,7 @@ def run_case(prims: Any, object_id: str, idx: int, seed: int, protocol: str = "c
     row = {"object": object_id, "idx": idx, "destination": destination, "theta": theta, "com_end": com_end,
            "fill": hidden["fill"], "theta_frag": hidden["frag"], "force_noise": env.force_noise,
            "evoi": getattr(prims, "evoi", "plugin"), "probe_time_scale": getattr(prims, "probe_time_scale", 1.0),
-           "reset_s": getattr(prims, "reset_s", None),
+           "reset_s": getattr(prims, "reset_s", None), "spread": getattr(prims, "spread", 1.0),
            "truth": {k: truth[k] for k in ("mass", "mu", "com_s")}, "reset": reset_info, **case}
     first = case["attempts"][0] if case["attempts"] else None
     row.update(executed=first is not None, option=first and first["option"], outcome=first and first["outcome"],
@@ -439,6 +443,11 @@ def run_reset_s(rows: list[dict[str, Any]]) -> float | list[float] | None:
     return _run_value(rows, "reset_s", float)
 
 
+def run_spread(rows: list[dict[str, Any]]) -> float | list[float] | None:
+    """The spread factor a run's cases were drawn and believed at (plan H3 decision 4)."""
+    return _run_value(rows, "spread", float)
+
+
 def _primitives(bundle: str | None, threshold: float | None, model_kind: str | None) -> Any:
     """One lab env per process, and the primitives of each bundle on it (cached). Every call returns them with the
     bundle's abstain cost, force noise and probe time scale: a job sets its own after the call, and none stays for the
@@ -475,6 +484,7 @@ def _run_object(job: tuple[str, list[int], dict[str, Any]]) -> list[dict[str, An
     prims.force_noise = job_force_noise(s.get("force_noise"), prims.manifest)
     prims.probe_time_scale = job_probe_time_scale(s.get("probe_time_scale"), prims.manifest)
     prims.reset_s = s.get("reset_s")             # plan H3: every job sets it (None: absorbing)
+    prims.spread = 1.0 if s.get("spread") is None else spread_factor(s["spread"])   # plan H3 decision 4 (1: milestone 4)
     rows = []
     for idx in idxs:
         t0 = time.time()
@@ -588,7 +598,7 @@ def run_cases(a: argparse.Namespace, plan: dict[str, Any]) -> list[dict[str, Any
                                                  "threshold": a.threshold, "model_kind": a.model_kind, "care": a.care,
                                                  "abstain_cost": A, "force_noise": getattr(a, "force_noise", None),
                                                  "probe_time_scale": getattr(a, "probe_time_scale", None),
-                                                 "reset_s": getattr(a, "reset_s", None)}))
+                                                 "reset_s": getattr(a, "reset_s", None), "spread": getattr(a, "spread", None)}))
     rows: list[dict[str, Any]] = []
     if a.workers <= 1:
         for job in jobs:
@@ -822,11 +832,15 @@ def compare(A: dict[str, Any], B: dict[str, Any], rng: np.random.Generator, n_bo
     """A − B over the paired cases (same object and idx, counted in both: no error, no artifact): the mean
     realized cost and the first attempts' ECE on P(placed_stable), each with a 95 % interval that resamples
     objects jointly for both. The two runs must use the same costs (care scale, abstain cost, probe time scale, reset
-    time; files from before these fields read as care normal, no abstain cost, scale 1 and no reset)."""
+    time; files from before these fields read as care normal, no abstain cost, scale 1 and no reset) and the same spread
+    factor (1 when absent, plan H3)."""
     costs_a, costs_b = ((R.get("care_scale", 1.0), R.get("abstain_cost"),
                          1.0 if R.get("probe_time_scale") is None else R["probe_time_scale"], R.get("reset_s")) for R in (A, B))
     if costs_a != costs_b:
         raise ValueError(f"the runs use different costs (care_scale, abstain_cost, probe_time_scale, reset_s): a {costs_a}, b {costs_b}")
+    spread_a, spread_b = (1.0 if R.get("spread") is None else R["spread"] for R in (A, B))
+    if spread_a != spread_b:
+        raise ValueError(f"the runs use different spreads: a {spread_a}, b {spread_b}")
     ka = {(r["object"], r["idx"]): r for r in _counted(A["rows"])}
     kb = {(r["object"], r["idx"]): r for r in _counted(B["rows"])}
     keys = sorted(set(ka) & set(kb))
@@ -932,6 +946,14 @@ def _reset_arg(text: str) -> float:
         raise argparse.ArgumentTypeError(str(exc)) from exc
 
 
+def _spread_arg(text: str) -> float:
+    """--spread: a number in (0, 1] (plan H3 decision 4)."""
+    try:
+        return spread_factor(_number(text))
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
+
+
 def _number(text: str) -> str | float:
     try:
         return float(text)
@@ -965,6 +987,9 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
     ap.add_argument("--reset-s", type=_reset_arg, default=None,
                     help="plan H3, the recovery mode: an irreversible event costs 0.05 per second of this reset and the object is restored "
                          "(default: absorbing)")
+    ap.add_argument("--spread", type=_spread_arg, default=1.0,
+                    help="plan H3 decision 4: shrink the hidden properties' ranges and the prior's by this factor, quantile-coupled "
+                         "(default 1: the corpus ranges)")
     ap.add_argument("--model-kind", default=None)
     ap.add_argument("--fixtures", action="store_true", help="draw half the destinations from the inspected mesh fixtures")
     ap.add_argument("--workers", type=int, default=1)
@@ -989,7 +1014,7 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
     out = summarize(rows, a.protocol, rng, a.coverage_sims, nested=bool(a.crossfit))
     out.update(kind=plan["kind"], objects=plan["objects"], folds=plan["folds"], seed=a.seed, repeats=a.repeats,
                care=a.care, care_scale=care_scale(a.care), abstain_cost=run_abstain_cost(a, plan), force_noise=run_force_noise(rows),
-               evoi=run_evoi(rows), probe_time_scale=run_probe_time_scale(rows), reset_s=run_reset_s(rows),
+               evoi=run_evoi(rows), probe_time_scale=run_probe_time_scale(rows), reset_s=run_reset_s(rows), spread=run_spread(rows),
                source={"crossfit": a.crossfit, "bundle": a.bundle, "metrics": a.metrics}, seconds=round(time.time() - t0, 1),
                cases=None if not a.cases else {"path": a.cases, "n": len(rows)}, code=code_revision())
     _write(out, a.out)
@@ -1000,7 +1025,8 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
                    acceptance=out["first_attempt"]["acceptance"], seconds=out["seconds"])
     out["wandb"] = tracking.log_run("calibrate", {"protocol": a.protocol, "seed": a.seed, "repeats": a.repeats, "source": out["source"],
                                                   "n_objects": len(plan["objects"]), "threshold": a.threshold,
-                                                  "care": a.care, "abstain_cost": out["abstain_cost"]}, summary)
+                                                  "care": a.care, "abstain_cost": out["abstain_cost"], "reset_s": out["reset_s"],
+                                                  "spread": out["spread"]}, summary)
     print(json.dumps(summary, indent=1, default=float))
     return out
 

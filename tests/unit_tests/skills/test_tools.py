@@ -997,3 +997,24 @@ def test_no_probe_after_a_restore():
         assert a["assessed"] is True and not [o for o in a["options"] if o["kind"] == "probe"]
         e = pick_and_place(object="mug", destination="table_centre", option_id="probe_weigh", primitives=prims, store=store).data
         assert "no probe after a restore" in e["error"]
+
+
+# ---------------------------------------------------------------- the spread factor (plan H3 decision 4)
+def test_the_refresh_keeps_the_spread(monkeypatch):
+    """Under primitives.spread both prior calls of the skill (the first belief and every refresh) draw at that spread;
+    at f = 1, or without the field, the prior is called as before, with no spread argument."""
+    monkeypatch.setattr(tools_mod, "REFRESH_ESS", float("inf"))
+    calls = []
+
+    def prior(pose, n, rng, **kw):
+        calls.append(kw.get("spread"))
+        return _gen_prior(pose, n, rng)
+
+    for spread, want in ((0.25, {0.25}), (1.0, {None}), (None, {None})):
+        prims, store = _bprims(_ReadingEnv([("placed_stable", _hold(0.2))])), {}
+        prims.prior, calls[:] = prior, []
+        if spread is not None:
+            prims.spread = spread
+        _commit(prims, store)
+        assert any(f.startswith("refreshed from") for f in store["beliefs"]["ycb__mug"]["belief"].flags)
+        assert len(calls) >= 2 and set(calls) == want

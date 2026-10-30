@@ -202,3 +202,29 @@ def test_a_row_sets_the_slosh_scale_of_its_thresholds():
     with pytest.raises(_Stop):
         rollout_row(env, "ycb__mug", 0, 0, classes=load_classes(), thresholds=th)
     assert env.slosh_zeta == 0.02 and env.slosh_scale == {"carry": {"0.6": 0.5}}
+
+
+# ---------------------------------------------------------------- the spread factor (plan H3 decision 4)
+def test_shrink_maps_the_ranges():
+    """f = 0.25 maps the range ends onto the narrow ranges: the mass scale on the log scale around its log-midpoint
+    ([0.5, 3] to [0.979, 1.532]; a filled container's [0.8, 1.25] to [0.946, 1.057]), mu and a non-None com_s around
+    their midpoints ([0.4, 0.6], [0.4875, 0.6125]); every other key stays, the input is not changed, f = 1 returns an
+    equal dict, and a factor outside (0, 1] is an error."""
+    from robots.mujoco_lab.corpus import COM_S_RANGE, FILLED_MASS_SCALE_RANGE, MASS_SCALE_RANGE, MU_RANGE, shrink_theta
+
+    lo = {"mass_scale": MASS_SCALE_RANGE[0], "mu": MU_RANGE[0], "com_s": COM_S_RANGE[0], "v_lift": 0.15}
+    hi = {"mass_scale": MASS_SCALE_RANGE[1], "mu": MU_RANGE[1], "com_s": COM_S_RANGE[1], "v_lift": 0.8}
+    a, b = shrink_theta(lo, 0.25, False), shrink_theta(hi, 0.25, False)
+    assert (round(a["mass_scale"], 3), round(b["mass_scale"], 3)) == (0.979, 1.532)
+    assert (a["mu"], b["mu"]) == pytest.approx((0.4, 0.6)) and (a["com_s"], b["com_s"]) == pytest.approx((0.4875, 0.6125))
+    assert (a["v_lift"], b["v_lift"]) == (0.15, 0.8) and lo["mass_scale"] == 0.5 and lo["mu"] == 0.1
+    filled = [shrink_theta({"mass_scale": x, "mu": 0.5, "com_s": None}, 0.25, True)["mass_scale"] for x in FILLED_MASS_SCALE_RANGE]
+    assert [round(x, 3) for x in filled] == [0.946, 1.057]
+    assert shrink_theta({"mass_scale": 2.0, "mu": 0.3, "com_s": None}, 0.25, False)["com_s"] is None
+    mid = shrink_theta({"mass_scale": float(np.sqrt(1.5)), "mu": 0.5, "com_s": 0.55}, 0.25, False)
+    assert mid == pytest.approx({"mass_scale": float(np.sqrt(1.5)), "mu": 0.5, "com_s": 0.55})     # the midpoints stay
+    for th in (lo, hi, {"mass_scale": 1.7, "mu": 0.33, "com_s": None, "v_lift": 0.05}):
+        assert shrink_theta(th, 1.0, False) == th and shrink_theta(th, 1.0, True) == th
+    for bad in (0.0, -0.25, 1.5, float("nan"), "x", True):
+        with pytest.raises(ValueError, match="spread"):
+            shrink_theta(lo, bad, False)

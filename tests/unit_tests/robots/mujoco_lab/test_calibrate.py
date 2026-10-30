@@ -987,3 +987,89 @@ def test_compare_refuses_runs_with_different_reset_times():
     with pytest.raises(ValueError, match="different costs"):
         compare(a, dict(a, reset_s=20.0), np.random.default_rng(0))
     assert compare(a, dict(a, reset_s=None), np.random.default_rng(0))["n_paired"] == 1
+
+
+# ---------------------------------------------------------------- the spread factor (plan H3 decision 4)
+def test_shrink_keeps_the_case_stream():
+    """A narrow case is its wide case with the shrunk theta: over 50 cases the CoM end, destination, v_lift, fill and
+    fragility are equal at f = 1 and 0.25, and the narrow theta is shrink_theta of the wide one (filled or not)."""
+    from robots.mujoco_lab.adapter import object_props
+    from robots.mujoco_lab.calibrate import case_draw
+    from robots.mujoco_lab.corpus import shrink_theta
+    from robots.mujoco_lab.fragility import THRESHOLDS_V0, Thresholds, load_classes
+
+    world, filled = (load_classes(), Thresholds.from_json(THRESHOLDS_V0)), 0
+    for oid in ("ycb__mug", "ycb__banana"):
+        mass = object_props(oid)["mass"]
+        for i in range(25):
+            wide = case_draw(3, oid, i, mass, True, fragility=world)
+            narrow = case_draw(3, oid, i, mass, True, fragility=world, spread=0.25)
+            assert narrow[1:] == wide[1:] and narrow[0]["v_lift"] == wide[0]["v_lift"]
+            assert narrow[0] == shrink_theta(wide[0], 0.25, wide[3]["fill"] > 0)
+            filled += wide[3]["fill"] > 0
+    assert 0 < filled < 25                              # both branches of the mug ran
+
+
+SPREAD_ONE_PINS = ("3aafbcc248fdb5b0", "7743bd5a185c308d")   # milestone 4's draws (b3136f5), before the spread factor
+
+
+def _spread_one_digests(**kw):
+    """Digests of 120 case draws (the mug and the banana, m2b and m2 worlds) and of 300 prior particles of each prior
+    for both objects, with the prior streams' states after the draw."""
+    import hashlib
+
+    from robots.mujoco_lab.adapter import MuJoCoLabEnv, object_props
+    from robots.mujoco_lab.calibrate import case_draw
+    from robots.mujoco_lab.fragility import THRESHOLDS_V0, Thresholds, load_classes
+    from robots.mujoco_lab.prior import lab_prior, make_prior
+
+    classes, th = load_classes(), Thresholds.from_json(THRESHOLDS_V0)
+    prior, env, cases, parts = make_prior(classes, th), MuJoCoLabEnv(), [], []
+    for oid in ("ycb__mug", "ycb__banana"):
+        mass = object_props(oid)["mass"]
+        for world in ((classes, th), None):
+            cases += [case_draw(5, oid, i, mass, True, fragility=world, **kw) for i in range(30)]
+        env.reset(oid, seed=0)
+        for fn in (prior, lab_prior):
+            rng = np.random.default_rng(11)
+            b = fn(env.pose_info(), 300, rng, **kw)
+            parts.append([b.particles, rng.bit_generator.state])
+    h = lambda x: hashlib.sha256(json.dumps(x, sort_keys=True, default=str).encode()).hexdigest()[:16]  # noqa: E731
+    return h(cases), h(parts)
+
+
+def test_spread_one_is_milestone4():
+    """f = 1 (the default, or named) gives milestone 4's case draws and prior particles bit for bit, the streams'
+    states included."""
+    assert _spread_one_digests() == SPREAD_ONE_PINS
+    assert _spread_one_digests(spread=1.0) == SPREAD_ONE_PINS
+
+
+def test_spread_argument_reaches_the_workers_and_the_output(tmp_path):
+    import argparse
+
+    from robots.mujoco_lab.calibrate import _spread_arg, main, run_spread
+
+    assert _spread_arg("0.25") == 0.25 and _spread_arg("1") == 1.0
+    for bad in ("0", "-0.5", "1.5", "nan", "x"):
+        with pytest.raises(argparse.ArgumentTypeError):
+            _spread_arg(bad)
+    assert run_spread([{"spread": 0.25}, {"error": "x"}]) == 0.25 and run_spread([{"spread": 1.0}]) == 1.0
+    out = tmp_path / "c.json"
+    main(["--metrics", METRICS, "--repeats", "2", "--out", str(out), "--objects", "ycb__banana", "--seed", "2", "--spread", "0.25"])
+    saved = json.load(open(out))
+    assert saved["spread"] == 0.25 and all(r["spread"] == 0.25 for r in saved["rows"])
+    for r in saved["rows"]:
+        assert 0.4 <= r["theta"]["mu"] <= 0.6 and 0.978 <= r["theta"]["mass_scale"] <= 1.533
+        assert r["theta"]["com_s"] is None or 0.4875 <= r["theta"]["com_s"] <= 0.6125
+
+
+def test_compare_refuses_runs_with_different_spreads():
+    """plan H3: a file without the field reads as f = 1."""
+    from robots.mujoco_lab.calibrate import compare
+
+    row = {"object": "o", "idx": 0, "cost": 1.0, "attempts": []}
+    a = {"protocol": "policy", "care_scale": 1.0, "abstain_cost": 1.0, "rows": [row]}
+    with pytest.raises(ValueError, match="different spreads"):
+        compare(a, dict(a, spread=0.25), np.random.default_rng(0))
+    assert compare(a, dict(a, spread=1.0), np.random.default_rng(0))["n_paired"] == 1
