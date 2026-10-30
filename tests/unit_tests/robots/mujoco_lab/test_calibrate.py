@@ -529,6 +529,37 @@ def test_probe_kind_block_scores_the_damaged_kind():
     assert out["squeeze"]["n"] == 0
 
 
+def test_probe_kind_block_leaves_out_the_thrown_probes():
+    """A 2b probe model declares the kinds of a result not thrown (P(kind | not thrown)), so its thrown probes are left
+    out here, and the thrown block scores them. A milestone 2a model's kinds hold the throws, so its thrown probes stay
+    (Codex review of the fixes, plan 2b)."""
+    from robots.mujoco_lab.calibrate import probe_kind_block
+
+    kept = {"probe": "push", "kind": "slid", "thrown": False, "declared": {"p_kind": {"slid": 1.0}}, "const_kind": {"slid": 1.0},
+            "kinds_not_thrown": True}
+    out = probe_kind_block([{"probes": [kept, dict(kept, kind="damaged", thrown=True)]}])["push"]
+    assert out["n"] == 1 and out["kinds"] == {"slid": 1} and out["brier"] == 0.0 and out["brier_const"] == 0.0
+    old = [dict(kept, kinds_not_thrown=False), dict(kept, thrown=True, kinds_not_thrown=False)]
+    assert probe_kind_block([{"probes": old}])["push"]["n"] == 2
+
+
+def test_probe_record_constant_is_the_kind_rate_of_the_results_not_thrown():
+    """The constant baseline of the kinds is their rate among the probe model's kind rows (for a 2b model the results
+    not thrown), so it sums to 1; the thrown constant is the rate among every row. The record says which kinds the
+    model declares."""
+    from robots.mujoco_lab.calibrate import _probe_record
+    from rpent.skills.pick_place.probes import CalibratedClassifier, ProbeModel
+
+    classes = ("slid", "tipped", "no_breakaway", "no_contact")
+    clf = CalibratedClassifier(classes, None, None, np.array([0.8, 0.2, 0.0, 0.0]))
+    pm = ProbeModel(probe="push", classes=classes, clf=clf, reading={}, p_thrown=0.5,
+                    stats={"n": 100, "n_not_thrown": 50, "kinds": {"slid": 40, "tipped": 10}, "thrown": 50})
+    d = {"probed": "push", "kind": "slid", "reading": {}, "thrown": False}
+    rec = _probe_record(d, SimpleNamespace(probe_models={"push": pm}), 1.0)
+    assert rec["const_kind"] == pytest.approx({"slid": 0.8, "tipped": 0.2}) and rec["const_thrown"] == pytest.approx(0.5)
+    assert rec["kinds_not_thrown"] is True
+
+
 def test_a_case_sets_the_slosh_scale_of_the_bundle_thresholds(monkeypatch):
     import robots.mujoco_lab.prior as prior
     from robots.mujoco_lab.calibrate import run_case

@@ -133,11 +133,13 @@ def _without_probe(a: dict[str, Any], prims: Any) -> str:
 def _probe_record(d: dict[str, Any], prims: Any, care: str | float) -> dict[str, Any]:
     pm = (getattr(prims, "probe_models", None) or {}).get(d["probed"])
     stats = getattr(pm, "stats", None) or {}
-    n = int(stats.get("n") or 0)
+    n, kinds = int(stats.get("n") or 0), stats.get("kinds") or {}
+    n_kinds = sum(int(v) for v in kinds.values())                     # the kind model's rows (2b: the results not thrown)
     return {"probe": d["probed"], "kind": d["kind"], "reading": d["reading"], "thrown": bool(d["thrown"]), "damage": d.get("damage"),
             "artifact": bool(d.get("artifact", False)), "displacement_m": d.get("displacement_m"), "tilt_deg": d.get("tilt_deg"),
             "declared": d.get("declared"),
-            "const_kind": {k: v / n for k, v in stats["kinds"].items()} if n and stats.get("kinds") else None,
+            "const_kind": {k: v / n_kinds for k, v in kinds.items()} if n_kinds else None,
+            "kinds_not_thrown": bool(getattr(pm, "kinds_not_thrown", True)),
             "const_thrown": stats["thrown"] / n if n and "thrown" in stats else None,
             "cost": probe_cost(d["probed"], d["kind"], d["thrown"], care)}
 
@@ -563,11 +565,15 @@ def _brier(P: np.ndarray, Y: np.ndarray) -> float:
 
 def probe_kind_block(rows: list[dict[str, Any]]) -> dict[str, Any]:
     """Per probe: the declared kind probabilities of the executed probes against the kinds seen ("damaged" among
-    them; a model that never saw it declares 0)."""
+    them; a model that never saw it declares 0). A 2b model declares the kinds of a result not thrown
+    (``kinds_not_thrown`` in the record), so its thrown probes are left out here and scored by thrown_block; a record
+    without the flag (a milestone 2a run) keeps them."""
     out = {}
     for probe, kinds in PROBE_KINDS.items():
         classes = kinds + (DAMAGED,)
-        recs = [p for r in rows for p in (r.get("probes") or []) if p["probe"] == probe and (p.get("declared") or {}).get("p_kind")]
+        recs = [p for r in rows for p in (r.get("probes") or [])
+                if p["probe"] == probe and not (p.get("thrown") and p.get("kinds_not_thrown", False))
+                and (p.get("declared") or {}).get("p_kind")]
         if not recs:
             out[probe] = {"n": 0, "kinds": {}, "brier": None, "brier_const": None, "below_const": None}
             continue
