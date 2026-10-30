@@ -121,6 +121,17 @@ def test_user_prompt_allows_probes_and_a_retry():
     assert "probe" in text and "diagnosis" in text and "retry" in text.lower()
 
 
+def test_user_prompt_accepts_a_decline_as_an_end():
+    """Under the cost rule the recommendation is often decline. The task text lets the planner end there, instead of
+    asking it to execute a row: in smoke run 2 of plan 2b the planner ran a declined row and spilled the mug (final
+    review, plan 2b)."""
+    from robots.mujoco_lab.prompts.user import user_prompt
+
+    text = user_prompt({"object": "ycb__mug", "destination": "table_centre"})
+    assert "decline" in text and "when you decline" in text
+    assert "choose a menu row, execute it" not in text
+
+
 def test_finalize_run_writes_outcome(tmp_path):
     from robots.mujoco_lab.robot_spec import finalize_run
     from rpent.evaluation.result import RunFinalizationContext
