@@ -31,7 +31,17 @@ protocols are paired case by case), resets the lab, and runs one protocol throug
   rarely asks for a probe;
 * ``policy``: the recommendation at every step: decline abstains, probe runs the recommended probe (at
   most ``MAX_PROBES``; past that, the menu's rule on the best row alone), commit runs the best row, and a
-  recoverable failure is reassessed and followed again (at most ``POLICY_ATTEMPTS`` attempts).
+  recoverable failure is reassessed and followed again (at most ``POLICY_ATTEMPTS`` attempts);
+* ``policy_no_probe`` (plan m4): the policy that never probes: at every menu it follows the recommendation without
+  the probe rows (the payload's ``without_probe``), so it learns only from failed attempts (the retry baseline);
+* ``policy_probe_one`` (plan m4): the first menu's cheapest probe row whatever the recommendation (none after a
+  guard flag), then the policy.
+
+Each case records its first menu's costs (``first_menu``: the best row's and the recommended option's expected
+cost), and each probe its place (``position`` among the case's probes, ``after_attempts``). ``--cases FILE``
+(``{"seed", "cases": {object: [idx, ...]}}``, for the run's seed) runs exactly the listed cases, which are the same
+cases a full run draws. The output records the code that made it (``code``: git HEAD and whether tracked files
+differed) and is written to a temporary file first, then renamed.
 
 Each case keeps the novelty guard's check of its first assessment (``guard``, None without a guard), and the
 summary counts the cases it checked and flagged; the commit protocol runs the best row after a guard decline too.
@@ -64,6 +74,7 @@ import argparse
 import json
 import multiprocessing as mp
 import os
+import subprocess
 import sys
 import time
 import zlib
@@ -83,7 +94,8 @@ from rpent.skills.pick_place.probes import DAMAGED, PROBE_KINDS, PROBE_SECONDS
 from rpent.skills.pick_place.protocol import DAMAGE, IRREVERSIBLE, MOTION_OUTCOMES, OUTCOMES, RECOVERABLE, Prediction
 from rpent.skills.pick_place.tools import MAX_PROBES, _threshold, assess_pick, pick_and_place
 
-PROTOCOLS = ("commit", "probe_first", "repair", "random_row", "probe_all", "policy")
+PROTOCOLS = ("commit", "probe_first", "repair", "random_row", "probe_all", "policy", "policy_no_probe", "policy_probe_one")
+POLICIES = ("policy", "policy_no_probe", "policy_probe_one")      # the protocols that run the policy loop
 POLICY_ATTEMPTS = 3               # policy: the attempts per case (a recoverable failure is reassessed)
 PROBE_ORDER = ("probe_push", "probe_weigh")     # probe_all: the order of scene A of the probe corpus
 CARE = "normal"                   # the default care of the realized cost
@@ -118,9 +130,12 @@ def _rows_to(a: dict[str, Any], destination: str) -> list[dict[str, Any]]:
 
 
 def _without_probe(a: dict[str, Any], prims: Any) -> str:
-    """policy, once it may not probe again: the menu's rule on the best row alone (the cost rule: commit when the
-    row costs at most A and reaches the floor, if one is set; the milestone 2a rule: P(placed_stable) at the
-    threshold). It reads the rounded payload, so a tie within 0.0005 can go either way."""
+    """policy, once it may not probe again: the menu's recommendation without its probe rows, the payload's
+    ``without_probe`` (menu.without_probe, from the unrounded costs). A payload without it (an older skill) gets the
+    same rule on the rounded best row (the cost rule: commit when the row costs at most A and reaches the floor, if
+    one is set; the milestone 2a rule: P(placed_stable) at the threshold), where a tie within 0.0005 can go either way."""
+    if a.get("without_probe") is not None:
+        return a["without_probe"]
     row = next((o for o in a["options"] if o["id"] == a.get("best_option")), None)
     if row is None:
         return "decline"
@@ -130,12 +145,19 @@ def _without_probe(a: dict[str, Any], prims: Any) -> str:
     return "commit" if float(row["expected_cost"]) <= float(A) and (floor is None or p >= float(floor)) else "decline"
 
 
-def _probe_record(d: dict[str, Any], prims: Any, care: str | float) -> dict[str, Any]:
+def _first_menu(a: dict[str, Any]) -> dict[str, float | None]:
+    """The first assessment's best row and recommended option costs (plan m4: the declared saving); None when missing."""
+    cost = {o["id"]: o.get("expected_cost") for o in a.get("options") or []}
+    return {"best_cost": cost.get(a.get("best_option")), "recommended_cost": cost.get(a.get("recommended_option"))}
+
+
+def _probe_record(d: dict[str, Any], prims: Any, care: str | float, position: int = 0, after_attempts: int = 0) -> dict[str, Any]:
     pm = (getattr(prims, "probe_models", None) or {}).get(d["probed"])
     stats = getattr(pm, "stats", None) or {}
     n, kinds = int(stats.get("n") or 0), stats.get("kinds") or {}
     n_kinds = sum(int(v) for v in kinds.values())                     # the kind model's rows (2b: the results not thrown)
-    return {"probe": d["probed"], "kind": d["kind"], "reading": d["reading"], "thrown": bool(d["thrown"]), "damage": d.get("damage"),
+    return {"probe": d["probed"], "position": position, "after_attempts": after_attempts, "kind": d["kind"], "reading": d["reading"],
+            "thrown": bool(d["thrown"]), "damage": d.get("damage"),
             "artifact": bool(d.get("artifact", False)), "displacement_m": d.get("displacement_m"), "tilt_deg": d.get("tilt_deg"),
             "declared": d.get("declared"),
             "const_kind": {k: v / n_kinds for k, v in kinds.items()} if n_kinds else None,
@@ -160,8 +182,8 @@ def run_protocol(prims: Any, protocol: str, destination: str, rng: np.random.Gen
     if protocol not in PROTOCOLS:
         raise ValueError(f"protocol must be one of {PROTOCOLS}, not {protocol!r}")
     store: dict[str, Any] = {}
-    case: dict[str, Any] = {"protocol": protocol, "recommendation": None, "best_option": None, "guard": None, "probes": [],
-                            "attempts": [], "cost": 0.0, "ended": None}
+    case: dict[str, Any] = {"protocol": protocol, "recommendation": None, "best_option": None, "guard": None, "first_menu": None,
+                            "probes": [], "attempts": [], "cost": 0.0, "ended": None}
 
     def end(reason: str, error: str | None = None) -> dict[str, Any]:
         case["ended"] = reason
@@ -182,6 +204,7 @@ def run_protocol(prims: Any, protocol: str, destination: str, rng: np.random.Gen
     if not a.get("assessed", True):
         return end("unreachable")
     case["recommendation"], case["best_option"], case["guard"] = a.get("recommendation"), a.get("best_option"), a.get("guard")
+    case["first_menu"] = _first_menu(a)
     if follow and a.get("recommendation") == "decline":
         return end("abstained")
     def probe(option_id: str) -> str | None:
@@ -191,7 +214,7 @@ def run_protocol(prims: Any, protocol: str, destination: str, rng: np.random.Gen
         if "error" in d:
             case["error"] = d["error"]
             return "error"
-        case["probes"].append(_probe_record(d, prims, care))
+        case["probes"].append(_probe_record(d, prims, care, len(case["probes"]), len(case["attempts"])))
         if d["kind"] == DAMAGED or d.get("damage"):
             return "damaged"
         if d["thrown"]:
@@ -213,10 +236,17 @@ def run_protocol(prims: Any, protocol: str, destination: str, rng: np.random.Gen
                 reason = probe(option_id)
                 if reason is not None:
                     return end(reason)
-    if protocol == "policy":
+    if protocol == "policy_probe_one" and not (a.get("guard") or {}).get("flag"):
+        rows = [o for o in a["options"] if o["kind"] == "probe"]
+        if rows:
+            reason = probe(min(rows, key=lambda o: o["expected_cost"])["id"])
+            if reason is not None:
+                return end(reason)
+    if protocol in POLICIES:
+        cap = 0 if protocol == "policy_no_probe" else max_probes
         while True:
             rec = a.get("recommendation")
-            if rec == "probe" and len(case["probes"]) >= max_probes:
+            if rec == "probe" and len(case["probes"]) >= cap:
                 rec = _without_probe(a, prims)
             if rec == "decline":
                 return end("abstained")
@@ -481,9 +511,11 @@ def plan_cases(a: argparse.Namespace) -> dict[str, Any]:
     decision: dict[str | None, float | None] = {}
     consts: dict[str | None, list[float]] = {}
     kinds: dict[str, str] = {}
+    listed = listed_cases(a)
+    requested = sorted(listed) if listed is not None else (a.objects.split(",") if a.objects else None)
     if a.crossfit:
         folds = {o: int(k) for o, k in json.load(open(os.path.join(a.crossfit, "folds.json"))).items()}
-        objects = a.objects.split(",") if a.objects else sorted(folds)
+        objects = requested if requested is not None else sorted(folds)
         missing = [o for o in objects if o not in folds]
         if missing:
             raise SystemExit(f"no fold for {missing} in {a.crossfit}/folds.json")
@@ -499,7 +531,7 @@ def plan_cases(a: argparse.Namespace) -> dict[str, Any]:
         for o in objects:
             assign[o] = (os.path.join(a.crossfit, f"fold_{folds[o]}"), folds[o])
         return {"objects": objects, "assign": assign, "consts": consts, "kind": kinds, "folds": {o: folds[o] for o in objects},
-                "decision": decision}
+                "decision": decision, "idx": listed}
     if a.bundle:
         man, metrics = _bundle_metrics(a.bundle)
         bundle, kind = a.bundle, a.model_kind or man.get("kind", "classifier")
@@ -508,11 +540,11 @@ def plan_cases(a: argparse.Namespace) -> dict[str, Any]:
         bundle = resolve_bundle(None)
         man = _bundle_metrics(bundle)[0] if bundle else {}
         kind = a.model_kind or (man.get("kind", "classifier") if bundle else metrics.get("kind", "classifier"))
-    objects = a.objects.split(",") if a.objects else list(metrics["split"]["test"])
+    objects = requested if requested is not None else list(metrics["split"]["test"])
     consts[bundle], decision[bundle] = class_rates(metrics), manifest_abstain_cost(man)
     for o in objects:
         assign[o] = (bundle, None)
-    return {"objects": objects, "assign": assign, "consts": consts, "kind": kind, "folds": None, "decision": decision}
+    return {"objects": objects, "assign": assign, "consts": consts, "kind": kind, "folds": None, "decision": decision, "idx": listed}
 
 
 def run_abstain_cost(a: argparse.Namespace, plan: dict[str, Any]) -> float | None:
@@ -529,7 +561,8 @@ def run_cases(a: argparse.Namespace, plan: dict[str, Any]) -> list[dict[str, Any
     jobs, A = [], run_abstain_cost(a, plan)
     for o in plan["objects"]:
         bundle, fold = plan["assign"][o]
-        jobs.append((o, list(range(a.repeats)), {"bundle": bundle, "fold": fold, "const": plan["consts"][bundle], "seed": a.seed,
+        idxs = plan["idx"][o] if plan.get("idx") is not None else list(range(a.repeats))
+        jobs.append((o, idxs, {"bundle": bundle, "fold": fold, "const": plan["consts"][bundle], "seed": a.seed,
                                                  "protocol": a.protocol, "follow": a.follow_recommendation, "fixtures": a.fixtures,
                                                  "threshold": a.threshold, "model_kind": a.model_kind, "care": a.care,
                                                  "abstain_cost": A, "force_noise": getattr(a, "force_noise", None),
@@ -804,8 +837,33 @@ def compare(A: dict[str, Any], B: dict[str, Any], rng: np.random.Generator, n_bo
 # ---------------------------------------------------------------- CLI
 
 def _write(out: dict[str, Any], path: str) -> None:
-    with open(path, "w") as f:
+    """Write whole or not at all: a temporary file, then a rename (a run killed mid-write leaves no truncated output)."""
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
         json.dump(out, f, indent=1, default=float)
+    os.replace(tmp, path)
+
+
+def code_revision() -> dict[str, Any]:
+    """The RPent checkout's git HEAD and whether its tracked files differ from it; None for both outside a checkout."""
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    try:
+        rev = subprocess.run(["git", "-C", root, "rev-parse", "HEAD"], capture_output=True, text=True, timeout=30, check=True).stdout.strip()
+        status = subprocess.run(["git", "-C", root, "status", "--porcelain", "--untracked-files=no"], capture_output=True, text=True,
+                                timeout=60, check=True).stdout
+    except (OSError, subprocess.SubprocessError):
+        return {"revision": None, "dirty": None}
+    return {"revision": rev, "dirty": bool(status.strip())}
+
+
+def listed_cases(a: argparse.Namespace) -> dict[str, list[int]] | None:
+    """--cases: {object: [idx, ...]} of a cases file written for this run's seed (SystemExit for another seed)."""
+    if not getattr(a, "cases", None):
+        return None
+    spec = json.load(open(a.cases))
+    if int(spec["seed"]) != int(a.seed):
+        raise SystemExit(f"the cases file {a.cases} is for seed {spec['seed']}, not --seed {a.seed}")
+    return {o: sorted(int(i) for i in idx) for o, idx in sorted(spec["cases"].items()) if idx}
 
 
 def _care_arg(text: str) -> str | float:
@@ -863,6 +921,7 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
     ap.add_argument("--out", required=True)
     ap.add_argument("--objects", default=None, help="comma-separated ids (default: the test split, or every object of the folds)")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--cases", default=None, help='a JSON file {"seed", "cases": {object: [idx, ...]}}: run exactly these cases')
     ap.add_argument("--follow-recommendation", action="store_true", help="commit protocol: abstain on a decline recommendation")
     ap.add_argument("--threshold", type=float, default=None, help="override the commit threshold (tests)")
     ap.add_argument("--care", type=_care_arg, default=CARE, help="low, normal, high or a number above 0 (scales the irreversible costs)")
@@ -890,13 +949,16 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
         ap.error("give --metrics, --bundle, --crossfit or --compare")
     if a.follow_recommendation and a.protocol != "commit":
         ap.error("--follow-recommendation applies to the commit protocol")
+    if a.cases and a.objects:
+        ap.error("--cases names the objects; drop --objects")
     plan = plan_cases(a)
     rows = run_cases(a, plan)
     out = summarize(rows, a.protocol, rng, a.coverage_sims, nested=bool(a.crossfit))
     out.update(kind=plan["kind"], objects=plan["objects"], folds=plan["folds"], seed=a.seed, repeats=a.repeats,
                care=a.care, care_scale=care_scale(a.care), abstain_cost=run_abstain_cost(a, plan), force_noise=run_force_noise(rows),
                evoi=run_evoi(rows), probe_time_scale=run_probe_time_scale(rows),
-               source={"crossfit": a.crossfit, "bundle": a.bundle, "metrics": a.metrics}, seconds=round(time.time() - t0, 1))
+               source={"crossfit": a.crossfit, "bundle": a.bundle, "metrics": a.metrics}, seconds=round(time.time() - t0, 1),
+               cases=None if not a.cases else {"path": a.cases, "n": len(rows)}, code=code_revision())
     _write(out, a.out)
     summary = {k: out[k] for k in ("protocol", "kind", "care", "abstain_cost", "n", "n_executed", "abstained", "errors", "artifacts", "ece",
                                    "ece_ci95_object_bootstrap", "brier", "brier_const", "ece_iid_floor", "outcomes", "probes_run",

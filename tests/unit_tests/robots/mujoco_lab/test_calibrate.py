@@ -777,3 +777,111 @@ def test_the_constant_baseline_reads_the_corpora_on_another_checkout():
     assert class_rates(moved) == here and len(set(here)) > 1
     with pytest.raises(FileNotFoundError, match="corpus"):
         class_rates(dict(metrics, corpus=["/nowhere/corpus_none.jsonl"]))
+
+
+# ---------------------------------------------------------------- the milestone 4 arms, case lists and records
+def test_policy_no_probe_follows_without_probe(monkeypatch):
+    """Plan m4 decision 3: the retry baseline follows the menu's recommendation without its probe rows (the payload's
+    without_probe, from the unrounded costs) at every menu."""
+    from robots.mujoco_lab.calibrate import run_protocol
+
+    sc = _scripted(monkeypatch, [dict(_assessment("probe", probe=True), without_probe="commit"), _assessment("commit")], ["placed_stable"])
+    case = run_protocol(SimpleNamespace(abstain_cost=1.0), "policy_no_probe", "table_centre", np.random.default_rng(0))
+    assert sc.calls == ["commit_std"] and case["probes"] == [] and case["ended"] == "placed"
+    sc = _scripted(monkeypatch, [dict(_assessment("probe", probe=True), without_probe="decline")], [])
+    case = run_protocol(SimpleNamespace(abstain_cost=1.0), "policy_no_probe", "table_centre", np.random.default_rng(0))
+    assert sc.calls == [] and case["ended"] == "abstained" and case["cost"] == pytest.approx(1.0)
+
+
+def test_policy_no_probe_equals_the_policy_without_a_probe_recommendation(monkeypatch):
+    from robots.mujoco_lab.calibrate import run_protocol
+
+    cases = []
+    for protocol in ("policy", "policy_no_probe"):
+        _scripted(monkeypatch, [_assessment("commit"), _assessment("commit"), _assessment("commit")], ["missed", "placed_stable"])
+        cases.append(run_protocol(SimpleNamespace(abstain_cost=1.0), protocol, "table_centre", np.random.default_rng(0)))
+    a, b = ({k: v for k, v in c.items() if k != "protocol"} for c in cases)
+    assert a == b and len(a["attempts"]) == 2 and cases[1]["protocol"] == "policy_no_probe"
+
+
+def test_policy_probe_one_runs_the_cheapest_probe_then_the_policy(monkeypatch):
+    """Plan m4 decision 3: the first menu's cheapest probe row runs whatever the recommendation, then the policy loop;
+    no probe after a guard flag."""
+    from robots.mujoco_lab.calibrate import run_protocol
+
+    first = _assessment("commit")
+    first["options"] = first["options"] + [{"id": "probe_push", "kind": "probe", "action": {"probe": "push"}, "expected_cost": 0.9},
+                                           {"id": "probe_weigh", "kind": "probe", "action": {"probe": "weigh"}, "expected_cost": 0.7}]
+    sc = _scripted(monkeypatch, [first, _assessment("commit")], ["placed_stable"])
+    case = run_protocol(SimpleNamespace(abstain_cost=1.0), "policy_probe_one", "table_centre", np.random.default_rng(0))
+    assert sc.calls == ["probe_weigh", "commit_std"] and case["ended"] == "placed" and len(case["probes"]) == 1
+    sc = _scripted(monkeypatch, [dict(first, recommendation="decline", guard={"flag": True})], [])
+    case = run_protocol(SimpleNamespace(abstain_cost=1.0), "policy_probe_one", "table_centre", np.random.default_rng(0))
+    assert sc.calls == [] and case["ended"] == "abstained" and case["probes"] == []
+
+
+def test_probe_records_say_where_the_probe_ran(monkeypatch):
+    from robots.mujoco_lab.calibrate import run_protocol
+
+    two = _assessment("probe", probe=True)
+    sc = _scripted(monkeypatch, [two, two, _assessment("commit")], ["placed_stable"])
+    case = run_protocol(SimpleNamespace(abstain_cost=1.0), "policy", "table_centre", np.random.default_rng(0))
+    assert sc.calls == ["probe_push", "probe_push", "commit_std"]
+    assert [(p["position"], p["after_attempts"]) for p in case["probes"]] == [(0, 0), (1, 0)]
+
+
+def test_the_case_records_its_first_menu_costs(monkeypatch):
+    from robots.mujoco_lab.calibrate import run_protocol
+
+    a = _assessment("probe", probe=True)
+    a["options"][1]["expected_cost"] = 0.4
+    _scripted(monkeypatch, [a, _assessment("decline")], [])
+    case = run_protocol(SimpleNamespace(abstain_cost=1.0), "policy", "table_centre", np.random.default_rng(0))
+    assert case["first_menu"] == {"best_cost": 0.6, "recommended_cost": 0.4}
+    _scripted(monkeypatch, [_assessment("decline")], [])
+    case = run_protocol(SimpleNamespace(abstain_cost=1.0), "policy", "table_centre", np.random.default_rng(0))
+    assert case["first_menu"] == {"best_cost": 0.6, "recommended_cost": None}
+
+
+@needs_bundle
+def test_cases_file_runs_only_the_listed_cases(tmp_path):
+    """Plan m4 decision 4: a cases file runs exactly its cases, the same cases a full run draws; it must be for the run's
+    seed, and its objects must have folds."""
+    from robots.mujoco_lab.calibrate import main
+
+    cf = tmp_path / "folds"
+    cf.mkdir()
+    _stub_fold(cf, 0, ["ycb__brick", "ycb__mug"], ["ycb__clamp"], ["ycb__banana"])
+    _stub_fold(cf, 1, ["ycb__banana", "ycb__mug"], ["ycb__clamp"], ["ycb__brick"])
+    (cf / "folds.json").write_text(json.dumps({"ycb__banana": 0, "ycb__brick": 1}))
+    cases = tmp_path / "cases.json"
+    cases.write_text(json.dumps({"seed": 13, "cases": {"ycb__banana": [2, 5]}}))
+    base = ["--crossfit", str(cf), "--protocol", "commit", "--coverage-sims", "0"]
+    res = main(base + ["--repeats", "11", "--cases", str(cases), "--seed", "13", "--out", str(tmp_path / "c.json")])
+    assert [(r["object"], r["idx"]) for r in res["rows"]] == [("ycb__banana", 2), ("ycb__banana", 5)]
+    assert res["cases"] == {"path": str(cases), "n": 2} and res["objects"] == ["ycb__banana"]
+    full = main(base + ["--repeats", "6", "--objects", "ycb__banana", "--seed", "13", "--out", str(tmp_path / "f.json")])
+
+    def key(r):
+        return r["idx"], r["destination"], json.dumps(r["theta"], sort_keys=True), [(t["option"], t["outcome"]) for t in r["attempts"]]
+
+    assert [key(r) for r in res["rows"]] == [key(r) for r in full["rows"] if r["idx"] in (2, 5)]
+    with pytest.raises(SystemExit, match="seed"):
+        main(base + ["--repeats", "11", "--cases", str(cases), "--seed", "12", "--out", str(tmp_path / "d.json")])
+    cases.write_text(json.dumps({"seed": 13, "cases": {"ycb__clamp": [0]}}))
+    with pytest.raises(SystemExit, match="no fold"):
+        main(base + ["--repeats", "11", "--cases", str(cases), "--seed", "13", "--out", str(tmp_path / "e.json")])
+
+
+def test_the_output_records_its_code_revision(tmp_path):
+    """Plan m4 decision 9: every output says which code made it, and is written whole or not at all."""
+    import re
+
+    from robots.mujoco_lab.calibrate import main
+
+    out = tmp_path / "c.json"
+    main(["--metrics", METRICS, "--repeats", "1", "--out", str(out), "--objects", "ycb__banana", "--seed", "2", "--coverage-sims", "0"])
+    saved = json.load(open(out))
+    rev = saved["code"]["revision"]
+    assert (rev is None or re.fullmatch(r"[0-9a-f]{40}", rev)) and saved["code"]["dirty"] in (True, False, None)
+    assert saved["cases"] is None and not list(tmp_path.glob("*.tmp"))
