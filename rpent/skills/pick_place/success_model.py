@@ -23,10 +23,11 @@ from typing import Any
 
 import joblib
 import numpy as np
-from sklearn.ensemble import GradientBoostingClassifier
+from sklearn.ensemble import HistGradientBoostingClassifier
 from sklearn.isotonic import IsotonicRegression
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import GroupKFold
+from threadpoolctl import ThreadpoolController
 
 from rpent.skills.pick_place.evaluate import MIN_CLASS_ROWS, belief_features, score, true_features
 from rpent.skills.pick_place.features import FEATURES_M2, as_vector
@@ -34,6 +35,7 @@ from rpent.skills.pick_place.protocol import OUTCOMES, Prediction
 
 N_ESTIMATORS = 200
 MAX_DEPTH = 2
+L2 = 1.0  # the leaf value is -G/(H + L2): bounded where a rare class makes the curvature H tiny
 N_FOLDS = 5
 EPS = 1e-4
 DAMAGE_FLAG = {"crushed": "frag_crush", "bruised": "frag_bruise", "broken": "frag_break", "spilled": "fillable"}
@@ -134,8 +136,34 @@ class SuccessModel:
         return out, None, None
 
 
-def _fit_gbm(X: np.ndarray, y: np.ndarray, seed: int) -> GradientBoostingClassifier:
-    return GradientBoostingClassifier(n_estimators=N_ESTIMATORS, max_depth=MAX_DEPTH, random_state=seed).fit(X, y)
+_THREADS: ThreadpoolController | None = None
+
+
+def _one_thread():
+    """OpenMP at one thread for the boosting. Its results do not depend on the count, and idle workers spin
+    between the many small predictions and slow the caller (the unit tests ran 25 times slower at 20 threads)."""
+    global _THREADS
+    if _THREADS is None:
+        _THREADS = ThreadpoolController()
+    return _THREADS.limit(limits=1, user_api="openmp")
+
+
+class _Boost:
+    """A fitted HistGradientBoostingClassifier that predicts at one OpenMP thread."""
+
+    def __init__(self, clf: HistGradientBoostingClassifier):
+        self.clf, self.classes_ = clf, clf.classes_
+
+    def predict_proba(self, X: np.ndarray) -> np.ndarray:
+        with _one_thread():
+            return self.clf.predict_proba(X)
+
+
+def _fit_gbm(X: np.ndarray, y: np.ndarray, seed: int) -> _Boost:
+    with _one_thread():
+        return _Boost(HistGradientBoostingClassifier(max_iter=N_ESTIMATORS, max_depth=MAX_DEPTH, learning_rate=0.1,
+                                                     l2_regularization=L2, early_stopping=False,
+                                                     random_state=seed).fit(X, y))
 
 
 def fit_success_model(rows: list[dict[str, Any]], seed: int = 0, names=FEATURES_M2) -> SuccessModel:

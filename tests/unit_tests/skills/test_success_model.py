@@ -141,3 +141,54 @@ def test_masks_zero_inapplicable_damage_classes():
         assert p.p["spilled"] > 0.0 and p.p["crushed"] == 0.0
     P, _, _ = m.predict_matrix(np.array([as_vector(f, FEATURES_M2B) for f in steel]))
     assert (P[:, OUTCOMES.index("crushed")] == 0.0).all() and np.allclose(P.sum(axis=1), 1.0)
+
+
+def _shared_point_rows(labels):
+    """1200 rows split at x0 = 0, then five rare rows and one common row at one point that no split can divide."""
+    rng = np.random.default_rng(0)
+    X = rng.normal(size=(1200, 3))
+    y = np.where(X[:, 0] > 0, labels[0], labels[1]).astype(object)
+    X[:6] = 3.0
+    y[:5], y[5] = labels[2], labels[0]
+    return X, y.astype(type(labels[0]))
+
+
+def test_boosting_stays_bounded_when_a_rare_class_shares_a_point():
+    """P(rare) at the shared point is the rare rows' share there, 5/6. An unregularized Newton leaf (the sum of
+    the residuals over the sum of p(1 - p)) diverges on this data: P(rare) goes to 1 and the leaf values to 1e34.
+    The m2b corpora have rare classes of 9 to 81 rows, and that divergence corrupted the out-of-fold calibration."""
+    from rpent.skills.pick_place.success_model import _fit_gbm
+
+    for labels in (("a", "b", "rare"), (0, 0, 1)):
+        X, y = _shared_point_rows(labels)
+        clf = _fit_gbm(X, y, 0)
+        cls = list(clf.classes_)
+        P = clf.predict_proba(np.array([[3.0, 3.0, 3.0], [2.0, 0.0, 0.0], [-2.0, 0.0, 0.0]]))
+        assert abs(P[0, cls.index(labels[2])] - 5 / 6) < 0.05, (labels, P[0])
+        assert P[1, cls.index(labels[0])] > 0.9 and P[2, cls.index(labels[1])] > 0.9, (labels, P)
+
+
+def test_boosting_runs_openmp_at_one_thread(monkeypatch):
+    """Fit and predict at one OpenMP thread. The results do not depend on the count, and at 20 threads the idle
+    workers spin between the many small predictions and slowed this file from 12 s to 288 s."""
+    from sklearn.ensemble import HistGradientBoostingClassifier
+    from sklearn.utils._openmp_helpers import _openmp_effective_n_threads
+
+    from rpent.skills.pick_place.success_model import _fit_gbm
+
+    seen = []
+    fit, raw = HistGradientBoostingClassifier.fit, HistGradientBoostingClassifier._raw_predict
+
+    def fit_counting(self, *a, **k):
+        seen.append(("fit", _openmp_effective_n_threads()))
+        return fit(self, *a, **k)
+
+    def raw_counting(self, *a, **k):
+        seen.append(("predict", _openmp_effective_n_threads()))
+        return raw(self, *a, **k)
+
+    monkeypatch.setattr(HistGradientBoostingClassifier, "fit", fit_counting)
+    monkeypatch.setattr(HistGradientBoostingClassifier, "_raw_predict", raw_counting)
+    X, y = _shared_point_rows(("a", "b", "rare"))
+    _fit_gbm(X, y, 0).predict_proba(X[:4])
+    assert {k for k, _ in seen} == {"fit", "predict"} and {n for _, n in seen} == {1}, seen
