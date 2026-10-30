@@ -200,10 +200,11 @@ class _RecordingProbe:
     def __init__(self):
         from rpent.skills.pick_place.features import FEATURES_M2B
 
-        self.feature_names, self.seen = FEATURES_M2B, []
+        self.feature_names, self.seen, self.thrown = FEATURES_M2B, [], []
 
-    def loglik(self, obs, X, arrays, force, temper=None, terms=None, P=None):
+    def loglik(self, obs, X, arrays, force, temper=None, terms=None, P=None, thrown=None):
         self.seen.append(X)
+        self.thrown.append(thrown)
         return np.zeros(len(X)), {"used": ["kind"], "rejected": []}
 
 
@@ -227,6 +228,25 @@ def test_probe_check_reads_the_entry_and_the_squeeze_scene():
                                                   "f_damage_n": 20.0}] * n, np.ones(n))
     check_probe_cases(cases, {"probe_models": {"squeeze": pm}, "prior": prior}, [1.0], 5, 0)
     assert np.all(pm.seen[0][:, FEATURES_M2B.index("frag_crush")] == 1.0)
+
+
+def test_probe_check_tells_the_likelihood_whether_the_probe_threw_the_object():
+    """The posterior check scores the belief the skill builds: a probe row's likelihood hears whether that probe threw
+    the object, so a result that kept it weighs each particle's survival (Codex review of the fixes, plan 2b)."""
+    from robots.mujoco_lab.posterior_check import check_probe_cases, probe_cases
+    from rpent.skills.pick_place.belief import ParticleBelief
+    from tests.unit_tests.skills.synthetic import synthetic_pose, synthetic_rows
+
+    base = dict(synthetic_rows(1)[0]["features"], force=5.0)
+    row = {"key": "o__s0__d0__Csqueeze", "object": "o", "draw": 0, "probe": "squeeze", "kind": "measured", "reading": {"k_hat": 2.0},
+           "base": base, "pose": synthetic_pose(), "entry": {"class": "crushable", "law": "cardboard", "fillable": False}, "force": 5.0,
+           "theta": {"mass_scale": 1.0, "mu": 0.5, "com_s": None}, "com_end": 1, "truth": {"mass": 0.2, "mu": 0.5},
+           "com_obj_true": [0.0, 0.0, 0.03], "thrown": False}
+    pm = _RecordingProbe()
+    prior = lambda pose, n, rng: ParticleBelief([{"mass": 0.2, "mu": 0.5, "com_obj": [0.0, 0.0, 0.03], "com_frac": 0.5,  # noqa: E731
+                                                  "f_damage_n": 20.0}] * n, np.ones(n))
+    check_probe_cases(probe_cases([row], "C"), {"probe_models": {"squeeze": pm}, "prior": prior}, [1.0, 2.0], 5, 0)
+    assert pm.thrown == [False, False]
 
 
 def test_posterior_check_reports_fragility_and_fill_coverage(tmp_path, monkeypatch):

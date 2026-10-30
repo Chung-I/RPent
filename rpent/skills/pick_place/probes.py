@@ -222,7 +222,7 @@ class ProbeModel:
 
     def loglik(self, obs: dict[str, Any], X: np.ndarray, arrays: dict[str, np.ndarray], force: float,
                temper: float | None = None, terms: list[str] | None = None,
-               P: np.ndarray | None = None) -> tuple[np.ndarray, dict[str, list[str]]]:
+               P: np.ndarray | None = None, thrown: bool | None = None) -> tuple[np.ndarray, dict[str, list[str]]]:
         """Per-particle log-likelihood of one probe result ``{"kind", "reading"}``: the kind term
         log max(floor_p, P(kind)) / temper, and the reading term log p(ratio), p the kind's reading law with
         every sd times temper, rejected (listed, not used) when the reading is not positive or its best particle
@@ -230,7 +230,10 @@ class ProbeModel:
         model whose corpus had none) tells nothing: its kind term is rejected.
         ``temper`` overrides the model's (the posterior check's grid). ``terms`` (an entry's recorded
         used terms) replays exactly those terms, without the rejection rule (a belief refresh). ``P``:
-        ``p_kind(X)`` when the caller has it already (the preposterior loop)."""
+        ``p_kind(X)`` when the caller has it already (the preposterior loop). ``thrown``: whether a real result threw the
+        object. The kinds are those of the results not thrown, so a result that kept the object (False) adds the term
+        log max(floor_p, 1 - P(thrown)) / temper ("not_thrown"). None (the preposterior, which weighs each particle's
+        survival itself) adds nothing, and so does a throw, which ends the case."""
         t = self.temper if temper is None else float(temper)
         want = (lambda term: True) if terms is None else (lambda term: term in terms)
         kind = obs["kind"]
@@ -255,6 +258,9 @@ class ProbeModel:
                 else:
                     ll = ll + law.logpdf(x, t)
                     used.append("reading")
+        if thrown is not None and not thrown and want("not_thrown"):
+            ll = ll + np.log(np.maximum(self.floor_p, 1.0 - self.risk(X))) / t
+            used.append("not_thrown")
         return ll, {"used": used, "rejected": rejected}
 
     def sample(self, x_row: np.ndarray, particle: dict[str, Any], force: float, rng: np.random.Generator,

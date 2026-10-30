@@ -474,6 +474,33 @@ def test_probe_entry_updates_the_belief():
     assert abs(post.quantile("mass", 0.5) - 0.5) < 0.03 and post.effective_size() >= 100
 
 
+def test_a_probe_result_not_thrown_weighs_each_particles_survival():
+    """The kinds are those of the results not thrown, so a result that kept the object also tells that the probe did
+    not throw it: each particle's weight takes the factor 1 - P(thrown). Half the particles are thrown with P 0.9, the
+    others never, and both measure for sure: after a measured weigh that was not thrown, the risky half keeps 0.1 of its
+    weight against the safe half (Codex review of the fixes, plan 2b)."""
+    from rpent.skills.pick_place.probes import CalibratedClassifier, ProbeModel
+
+    class HalfRisk:
+        def predict(self, X):
+            r = np.where(np.arange(len(X)) % 2 == 0, 0.9, 0.0)
+            return np.column_stack([1.0 - r, r])
+
+    clf = CalibratedClassifier(("measured", "lower_bound", "lost"), None, None, np.array([1.0, 0.0, 0.0]))
+    pm = ProbeModel(probe="weigh", classes=clf.classes, clf=clf, reading={}, p_thrown=HalfRisk())
+    prims, store = _bprims(_ReadingEnv([]), probe_models={"weigh": pm}), {}
+    assess_pick(object="mug", destination="table_centre", primitives=prims, store=store)
+    o = store["pick_place"][KEY]["menu"]["commit_std"]
+    b = store["beliefs"]["ycb__mug"]["belief"]
+    entry = {"type": "probe", "base": o._base, "pose": o._pose, "force": 20.0, "planned": None,
+             "obs": {"probe": "weigh", "kind": "measured", "reading": {}, "thrown": False}}
+    post = tools_mod.update_belief(b, entry, prims)
+    w0, w = np.asarray(b.weights), np.asarray(post.weights)
+    risky = np.arange(len(w)) % 2 == 0
+    assert w[risky].sum() / w[~risky].sum() == pytest.approx(0.1 * w0[risky].sum() / w0[~risky].sum())
+    assert post.history[-1]["used_terms"] == ["kind", "not_thrown"]
+
+
 # ---------------------------------------------------------------- probes and the threshold (milestone 2, task 7)
 from rpent.skills.pick_place.probes import ProbeResult  # noqa: E402
 from tests.unit_tests.skills.probe_stubs import FlatWeigh, MuGate, PerfectPush  # noqa: E402

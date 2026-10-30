@@ -116,7 +116,7 @@ def entry_loglik(belief: ParticleBelief, entry: dict[str, Any], primitives: Any,
         if pm is None:
             raise ValueError(f"no probe model for {entry['obs']['probe']!r}")
         X = particle_matrix(entry["base"], a, entry["pose"], float(entry["force"]), model_names(pm))
-        return pm.loglik(entry["obs"], X, a, float(entry["force"]), terms=terms)
+        return pm.loglik(entry["obs"], X, a, float(entry["force"]), terms=terms, thrown=entry["obs"].get("thrown"))
     obs = entry["obs"]
     _, per = estimate(primitives.model, belief, entry["base"], entry["pose"], float(entry["force"]), entry.get("planned") or [])
     rm = getattr(primitives, "readout_model", None)
@@ -266,7 +266,7 @@ def _run_probe(row: Option, object: str, destination: str, care: str, primitives
         rec["damaged"] = (damage or {}).get("label") or DAMAGED
     reading = {k: v for k, v in dict(res.reading).items() if k not in HIDDEN_READING}
     entry = {"type": "probe", "option": row.id, "base": row._base, "pose": row._pose, "force": float(act["force"]), "planned": None,
-             "obs": {"probe": probe, "kind": res.kind, "reading": dict(reading)}}
+             "obs": {"probe": probe, "kind": res.kind, "reading": dict(reading), "thrown": bool(res.thrown)}}
     before, after = _update(rec, entry, loc, primitives)
     return {"probed": probe, "placed": False, "kind": res.kind, "reading": reading,
             "displacement_m": res.displacement_m, "tilt_deg": res.tilt_deg, "thrown": bool(res.thrown), "seconds": res.seconds,

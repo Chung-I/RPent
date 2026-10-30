@@ -155,7 +155,8 @@ def check_probe_cases(cases: list[list[dict[str, Any]]], bundle: dict[str, Any],
         b = prior(first["pose"], n, rng)
         a = b.arrays()
         terms = [(pms[r["probe"]], {"kind": r["kind"], "reading": r["reading"]},
-                  particle_matrix(r["base"], a, row_pose(r), r["force"], model_names(pms[r["probe"]])), float(r["force"])) for r in case]
+                  particle_matrix(r["base"], a, row_pose(r), r["force"], model_names(pms[r["probe"]])), float(r["force"]), r.get("thrown"))
+                 for r in case]
         truth, sim = generator_truth(first, bundle.get("classes")), sim_truth(first)
         c = {"object": first["object"], "label": "+".join(r["kind"] for r in case), "n_probes": len(case),
              "info": {"used": [], "rejected": []}, "prior": _hits(b, truth), "prior_sim": _hits(b, sim), "prior_width": _widths(b),
@@ -169,8 +170,8 @@ def check_probe_cases(cases: list[list[dict[str, Any]]], bundle: dict[str, Any],
                                "prior": _fill_interval(b, weigh), "post": {}}
         for j, t in enumerate(grid):
             ll = np.zeros(len(b.weights))
-            for pm, obs, X, force in terms:
-                lt, info = pm.loglik(obs, X, a, force, temper=t)
+            for pm, obs, X, force, thrown in terms:
+                lt, info = pm.loglik(obs, X, a, force, temper=t, thrown=thrown)
                 ll = ll + lt
                 if j == 0:
                     c["info"]["used"] += [f"{pm.probe}_{k}" for k in info["used"]]
