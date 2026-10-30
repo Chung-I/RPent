@@ -196,7 +196,7 @@ def _assess(object: str, destination: str, care: str | float, primitives: Any,
         evidence.append(f"probes run this episode: {', '.join(sorted(rec['probes_run']))}")
     a = Assessment(object=object, destination=destination, options=options, evidence=evidence,
                    recommendation=recommendation, care=care, visibility=belief.visibility, episode=key[3], care_scale=scale,
-                   abstain_cost=None if abstain is None else float(abstain))
+                   abstain_cost=None if abstain is None else float(abstain), probe_time_scale=time_scale)
     cache[key] = {"assessment": a, "menu": {o.id: o for o in options}, "belief": belief}
     return None, a
 

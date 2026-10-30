@@ -28,7 +28,7 @@ EXPECTED_KEYS = {
     "assessed", "object", "destination", "best_option", "p_success", "p_held_to_release",
     "p_irreversible", "p_recoverable", "p_drop_height", "evidence", "options",
     "recommendation", "recommended_option", "decline_reason", "care", "care_scale", "abstain_cost",
-    "visibility", "guard",
+    "probe_time_scale", "visibility", "guard",
 }
 
 
@@ -78,7 +78,7 @@ def test_to_data_keys_and_best_row():
     assert d["options"][0]["p"]["placed_stable"] == 0.712
     assert d["options"][0]["expected_loss_t"] == 1.2
     assert d["options"][1]["p"] is None
-    assert d["care_scale"] == 1.0 and d["abstain_cost"] is None
+    assert d["care_scale"] == 1.0 and d["abstain_cost"] is None and d["probe_time_scale"] == 1.0
     json.dumps(d)
 
 

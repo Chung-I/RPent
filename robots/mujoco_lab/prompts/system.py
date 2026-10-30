@@ -57,7 +57,8 @@ release height). The top-level numbers repeat the best row's values; `best_optio
   gentle carry: less spill risk, slower).
 - The cost rule: a row's `expected_cost` sums each outcome's probability times its cost (an
   irreversible outcome costs 5 times the care factor, a recoverable one 1, not_lifted 0.5), 0.05 per
-  second, and the abstain cost A times P(the object does not end placed_stable). `abstain_cost` is A,
+  second (a probe's seconds cost `probe_time_scale` times 0.05 each), and the abstain cost A times
+  P(the object does not end placed_stable). `abstain_cost` is A,
   the value of the task: a case that ends without the object placed costs A, and the `decline` row
   (abstaining) costs A. When `abstain_cost` is null, that term is absent and a decline costs nothing.
 - `inboard_place` sets the object down at `table_centre` instead of the requested place. It is
@@ -75,7 +76,8 @@ release height). The top-level numbers repeat the best row's values; `best_optio
   the expected fall in the best row's expected cost after the probe, an estimate that can be below 0
   when the probe is unlikely to change the best row), `evoi_se` (the Monte Carlo error of `evoi`)
   and `expected_cost_after`. Its
-  `expected_cost` is the probe's time, the push's tip risk and `expected_cost_after`.
+  `expected_cost` is the probe's time (at `probe_time_scale` times 0.05 per second), the push's tip risk
+  and `expected_cost_after`.
 - `recommendation`: with `abstain_cost` A, `commit` when the best row's `expected_cost` is at most
   A, and `probe` instead when the cheapest probe row's `expected_cost` is below the smaller of the
   best row's and A by more than twice `evoi_se` and its `evoi` is above 0; else `decline` (abstain).

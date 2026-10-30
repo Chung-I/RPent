@@ -270,3 +270,11 @@ def test_primitives_keep_probe_time_scale_1_by_default():
 
     assert MuJoCoLabPrimitives(env=None, model=None).probe_time_scale == 1.0
     assert MuJoCoLabPrimitives(env=None, model=None, probe_time_scale=0.25).probe_time_scale == 0.25
+
+
+def test_system_prompt_names_the_probe_time_scale():
+    """The final review of plan 2b2: a probe row's expected_cost charges its seconds at probe_time_scale x 0.05."""
+    from robots.mujoco_lab.prompts.system import system_prompt
+
+    text = system_prompt()
+    assert "`probe_time_scale`" in text and "`probe_time_scale` times 0.05" in text

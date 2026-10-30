@@ -828,3 +828,14 @@ def test_bundle_probe_time_scale_reaches_the_executed_menu():
     prims = _probe_prims(_ProbeEnv(), push=PerfectPush())
     prims.probe_time_scale = -1.0
     assert "probe time scale" in assess_pick(object="mug", destination="table_centre", primitives=prims, store={}).data["error"]
+
+
+def test_the_assessment_reports_the_probe_time_scale():
+    """The final review of plan 2b2: the planner sees the factor on a probe's time charge beside abstain_cost (1 without
+    one), so a probe row's expected_cost adds up at every scale of the milestone 4 grid."""
+    for s, want in ((None, 1.0), (0.25, 0.25), (0.0, 0.0)):
+        prims = _probe_prims(_ProbeEnv(probes=[_push(high=1.0)]), push=PerfectPush())
+        if s is not None:
+            prims.probe_time_scale = s
+        d = assess_pick(object="mug", destination="table_centre", primitives=prims, store={}).data
+        assert d["probe_time_scale"] == want
