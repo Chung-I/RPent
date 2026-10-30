@@ -287,6 +287,25 @@ def test_probe_rows_present_when_models_exist():
     assert [o.expected_cost for o in options[:-1]] == sorted(o.expected_cost for o in options[:-1])
 
 
+def test_push_row_charges_a_tip_only_for_a_push_that_keeps_the_object():
+    """The push's kinds are those of a push not thrown, so its tipping charge is P(not thrown) P(tipped | not thrown):
+    a push that tips every object it keeps and throws half of them costs half a tip, not a whole one (Codex review
+    of the fixes, plan 2b)."""
+    options, _ = _pmenu(probe_models={"push": PerfectPush(p_tip=1.0, p_thrown=0.5)})
+    o = _by_id(options)["probe_push"]
+    tip = 0.5 * COST["tipped"]
+    assert o.expected_cost == pytest.approx(TIME_COST_PER_S * PROBE_SECONDS["push"] + tip + o.probe["expected_cost_after"])
+
+
+def test_a_milestone_2a_push_charges_its_whole_tip():
+    """A milestone 2a push model learned its kinds on every push, and no thrown push of its corpus tipped, so its
+    P(tipped) is already that of a push that keeps the object: the whole tip is charged (the m2 menus stay pinned)."""
+    push = PerfectPush(p_tip=1.0, p_thrown=0.5)
+    push.kinds_not_thrown = False
+    o = _by_id(_pmenu(probe_models={"push": push})[0])["probe_push"]
+    assert o.expected_cost == pytest.approx(TIME_COST_PER_S * PROBE_SECONDS["push"] + COST["tipped"] + o.probe["expected_cost_after"])
+
+
 def test_no_probe_rows_without_models():
     options, _ = _pmenu()
     assert not any(o.kind == "probe" for o in options)

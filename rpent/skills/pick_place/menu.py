@@ -182,6 +182,18 @@ def probe_value(belief: ParticleBelief, continuation_costs: list[np.ndarray], pr
             "evoi": gain if gain > EVOI_EPS else 0.0, "evoi_se": se, "expected_cost_after": unused - gain}
 
 
+def push_tip_charge(belief: ParticleBelief, probe_model: Any, X_probe: np.ndarray) -> float:
+    """The expected tipping charge of a push: P(the push keeps the object and tips it) times the tip's cost. For a kind
+    model of the pushes not thrown that is per particle (1 - P(thrown)) P(tipped | not thrown); a milestone 2a model's
+    P(tipped) is already that (it learned on every push, and no thrown push of its corpus tipped)."""
+    if "tipped" not in probe_model.classes:
+        return 0.0
+    P = np.asarray(probe_model.p_kind(X_probe), dtype=float)[:, list(probe_model.classes).index("tipped")]
+    if getattr(probe_model, "kinds_not_thrown", True):
+        P = (1.0 - np.asarray(probe_model.risk(X_probe), dtype=float)) * P
+    return float(belief.weights @ P) * COST["tipped"]
+
+
 def _probe_rows(probe_models: dict[str, Any], belief: ParticleBelief, geometry: Geometry, mid: Any, pose: dict[str, Any],
                 f_std: float, care: str | float, continuation: list[Option], rng: np.random.Generator,
                 abstain_cost: float | None = None) -> list[Option]:
@@ -201,7 +213,7 @@ def _probe_rows(probe_models: dict[str, Any], belief: ParticleBelief, geometry: 
                        PROBE_DESTINATION, None, belief.visibility)
         X = particle_matrix(base, a, pose, force, model_names(pm))
         v = probe_value(belief, costs, pm, X, force, care, rng, abstain_cost=abstain_cost)
-        tip = v["p_kind"].get("tipped", 0.0) * COST["tipped"] if probe == "push" else 0.0
+        tip = push_tip_charge(belief, pm, X) if probe == "push" else 0.0
         cost = TIME_COST_PER_S * PROBE_SECONDS[probe] + tip + v["expected_cost_after"]
         reason = f"{probe} first: value of information {v['evoi']:.2f}, expected cost of the best row after it {v['expected_cost_after']:.2f}"
         rows.append(Option(id=f"probe_{probe}", kind="probe", action={"probe": probe, "s": mid.s, "force": force}, pred=None,
