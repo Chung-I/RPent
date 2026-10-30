@@ -47,3 +47,13 @@ robots/mujoco_lab/data/m2b/folds/*
 !robots/mujoco_lab/data/m2b/folds/fold_*/
 robots/mujoco_lab/data/m2b/folds/fold_*/*
 !robots/mujoco_lab/data/m2b/folds/fold_*/*.json
+# the milestone 2b2 bundle and its folds: as milestone 2b's
+!robots/mujoco_lab/data/m2b2/
+robots/mujoco_lab/data/m2b2/*
+!robots/mujoco_lab/data/m2b2/*.json
+!robots/mujoco_lab/data/m2b2/folds/
+robots/mujoco_lab/data/m2b2/folds/*
+!robots/mujoco_lab/data/m2b2/folds/*.json
+!robots/mujoco_lab/data/m2b2/folds/fold_*/
+robots/mujoco_lab/data/m2b2/folds/fold_*/*
+!robots/mujoco_lab/data/m2b2/folds/fold_*/*.json
