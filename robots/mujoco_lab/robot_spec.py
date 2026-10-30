@@ -39,7 +39,7 @@ DATA_DIR = Path(__file__).resolve().parent / "data"
 DEFAULT_MODEL_PATH = str(DATA_DIR / "success_model.joblib")
 DEFAULT_HAZARD_PATH = str(DATA_DIR / "hazard_model.joblib")
 DEFAULT_METRICS_PATH = str(DATA_DIR / "success_model_metrics.json")
-DEFAULT_BUNDLE = DATA_DIR / "m2"                 # milestone 2's versioned models (manifest.json); milestone 1's stay in data/
+DEFAULT_BUNDLE = DATA_DIR / "m2b2"               # plan 2b2 decision 6; data/m2 and data/m2b stay; milestone 1's files stay in data/
 
 
 def lab_prior_fn(pose: dict[str, Any], n: int = 2000, rng: np.random.Generator | None = None):
@@ -50,7 +50,7 @@ def lab_prior_fn(pose: dict[str, Any], n: int = 2000, rng: np.random.Generator |
 
 
 def resolve_bundle(bundle: str | None = None) -> str | None:
-    """The model bundle to load: the argument, else RPENT_PICK_PLACE_BUNDLE, else data/m2 when its
+    """The model bundle to load: the argument, else RPENT_PICK_PLACE_BUNDLE, else DEFAULT_BUNDLE (data/m2b2) when its
     manifest exists, else None (milestone 1's files)."""
     b = bundle or os.environ.get("RPENT_PICK_PLACE_BUNDLE")
     if b:

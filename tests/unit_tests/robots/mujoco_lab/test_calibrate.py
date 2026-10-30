@@ -28,9 +28,10 @@ KEYS = {"n", "n_executed", "recommendation_decline_rate", "abstained", "ece", "e
         "by_destination", "by_option", "rows", "kind", "objects"}
 
 
-def test_calibrate_two_objects_one_repeat(tmp_path):
+def test_calibrate_two_objects_one_repeat(tmp_path, monkeypatch):
     from robots.mujoco_lab.calibrate import main
 
+    monkeypatch.setenv("RPENT_PICK_PLACE_BUNDLE", os.path.join(os.path.dirname(METRICS), "m2"))     # m2's rules; the default is m2b2
     out = tmp_path / "cal.json"
     res = main(["--metrics", METRICS, "--repeats", "1", "--out", str(out), "--objects", "ycb__banana,ycb__brick", "--seed", "1"])
     assert set(res) >= KEYS and res["n"] == 2 and res["n_executed"] == 2
@@ -61,10 +62,11 @@ def test_threshold_override_does_not_leak(tmp_path, monkeypatch):
     assert menu.DEFAULT_THRESHOLD == 0.7
 
 
-def test_threshold_reaches_the_menu(tmp_path):
-    """--threshold 0.0 reaches the menu: no case abstains on a decline."""
+def test_threshold_reaches_the_menu(tmp_path, monkeypatch):
+    """--threshold 0.0 reaches the menu: no case abstains on a decline (the m2 rule; under a cost rule the threshold is a floor)."""
     from robots.mujoco_lab.calibrate import main
 
+    monkeypatch.setenv("RPENT_PICK_PLACE_BUNDLE", os.path.join(os.path.dirname(METRICS), "m2"))     # m2's rules; the default is m2b2
     res = main(["--metrics", METRICS, "--repeats", "1", "--out", str(tmp_path / "c.json"), "--objects", "ycb__banana", "--seed", "2",
                 "--follow-recommendation", "--threshold", "0.0"])
     assert res["n"] == 1 and res["n_executed"] == 1 and res["abstained"] == 0 and res["recommendation_decline_rate"] == 0.0
@@ -397,20 +399,22 @@ def test_a_bundle_decision_sets_the_abstain_cost(tmp_path):
     import os
 
     from robots.mujoco_lab.calibrate import _primitives
-    from robots.mujoco_lab.robot_spec import DEFAULT_BUNDLE, build_lab, load_bundle
+    from robots.mujoco_lab.robot_spec import DATA_DIR, build_lab, load_bundle
 
-    assert load_bundle(str(DEFAULT_BUNDLE))["abstain_cost"] is None
+    m2 = DATA_DIR / "m2"
+
+    assert load_bundle(str(m2))["abstain_cost"] is None
     b = tmp_path / "b"
     b.mkdir()
-    for f in os.listdir(DEFAULT_BUNDLE):
+    for f in os.listdir(m2):
         if f != "manifest.json":
-            (b / f).symlink_to(DEFAULT_BUNDLE / f)
-    man = json.load(open(DEFAULT_BUNDLE / "manifest.json"))
+            (b / f).symlink_to(m2 / f)
+    man = json.load(open(m2 / "manifest.json"))
     json.dump(dict(man, decision={"abstain_cost": 1.0}), open(b / "manifest.json", "w"))
     assert load_bundle(str(b))["abstain_cost"] == 1.0
     assert build_lab(bundle=str(b)).abstain_cost == 1.0
     assert _primitives(str(b), None, None).abstain_cost == 1.0
-    assert build_lab(bundle=str(DEFAULT_BUNDLE)).abstain_cost is None
+    assert build_lab(bundle=str(m2)).abstain_cost is None
 
 
 def test_compare_refuses_runs_with_different_costs():

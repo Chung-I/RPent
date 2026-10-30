@@ -233,11 +233,11 @@ def test_the_m2_bundle_reads_the_m2_schema():
     its seven label columns after OUTCOMES grows to eleven."""
     import numpy as np
 
-    from robots.mujoco_lab.robot_spec import DEFAULT_BUNDLE, load_bundle
+    from robots.mujoco_lab.robot_spec import DATA_DIR, load_bundle
     from rpent.skills.pick_place.features import FEATURES_M2
     from rpent.skills.pick_place.protocol import MOTION_OUTCOMES
 
-    B = load_bundle(str(DEFAULT_BUNDLE))
+    B = load_bundle(str(DATA_DIR / "m2"))
     assert (B["feature_schema"], B["outcome_schema"]) == ("m2", "m2")
     assert B["model"].feature_names == FEATURES_M2 and B["guard"].feature_names == FEATURES_M2
     assert all(pm.feature_names == FEATURES_M2 for pm in B["probe_models"].values())
@@ -245,6 +245,19 @@ def test_the_m2_bundle_reads_the_m2_schema():
     assert rot.feature_names == FEATURES_M2 and rot.label_classes == MOTION_OUTCOMES
     assert rot.predict(np.zeros((2, len(FEATURES_M2))), "placed_stable").shape == (2,)
 
+
+def test_the_default_bundle_is_m2b2(monkeypatch):
+    """Plan 2b2 decision 6: (a), (b) and (e) passed and (c) and (d) failed nothing, so the lab's default bundle is
+    data/m2b2, which declares its sensor and its decision; data/m2 and data/m2b stay as they were."""
+    from robots.mujoco_lab.robot_spec import DATA_DIR, DEFAULT_BUNDLE, load_bundle, resolve_bundle
+
+    monkeypatch.delenv("RPENT_PICK_PLACE_BUNDLE", raising=False)
+    assert DEFAULT_BUNDLE == DATA_DIR / "m2b2" and resolve_bundle(None) == str(DATA_DIR / "m2b2")
+    man = json.load(open(DEFAULT_BUNDLE / "manifest.json"))
+    assert man["sensor"] == {"force_noise": 0.05}
+    assert man["decision"] == {"abstain_cost": 1.0, "evoi": "heldout", "probe_time_scale": 1.0}
+    B = load_bundle(str(DEFAULT_BUNDLE))
+    assert (B["force_noise"], B["abstain_cost"], B["evoi"], B["probe_time_scale"]) == (0.05, 1.0, "heldout", 1.0)
 
 def test_probe_metrics_serialise_mixture_laws(tmp_path):
     """Weigh readings with a 25 % wide tail: fit_probes selects the measured law's kind on an inner split of the

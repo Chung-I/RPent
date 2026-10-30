@@ -44,10 +44,10 @@ def menus() -> list[dict]:
     """The m2 menus of CASES, unrounded, through the calibration path (case draw, reset, the menu's stream)."""
     from robots.mujoco_lab.adapter import object_props
     from robots.mujoco_lab.calibrate import MESH_IDS, _primitives, _stream, case_draw
-    from robots.mujoco_lab.robot_spec import DEFAULT_BUNDLE
+    from robots.mujoco_lab.robot_spec import DATA_DIR
     from rpent.skills.pick_place.tools import _assess
 
-    prims = _primitives(str(DEFAULT_BUNDLE), None, None)
+    prims = _primitives(str(DATA_DIR / "m2"), None, None)
     prims.abstain_cost = None
     out = []
     for object_id, idx in CASES:
