@@ -777,3 +777,44 @@ def test_squeeze_is_worthless_without_correlation():
         b, pm, C = _squeeze_world(rho)
         v = probe_value(b, C, pm, np.zeros((len(b), 3)), 5.0, "normal", np.random.default_rng(1), k=400, abstain_cost=1.0)
         assert (v["evoi"] > 2.0 * v["evoi_se"]) == worth, (rho, v)
+
+
+class _SurvivalWeigh:
+    """A weigh whose reading tells nothing and that damages particle i with P X[i, 0]: only its survival informs. Its
+    kind term reads ``P`` when the caller passes it, as ProbeModel.loglik does."""
+
+    probe = "weigh"
+    classes = _KINDS["weigh"] + ("damaged",)
+
+    def p_kind(self, X):
+        d = np.asarray(X, dtype=float)[:, 0]
+        P = np.zeros((len(d), len(self.classes)))
+        P[:, 0], P[:, -1] = 1.0 - d, d
+        return P
+
+    def risk(self, X):
+        return np.zeros(len(X))
+
+    def terminal_risk(self, X):
+        return np.asarray(X, dtype=float)[:, 0]
+
+    def sample(self, x_row, particle, force, rng, p=None):
+        return {"probe": "weigh", "kind": "measured", "reading": {}, "thrown": False}
+
+    def loglik(self, obs, X, arrays, force, temper=None, terms=None, P=None):
+        P = self.p_kind(X) if P is None else np.asarray(P, dtype=float)
+        return np.log(np.maximum(1e-4, P[:, list(self.classes).index(obs["kind"])])), {"used": ["kind"], "rejected": []}
+
+
+def test_probe_value_weighs_each_particles_survival_once():
+    """Two particles; the weigh damages the first with P 0.9 and never the second, and its reading tells nothing. With
+    A 1 the best row now is abstaining (1.0 against 1.6). A kept object is the second particle with P 0.5/0.55, so the
+    row (3.0, 0.2) is picked after it: cost after 0.45 T + 0.05 x 3.0 + 0.5 x 0.2, value 0.3 (Codex review, plan 2b)."""
+    from rpent.skills.pick_place.costs import COST, care_scale
+
+    b = _particles([0.2, 0.5], [0.5, 0.5])
+    X = np.array([[0.9, 0.0, 0.0], [0.0, 0.0, 0.0]])
+    v = probe_value(b, [np.array([3.0, 0.2])], _SurvivalWeigh(), X, 20.0, "normal", np.random.default_rng(0), k=50,
+                    abstain_cost=1.0)
+    T = COST["dropped_high"] * care_scale("normal") + 1.0
+    assert v["evoi"] == pytest.approx(0.3) and v["expected_cost_after"] == pytest.approx(0.45 * T + 0.15 + 0.1)

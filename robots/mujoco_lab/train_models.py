@@ -139,7 +139,8 @@ def law_val_objects(split: dict, seed: int) -> list[str]:
 
 def fit_probes(path: str, out_dir: str, split: dict, seed: int = 0, schema: str | None = None) -> dict:
     """Probe models on the training objects' probe rows, on the bundle's feature schema; per probe the kind rates,
-    the thrown rate, the reading laws and the validation Brier of the kind classifier against the training kind rates."""
+    the thrown rate, the reading laws and the validation Brier of the kind classifier against the training kind rates
+    (both on the results not thrown: the kind classifier's rows)."""
     from rpent.skills.pick_place.probes import fit_probe_models, true_matrix
 
     rows = load_rows(path)
@@ -149,7 +150,8 @@ def fit_probes(path: str, out_dir: str, split: dict, seed: int = 0, schema: str 
     out: dict = {"probe_corpus": path, "split": split, "law_val_objects": law_val, "probes": {}}
     for probe, pm in models.items():
         every = [r for r in rows if r["probe"] == probe]
-        tr_p, va_p = [r for r in tr if r["probe"] == probe], [r for r in va if r["probe"] == probe]
+        tr_p = [r for r in tr if r["probe"] == probe and not r["thrown"]]
+        va_p = [r for r in va if r["probe"] == probe and not r["thrown"]]
         const = np.array([sum(r["kind"] == k for r in tr_p) / len(tr_p) for k in pm.classes])
         val: dict = {"n": len(va_p), "brier": None, "brier_const": None}
         if va_p:

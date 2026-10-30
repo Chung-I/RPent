@@ -141,10 +141,12 @@ def probe_value(belief: ParticleBelief, continuation_costs: list[np.ndarray], pr
     below adds A. The probe ends the case, thrown or damaged, with each particle's risk r (``terminal_risk``; the case
     ends at the irreversible cost T), so the exact cost after the probe when its result is not used is
     sum_i w_i (r_i T + (1 - r_i) C_b,i). For k particles drawn by weight one result is sampled from the
-    probe model among the results that keep the object (no "damaged" kind) and the belief w' is reweighted by its
-    likelihood; the result's gain is the posterior saving of the row it then picks (a, the cheapest under w') over
-    row b where the object is kept: sum_l w'_l (1 - r_l) (C_b,l - C_a,l), 0 whenever the result leaves row b cheapest
-    (and for a particle the probe damages for sure). Returns the belief's P(kind) and P(thrown), ``evoi`` (the mean
+    probe model among the results that keep the object (P(kind | kept): no "damaged" kind), and the belief w' is
+    reweighted by the result's likelihood given the object is kept; the result's gain is the posterior saving of the
+    row it then picks (a, the cheapest under w'(1 - r), the belief given the result and the object kept) over row b
+    where the object is kept: sum_l w'_l (1 - r_l) (C_b,l - C_a,l), 0 whenever the result leaves row b cheapest (and
+    for a particle the probe damages for sure). Each particle's survival enters once, in the weight (1 - r_l): the
+    likelihood is that of a kept result, so the mean gain is the exact value of the result at temper 1. Returns the belief's P(kind) and P(thrown), ``evoi`` (the mean
     gain, floored at 0), ``evoi_se`` (its Monte Carlo error) and ``expected_cost_after`` (the cost when the result is
     not used, minus the mean gain)."""
     C = np.asarray(continuation_costs, dtype=float).reshape(len(continuation_costs), -1)
@@ -158,20 +160,22 @@ def probe_value(belief: ParticleBelief, continuation_costs: list[np.ndarray], pr
     kept = P.copy()                                  # the results that keep the object: the damaged kind is in the risk
     if DAMAGED in probe_model.classes:
         kept[:, list(probe_model.classes).index(DAMAGED)] = 0.0
+    total = kept.sum(axis=1, keepdims=True)
+    Q = np.divide(kept, total, out=np.zeros_like(kept), where=total > 0)     # P(kind | the object is kept)
     a = belief.arrays()
     keep = 1.0 - risk
     terminal = COST["dropped_high"] * care_scale(care) + (0.0 if abstain_cost is None else float(abstain_cost))
     unused = float(w @ (risk * terminal + keep * C[best]))
     gains = np.zeros(int(k))
     for j, i in enumerate(rng.choice(len(w), size=int(k), p=w)):
-        if not kept[i].sum() > 0:
+        if not total[i, 0] > 0:
             continue
-        obs = probe_model.sample(X_probe[i], belief.particles[i], force, rng, p=kept[i])
-        ll, _ = probe_model.loglik(obs, X_probe, a, force, P=P)
-        wp = belief.reweight(ll).weights
-        pick = int(np.argmin(C @ wp))
+        obs = probe_model.sample(X_probe[i], belief.particles[i], force, rng, p=Q[i])
+        ll, _ = probe_model.loglik(obs, X_probe, a, force, P=Q)
+        wk = belief.reweight(ll).weights * keep      # w'(1 - r): the belief given the result and the object kept
+        pick = int(np.argmin(C @ wk))
         if pick != best:
-            gains[j] = float((wp * keep) @ (C[best] - C[pick]))
+            gains[j] = float(wk @ (C[best] - C[pick]))
     gain = float(np.mean(gains)) if len(gains) else 0.0
     se = float(np.std(gains, ddof=1) / np.sqrt(len(gains))) if len(gains) > 1 else 0.0
     return {"p_kind": dict(zip(probe_model.classes, (w @ P).tolist())), "p_thrown": float(w @ thrown),

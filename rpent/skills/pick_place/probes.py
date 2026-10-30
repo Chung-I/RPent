@@ -196,11 +196,12 @@ class ProbeModel:
         return self.p_thrown.predict(X)[:, 1]
 
     def terminal_risk(self, X: np.ndarray) -> np.ndarray:
-        """P(the probe ends the case) per row: P(thrown) + P(damaged), at most 1 (P(damaged) is 0 for a model whose
-        corpus had no damaged rows)."""
+        """P(the probe ends the case) per row: P(thrown) + (1 - P(thrown)) P(damaged), the kind model being that of
+        the results not thrown, so a throw that damages counts once (P(damaged) is 0 for a model whose corpus had no
+        damaged rows)."""
         r = self.risk(X)
         if DAMAGED in self.classes:
-            r = r + self.p_kind(X)[:, self.classes.index(DAMAGED)]
+            r = r + (1.0 - r) * self.p_kind(X)[:, self.classes.index(DAMAGED)]
         return np.minimum(r, 1.0)
 
     def loglik(self, obs: dict[str, Any], X: np.ndarray, arrays: dict[str, np.ndarray], force: float,
@@ -292,8 +293,11 @@ def true_matrix(rows: list[dict[str, Any]], names=FEATURES_M2) -> np.ndarray:
 
 def fit_probe_model(rows: list[dict[str, Any]], probe: str, seed: int = 0, names=FEATURES_M2, val_objects=None) -> ProbeModel:
     """The kind classifier (with "damaged" when a row has it), the reading law per kind and the thrown model of one
-    probe. The rows of ``val_objects`` are the held-out readings that choose each reading law's kind (fit_law); every
-    row enters the kept law."""
+    probe. The kinds and the readings are those of the results not thrown (P(kind | not thrown); terminal_risk adds
+    the throw once); the thrown model reads every row. The rows of ``val_objects`` are the held-out readings that
+    choose each reading law's kind (fit_law); every row enters the kept law."""
+    every = rows
+    rows = [r for r in every if not r["thrown"]]
     classes = PROBE_KINDS[probe] + ((DAMAGED,) if any(r["kind"] == DAMAGED for r in rows) else ())
     val = set(val_objects or ())
     X = true_matrix(rows, names)
@@ -311,12 +315,13 @@ def fit_probe_model(rows: list[dict[str, Any]], probe: str, seed: int = 0, names
         if len(xs):
             reading[kind] = fit_law(xs[~held], xs[held], seed)
             rate[kind] = len(xs) / len(of)
-    thrown = np.array([bool(r["thrown"]) for r in rows])
+    thrown = np.array([bool(r["thrown"]) for r in every])
     if int(thrown.sum()) < MIN_CLASS_ROWS:
         p_thrown: Any = float(thrown.mean()) if len(thrown) else 0.0
     else:
-        p_thrown = CalibratedClassifier.fit(X, np.where(thrown, "thrown", "kept"), groups, ("kept", "thrown"), seed)
-    stats = {"n": len(rows), "kinds": {k: int((y == k).sum()) for k in classes}, "n_reading": n_reading,
+        p_thrown = CalibratedClassifier.fit(true_matrix(every, names), np.where(thrown, "thrown", "kept"),
+                                            np.array([r["object"] for r in every]), ("kept", "thrown"), seed)
+    stats = {"n": len(every), "n_not_thrown": len(rows), "kinds": {k: int((y == k).sum()) for k in classes}, "n_reading": n_reading,
              "reading_rate": rate, "thrown": int(thrown.sum())}
     return ProbeModel(probe=probe, classes=classes, clf=clf, reading=reading, p_thrown=p_thrown, stats=stats, reading_rate=rate,
                       feature_names=tuple(names))

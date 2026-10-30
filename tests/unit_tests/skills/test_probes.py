@@ -286,12 +286,13 @@ def _const_model(probe, classes, p, p_thrown=0.0, reading=None):
     return ProbeModel(probe=probe, classes=tuple(classes), clf=clf, reading=reading or {}, p_thrown=p_thrown)
 
 
-def test_terminal_risk_adds_thrown_and_damaged():
-    """P(the probe ends the case) is P(thrown) + P(damaged), at most 1; a model that never saw damage gives P(thrown)."""
+def test_terminal_risk_counts_a_damaging_throw_once():
+    """P(the probe ends the case) is P(thrown) + (1 - P(thrown)) P(damaged), the kind model being that of the results
+    not thrown (a damaging throw counts once); a model that never saw damage gives P(thrown)."""
     X = np.zeros((3, 4))
     damaging = PROBE_KINDS["weigh"] + ("damaged",)
-    assert np.allclose(_const_model("weigh", damaging, [0.6, 0.1, 0.1, 0.2], p_thrown=0.1).terminal_risk(X), 0.3)
-    assert np.allclose(_const_model("weigh", damaging, [0.1, 0.0, 0.0, 0.9], p_thrown=0.3).terminal_risk(X), 1.0)
+    assert np.allclose(_const_model("weigh", damaging, [0.6, 0.1, 0.1, 0.2], p_thrown=0.1).terminal_risk(X), 0.1 + 0.9 * 0.2)
+    assert np.allclose(_const_model("weigh", damaging, [0.1, 0.0, 0.0, 0.9], p_thrown=0.3).terminal_risk(X), 0.3 + 0.7 * 0.9)
     assert np.allclose(_const_model("weigh", PROBE_KINDS["weigh"], [0.8, 0.1, 0.1], p_thrown=0.05).terminal_risk(X), 0.05)
 
 
@@ -385,3 +386,21 @@ def test_a_kind_the_model_never_saw_is_rejected():
     b = _stiff_particles(np.zeros(10))
     ll, info = pm.loglik({"probe": "squeeze", "kind": "damaged", "reading": {}}, np.zeros((10, 4)), b.arrays(), 5.0)
     assert np.all(ll == 0.0) and info == {"used": [], "rejected": ["kind"]}
+
+
+def test_probe_kinds_are_learned_on_the_results_not_thrown():
+    """The kind model learns from the pushes that were not thrown, so a throw that damages counts once: the terminal
+    risk is the share of pushes thrown or damaged (16 of the 22 damaged pushes of probe corpus v8 were thrown)."""
+    from rpent.skills.pick_place.probes import true_matrix
+
+    rows = _probe_rows()
+    push = [r for r in rows if r["probe"] == "push"]
+    rng = np.random.default_rng(4)
+    for r in push:
+        r["thrown"] = bool(rng.random() < 0.15)
+        if r["thrown"] or rng.random() < 0.1:
+            r.update(kind="damaged", reading={})
+    pm = fit_probe_models(rows)["push"]
+    assert pm.stats["kinds"]["damaged"] == sum(r["kind"] == "damaged" for r in push if not r["thrown"])
+    ended = float(np.mean([r["thrown"] or r["kind"] == "damaged" for r in push]))
+    assert float(np.mean(pm.terminal_risk(true_matrix(push, pm.feature_names)))) == pytest.approx(ended, abs=0.03)
