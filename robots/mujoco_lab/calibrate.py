@@ -441,20 +441,24 @@ _LABELS: dict[str, list[tuple[str, str]]] = {}
 
 
 def _corpus_labels(path: str) -> list[tuple[str, str]]:
-    path = path if os.path.isabs(path) else os.path.join(ROOT, path)
+    from robots.mujoco_lab.train_models import repo_path
+
+    path = repo_path(path)
     if path not in _LABELS:
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"the bundle's corpus {path} is not on this checkout; the constant baseline needs it")
         out = []
-        if os.path.exists(path):
-            for line in open(path):
-                r = json.loads(line)
-                if trainable(r):
-                    out.append((r["object"], r["label"]))
+        for line in open(path):
+            r = json.loads(line)
+            if trainable(r):
+                out.append((r["object"], r["label"]))
         _LABELS[path] = out
     return _LABELS[path]
 
 
 def class_rates(metrics: dict[str, Any]) -> list[float]:
-    """The training objects' class rates in OUTCOMES order (the constant baseline), uniform without the corpus."""
+    """The training objects' class rates in OUTCOMES order (the constant baseline): uniform when the corpus holds no
+    training row, and an error when the corpus is not on this checkout (train_models.repo_path)."""
     paths = metrics["corpus"] if isinstance(metrics["corpus"], list) else [metrics["corpus"]]
     train = set(metrics["split"]["train"])
     labels = [lbl for p in paths for o, lbl in _corpus_labels(p) if o in train]

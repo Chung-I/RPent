@@ -54,7 +54,7 @@ import numpy as np
 from robots.mujoco_lab import tracking
 from robots.mujoco_lab.prior import com_hypothesis, joint_hidden, lab_prior
 from robots.mujoco_lab.robot_spec import load_bundle
-from robots.mujoco_lab.train_models import load_rows, write_manifest
+from robots.mujoco_lab.train_models import load_rows, repo_path, write_manifest
 from rpent.skills.pick_place.belief import ParticleBelief
 from rpent.skills.pick_place.evaluate import _ece, ece_ci, object_weights, row_base, row_pose, rows_of
 from rpent.skills.pick_place.features import model_names, particle_matrix, particle_sides
@@ -348,19 +348,16 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
     man = B["manifest"]
     metrics = json.load(open(os.path.join(a.bundle, man["metrics"])))
 
-    def path_of(p: str) -> str:
-        return p if os.path.isabs(p) else os.path.join(ROOT, p)
-
     if a.probes:
         if not B["probe_models"]:
             raise SystemExit("the bundle has no probe models: train_models --probe-corpus PATH --out-dir BUNDLE")
-        rows = [r for r in load_rows(path_of(man["probe_corpus"])) if "pose" in r and "com_end" in r]
+        rows = [r for r in load_rows(repo_path(man["probe_corpus"])) if "pose" in r and "com_end" in r]
         temper0 = float(next(iter(B["probe_models"].values())).temper)
     else:
         if B["readout_model"] is None:
             raise SystemExit("the bundle has no readout model: train it on corpus v2 rows (they carry readouts)")
         paths = metrics["corpus"] if isinstance(metrics["corpus"], list) else [metrics["corpus"]]
-        rows = [r for p in paths for r in load_rows(path_of(p))]
+        rows = [r for p in paths for r in load_rows(repo_path(p))]
         rows = [r for r in rows if r.get("readouts") and "pose" in r and "com_obj_true" in r and "com_end" in r]
         temper0 = float(B["readout_model"].temper)
 

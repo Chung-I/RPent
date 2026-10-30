@@ -476,3 +476,21 @@ def test_bundle_decision_sets_the_probe_time_scale(tmp_path):
     for bad in ("-1", "nan", "x"):
         with pytest.raises(SystemExit):
             main(["--corpus", str(corpus), "--out-dir", str(tmp_path / "x"), "--n-belief", "4", "--probe-time-scale", bad])
+
+
+def test_a_bundle_records_its_corpus_relative_to_the_repository(tmp_path, monkeypatch):
+    """The final review of plan 2b2: a corpus inside the repository is recorded relative to its root, so the bundle
+    finds it on any checkout; a corpus outside it keeps its absolute path."""
+    from robots.mujoco_lab import train_models
+    from tests.unit_tests.skills.synthetic import synthetic_rows, with_pose
+
+    corpus = tmp_path / "data" / "c.jsonl"
+    corpus.parent.mkdir()
+    _write(with_pose(synthetic_rows(300)), corpus)
+    monkeypatch.setattr(train_models, "ROOT", str(tmp_path))
+    train_models.main(["--corpus", str(corpus), "--out-dir", str(tmp_path / "m2"), "--features", "true", "--n-belief", "4"])
+    man = json.load(open(tmp_path / "m2" / "manifest.json"))
+    assert man["corpus"] == os.path.join("data", "c.jsonl")
+    assert json.load(open(tmp_path / "m2" / man["metrics"]))["corpus"] == os.path.join("data", "c.jsonl")
+    assert train_models.recorded_path("/nowhere/c.jsonl") == "/nowhere/c.jsonl"
+    assert os.path.samefile(train_models.repo_path(os.path.join("data", "c.jsonl")), corpus)

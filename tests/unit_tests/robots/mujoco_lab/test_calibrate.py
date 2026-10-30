@@ -762,3 +762,18 @@ def test_cached_primitives_take_the_bundle_probe_time_scale(monkeypatch):
     assert prims.probe_time_scale == 0.25
     prims.probe_time_scale = 3.0                                       # a job's --probe-time-scale
     assert calibrate._primitives("b", None, None).probe_time_scale == 0.25
+
+
+def test_the_constant_baseline_reads_the_corpora_on_another_checkout():
+    """The final review of plan 2b2: a bundle recorded its corpora's absolute paths. On another checkout the constant
+    baseline used uniform rates without a word; a path under another checkout's robots/mujoco_lab/ now resolves on this
+    one, and a corpus that is nowhere is an error."""
+    from robots.mujoco_lab.calibrate import class_rates
+    from robots.mujoco_lab.robot_spec import DATA_DIR
+
+    metrics = json.load(open(DATA_DIR / "m2b2" / "success_model_metrics.json"))
+    here = class_rates(metrics)
+    moved = dict(metrics, corpus=["/elsewhere/RPent/robots/mujoco_lab/data/" + os.path.basename(p) for p in metrics["corpus"]])
+    assert class_rates(moved) == here and len(set(here)) > 1
+    with pytest.raises(FileNotFoundError, match="corpus"):
+        class_rates(dict(metrics, corpus=["/nowhere/corpus_none.jsonl"]))

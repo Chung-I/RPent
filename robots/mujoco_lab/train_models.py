@@ -87,17 +87,38 @@ GUARD = "knn_guard.npz"
 INNER_VAL = 0.15 / 0.85           # the deployed bundle's validation share of its training objects (split_objects 0.70 / 0.15)
 LAW_SPLIT_SEED = 1000             # the inner split of the training objects that picks each reading law's kind
 TEMPER_GRID = "0.7,0.85,1,1.25,1.5,2,3"
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))    # the repository root
+_LAB = os.sep + os.path.join("robots", "mujoco_lab") + os.sep
+
+
+def recorded_path(path: str) -> str:
+    """A corpus path as a bundle records it: relative to the repository root when it lies inside it, so the bundle finds
+    its corpora on any checkout (repo_path); otherwise absolute."""
+    full = os.path.abspath(path)
+    return os.path.relpath(full, ROOT) if os.path.commonpath([full, ROOT]) == ROOT else full
+
+
+def repo_path(path: str) -> str:
+    """A corpus path as given or as a bundle records it, on this checkout: the path itself when it exists; else a
+    relative path joined to the repository root; else an absolute path under another checkout's robots/mujoco_lab/,
+    re-rooted to this one (bundles recorded absolute paths before the final review of plan 2b2)."""
+    if os.path.exists(path):
+        return path
+    if not os.path.isabs(path):
+        return os.path.join(ROOT, path)
+    i = path.rfind(_LAB)
+    return os.path.join(ROOT, path[i + 1:]) if i >= 0 else path
 
 
 def load_rows(path: str) -> list[dict]:
-    """The trainable rows of a corpus or probe corpus (corpus.trainable)."""
-    return [r for r in map(json.loads, open(path)) if trainable(r)]
+    """The trainable rows of a corpus or probe corpus (corpus.trainable), found by repo_path."""
+    return [r for r in map(json.loads, open(repo_path(path))) if trainable(r)]
 
 
 def corpus_objects(paths) -> list[str]:
     """The objects of the corpus rows without an error. The split and the folds are drawn over these, so a row
     filter (declined, flagged) does not move an object to another part."""
-    return sorted({r["object"] for path in paths for r in map(json.loads, open(path)) if "error" not in r})
+    return sorted({r["object"] for path in paths for r in map(json.loads, open(repo_path(path))) if "error" not in r})
 
 
 def corpus_sensor(rows: list[dict]) -> dict[str, float]:
@@ -188,7 +209,7 @@ def fit_probes(path: str, out_dir: str, split: dict, seed: int = 0, schema: str 
     tr, va = rows_of(rows, split["train"]), rows_of(rows, split["val"])
     law_val = law_val_objects(split, seed)
     models = fit_probe_models(tr, seed=seed, names=FEATURE_SCHEMAS[bundle_schema(out_dir, schema)], val_objects=law_val)
-    out: dict = {"probe_corpus": path, "split": split, "law_val_objects": law_val, "probes": {}}
+    out: dict = {"probe_corpus": recorded_path(path), "split": split, "law_val_objects": law_val, "probes": {}}
     for probe, pm in models.items():
         every = [r for r in rows if r["probe"] == probe]
         tr_p = [r for r in tr if r["probe"] == probe and not r["thrown"]]
@@ -206,7 +227,7 @@ def fit_probes(path: str, out_dir: str, split: dict, seed: int = 0, schema: str 
     with open(os.path.join(out_dir, PROBE_METRICS), "w") as f:
         json.dump(out, f, indent=1)
     tempers = (json.load(open(man_path)).get("tempers") or {}) if os.path.exists(man_path) else {}
-    write_manifest(out_dir, probe_models={p: PROBE_MODEL.format(p) for p in models}, probe_metrics=PROBE_METRICS, probe_corpus=path,
+    write_manifest(out_dir, probe_models={p: PROBE_MODEL.format(p) for p in models}, probe_metrics=PROBE_METRICS, probe_corpus=out["probe_corpus"],
                    tempers={k: v for k, v in tempers.items() if k != "probe"})      # new probe models: their temper is re-chosen
     out["wandb"] = tracking.log_run("train_probe_models", {"probe_corpus": path, "seed": seed, "out_dir": out_dir},
                                     {p: {"val": m["val"], "kind_rates": m["kind_rates"], "thrown_rate": m["thrown_rate"]}
@@ -399,7 +420,7 @@ def train_bundle(a: argparse.Namespace, split: dict | None = None, rows: list[di
     t4 = time.time()
     kind = "hazard" if eligible and haz["belief"]["brier"] <= clf["belief"]["brier"] else "classifier"
     out = {
-        "corpus": a.corpus if len(a.corpus) > 1 else a.corpus[0], "n_rows": len(rows), "split": split, "n_train": len(tr), "n_val": len(va),
+        "corpus": [recorded_path(p) for p in a.corpus] if len(a.corpus) > 1 else recorded_path(a.corpus[0]), "n_rows": len(rows), "split": split, "n_train": len(tr), "n_val": len(va),
         "features": a.features, "feature_schema": schema, "outcome_schema": schema, "prior": prior, "classifier": clf,
         "hazard": haz, "kind": kind,
         "acceptance_val_belief": {
