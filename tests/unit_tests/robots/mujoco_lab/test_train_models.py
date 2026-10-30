@@ -344,3 +344,13 @@ def test_steel_object_has_no_damage_mass_end_to_end(tmp_path):
     rows = [o for o in a.options if o.pred is not None]
     assert rows and {"light_grip", "gentle_carry"} <= {o.id for o in rows}
     assert all(o.pred.p[k] == 0.0 for o in rows for k in DAMAGE)
+
+
+def test_train_models_refuses_nominal_features_with_the_m2b_schema(tmp_path):
+    """The stored (nominal) features have no damage features, so the m2b masks would zero every damage class."""
+    from robots.mujoco_lab.train_models import main
+
+    corpus = tmp_path / "c.jsonl"
+    corpus.write_text("")
+    with pytest.raises(SystemExit, match="nominal"):
+        main(["--corpus", str(corpus), "--out-dir", str(tmp_path / "m"), "--features", "nominal", "--feature-schema", "m2b"])

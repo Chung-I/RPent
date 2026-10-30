@@ -234,6 +234,9 @@ def main(argv: list[str] | None = None) -> dict:
     ap.add_argument("--classes", default=None, help="m2b: the fragility classes file (default data/fragility_classes.json)")
     ap.add_argument("--thresholds", default=None, help="m2b: the damage thresholds file (default data/thresholds_v0.json)")
     a = ap.parse_args(argv)
+    if a.features == "nominal" and a.feature_schema == "m2b":
+        raise SystemExit("--features nominal is milestone 1's recipe: the stored features have no damage features, so the "
+                         "m2b masks would zero every damage class (use --features true with --feature-schema m2b)")
     if a.guard and not a.corpus and not a.probe_corpus:
         return {"guard": add_guard(a.out_dir, a.seed)}
     if not a.corpus and not a.probe_corpus:
