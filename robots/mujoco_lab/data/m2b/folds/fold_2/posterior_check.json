@@ -1,0 +1,249 @@
+{
+ "bundle": "/home/chungyili/Codes/RPent/robots/mujoco_lab/data/m2b/folds/fold_2",
+ "split": "val",
+ "probes": null,
+ "objects": [
+  "handal__pink_spaghetti_spoon",
+  "handal__red_serving_spoon",
+  "hope__bbq_sauce_bottle",
+  "hope__butter",
+  "hope__green_beans_can",
+  "hope__ketchup_bottle",
+  "hope__peas_and_carrots",
+  "hope__pineapple_slices_can",
+  "ycb__spam_can"
+ ],
+ "n": 1118,
+ "n_particles": 2000,
+ "temper": 1.0,
+ "feasible": false,
+ "chosen_on": "val",
+ "mass_cov80": 0.9767441860465116,
+ "mu_cov80": 0.7558139534883721,
+ "com_cov80": 0.7951699463327371,
+ "acceptance_b": {
+  "bounds": [
+   0.75,
+   0.85
+  ],
+  "pass": false
+ },
+ "prior_cov80": {
+  "mass": 0.8103756708407871,
+  "mu": 0.8130590339892666,
+  "com": 0.8005366726296959
+ },
+ "truth": "generator",
+ "sim_truth": {
+  "cov80": {
+   "mass": 0.9758497316636852,
+   "mu": 0.7558139534883721,
+   "com": 0.5098389982110912
+  },
+  "prior_cov80": {
+   "mass": 0.8103756708407871,
+   "mu": 0.8130590339892666,
+   "com": 0.7119856887298748
+  }
+ },
+ "by_label": {
+  "crushed": {
+   "n": 65,
+   "mass_cov80": 0.9692307692307692,
+   "mu_cov80": 0.8153846153846154,
+   "com_cov80": 0.8153846153846154
+  },
+  "dropped_high": {
+   "n": 6,
+   "mass_cov80": 0.8333333333333334,
+   "mu_cov80": 0.5,
+   "com_cov80": 0.6666666666666666
+  },
+  "dropped_low": {
+   "n": 29,
+   "mass_cov80": 0.8620689655172413,
+   "mu_cov80": 0.4482758620689655,
+   "com_cov80": 0.7586206896551724
+  },
+  "missed": {
+   "n": 64,
+   "mass_cov80": 0.984375,
+   "mu_cov80": 0.890625,
+   "com_cov80": 0.78125
+  },
+  "not_lifted": {
+   "n": 80,
+   "mass_cov80": 0.8,
+   "mu_cov80": 0.75,
+   "com_cov80": 0.7375
+  },
+  "placed_stable": {
+   "n": 694,
+   "mass_cov80": 0.9985590778097982,
+   "mu_cov80": 0.7435158501440923,
+   "com_cov80": 0.7997118155619597
+  },
+  "rolled_off": {
+   "n": 121,
+   "mass_cov80": 0.9917355371900827,
+   "mu_cov80": 0.7851239669421488,
+   "com_cov80": 0.8016528925619835
+  },
+  "tipped": {
+   "n": 59,
+   "mass_cov80": 1.0,
+   "mu_cov80": 0.8135593220338984,
+   "com_cov80": 0.8305084745762712
+  }
+ },
+ "grid": {
+  "0.7": {
+   "mass": 0.9767441860465116,
+   "mu": 0.7352415026833632,
+   "com": 0.7987477638640429
+  },
+  "0.85": {
+   "mass": 0.9740608228980322,
+   "mu": 0.7477638640429338,
+   "com": 0.7942754919499105
+  },
+  "1.0": {
+   "mass": 0.9767441860465116,
+   "mu": 0.7558139534883721,
+   "com": 0.7951699463327371
+  },
+  "1.25": {
+   "mass": 0.9758497316636852,
+   "mu": 0.7710196779964222,
+   "com": 0.7942754919499105
+  },
+  "1.5": {
+   "mass": 0.9749552772808586,
+   "mu": 0.7799642218246869,
+   "com": 0.7933810375670841
+  },
+  "2.0": {
+   "mass": 0.9740608228980322,
+   "mu": 0.7942754919499105,
+   "com": 0.7924865831842576
+  },
+  "3.0": {
+   "mass": 0.9704830053667263,
+   "mu": 0.8050089445438283,
+   "com": 0.7933810375670841
+  }
+ },
+ "width80_median": {
+  "prior": {
+   "mass": 0.09484561164094835,
+   "mu": 0.6396894191631598,
+   "com": 0.20075935971302822
+  },
+  "posterior": {
+   "mass": 0.007557076027973179,
+   "mu": 0.5943381389237401,
+   "com": 0.12079910256000931
+  }
+ },
+ "terms": {
+  "used": {
+   "outcome": 1118,
+   "hold": 1011,
+   "rot": 1118,
+   "side": 283,
+   "slip": 11,
+   "loss": 25
+  },
+  "rejected": {
+   "slip": 1,
+   "loss": 2
+  }
+ },
+ "laws": {
+  "hold": {
+   "_pooled": {
+    "kind": "normal",
+    "w": 1.0,
+    "sd1": 0.05,
+    "sd2": null
+   },
+   "bruised": {
+    "kind": "normal",
+    "w": 1.0,
+    "sd1": 0.05,
+    "sd2": null
+   },
+   "crushed": {
+    "kind": "normal",
+    "w": 1.0,
+    "sd1": 0.05,
+    "sd2": null
+   },
+   "dropped_low": {
+    "kind": "normal",
+    "w": 1.0,
+    "sd1": 0.05,
+    "sd2": null
+   },
+   "missed": {
+    "kind": "normal",
+    "w": 1.0,
+    "sd1": 0.05,
+    "sd2": null
+   },
+   "placed_stable": {
+    "kind": "normal",
+    "w": 1.0,
+    "sd1": 0.05,
+    "sd2": null
+   },
+   "rolled_off": {
+    "kind": "normal",
+    "w": 1.0,
+    "sd1": 0.05,
+    "sd2": null
+   },
+   "spilled": {
+    "kind": "normal",
+    "w": 1.0,
+    "sd1": 0.05,
+    "sd2": null
+   },
+   "tipped": {
+    "kind": "normal",
+    "w": 1.0,
+    "sd1": 0.05,
+    "sd2": null
+   }
+  },
+  "slip": {
+   "_pooled": {
+    "kind": "mix2",
+    "w": 0.8376449569278231,
+    "sd1": 0.11531788285144018,
+    "sd2": 0.6703989472466757
+   },
+   "not_lifted": {
+    "kind": "mix2",
+    "w": 0.8395818220863724,
+    "sd1": 0.11404619055963502,
+    "sd2": 0.6740533911527037
+   }
+  },
+  "loss": {
+   "_pooled": {
+    "kind": "normal",
+    "w": 1.0,
+    "sd1": 0.6481901909719658,
+    "sd2": null
+   },
+   "dropped_low": {
+    "kind": "normal",
+    "w": 1.0,
+    "sd1": 0.629211863097236,
+    "sd2": null
+   }
+  }
+ },
+ "seconds": 85.2
+}

@@ -37,3 +37,13 @@ robots/mujoco_lab/data/*
 !robots/mujoco_lab/data/m2/
 robots/mujoco_lab/data/m2/*
 !robots/mujoco_lab/data/m2/*.json
+# the milestone 2b bundle and its folds: the manifests, the metrics and the checks; the models stay local
+!robots/mujoco_lab/data/m2b/
+robots/mujoco_lab/data/m2b/*
+!robots/mujoco_lab/data/m2b/*.json
+!robots/mujoco_lab/data/m2b/folds/
+robots/mujoco_lab/data/m2b/folds/*
+!robots/mujoco_lab/data/m2b/folds/*.json
+!robots/mujoco_lab/data/m2b/folds/fold_*/
+robots/mujoco_lab/data/m2b/folds/fold_*/*
+!robots/mujoco_lab/data/m2b/folds/fold_*/*.json

@@ -1,0 +1,205 @@
+{
+ "bundle": "/home/chungyili/Codes/RPent/robots/mujoco_lab/data/m2b/folds/fold_0",
+ "split": "val",
+ "probes": "A",
+ "objects": [
+  "handal__hammer_1",
+  "handal__hammer_5",
+  "hope__canned_peaches",
+  "hope__popcorn_box",
+  "hope__yogurt_cup",
+  "hot3d__clay_plates",
+  "hot3d__glasses",
+  "hot3d__lizard_figurine",
+  "ycb__banana",
+  "ycb__spring_clamp",
+  "ycb__sugar_box"
+ ],
+ "n": 223,
+ "n_particles": 2000,
+ "temper": 1.0,
+ "feasible": false,
+ "chosen_on": "val",
+ "mass_cov80": 0.874439461883408,
+ "mu_cov80": 0.7399103139013453,
+ "com_cov80": 0.6860986547085202,
+ "acceptance_b": {
+  "bounds": [
+   0.75,
+   0.85
+  ],
+  "pass": false
+ },
+ "prior_cov80": {
+  "mass": 0.820627802690583,
+  "mu": 0.7713004484304933,
+  "com": 0.672645739910314
+ },
+ "truth": "generator",
+ "sim_truth": {
+  "cov80": {
+   "mass": 0.874439461883408,
+   "mu": 0.7399103139013453,
+   "com": 0.6457399103139013
+  },
+  "prior_cov80": {
+   "mass": 0.820627802690583,
+   "mu": 0.7713004484304933,
+   "com": 0.7533632286995515
+  }
+ },
+ "by_kind": {
+  "no_breakaway+lower_bound": {
+   "n": 15,
+   "mass_cov80": 0.8666666666666667,
+   "mu_cov80": 0.7333333333333333,
+   "com_cov80": 0.6666666666666666
+  },
+  "no_breakaway+measured": {
+   "n": 2,
+   "mass_cov80": 1.0,
+   "mu_cov80": 0.5,
+   "com_cov80": 1.0
+  },
+  "no_contact+damaged": {
+   "n": 2,
+   "mass_cov80": 0.5,
+   "mu_cov80": 1.0,
+   "com_cov80": 1.0
+  },
+  "no_contact+measured": {
+   "n": 1,
+   "mass_cov80": 1.0,
+   "mu_cov80": 0.0,
+   "com_cov80": 0.0
+  },
+  "slid": {
+   "n": 3,
+   "mass_cov80": 0.6666666666666666,
+   "mu_cov80": 1.0,
+   "com_cov80": 0.3333333333333333
+  },
+  "slid+damaged": {
+   "n": 26,
+   "mass_cov80": 0.7307692307692307,
+   "mu_cov80": 0.8846153846153846,
+   "com_cov80": 0.7307692307692307
+  },
+  "slid+lower_bound": {
+   "n": 74,
+   "mass_cov80": 0.7972972972972973,
+   "mu_cov80": 0.6756756756756757,
+   "com_cov80": 0.4864864864864865
+  },
+  "slid+measured": {
+   "n": 90,
+   "mass_cov80": 0.9888888888888889,
+   "mu_cov80": 0.7444444444444445,
+   "com_cov80": 0.8222222222222222
+  },
+  "tipped+damaged": {
+   "n": 4,
+   "mass_cov80": 0.75,
+   "mu_cov80": 0.75,
+   "com_cov80": 1.0
+  },
+  "tipped+measured": {
+   "n": 6,
+   "mass_cov80": 1.0,
+   "mu_cov80": 0.8333333333333334,
+   "com_cov80": 0.8333333333333334
+  }
+ },
+ "grid": {
+  "0.7": {
+   "mass": 0.8340807174887892,
+   "mu": 0.6681614349775785,
+   "com": 0.6816143497757847
+  },
+  "0.85": {
+   "mass": 0.8565022421524664,
+   "mu": 0.7174887892376681,
+   "com": 0.6816143497757847
+  },
+  "1.0": {
+   "mass": 0.874439461883408,
+   "mu": 0.7399103139013453,
+   "com": 0.6860986547085202
+  },
+  "1.25": {
+   "mass": 0.8923766816143498,
+   "mu": 0.7668161434977578,
+   "com": 0.6860986547085202
+  },
+  "1.5": {
+   "mass": 0.905829596412556,
+   "mu": 0.7802690582959642,
+   "com": 0.6860986547085202
+  },
+  "2.0": {
+   "mass": 0.9192825112107623,
+   "mu": 0.7982062780269058,
+   "com": 0.6771300448430493
+  },
+  "3.0": {
+   "mass": 0.9103139013452914,
+   "mu": 0.8116591928251121,
+   "com": 0.6591928251121076
+  }
+ },
+ "width80_median": {
+  "prior": {
+   "mass": 0.38784161854986143,
+   "mu": 0.6396735930125761,
+   "com": 0.2002674456054951
+  },
+  "posterior": {
+   "mass": 0.10619202730454508,
+   "mu": 0.3943301339135789,
+   "com": 0.16010608992980008
+  }
+ },
+ "terms": {
+  "used": {
+   "push_kind": 223,
+   "weigh_kind": 220,
+   "weigh_reading": 112,
+   "push_reading": 193
+  },
+  "rejected": {}
+ },
+ "laws": {
+  "weigh": {
+   "measured": {
+    "kind": "normal",
+    "w": 1.0,
+    "sd1": 0.05,
+    "sd2": null
+   },
+   "lower_bound": {
+    "kind": "normal",
+    "w": 1.0,
+    "sd1": 0.08084597265068984,
+    "sd2": null
+   }
+  },
+  "push": {
+   "slid": {
+    "kind": "mix2",
+    "w": 0.8368465814654752,
+    "sd1": 0.29376896797147295,
+    "sd2": 0.7839131884490594
+   }
+  },
+  "squeeze": {
+   "measured": {
+    "kind": "normal",
+    "w": 1.0,
+    "sd1": 0.0871741129207129,
+    "sd2": null
+   }
+  }
+ },
+ "seconds": 65.4,
+ "n_with_weigh": 220
+}

@@ -1,0 +1,739 @@
+{
+ "corpus": [
+  "/home/chungyili/Codes/RPent/robots/mujoco_lab/data/corpus_v9.jsonl",
+  "/home/chungyili/Codes/RPent/robots/mujoco_lab/data/corpus_fixtures_v9.jsonl"
+ ],
+ "n_rows": 10137,
+ "split": {
+  "train": [
+   "fruits_veggies__avocado",
+   "fruits_veggies__lemon1",
+   "fruits_veggies__lime",
+   "fruits_veggies__red_onion",
+   "handal__green_serving_spoon",
+   "handal__hammer_1",
+   "handal__hammer_2",
+   "handal__hammer_3",
+   "handal__hammer_5",
+   "handal__hammer_6",
+   "handal__hammer_8",
+   "handal__ladle",
+   "handal__measuring_cups",
+   "handal__measuring_cups_1",
+   "handal__measuring_spoon",
+   "handal__red_serving_spoon",
+   "hope__butter",
+   "hope__canned_mushrooms",
+   "hope__canned_peaches",
+   "hope__canned_tuna",
+   "hope__chocolate_pudding_mix",
+   "hope__corn_can",
+   "hope__cream_cheese",
+   "hope__ketchup_bottle",
+   "hope__milk_carton",
+   "hope__oatmeal_raisin_cookies",
+   "hope__orange_juice_carton",
+   "hope__parmesan_cheese_canister",
+   "hope__peas_and_carrots",
+   "hope__pitted_cherries",
+   "hope__popcorn_box",
+   "hope__raisin_box",
+   "hope__ranch_dressing",
+   "hope__yogurt_cup",
+   "hot3d__bbq_sauce_bottle",
+   "hot3d__birdhouse",
+   "hot3d__frozen_vegetable_block",
+   "hot3d__frozen_waffles",
+   "hot3d__glasses",
+   "hot3d__megaphone",
+   "hot3d__mug",
+   "hot3d__pitcher",
+   "hot3d__potato_masher",
+   "hot3d__rubiks_cube",
+   "hot3d__soup_can",
+   "hot3d__spatula",
+   "hot3d__wooden_spoons",
+   "ycb__banana",
+   "ycb__bowl",
+   "ycb__bowl2",
+   "ycb__cheez_it",
+   "ycb__chocolate_pudding",
+   "ycb__coffee_can",
+   "ycb__dry_erase_marker",
+   "ycb__jello",
+   "ycb__mustard",
+   "ycb__scissors",
+   "ycb__soft_scrub",
+   "ycb__spam_can",
+   "ycb__sugar_box",
+   "ycb__tomato_soup_can",
+   "ycb__tuna_can",
+   "ycb__wood_block"
+  ],
+  "val": [
+   "handal__hammer",
+   "handal__pink_spaghetti_spoon",
+   "hope__granola_bars",
+   "hope__macaroni_and_cheese",
+   "hope__mustard_bottle",
+   "hot3d__clay_plates",
+   "hot3d__coffee_pot",
+   "hot3d__dumbbell",
+   "hot3d__foam_roller",
+   "hot3d__lizard_figurine",
+   "hot3d__remote_control",
+   "ycb__clamp",
+   "ycb__pitcher"
+  ],
+  "test": [
+   "fruits_veggies__orange1",
+   "handal__hammer_4",
+   "handal__hammer_7",
+   "hope__bbq_sauce_bottle",
+   "hope__green_beans_can",
+   "hope__mayonnaise_bottle",
+   "hope__pineapple_slices_can",
+   "hope__spaghetti",
+   "hope__tomato_sauce_can",
+   "hot3d__ceramic_mug",
+   "hot3d__computer_mouse",
+   "hot3d__keyboard",
+   "hot3d__smartphone",
+   "hot3d__storage_box",
+   "hot3d__wooden_bowl",
+   "ycb__brick",
+   "ycb__cordless_drill",
+   "ycb__mug",
+   "ycb__spring_clamp"
+  ]
+ },
+ "n_train": 6817,
+ "n_val": 1335,
+ "features": "true",
+ "feature_schema": "m2b",
+ "outcome_schema": "m2b",
+ "prior": "lab_generator_m2b",
+ "classifier": {
+  "oracle": {
+   "n": 1335,
+   "brier": 0.4052614661164896,
+   "brier_const": 0.7774099048386097,
+   "ece": 0.024309482075798118,
+   "by_subgroup": {
+    "mass_t0": {
+     "n": 445,
+     "brier": 0.3412670679553363,
+     "brier_const": 0.7251738942921625,
+     "ece": 0.049451458559129254
+    },
+    "mass_t1": {
+     "n": 445,
+     "brier": 0.5296461402573499,
+     "brier_const": 0.7813948752172457,
+     "ece": 0.0526550095977807
+    },
+    "mass_t2": {
+     "n": 445,
+     "brier": 0.3448711901367827,
+     "brier_const": 0.8256609450064212,
+     "ece": 0.0329330359230186
+    },
+    "mu_t0": {
+     "n": 445,
+     "brier": 0.398534544335825,
+     "brier_const": 0.7902234317176008,
+     "ece": 0.08290579742117486
+    },
+    "mu_t1": {
+     "n": 445,
+     "brier": 0.36611866763798667,
+     "brier_const": 0.7577329461008431,
+     "ece": 0.031746141103001474
+    },
+    "mu_t2": {
+     "n": 445,
+     "brier": 0.451131186375657,
+     "brier_const": 0.7842733366973853,
+     "ece": 0.06548755841283777
+    },
+    "lever_t0": {
+     "n": 445,
+     "brier": 0.4239189149285928,
+     "brier_const": 0.7177239138236379,
+     "ece": 0.07403995348978339
+    },
+    "lever_t1": {
+     "n": 445,
+     "brier": 0.3831479723528123,
+     "brier_const": 0.7742488275802246,
+     "ece": 0.07074248618185512
+    },
+    "lever_t2": {
+     "n": 445,
+     "brier": 0.40871751106806364,
+     "brier_const": 0.840256973111967,
+     "ece": 0.024152238097418607
+    },
+    "dest_bin": {
+     "n": 159,
+     "brier": 0.38627844990786786,
+     "brier_const": 0.7743978976797536,
+     "ece": 0.0851350037991679
+    },
+    "dest_bin_a01": {
+     "n": 22,
+     "brier": 0.5642991907496923,
+     "brier_const": 1.0011006729113179,
+     "ece": 0.1348621977795016
+    },
+    "dest_bin_a02": {
+     "n": 21,
+     "brier": 0.5321254232421899,
+     "brier_const": 0.8281881617268396,
+     "ece": 0.23707355702669208
+    },
+    "dest_bin_a03": {
+     "n": 26,
+     "brier": 0.5559570108465001,
+     "brier_const": 0.9768769869595991,
+     "ece": 0.09700458224689215
+    },
+    "dest_bin_b02": {
+     "n": 26,
+     "brier": 0.5381299146125973,
+     "brier_const": 0.8081810796690021,
+     "ece": 0.19038895641091047
+    },
+    "dest_bin_b03": {
+     "n": 22,
+     "brier": 0.47326228654663555,
+     "brier_const": 0.8094807921319828,
+     "ece": 0.2335782805745662
+    },
+    "dest_box": {
+     "n": 161,
+     "brier": 0.6637446580707161,
+     "brier_const": 0.9069785198954785,
+     "ece": 0.15270612940893247
+    },
+    "dest_brass_bowl_small": {
+     "n": 17,
+     "brier": 0.5557956004191364,
+     "brier_const": 0.9168805845665932,
+     "ece": 0.1733369168826127
+    },
+    "dest_mouse_pad": {
+     "n": 166,
+     "brier": 0.3747311209997265,
+     "brier_const": 0.7146212976107637,
+     "ece": 0.07608400686834182
+    },
+    "dest_plate": {
+     "n": 163,
+     "brier": 0.3573457137337785,
+     "brier_const": 0.6666379549972681,
+     "ece": 0.08756017909323545
+    },
+    "dest_plate_small": {
+     "n": 20,
+     "brier": 0.2623988227244721,
+     "brier_const": 0.6401701116140263,
+     "ece": 0.17225094107735472
+    },
+    "dest_serving_bowl": {
+     "n": 26,
+     "brier": 0.688652134032239,
+     "brier_const": 0.7921239374566595,
+     "ece": 0.34379341770114774
+    },
+    "dest_table_centre": {
+     "n": 162,
+     "brier": 0.3254243704416834,
+     "brier_const": 0.63670582389469,
+     "ece": 0.07613487884129773
+    },
+    "dest_table_edge": {
+     "n": 168,
+     "brier": 0.3032413731942913,
+     "brier_const": 0.6631036740664388,
+     "ece": 0.07509525512321592
+    },
+    "dest_table_gap": {
+     "n": 132,
+     "brier": 0.21464101419797077,
+     "brier_const": 1.0362312066482768,
+     "ece": 0.005188180263269115
+    },
+    "dest_wooden_bowl": {
+     "n": 18,
+     "brier": 0.5481310808763076,
+     "brier_const": 0.7730226208637778,
+     "ece": 0.19993752850876645
+    },
+    "dest_ycb_bowl": {
+     "n": 26,
+     "brier": 0.5915077200431853,
+     "brier_const": 0.9051445533377714,
+     "ece": 0.23605392908935768
+    },
+    "vis_0.0-0.3": "untested",
+    "vis_0.3-0.6": "untested",
+    "vis_0.6-0.9": "untested",
+    "vis_0.9-1.0": {
+     "n": 1335,
+     "brier": 0.4052614661164896,
+     "brier_const": 0.7774099048386097,
+     "ece": 0.024309482075798118
+    }
+   },
+   "n_per_class": {
+    "placed_stable": 488,
+    "tipped": 115,
+    "missed": 112,
+    "dropped_low": 79,
+    "dropped_high": 21,
+    "rolled_off": 95,
+    "not_lifted": 376,
+    "crushed": 49,
+    "bruised": 0,
+    "broken": 0,
+    "spilled": 0
+   },
+   "n_train_per_class": {
+    "placed_stable": 3096,
+    "tipped": 391,
+    "missed": 181,
+    "dropped_low": 326,
+    "dropped_high": 29,
+    "rolled_off": 523,
+    "not_lifted": 1682,
+    "crushed": 272,
+    "bruised": 258,
+    "broken": 10,
+    "spilled": 49
+   },
+   "unsupported_classes": [
+    "dropped_high",
+    "broken"
+   ]
+  },
+  "belief": {
+   "n": 1335,
+   "brier": 0.4866733969111099,
+   "brier_const": 0.7774099048386097,
+   "ece": 0.020781314667304436,
+   "by_subgroup": {
+    "mass_t0": {
+     "n": 445,
+     "brier": 0.4206626355543424,
+     "brier_const": 0.7251738942921625,
+     "ece": 0.06325630375822072
+    },
+    "mass_t1": {
+     "n": 445,
+     "brier": 0.6049155556155166,
+     "brier_const": 0.7813948752172457,
+     "ece": 0.03917457661826817
+    },
+    "mass_t2": {
+     "n": 445,
+     "brier": 0.4344419995634706,
+     "brier_const": 0.8256609450064212,
+     "ece": 0.050948254305914896
+    },
+    "mu_t0": {
+     "n": 445,
+     "brier": 0.48333450038754255,
+     "brier_const": 0.7902234317176008,
+     "ece": 0.06568933629191524
+    },
+    "mu_t1": {
+     "n": 445,
+     "brier": 0.4462282725456247,
+     "brier_const": 0.7577329461008431,
+     "ece": 0.04849568829107019
+    },
+    "mu_t2": {
+     "n": 445,
+     "brier": 0.5304574178001622,
+     "brier_const": 0.7842733366973853,
+     "ece": 0.060842350879913486
+    },
+    "lever_t0": {
+     "n": 445,
+     "brier": 0.5399503686946836,
+     "brier_const": 0.7177239138236379,
+     "ece": 0.0481445478182316
+    },
+    "lever_t1": {
+     "n": 445,
+     "brier": 0.46948147512787064,
+     "brier_const": 0.7742488275802246,
+     "ece": 0.06472076563033775
+    },
+    "lever_t2": {
+     "n": 445,
+     "brier": 0.4505883469107752,
+     "brier_const": 0.840256973111967,
+     "ece": 0.034230625011706
+    },
+    "dest_bin": {
+     "n": 159,
+     "brier": 0.481981055433754,
+     "brier_const": 0.7743978976797536,
+     "ece": 0.07931294933581402
+    },
+    "dest_bin_a01": {
+     "n": 22,
+     "brier": 0.6826267379813101,
+     "brier_const": 1.0011006729113179,
+     "ece": 0.10990794243586953
+    },
+    "dest_bin_a02": {
+     "n": 21,
+     "brier": 0.6606819479370935,
+     "brier_const": 0.8281881617268396,
+     "ece": 0.21938110999845145
+    },
+    "dest_bin_a03": {
+     "n": 26,
+     "brier": 0.6184709081853104,
+     "brier_const": 0.9768769869595991,
+     "ece": 0.07796018062139438
+    },
+    "dest_bin_b02": {
+     "n": 26,
+     "brier": 0.5350645318723081,
+     "brier_const": 0.8081810796690021,
+     "ece": 0.14626401711781584
+    },
+    "dest_bin_b03": {
+     "n": 22,
+     "brier": 0.4883892607595527,
+     "brier_const": 0.8094807921319828,
+     "ece": 0.24487266663674886
+    },
+    "dest_box": {
+     "n": 161,
+     "brier": 0.6757969152203157,
+     "brier_const": 0.9069785198954785,
+     "ece": 0.13276641535251982
+    },
+    "dest_brass_bowl_small": {
+     "n": 17,
+     "brier": 0.5928935272711049,
+     "brier_const": 0.9168805845665932,
+     "ece": 0.13099362592680958
+    },
+    "dest_mouse_pad": {
+     "n": 166,
+     "brier": 0.4636827497454893,
+     "brier_const": 0.7146212976107637,
+     "ece": 0.05084014007303256
+    },
+    "dest_plate": {
+     "n": 163,
+     "brier": 0.44690605326516947,
+     "brier_const": 0.6666379549972681,
+     "ece": 0.09638267522741452
+    },
+    "dest_plate_small": {
+     "n": 20,
+     "brier": 0.5249239751394423,
+     "brier_const": 0.6401701116140263,
+     "ece": 0.2411056040036053
+    },
+    "dest_serving_bowl": {
+     "n": 26,
+     "brier": 0.6621464801277344,
+     "brier_const": 0.7921239374566595,
+     "ece": 0.13995687095994908
+    },
+    "dest_table_centre": {
+     "n": 162,
+     "brier": 0.4122002330921358,
+     "brier_const": 0.63670582389469,
+     "ece": 0.07668993807743064
+    },
+    "dest_table_edge": {
+     "n": 168,
+     "brier": 0.41825824720481236,
+     "brier_const": 0.6631036740664388,
+     "ece": 0.0620686246363195
+    },
+    "dest_table_gap": {
+     "n": 132,
+     "brier": 0.3107103654747758,
+     "brier_const": 1.0362312066482768,
+     "ece": 0.00562551812525002
+    },
+    "dest_wooden_bowl": {
+     "n": 18,
+     "brier": 0.5892673048657057,
+     "brier_const": 0.7730226208637778,
+     "ece": 0.16091910418445823
+    },
+    "dest_ycb_bowl": {
+     "n": 26,
+     "brier": 0.7064305876976043,
+     "brier_const": 0.9051445533377714,
+     "ece": 0.19782947023008068
+    },
+    "vis_0.0-0.3": "untested",
+    "vis_0.3-0.6": "untested",
+    "vis_0.6-0.9": "untested",
+    "vis_0.9-1.0": {
+     "n": 1335,
+     "brier": 0.4866733969111099,
+     "brier_const": 0.7774099048386097,
+     "ece": 0.020781314667304436
+    }
+   },
+   "n_per_class": {
+    "placed_stable": 488,
+    "tipped": 115,
+    "missed": 112,
+    "dropped_low": 79,
+    "dropped_high": 21,
+    "rolled_off": 95,
+    "not_lifted": 376,
+    "crushed": 49,
+    "bruised": 0,
+    "broken": 0,
+    "spilled": 0
+   },
+   "n_train_per_class": {
+    "placed_stable": 3096,
+    "tipped": 391,
+    "missed": 181,
+    "dropped_low": 326,
+    "dropped_high": 29,
+    "rolled_off": 523,
+    "not_lifted": 1682,
+    "crushed": 272,
+    "bruised": 258,
+    "broken": 10,
+    "spilled": 49
+   },
+   "unsupported_classes": [
+    "dropped_high",
+    "broken"
+   ]
+  },
+  "kind": "classifier",
+  "held_out_objects": [
+   "handal__hammer",
+   "handal__pink_spaghetti_spoon",
+   "hope__granola_bars",
+   "hope__mustard_bottle",
+   "hot3d__clay_plates",
+   "hot3d__coffee_pot",
+   "hot3d__dumbbell",
+   "hot3d__foam_roller",
+   "hot3d__lizard_figurine",
+   "hot3d__remote_control",
+   "ycb__clamp"
+  ],
+  "classes": [
+   "broken",
+   "bruised",
+   "crushed",
+   "dropped_high",
+   "dropped_low",
+   "missed",
+   "not_lifted",
+   "placed_stable",
+   "rolled_off",
+   "spilled",
+   "tipped"
+  ],
+  "n_train": 6817,
+  "path": "/home/chungyili/Codes/RPent/robots/mujoco_lab/data/m2b/folds/fold_3/success_model.joblib",
+  "features": "true"
+ },
+ "hazard": "not eligible: damage labels",
+ "kind": "classifier",
+ "acceptance_val_belief": {
+  "classifier": {
+   "ece": 0.020781314667304436,
+   "brier": 0.4866733969111099,
+   "brier_const": 0.7774099048386097
+  },
+  "hazard": null
+ },
+ "readout": {
+  "terms": {
+   "hold": {
+    "_pooled": [
+     -2.072508831221159e-12,
+     0.05
+    ],
+    "bruised": [
+     -7.530642776035272e-13,
+     0.05
+    ],
+    "crushed": [
+     -7.993272710425686e-12,
+     0.05
+    ],
+    "dropped_low": [
+     -0.02343825000560435,
+     0.05
+    ],
+    "missed": [
+     -1.159072837708733e-13,
+     0.05
+    ],
+    "placed_stable": [
+     -1.087963052982014e-12,
+     0.05
+    ],
+    "rolled_off": [
+     -8.193890010977076e-12,
+     0.05
+    ],
+    "spilled": [
+     -4.907574346914569e-12,
+     0.05
+    ],
+    "tipped": [
+     -2.305533541884167e-11,
+     0.05
+    ]
+   },
+   "slip": {
+    "_pooled": {
+     "kind": "mix2",
+     "w": 0.8343610310664981,
+     "b1": 0.05087492944889351,
+     "sd1": 0.1019871871969124,
+     "b2": -0.2756066186236951,
+     "sd2": 0.6131117074550947
+    },
+    "not_lifted": {
+     "kind": "mix2",
+     "w": 0.8365225685698154,
+     "b1": 0.05156056352463028,
+     "sd1": 0.10107533611406444,
+     "b2": -0.2769283635705296,
+     "sd2": 0.6183060753661115
+    }
+   },
+   "loss": {
+    "_pooled": {
+     "kind": "mix2",
+     "w": 0.755209760952597,
+     "b1": -1.0366238609241702,
+     "sd1": 0.5469227519815234,
+     "b2": -2.728322474560702,
+     "sd2": 0.8685528423602733
+    },
+    "dropped_low": {
+     "kind": "mix2",
+     "w": 0.7666701981328806,
+     "b1": -1.015688885539884,
+     "sd1": 0.5245946346050887,
+     "b2": -2.7855424236166924,
+     "sd2": 0.8522792053205496
+    }
+   }
+  },
+  "side_error": 0.052659860290166574,
+  "stats": {
+   "n_rows": 6817,
+   "terms": {
+    "hold": {
+     "n": 4824,
+     "by_label": {
+      "broken": 10,
+      "bruised": 243,
+      "crushed": 265,
+      "dropped_high": 20,
+      "dropped_low": 77,
+      "missed": 176,
+      "placed_stable": 3094,
+      "rolled_off": 517,
+      "spilled": 34,
+      "tipped": 388
+     },
+     "n_val": 721,
+     "kinds": {
+      "_pooled": "normal",
+      "bruised": "normal",
+      "crushed": "normal",
+      "dropped_low": "normal",
+      "missed": "normal",
+      "placed_stable": "normal",
+      "rolled_off": "normal",
+      "spilled": "normal",
+      "tipped": "normal"
+     }
+    },
+    "slip": {
+     "n": 451,
+     "by_label": {
+      "crushed": 2,
+      "not_lifted": 449
+     },
+     "n_val": 140,
+     "kinds": {
+      "_pooled": "mix2",
+      "not_lifted": "mix2"
+     }
+    },
+    "loss": {
+     "n": 347,
+     "by_label": {
+      "bruised": 13,
+      "crushed": 1,
+      "dropped_high": 17,
+      "dropped_low": 311,
+      "spilled": 5
+     },
+     "n_val": 59,
+     "kinds": {
+      "_pooled": "mix2",
+      "dropped_low": "mix2"
+     }
+    }
+   },
+   "side": {
+    "n": 1861,
+    "mismatch": 0.052659860290166574
+   },
+   "rot": {
+    "n": 6817,
+    "rate": 0.33401789643538216
+   }
+  },
+  "law_val_objects": [
+   "fruits_veggies__avocado",
+   "handal__hammer_1",
+   "handal__hammer_6",
+   "handal__measuring_cups_1",
+   "hope__chocolate_pudding_mix",
+   "hope__ketchup_bottle",
+   "hope__parmesan_cheese_canister",
+   "hope__peas_and_carrots",
+   "ycb__banana",
+   "ycb__bowl2",
+   "ycb__wood_block"
+  ]
+ },
+ "guard": {
+  "n_reference": 6817,
+  "n_features_used": 27,
+  "n_calibration": 56,
+  "k": 10,
+  "alpha": 0.05,
+  "calibration_min": 1.6506289273738406,
+  "calibration_median": 2.1777187383695638,
+  "calibration_max": 3.636654525016141
+ },
+ "seconds": {
+  "classifier": 14.6,
+  "hazard": 0.0,
+  "readout": 0.9,
+  "guard": 0.3
+ }
+}

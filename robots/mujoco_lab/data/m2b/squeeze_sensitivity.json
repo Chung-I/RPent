@@ -1,0 +1,269 @@
+{
+ "bundle": "/home/chungyili/Codes/RPent/robots/mujoco_lab/data/m2b",
+ "probe_corpus": "/home/chungyili/Codes/RPent/robots/mujoco_lab/data/probe_corpus_v8.jsonl",
+ "thresholds": {
+  "path": "/home/chungyili/Codes/RPent/robots/mujoco_lab/data/thresholds_v1.json",
+  "sha256": "389fcaae23380196a3344ffdde53cfa0a34e51a7ad3ab2514b6cad82f68509dc"
+ },
+ "split": "val",
+ "n_particles": 2000,
+ "evoi_samples_per_case": 200,
+ "seed": 0,
+ "care": "normal",
+ "abstain_cost": 1.0,
+ "continuations": "middle pinch to table_centre",
+ "cells": [
+  {
+   "sigma": 0.05,
+   "rho": "0",
+   "rho_by_law": {
+    "cardboard": 0.0,
+    "thin_plastic": 0.0,
+    "fruit": 0.0
+   },
+   "n_cases": 55,
+   "mean_evoi": 0.0008408025264722331,
+   "evoi_mc_se": 7.488334010922955e-05,
+   "zero_within_2_mc_se": false,
+   "reading_law": {
+    "kind": "mix2",
+    "w": 0.533222083119671,
+    "b1": 0.03089037770983852,
+    "sd1": 0.05,
+    "b2": -0.03076666886760096,
+    "sd2": 0.05
+   }
+  },
+  {
+   "sigma": 0.1,
+   "rho": "0",
+   "rho_by_law": {
+    "cardboard": 0.0,
+    "thin_plastic": 0.0,
+    "fruit": 0.0
+   },
+   "n_cases": 55,
+   "mean_evoi": 0.0005697753653501851,
+   "evoi_mc_se": 4.9413774159568525e-05,
+   "zero_within_2_mc_se": false,
+   "reading_law": {
+    "kind": "mix2",
+    "w": 0.5331440364222222,
+    "b1": 0.0618320247572602,
+    "sd1": 0.07457914520488061,
+    "b2": -0.06157127167038914,
+    "sd2": 0.0849514667712132
+   }
+  },
+  {
+   "sigma": 0.2,
+   "rho": "0",
+   "rho_by_law": {
+    "cardboard": 0.0,
+    "thin_plastic": 0.0,
+    "fruit": 0.0
+   },
+   "n_cases": 55,
+   "mean_evoi": 0.00033680144113209213,
+   "evoi_mc_se": 2.75012247536972e-05,
+   "zero_within_2_mc_se": false,
+   "reading_law": {
+    "kind": "mix2",
+    "w": 0.5331244859777812,
+    "b1": 0.1236896813963573,
+    "sd1": 0.1491323750175084,
+    "b2": -0.12316147730707593,
+    "sd2": 0.16987416898236737
+   }
+  },
+  {
+   "sigma": 0.4,
+   "rho": "0",
+   "rho_by_law": {
+    "cardboard": 0.0,
+    "thin_plastic": 0.0,
+    "fruit": 0.0
+   },
+   "n_cases": 55,
+   "mean_evoi": 0.00012398837544942655,
+   "evoi_mc_se": 9.436671433966053e-06,
+   "zero_within_2_mc_se": false,
+   "reading_law": {
+    "kind": "mix2",
+    "w": 0.5331195959387359,
+    "b1": 0.24739217838619382,
+    "sd1": 0.29825179107342176,
+    "b2": -0.24633241746667264,
+    "sd2": 0.33973395535257356
+   }
+  },
+  {
+   "sigma": 0.05,
+   "rho": "0.5",
+   "rho_by_law": {
+    "cardboard": 0.5,
+    "thin_plastic": 0.5,
+    "fruit": 0.5
+   },
+   "n_cases": 55,
+   "mean_evoi": 0.004993857620983986,
+   "evoi_mc_se": 0.0006850487899881518,
+   "zero_within_2_mc_se": null,
+   "reading_law": {
+    "kind": "mix2",
+    "w": 0.5332220831196707,
+    "b1": 0.030890377709838532,
+    "sd1": 0.05,
+    "b2": -0.030766668867600946,
+    "sd2": 0.05
+   }
+  },
+  {
+   "sigma": 0.1,
+   "rho": "0.5",
+   "rho_by_law": {
+    "cardboard": 0.5,
+    "thin_plastic": 0.5,
+    "fruit": 0.5
+   },
+   "n_cases": 55,
+   "mean_evoi": 0.004366332464893888,
+   "evoi_mc_se": 0.00044939914888308724,
+   "zero_within_2_mc_se": null,
+   "reading_law": {
+    "kind": "mix2",
+    "w": 0.5331440364222221,
+    "b1": 0.06183202475726019,
+    "sd1": 0.07457914520488063,
+    "b2": -0.06157127167038914,
+    "sd2": 0.0849514667712132
+   }
+  },
+  {
+   "sigma": 0.2,
+   "rho": "0.5",
+   "rho_by_law": {
+    "cardboard": 0.5,
+    "thin_plastic": 0.5,
+    "fruit": 0.5
+   },
+   "n_cases": 55,
+   "mean_evoi": 0.0035313307857694457,
+   "evoi_mc_se": 0.0002556519179497908,
+   "zero_within_2_mc_se": null,
+   "reading_law": {
+    "kind": "mix2",
+    "w": 0.5331244859777812,
+    "b1": 0.1236896813963573,
+    "sd1": 0.1491323750175084,
+    "b2": -0.12316147730707594,
+    "sd2": 0.1698741689823674
+   }
+  },
+  {
+   "sigma": 0.4,
+   "rho": "0.5",
+   "rho_by_law": {
+    "cardboard": 0.5,
+    "thin_plastic": 0.5,
+    "fruit": 0.5
+   },
+   "n_cases": 55,
+   "mean_evoi": 0.002303556488340186,
+   "evoi_mc_se": 0.00014420862342532251,
+   "zero_within_2_mc_se": null,
+   "reading_law": {
+    "kind": "mix2",
+    "w": 0.533119595938736,
+    "b1": 0.2473921783861938,
+    "sd1": 0.29825179107342176,
+    "b2": -0.24633241746667264,
+    "sd2": 0.3397339553525736
+   }
+  },
+  {
+   "sigma": 0.05,
+   "rho": "final",
+   "rho_by_law": {
+    "cardboard": 0.8,
+    "thin_plastic": 0.8,
+    "fruit": 0.7
+   },
+   "n_cases": 55,
+   "mean_evoi": 0.010383376235100179,
+   "evoi_mc_se": 0.0007827682253831468,
+   "zero_within_2_mc_se": null,
+   "reading_law": {
+    "kind": "mix2",
+    "w": 0.5332220831196707,
+    "b1": 0.030890377709838525,
+    "sd1": 0.05,
+    "b2": -0.030766668867600926,
+    "sd2": 0.05
+   }
+  },
+  {
+   "sigma": 0.1,
+   "rho": "final",
+   "rho_by_law": {
+    "cardboard": 0.8,
+    "thin_plastic": 0.8,
+    "fruit": 0.7
+   },
+   "n_cases": 55,
+   "mean_evoi": 0.00967503645358589,
+   "evoi_mc_se": 0.0006803952581272569,
+   "zero_within_2_mc_se": null,
+   "reading_law": {
+    "kind": "mix2",
+    "w": 0.5331440364222224,
+    "b1": 0.061832024757260164,
+    "sd1": 0.07457914520488061,
+    "b2": -0.06157127167038918,
+    "sd2": 0.0849514667712132
+   }
+  },
+  {
+   "sigma": 0.2,
+   "rho": "final",
+   "rho_by_law": {
+    "cardboard": 0.8,
+    "thin_plastic": 0.8,
+    "fruit": 0.7
+   },
+   "n_cases": 55,
+   "mean_evoi": 0.007663605256038367,
+   "evoi_mc_se": 0.0004706655545553506,
+   "zero_within_2_mc_se": null,
+   "reading_law": {
+    "kind": "mix2",
+    "w": 0.5331244859777812,
+    "b1": 0.1236896813963573,
+    "sd1": 0.1491323750175084,
+    "b2": -0.12316147730707593,
+    "sd2": 0.1698741689823674
+   }
+  },
+  {
+   "sigma": 0.4,
+   "rho": "final",
+   "rho_by_law": {
+    "cardboard": 0.8,
+    "thin_plastic": 0.8,
+    "fruit": 0.7
+   },
+   "n_cases": 55,
+   "mean_evoi": 0.004737307094578189,
+   "evoi_mc_se": 0.00027193035785866336,
+   "zero_within_2_mc_se": null,
+   "reading_law": {
+    "kind": "mix2",
+    "w": 0.533119595938736,
+    "b1": 0.24739217838619376,
+    "sd1": 0.29825179107342176,
+    "b2": -0.2463324174666726,
+    "sd2": 0.3397339553525736
+   }
+  }
+ ]
+}
