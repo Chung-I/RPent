@@ -248,8 +248,11 @@ def test_posterior_check_reports_fragility_and_fill_coverage(tmp_path, monkeypat
                   "f_damage_n": f, "fill": fill} for f, fill in zip((10.0, 20.0, 30.0), (0.0, 0.6, 0.9))]
     pm = _RecordingProbe()
     pm.reading = {}
+    from robots.mujoco_lab.fragility import load_classes
+
+    mug = load_classes()["ycb__mug"]                           # the filled rows' truth reads a cavity
     bundle = {"manifest": {"metrics": "metrics.json", "probe_corpus": "unused"}, "probe_models": {"squeeze": pm, "weigh": pm},
-              "prior": lambda pose, n, rng: ParticleBelief(particles, np.array([0.25, 0.5, 0.25]))}
+              "prior": lambda pose, n, rng: ParticleBelief(particles, np.array([0.25, 0.5, 0.25])), "classes": {"v": mug, "tr": mug}}
     (tmp_path / "metrics.json").write_text(json.dumps({"split": {"train": ["tr"], "val": ["v"]}}))
     monkeypatch.setattr(pc, "load_bundle", lambda path: bundle)
     monkeypatch.setattr(pc, "load_rows", lambda path: rows)
@@ -266,3 +269,24 @@ def test_posterior_check_reports_fragility_and_fill_coverage(tmp_path, monkeypat
         assert fill[name]["p_filled_when_empty"] == fill[name]["p_filled_when_filled"] == 0.75
         assert fill[name]["brier"] == pytest.approx(0.3125) and fill[name]["brier_const"] == 0.25
         assert fill[name]["ece"] == pytest.approx(0.25)
+
+
+def test_generator_truth_adds_the_liquid():
+    """A filled row's generator truth is the joint generator (prior.joint_hidden), the container and its liquid, as the
+    m2b particles carry them; an empty row is the container alone; a filled row needs the classes (its cavity)."""
+    from robots.mujoco_lab.fragility import load_classes
+    from robots.mujoco_lab.posterior_check import generator_truth
+    from robots.mujoco_lab.prior import joint_hidden
+
+    classes = load_classes()
+    row, _ = _row(None, 1)
+    row = dict(row, object="ycb__mug", fill=0.8)
+    joint = joint_hidden(row["pose"], classes["ycb__mug"], row["theta"], 1, 0.8)
+    pv = row["pose"]["pivot"]
+    frac = (np.asarray(joint["com_obj"]) @ np.asarray(pv["axis"]) - pv["lo"]) / pv["L"]
+    g = generator_truth(row, classes)
+    assert joint["liquid_mass"] > 0.05 and g["mass"] == pytest.approx(joint["mass"], rel=1e-12)
+    assert g["com"] == pytest.approx(frac, abs=1e-12) and g["mu"] == 0.4
+    assert generator_truth(dict(row, fill=0.0), classes)["mass"] == pytest.approx(0.4 * 1.5, rel=1e-12)
+    with pytest.raises(ValueError, match="cavity"):
+        generator_truth(row)

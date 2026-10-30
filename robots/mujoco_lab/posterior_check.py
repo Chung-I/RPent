@@ -52,7 +52,7 @@ from typing import Any
 import numpy as np
 
 from robots.mujoco_lab import tracking
-from robots.mujoco_lab.prior import com_hypothesis, lab_prior
+from robots.mujoco_lab.prior import com_hypothesis, joint_hidden, lab_prior
 from robots.mujoco_lab.robot_spec import load_bundle
 from robots.mujoco_lab.train_models import load_rows, write_manifest
 from rpent.skills.pick_place.belief import ParticleBelief
@@ -78,14 +78,24 @@ def sim_truth(row: dict[str, Any]) -> dict[str, float]:
     return {"mass": float(row["truth"]["mass"]), "mu": float(row["truth"]["mu"]), "com": true_com_frac(row)}
 
 
-def generator_truth(row: dict[str, Any]) -> dict[str, float]:
+def generator_truth(row: dict[str, Any], classes: dict[str, dict[str, Any]] | None = None) -> dict[str, float]:
     """The row's theta as a point of the prior's space: mass nominal x scale x (1 + f), the friction drawn,
-    the CoM fraction of ``com_hypothesis`` (the particles' arithmetic)."""
+    the CoM fraction of ``com_hypothesis`` (the particles' arithmetic). A filled row adds its liquid as the m2b
+    particles do (prior.joint_hidden: the joint mass and CoM), from the object's cavity in ``classes``."""
     pose, th = row["pose"], row["theta"]
-    com, f = com_hypothesis(pose["pivot"], pose["com_obj_nominal"], th["com_s"], int(row["com_end"]))
     pv = pose["pivot"]
+    fill = float(row.get("fill") or 0.0)
+    if fill > 0.0:
+        entry = (classes or {}).get(row.get("object")) or {}
+        if not entry.get("cavity"):
+            raise ValueError(f"{row.get('object')}: a filled row's truth needs the object's cavity (the fragility classes)")
+        joint = joint_hidden(pose, entry, th, int(row["com_end"]), fill)
+        mass, com = float(joint["mass"]), joint["com_obj"]
+    else:
+        com, f = com_hypothesis(pv, pose["com_obj_nominal"], th["com_s"], int(row["com_end"]))
+        mass = float(pose["nominal_mass"]) * float(th["mass_scale"]) * (1.0 + f)
     frac = ((np.asarray(com) - np.asarray(pv["centre"], dtype=float)) @ np.asarray(pv["axis"], dtype=float) - float(pv["lo"])) / float(pv["L"])
-    return {"mass": float(pose["nominal_mass"]) * float(th["mass_scale"]) * (1.0 + f), "mu": float(th["mu"]), "com": float(frac)}
+    return {"mass": mass, "mu": float(th["mu"]), "com": float(frac)}
 
 
 def _hits(b: ParticleBelief, truth: dict[str, float]) -> dict[str, bool]:
@@ -109,7 +119,7 @@ def check_rows(rows: list[dict[str, Any]], bundle: dict[str, Any], grid: list[fl
         P = model.predict_matrix(X, r.get("planned"))[0]
         obs = {"label": r["label"], "readouts": r["readouts"], "force": r["force"]}
         comp, info = readout.components(obs, P, X, a, particle_sides(a, r["pose"]))
-        truth, sim = generator_truth(r), sim_truth(r)
+        truth, sim = generator_truth(r, bundle.get("classes")), sim_truth(r)
         case = {"object": r["object"], "label": r["label"], "info": info, "prior": _hits(b, truth), "prior_sim": _hits(b, sim),
                 "prior_width": _widths(b), "post": {}, "post_sim": {}, "post_width": {}}
         for t in grid:
@@ -146,7 +156,7 @@ def check_probe_cases(cases: list[list[dict[str, Any]]], bundle: dict[str, Any],
         a = b.arrays()
         terms = [(pms[r["probe"]], {"kind": r["kind"], "reading": r["reading"]},
                   particle_matrix(r["base"], a, row_pose(r), r["force"], model_names(pms[r["probe"]])), float(r["force"])) for r in case]
-        truth, sim = generator_truth(first), sim_truth(first)
+        truth, sim = generator_truth(first, bundle.get("classes")), sim_truth(first)
         c = {"object": first["object"], "label": "+".join(r["kind"] for r in case), "n_probes": len(case),
              "info": {"used": [], "rejected": []}, "prior": _hits(b, truth), "prior_sim": _hits(b, sim), "prior_width": _widths(b),
              "post": {}, "post_sim": {}, "post_width": {}}
