@@ -1212,12 +1212,33 @@ def test_the_forced_probe_is_the_same_at_every_recovery_level(tmp_path):
 
 
 @needs_m2b2
-def test_sham_once_leaves_the_belief_unchanged(tmp_path):
+def test_sham_once_leaves_the_belief_unchanged(tmp_path, monkeypatch):
     """Gates Gp and Gs on real cases: the sham's probe trace (kind, reading, thrown, displacement, tilt) and its charge
     equal the real probe's on the same case, and its belief hashes before, after and at the next menu are equal (the
-    next menu missing only when the probe ended the case); a real probe carries no sham record."""
+    next menu missing only when the probe ended the case); a real probe carries no sham record. Paired draws: the
+    stream state at the probe's next menu is the same in both arms."""
+    import rpent.skills.pick_place.tools as tools_mod
     from robots.mujoco_lab.calibrate import main
 
+    run_probe, reassess, inside, states = tools_mod._run_probe, tools_mod._reassess, [], {"probe_once": [], "sham_once": []}
+    ess = tools_mod.REFRESH_ESS
+
+    def probe_spy(*a, **k):
+        inside.append(json.dumps(a[4].rng.bit_generator.state, sort_keys=True))
+        tools_mod.REFRESH_ESS = float("inf")       # the probe's update refreshes, so it draws from primitives.rng
+        try:
+            return run_probe(*a, **k)
+        finally:
+            tools_mod.REFRESH_ESS = ess
+            inside.pop()
+
+    def reassess_spy(*a):
+        if inside:      # the probe's next menu: the stream state at the probe's start and at that menu
+            states[arm].append((inside[-1], json.dumps(a[3].rng.bit_generator.state, sort_keys=True)))
+        return reassess(*a)
+
+    monkeypatch.setattr(tools_mod, "_run_probe", probe_spy)
+    monkeypatch.setattr(tools_mod, "_reassess", reassess_spy)
     rows = {}
     for arm in ("probe_once", "sham_once"):
         out = tmp_path / f"{arm}.json"
@@ -1233,4 +1254,5 @@ def test_sham_once_leaves_the_belief_unchanged(tmp_path):
         assert q["belief_hash_before"] == q["belief_hash_after"]
         assert q["belief_hash_next"] == q["belief_hash_before"] or q["kind"] == "damaged" or q["thrown"]
         ran += 1
-    assert ran == 4
+    assert ran == 4 and len(states["probe_once"]) == 4 and all(s != n for s, n in states["probe_once"])
+    assert states["sham_once"] == states["probe_once"]

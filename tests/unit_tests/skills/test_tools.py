@@ -1021,6 +1021,29 @@ def test_the_refresh_keeps_the_spread(monkeypatch):
 
 
 # ---------------------------------------------------------------- the sham probe (plan H3 decision 5)
+def test_a_sham_probe_draws_what_the_real_probe_draws(monkeypatch):
+    """Paired draws (the paper session, 2026-10-31): a probe's update draws from primitives.rng when it refreshes, so
+    the sham computes the same update on a copy and discards it. The next assessment of either arm starts from the same
+    stream state, and the sham's belief stays the pre-probe belief."""
+    from rpent.skills.pick_place.tools import belief_hash, sham_probe
+
+    monkeypatch.setattr(tools_mod, "REFRESH_ESS", float("inf"))      # every update refreshes: it draws from primitives.rng
+    pms = {"push": PerfectPush(), "weigh": FlatWeigh()}
+    real_env, sham_env = (_ProbeEnv([("placed_stable", _hold(0.2))], probes=[_push()]) for _ in range(2))
+    (real, rs), (sham, ss) = ((_bprims(e, probe_models=pms, model=MuGate(f_std=10.0)), {}) for e in (real_env, sham_env))
+    for prims, store in ((real, rs), (sham, ss)):
+        assess_pick(object="mug", destination="table_centre", primitives=prims, store=store)
+    start = real.rng.bit_generator.state
+    assert sham.rng.bit_generator.state == start
+    h0, states, orig = belief_hash(ss["beliefs"]["ycb__mug"]["belief"]), [], tools_mod._reassess
+    monkeypatch.setattr(tools_mod, "_reassess", lambda *a: (states.append(a[3].rng.bit_generator.state), orig(*a))[1])
+    pick_and_place(object="mug", destination="table_centre", option_id="probe_push", primitives=real, store=rs)
+    d = sham_probe(object="mug", destination="table_centre", option_id="probe_push", primitives=sham, store=ss)
+    assert any(f.startswith("refreshed from") for f in rs["beliefs"]["ycb__mug"]["belief"].flags)     # the real update drew
+    assert states[0] != start and states[1] == states[0]
+    assert d["belief_hash_before"] == d["belief_hash_after"] == d["belief_hash_next"] == h0
+
+
 def test_a_sham_probe_keeps_the_belief(monkeypatch):
     """sham_probe (the sham_once arm, not a planner tool) runs the probe row's motion as the real probe does (the same
     call and trace) and discards the result: the full belief state hashes equal before, after and in the next

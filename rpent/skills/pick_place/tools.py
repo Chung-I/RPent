@@ -35,7 +35,9 @@ taught.
 The sham probe (``sham_probe``, plan H3 decision 5: calibrate's sham_once arm, not a planner tool) runs a probe row as
 pick_and_place would, with the same motion, time and risk, and discards the result: no reweight and no history entry.
 The probe still enters ``probes_run`` and ``probe_seq``, so every later menu sees what it sees after the real probe,
-and the payload records the belief's hash before, after and at the next assessment (gate Gs).
+and the payload records the belief's hash before, after and at the next assessment (gate Gs). The sham computes the
+real probe's update on a copy and discards it: an update that refreshes draws from ``primitives.rng``, so both arms
+then continue from the same stream state (paired draws).
 """
 
 from __future__ import annotations
@@ -349,8 +351,9 @@ def _run_probe(row: Option, object: str, destination: str, care: str, primitives
                sham: bool = False) -> dict[str, Any]:
     """Run one probe row, update the belief with its result, and return the probe payload. A probe that damages
     the object ends the case (its fresh assessment says so); the reading's noise (HIDDEN_READING) stays out. ``sham``
-    (plan H3 decision 5): the same motion, damage latch, probe record and restore, but no update; the payload adds
-    ``sham`` and the belief's hashes before, after and at the next assessment (None when there is none)."""
+    (plan H3 decision 5): the same motion, damage latch, probe record and restore; the update runs on a copy of the
+    record and is discarded (its draws from primitives.rng stay: paired draws); the payload adds ``sham`` and the
+    belief's hashes before, after and at the next assessment (None when there is none)."""
     env = primitives.env
     loc = env.locate(object)
     rec = _belief_record(loc, env, primitives, store)
@@ -370,6 +373,7 @@ def _run_probe(row: Option, object: str, destination: str, care: str, primitives
     entry = {"type": "probe", "option": row.id, "base": row._base, "pose": row._pose, "force": float(act["force"]), "planned": None,
              "obs": {"probe": probe, "kind": res.kind, "reading": dict(reading), "thrown": bool(res.thrown)}}
     if sham:
+        _update(dict(rec), entry, loc, primitives)      # discarded: only its draws from primitives.rng stay
         before = after = rec["belief"]
     else:
         before, after = _update(rec, entry, loc, primitives)
