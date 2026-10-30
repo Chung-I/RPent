@@ -19,11 +19,14 @@ import copy
 import hashlib
 import json
 import math
+from collections import Counter
 
 import numpy as np
 import pytest
 
 from robots.mujoco_lab.calibrate import FORCED_RULE
+from robots.mujoco_lab import h3 as h3m
+from robots.mujoco_lab.corpus import COM_S_RANGE, MASS_SCALE_RANGE, MU_RANGE
 from robots.mujoco_lab.h3 import (CONDITIONS, RECOVERY, SPREAD, cohort, contrasts, full_policy, gates, in_narrow, index, interaction,
                                   power, restore_ok, row_diff, summary, valid)
 from robots.mujoco_lab.sweep import bootstrap_weights, variance_split
@@ -275,10 +278,23 @@ def _m4(tmp_path, runs):
 
 def test_a_restore_check_passes_only_within_the_limits():
     assert restore_ok(CHECK) and restore_ok(dict(CHECK, pos_err_mm=0.9, rot_err_deg=0.09))
-    for k, v in (("pos_err_mm", 1.5), ("rot_err_deg", 0.2), ("qvel_err", 1e-3), ("mocap_err", 1e-3), ("pos_err_mm", None),
+    for k, v in (("pos_err_mm", 1.5), ("rot_err_deg", 0.2), ("qvel_err", 1e-3), ("mocap_err", 1e-3), ("qpos_err", 1e-6), ("pos_err_mm", None),
                  ("same_case", False), ("episode", False), ("at_rest", None)):
         assert not restore_ok(dict(CHECK, **{k: v})), k
     assert not restore_ok({k: v for k, v in CHECK.items() if k != "qvel_err"})
+
+
+def test_a_restore_matches_the_start_rest_state(tmp_path):
+    """Gr compares the restore's at_rest with the start's (the row's reset record): a start that never settled is
+    rebuilt as it was (milestone 4's seed-11 run had 39 such starts, all artifacts)."""
+    assert restore_ok(dict(CHECK, at_rest=False), start_at_rest=False)
+    assert not restore_ok(CHECK, start_at_rest=False) and not restore_ok(dict(CHECK, at_rest=False))
+    runs = _pilot()
+    row = _of(runs, "never", ("rec20", "wide"), 11)["rows"][0]
+    row["reset"] = {"settle_s": 3.0, "at_rest": False, "zone": "table"}
+    row["restores"][0]["check"]["at_rest"] = False
+    g = gates(index(runs), _m4(tmp_path, runs))
+    assert g["Gr"]["pass"] and g["Gr"]["restores"] == 1
 
 
 def test_ga_compares_every_milestone4_key_but_the_wall_time():
@@ -312,6 +328,13 @@ def test_the_gates_pass_a_clean_pilot_and_catch_each_failure(tmp_path):
     assert not broken(lambda rs: _of(rs, "policy", ("absorbing", "wide"), 11)["rows"][2].update(cost=6.0))["Ga"]["pass"]
     assert not broken(lambda rs: _of(rs, "never", ("absorbing", "wide"), 11)["rows"][1].update(cost=6.0))["Ga"]["pass"]
     assert broken(lambda rs: _of(rs, "never", ("absorbing", "wide"), 11)["rows"][4].update(cost=6.0))["Ga"]["pass"]   # outside m4's cases
+    def crash(rs):                   # the same case raised in both forced arms (calibrate's exception row)
+        for arm in ("probe_once", "sham_once"):
+            rows = _of(rs, arm, ("rec0", "wide"), 11)["rows"]
+            rows[3] = {"object": rows[3]["object"], "idx": rows[3]["idx"], "error": "boom", "executed": False}
+
+    ex = broken(crash)
+    assert ex["Gp"]["pass"] and ex["Gs"]["pass"] and ex["Gp"]["pairs"] == 36
     thrown = broken(lambda rs: [r["probes"][0].update(thrown=True, belief_hash_next=None)
                                 for arm in ("probe_once", "sham_once") for r in _of(rs, arm, ("absorbing", "narrow"), 11)["rows"][:1]])
     assert thrown["Gs"]["pass"] and thrown["Gp"]["pass"]         # a sham that ended the case has no next menu
@@ -331,3 +354,154 @@ def test_summary_runs_on_a_small_design():
     assert shares["n_probed"] == 6 and shares["share"]["decline"] == pytest.approx(1 / 6) and shares["share"]["same"] == pytest.approx(5 / 6)
     json.dumps(out)
     assert "H3" in out["markdown"]
+
+
+def _with_forced_probes(runs, seeds):
+    """The forced arms of ``seeds`` with equal probe traces and a sham whose hashes are equal."""
+    for seed in seeds:
+        for cond in CONDITIONS:
+            for r in _of(runs, "probe_once", cond, seed)["rows"]:
+                r.update(probes=[dict(TRACE)], forced_probe="weigh", post_probe="commit_std", changed="same")
+            for r in _of(runs, "sham_once", cond, seed)["rows"]:
+                r.update(probes=[dict(TRACE, sham=True, belief_hash_before="h", belief_hash_after="h", belief_hash_next="h")],
+                         forced_probe="weigh", post_probe="commit_std", changed="same")
+    return runs
+
+
+def test_a_condition_without_probe_cases_takes_the_never_run_as_its_policy():
+    """Decision 5 at an empty subset: at a verdict seed whose never run has no probe case, the runner skips the policy
+    job and index() rebuilds the policy run from the never run alone; a never run with a probe case, or the pilot seed,
+    keeps a missing policy run missing."""
+    cond = ("rec0", "narrow")
+    full = _design(lambda *k: 5.0, seeds=(11, 12))
+    runs = [r for r in full if r is not _of(full, "policy", cond, 12)]
+    idx = index(runs)
+    pol, nev = idx[(*cond, "policy", 12)], idx[(*cond, "never", 12)]
+    assert pol["protocol"] == "policy" and pol["rows"] == nev["rows"] and pol["rebuilt"] == {"subset": 0, "filled": 6}
+    assert len(cohort({k: v for k, v in idx.items() if k[3] == 12})) == 6
+    probed = copy.deepcopy(runs)
+    _of(probed, "never", cond, 12)["rows"][0]["recommendation"] = "probe"
+    with pytest.raises(ValueError, match="no policy run"):
+        cohort(index(probed))
+    pilot = [r for r in full if r is not _of(full, "policy", cond, 11)]
+    assert (*cond, "policy", 11) not in index(pilot)
+
+
+def test_power_reports_the_probe_cases_per_condition():
+    u = {(o, i): 1.0 + 0.1 * i for o in ("a", "b", "c") for i in range(3)}
+    runs = _pilot_with_contributions(u)
+    _of(runs, "never", ("absorbing", "narrow"), 11)["rows"][4]["recommendation"] = "probe"
+    p = power(index(runs))
+    assert p["probe_cases"] == {h3m.label(c): int(c == ("absorbing", "narrow")) for c in CONDITIONS}
+    assert p["cohort_share"] == pytest.approx(1.0) and p["n_cases"] == 9
+
+
+def test_the_summary_checks_every_verdict_seed_and_refuses_on_a_failure(tmp_path, monkeypatch):
+    """Decision 8 holds in every sham case: at each verdict seed the summary checks Gs, Gp, Gr and the first menus on the
+    cohort's cases, and the summary command exits 1 when a check fails."""
+    monkeypatch.setattr(h3m.tracking, "log_run", lambda *a, **k: None)
+    runs = _with_forced_probes(_design(lambda *k: 5.0, seeds=(12, 13)), (12, 13))
+    s = summary(runs, n_boot=20)
+    assert s["checks"]["pass"] and s["checks"]["Gs"]["shams"] == 72 and s["checks"]["Gp"]["pairs"] == 72
+
+    def checks(edit):
+        rs = copy.deepcopy(runs)
+        edit(rs)
+        return summary(rs, n_boot=20)["checks"]
+
+    assert not checks(lambda rs: _of(rs, "sham_once", ("rec20", "wide"), 13)["rows"][0]["probes"][0].update(belief_hash_after="g"))["Gs"]["pass"]
+    assert not checks(lambda rs: _of(rs, "sham_once", ("rec0", "narrow"), 12)["rows"][2]["probes"][0].update(reading={"mass": 1.1}))["Gp"]["pass"]
+    assert not checks(lambda rs: _of(rs, "never", ("rec20", "wide"), 12)["rows"][0].update(
+        restores=[{"after": "attempt", "event": "bruised", "check": dict(CHECK, pos_err_mm=2.0)}]))["Gr"]["pass"]
+    assert not checks(lambda rs: _of(rs, "policy", ("rec0", "wide"), 13)["rows"][1].update(first_menu={"best_cost": 9.0}))["first_menus"]["pass"]
+    out = tmp_path / "out"
+    out.mkdir()
+    bad = copy.deepcopy(runs)
+    _of(bad, "probe_once", ("absorbing", "narrow"), 12)["rows"][5]["probes"][0]["sham"] = True
+    for j, r in enumerate(bad):
+        (out / f"run{j}.json").write_text(json.dumps(r))
+    argv = ["summary", "--dir", str(out), "--out", str(tmp_path / "s.json"), "--markdown", str(tmp_path / "s.md"), "--n-boot", "20"]
+    assert h3m.main(argv) == 1 and not json.load(open(tmp_path / "s.json"))["checks"]["Gs"]["pass"]
+
+
+def test_the_arm_table_counts_irreversible_events_and_cases():
+    """Decision 6: irreversible events per 1,000 cases (an attempt with an irreversible outcome, a probe that threw or
+    damaged the object), next to milestone 4's irreversible cases per 1,000; under recovery a case holds several."""
+    runs = _with_forced_probes(_design(lambda *k: 5.0, seeds=(12,)), (12,))
+    _of(runs, "never", ("rec20", "wide"), 12)["rows"][0]["attempts"] = [
+        {"option": "commit_std", "outcome": "bruised"}, {"option": "light_grip", "outcome": "bruised"},
+        {"option": "light_grip", "outcome": "placed_stable"}]
+    r = _of(runs, "probe_once", ("rec0", "narrow"), 12)["rows"][3]
+    r["probes"][0]["thrown"] = True
+    r["attempts"] = [{"option": "commit_std", "outcome": "dropped_high"}, {"option": "commit_std", "outcome": "placed_stable"}]
+    s = summary(runs, n_boot=20)
+    never, forced = s["arms"]["rec20/wide/never"], s["arms"]["rec0/narrow/probe_once"]
+    assert never["irreversible_per_1000"] == pytest.approx(1000 / 6) and never["irreversible_events_per_1000"] == pytest.approx(2000 / 6)
+    assert forced["irreversible_per_1000"] == pytest.approx(1000 / 6) and forced["irreversible_events_per_1000"] == pytest.approx(2000 / 6)
+    assert len(never["irreversible_events_per_1000_ci"]) == 2 and "irreversible events per 1,000" in s["markdown"]
+
+
+def test_the_matched_truth_check_weights_each_case_by_its_selection_probability():
+    """Decision 4's check, corrected: a matched case enters with weight 1 / P(selected | its branch) (f² without a CoM
+    shift or for a filled container, f³ with one), so the matched set has the narrow class's mixture; the raw n and
+    Kish's effective n are reported."""
+    mid, mu, cs = math.sqrt(MASS_SCALE_RANGE[0] * MASS_SCALE_RANGE[1]), sum(MU_RANGE) / 2, sum(COM_S_RANGE) / 2
+    d = {("a", 0): 1.0, ("a", 1): 3.0}
+    runs = _design(lambda arm, cond, o, i, s: 5.0 - (d.get((o, i), 0.0) if (arm, cond) == ("probe_once", ("absorbing", "wide")) else 0.0),
+                   seeds=(12,))
+    for arm in ARMS:
+        for r in _of(runs, arm, ("absorbing", "wide"), 12)["rows"]:
+            r["theta"] = {"mass_scale": 2.9, "mu": mu, "com_s": None, "v_lift": 0.15}
+        rows = _of(runs, arm, ("absorbing", "wide"), 12)["rows"]
+        rows[0]["theta"] = {"mass_scale": mid, "mu": mu, "com_s": None, "v_lift": 0.15}
+        rows[1]["theta"] = {"mass_scale": mid, "mu": mu, "com_s": cs, "v_lift": 0.15}
+    m = summary(runs, n_boot=50)["secondary"]["matched_truth"]
+    assert m["n"] == 2 and m["n_eff"] == pytest.approx(25 / 17)
+    assert m["absorbing/wide"]["D"]["value"] == pytest.approx((1.0 + 4 * 3.0) / 5) and m["Q"]["value"] == pytest.approx(2.6)
+    assert h3m.selection_p(rows[0]) == pytest.approx(0.25 ** 2) and h3m.selection_p(rows[1]) == pytest.approx(0.25 ** 3)
+    assert h3m.selection_p({"theta": {"mass_scale": 1.0, "mu": mu, "com_s": None}, "fill": 0.5}) == pytest.approx(0.25 ** 2)
+
+
+def test_the_selection_probability_is_the_generators_mass_on_the_narrow_ranges():
+    """The weights' premise, on the truth generator: the share of draws inside the narrow ranges is selection_p per
+    branch (no shift, shift, filled), within 4 standard errors."""
+    from robots.mujoco_lab.corpus import apply_damage, draw_damage, draw_theta
+    from robots.mujoco_lab.fragility import THRESHOLDS_V0, Thresholds, entry_of, load_classes
+
+    rng = np.random.default_rng(0)
+    hits, n, p = Counter(), Counter(), {}
+
+    def add(branch, row):
+        n[branch] += 1
+        hits[branch] += in_narrow(row)
+        p[branch] = h3m.selection_p(row)
+
+    for _ in range(100_000):
+        th, _ = draw_theta(rng, 1.0)
+        add("none" if th["com_s"] is None else "shift", {"theta": th, "fill": 0.0})
+    classes, thr = load_classes(), Thresholds.from_json(THRESHOLDS_V0)
+    entry = entry_of("ycb__mug", classes)[0]
+    for _ in range(20_000):
+        th, _ = draw_theta(rng, 1.0)
+        dmg = draw_damage(rng, entry, thr, 1.0)
+        if dmg["fill"] > 0:
+            add("filled", {"theta": apply_damage(th, {}, dmg)[0], "fill": dmg["fill"]})
+    assert min(n.values()) > 5000
+    for b in ("none", "shift", "filled"):
+        assert abs(hits[b] / n[b] - p[b]) < 4 * math.sqrt(p[b] * (1 - p[b]) / n[b]), b
+
+
+def test_gates_and_power_log_to_wandb(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(h3m.tracking, "log_run", lambda job, config, metrics: calls.append((job, config, metrics)))
+    runs = _pilot()
+    (tmp_path / "m4").mkdir()
+    m4 = _m4(tmp_path / "m4", runs)
+    out = tmp_path / "out"
+    out.mkdir()
+    for j, r in enumerate(runs):
+        (out / f"run{j}.json").write_text(json.dumps(r))
+    assert h3m.main(["power", "--dir", str(out), "--out", str(tmp_path / "power.json")]) == 0
+    assert h3m.main(["gates", "--dir", str(out), "--m4-dir", m4, "--out", str(tmp_path / "gates.json")]) == 0
+    assert [c[0] for c in calls] == ["h3_power", "h3_gates"]
+    assert calls[0][2]["k"] == 6 and calls[0][2]["target_met"] is False and calls[1][2]["pass"] is True

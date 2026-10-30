@@ -49,10 +49,11 @@ import numpy as np
 from robots.mujoco_lab import tracking
 from robots.mujoco_lab.calibrate import FORCED, FORCED_RULE, cases_sha256
 from robots.mujoco_lab.corpus import COM_S_RANGE, FILLED_MASS_SCALE_RANGE, MASS_SCALE_RANGE, MU_RANGE, shrunk_range
-from robots.mujoco_lab.sweep import (_ci, _dump, _key, _num, _ok, _strip, arm_metrics, bootstrap_weights, cell, check_identical,
-                                     load_dir, load_run, probe_cases, variance_split, verdict)
+from robots.mujoco_lab.sweep import (_ci, _dump, _event, _key, _num, _ok, _strip, arm_metrics, bootstrap_weights, cell,
+                                     check_identical, load_dir, load_run, probe_cases, variance_split, verdict)
 from robots.mujoco_lab.sweep import valid as sweep_valid
 from rpent.skills.pick_place.probes import DAMAGED
+from rpent.skills.pick_place.protocol import IRREVERSIBLE
 
 CARE, ABSTAIN, SCALE = 10.0, 10.0, 1.0                          # decision 2: the one cost cell (5κ + A = 60)
 RECOVERY = {"absorbing": None, "rec20": 20.0, "rec0": 0.0}      # decision 3: calibrate --reset-s (None: absorbing)
@@ -65,7 +66,7 @@ PILOT_SEED = 11               # stage 0: gates and power, never a verdict
 K_CHOICES = (2, 4, 6)         # decision 9: the verdict seeds 12 to 11 + k
 POWER_SHARE = 0.7             # decision 9: 1.96 SE(k) ≤ 0.7 X̂_D (80 % power)
 N_BOOT = 2000
-GR = {"pos_err_mm": 1.0, "rot_err_deg": 0.1, "qvel_err": 1e-9, "mocap_err": 1e-9}     # gate Gr's limits (decision 8)
+GR = {"pos_err_mm": 1.0, "rot_err_deg": 0.1, "qpos_err": 1e-9, "qvel_err": 1e-9, "mocap_err": 1e-9}   # gate Gr's limits (decision 8)
 TRACE = ("probe", "kind", "reading", "thrown", "displacement_m", "tilt_deg", "cost")    # gate Gp: the probe trace
 CHANGES = ("same", "other_row", "decline", "terminal")          # decision 6: the decision change where the probe ran
 M4_POLICY, M4_NEVER = "policy_k10_A10_s1_seed11.json", "policy_no_probe_k10_A10_s1_seed11_cases.json"   # gate Ga
@@ -116,7 +117,9 @@ def full_policy(never: dict[str, Any], policy_subset: dict[str, Any]) -> dict[st
 
 def index(runs: list[dict[str, Any]]) -> dict[tuple[str, str, str, int], dict[str, Any]]:
     """{(recovery, spread, arm, seed): run} over H3's protocols (other runs are skipped); a policy run on a cases file is
-    rebuilt by full_policy from its never run. A ValueError for two runs of one key or a subset without its never run."""
+    rebuilt by full_policy from its never run. At a verdict seed whose never run has no probe case and no policy run, the
+    policy run is the never run (decision 5 at an empty subset: the runner skips that job). A ValueError for two runs of
+    one key or a subset without its never run."""
     keyed: dict[tuple[str, str, str, int], dict[str, Any]] = {}
     for run in runs:
         arm = ARMS.get(run.get("protocol"))
@@ -134,6 +137,11 @@ def index(runs: list[dict[str, Any]]) -> dict[tuple[str, str, str, int], dict[st
                 raise ValueError(f"the policy subset {key} has no never run")
             run = full_policy(never, run)
         out[key] = run
+    for (rec, u, arm, seed), never in keyed.items():
+        if (arm == "never" and seed != PILOT_SEED and (rec, u, "policy", seed) not in keyed
+                and not any(r.get("recommendation") == "probe" for r in never["rows"])):
+            empty = dict(never, protocol="policy", rows=[], cases={"path": None, "n": 0, "sha256": None})
+            out[(rec, u, "policy", seed)] = full_policy(never, empty)
     return out
 
 
@@ -183,18 +191,20 @@ def case_values(runs: dict[tuple[str, str, str, int], dict[str, Any]], cases: se
     return keys, vals
 
 
-def mean_draws(u: np.ndarray, case_objects: list[str], objects: list[str], W: np.ndarray) -> dict[str, Any]:
-    """The mean of the per-case values ``u``, its joint-bootstrap draws (W: rows of object multiplicities over
-    ``objects``) and 95 % interval."""
+def mean_draws(u: np.ndarray, case_objects: list[str], objects: list[str], W: np.ndarray,
+               weights: np.ndarray | None = None) -> dict[str, Any]:
+    """The mean of the per-case values ``u`` (weighted by ``weights`` when given), its joint-bootstrap draws (W: rows of
+    object multiplicities over ``objects``) and 95 % interval; n is the number of cases."""
     pos = {o: j for j, o in enumerate(objects)}
     at = [pos[o] for o in case_objects]
+    w = np.ones(len(at)) if weights is None else np.asarray(weights, dtype=float)
     S, n = np.zeros(len(objects)), np.zeros(len(objects))
-    np.add.at(S, at, np.asarray(u, dtype=float))
-    np.add.at(n, at, 1.0)
+    np.add.at(S, at, w * np.asarray(u, dtype=float))
+    np.add.at(n, at, w)
     with np.errstate(invalid="ignore", divide="ignore"):
         draws = (W @ S) / (W @ n)
     N = float(n.sum())
-    return {"value": float(S.sum() / N) if N else math.nan, "ci": _ci(draws), "draws": draws, "n": int(N)}
+    return {"value": float(S.sum() / N) if N else math.nan, "ci": _ci(draws), "draws": draws, "n": len(at)}
 
 
 def contrasts(runs: dict[tuple[str, str, str, int], dict[str, Any]], W: np.ndarray, objects: list[str],
@@ -235,7 +245,9 @@ def power(pilot: dict[tuple[str, str, str, int], dict[str, Any]]) -> dict[str, A
     """Decision 9 on the pilot (index()'s runs of the pilot seed, the policy in full): X̂_D on the common cohort, the
     variance split (σ_b², σ_w²) of the per-case contributions to X_D (each case's D in the four cells, combined as X),
     SE(k)² = (σ_b² + σ_w² / (c k)) / n for k verdict seeds (c: the cohort's cases per object, n: its objects) and k, the
-    smallest of K_CHOICES with 1.96 SE(k) ≤ 0.7 X̂_D; k = 6 and ``target_met`` False when none qualifies or X̂_D ≤ 0."""
+    smallest of K_CHOICES with 1.96 SE(k) ≤ 0.7 X̂_D; k = 6 and ``target_met`` False when none qualifies or X̂_D ≤ 0.
+    Also the never arm's first-recommendation probe cases per condition (the size of a verdict seed's policy subset)
+    and the cohort's share of the cases."""
     keys, vals = case_values(pilot, cohort(pilot), conditions=tuple(X_WEIGHTS))
     if not keys:
         raise ValueError("the pilot has no case in its common cohort")
@@ -247,8 +259,12 @@ def power(pilot: dict[tuple[str, str, str, int], dict[str, Any]]) -> dict[str, A
     x = float(np.mean(u))
     se = {str(k): math.sqrt((sb + sw / (c * k)) / n_obj) for k in K_CHOICES}
     k = next((k for k in K_CHOICES if x > 0 and 1.96 * se[str(k)] <= POWER_SHARE * x), None)
+    never = {cond: [run for key, run in pilot.items() if key[:3] == (*cond, "never")] for cond in CONDITIONS}
+    probes = {label(cond): sum(r.get("recommendation") == "probe" for run in rs for r in run["rows"]) for cond, rs in never.items()}
+    n_all = sum(len(run["rows"]) for run in never[("absorbing", "wide")])
     return {"x_d": x, "sigma_b2": sb, "sigma_w2": sw, "n_objects": n_obj, "cases_per_object": c, "n_cases": len(keys), "se": se,
-            "k": K_CHOICES[-1] if k is None else k, "target_met": k is not None, "note": None if k is not None else "power target not met"}
+            "k": K_CHOICES[-1] if k is None else k, "target_met": k is not None, "note": None if k is not None else "power target not met",
+            "probe_cases": probes, "cohort_share": len(keys) / n_all if n_all else math.nan}
 
 
 # ---------------------------------------------------------------- gates (decision 8)
@@ -257,11 +273,16 @@ def _gate(failures: list[Any], **extra: Any) -> dict[str, Any]:
     return {"pass": not failures, "n_failures": len(failures), "failures": failures[:20], **extra}
 
 
-def restore_ok(check: dict[str, Any]) -> bool:
-    """Gate Gr on one restore's lab check: the object's pose within 1 mm and 0.1°, zero velocities, the hand at home,
-    the same case (θ, fill, fragility, fixture), the same episode and the scene at rest."""
+def restore_ok(check: dict[str, Any], start_at_rest: bool = True) -> bool:
+    """Gate Gr on one restore's lab check: the object's pose within 1 mm and 0.1°, the joint positions, velocities and
+    the hand as at the start, the same case (θ, fill, fragility, fixture), the same episode, and the scene at rest exactly
+    when the case's start was (a start that never settled, an artifact case, is rebuilt as it was)."""
     return (all(isinstance(check.get(k), Real) and not isinstance(check.get(k), bool) and check[k] <= lim for k, lim in GR.items())
-            and all(check.get(k) is True for k in ("same_case", "episode", "at_rest")))
+            and all(check.get(k) is True for k in ("same_case", "episode")) and check.get("at_rest") is bool(start_at_rest))
+
+
+def _start_at_rest(row: dict[str, Any]) -> bool:
+    return bool((row.get("reset") or {}).get("at_rest", True))
 
 
 def _below_root(path: Any) -> Any:
@@ -293,51 +314,66 @@ def _sham_ok(p: dict[str, Any]) -> bool:
             and (p.get("belief_hash_next") == h or (p.get("belief_hash_next") is None and ended)))
 
 
-def gates(runs: dict[tuple[str, str, str, int], dict[str, Any]], m4_dir: str, seed: int = PILOT_SEED) -> dict[str, Any]:
-    """Decision 8 on the pilot seed's runs (index(); the policy in full), each gate with its failures (the first 20):
-    G1, per condition, the cases whose first recommendation is not a probe run the same in the policy and the never arm
-    (sweep.check_identical); first_menus, the policy and the never arm record the same first menu and recommendation in
-    every case; Gr, every restore's lab check passes restore_ok; Gs, every sham probe's belief hashes are equal before
-    and after, and at the next menu, which is missing only when the probe ended the case, and no real probe carries a sham
-    record; Gp, per condition and case, probe_once and sham_once force the same probe with the same trace (TRACE); Ga, the
-    absorbing and wide condition reproduces milestone 4's seed-11 outputs in ``m4_dir``: the policy run row for row and
-    the never arm on the cases of milestone 4's never subset run, on milestone 4's row keys (row_diff). ``pass`` when all
-    pass; a missing run fails its gates."""
-    g1, menus, gr, gs, gp, ga, missing = [], [], [], [], [], [], []
-    n = Counter()
+def _checks(runs: dict[tuple[str, str, str, int], dict[str, Any]], seed: int,
+            keep: set[tuple[str, int]] | None = None) -> tuple[dict[str, list[Any]], Counter]:
+    """Decision 8's case checks at one seed, per condition, over every row (or the cases ``keep``): first_menus, the
+    policy and the never arm record the same first menu and recommendation; Gr, every restore's lab check passes
+    restore_ok against its case's start; Gs, every sham probe's belief hashes are equal before and after, and at the next
+    menu, which is missing only when the probe ended the case, and no real probe carries a sham record; Gp, probe_once and
+    sham_once force the same probe with the same trace (TRACE). A run missing at the seed is listed under ``missing``."""
+    f: dict[str, list[Any]] = {"first_menus": [], "Gr": [], "Gs": [], "Gp": [], "missing": []}
+    n: Counter = Counter()
     for cond in CONDITIONS:
         got = {arm: runs.get((*cond, arm, seed)) for arm in ARMS.values()}
         lost = [arm for arm, r in got.items() if r is None]
         if lost:
-            missing += [(label(cond), arm) for arm in lost]
+            f["missing"] += [(label(cond), arm, seed) for arm in lost]
             continue
-        g1 += [(label(cond), *k) for k in check_identical(got["policy"], got["never"])]
-        n["g1_checked"] += sum(r.get("recommendation") != "probe" for r in got["policy"]["rows"])
+        rows = {arm: [r for r in run["rows"] if keep is None or _key(r) in keep] for arm, run in got.items()}
         nv = _rows(got["never"])
-        for r in got["policy"]["rows"]:
+        for r in rows["policy"]:
             m = nv.get(_key(r))
             if m is None or m.get("recommendation") != r.get("recommendation") or m.get("first_menu") != r.get("first_menu"):
-                menus.append((label(cond), *_key(r)))
-        for arm, run in got.items():
-            for r in run["rows"]:
-                for rs in r.get("restores") or []:
+                f["first_menus"].append((label(cond), seed, *_key(r)))
+        for arm, rs in rows.items():
+            for r in rs:
+                for rst in r.get("restores") or []:
                     n["restores"] += 1
-                    if not restore_ok(rs.get("check") or {}):
-                        gr.append((label(cond), arm, *_key(r), rs.get("check")))
+                    if not restore_ok(rst.get("check") or {}, _start_at_rest(r)):
+                        f["Gr"].append((label(cond), arm, seed, *_key(r), rst.get("check")))
         sv = _rows(got["sham_once"])
-        for r in got["probe_once"]["rows"]:
+        for r in rows["probe_once"]:
             s = sv.get(_key(r))
             n["pairs"] += 1
-            if any("sham" in p for p in r.get("probes") or []):
-                gs.append((label(cond), "probe_once", *_key(r), "a real probe carries a sham record"))
-            if (s is None or s.get("forced_probe") != r.get("forced_probe") or len(s.get("probes") or []) != len(r.get("probes") or [])
-                    or any({k: p.get(k) for k in TRACE} != {k: q.get(k) for k in TRACE} for p, q in zip(r.get("probes") or [], s["probes"]))):
-                gp.append((label(cond), *_key(r)))
-        for s in got["sham_once"]["rows"]:
+            rp, sp = r.get("probes") or [], (s or {}).get("probes") or []
+            if any("sham" in p for p in rp):
+                f["Gs"].append((label(cond), "probe_once", seed, *_key(r), "a real probe carries a sham record"))
+            if (s is None or s.get("forced_probe") != r.get("forced_probe") or len(sp) != len(rp)
+                    or any({k: p.get(k) for k in TRACE} != {k: q.get(k) for k in TRACE} for p, q in zip(rp, sp))):
+                f["Gp"].append((label(cond), seed, *_key(r)))
+        for s in rows["sham_once"]:
             for p in s.get("probes") or []:
                 n["shams"] += 1
                 if not _sham_ok(p):
-                    gs.append((label(cond), "sham_once", *_key(s)))
+                    f["Gs"].append((label(cond), "sham_once", seed, *_key(s)))
+    return f, n
+
+
+def gates(runs: dict[tuple[str, str, str, int], dict[str, Any]], m4_dir: str, seed: int = PILOT_SEED) -> dict[str, Any]:
+    """Decision 8 on the pilot seed's runs (index(); the policy in full), each gate with its failures (the first 20):
+    G1, per condition, the cases whose first recommendation is not a probe run the same in the policy and the never arm
+    (sweep.check_identical); first_menus, Gr, Gs and Gp, _checks over every row; Ga, the absorbing and wide condition
+    reproduces milestone 4's seed-11 outputs in ``m4_dir``: the policy run row for row and the never arm on the cases of
+    milestone 4's never subset run, on milestone 4's row keys (row_diff). ``pass`` when all pass; a missing run fails its
+    gates."""
+    f, n = _checks(runs, seed)
+    g1, ga, missing = [], [], f["missing"]
+    for cond in CONDITIONS:
+        policy, never = runs.get((*cond, "policy", seed)), runs.get((*cond, "never", seed))
+        if policy is None or never is None:
+            continue
+        g1 += [(label(cond), *k) for k in check_identical(policy, never)]
+        n["g1_checked"] += sum(r.get("recommendation") != "probe" for r in policy["rows"])
     for name, arm in ((M4_POLICY, "policy"), (M4_NEVER, "never")):
         h3 = runs.get(("absorbing", "wide", arm, seed))
         try:
@@ -356,9 +392,9 @@ def gates(runs: dict[tuple[str, str, str, int], dict[str, Any]], m4_dir: str, se
             n["ga_rows"] += 1
             if diff:
                 ga.append((name, *_key(r), diff[:5]))
-    out = {"G1": _gate(g1 + missing, checked=n["g1_checked"]), "first_menus": _gate(menus + missing),
-           "Gr": _gate(gr + missing, restores=n["restores"]), "Gs": _gate(gs + missing, shams=n["shams"]),
-           "Gp": _gate(gp + missing, pairs=n["pairs"]), "Ga": _gate(ga, rows=n["ga_rows"]), "seed": seed}
+    out = {"G1": _gate(g1 + missing, checked=n["g1_checked"]), "first_menus": _gate(f["first_menus"] + missing),
+           "Gr": _gate(f["Gr"] + missing, restores=n["restores"]), "Gs": _gate(f["Gs"] + missing, shams=n["shams"]),
+           "Gp": _gate(f["Gp"] + missing, pairs=n["pairs"]), "Ga": _gate(ga, rows=n["ga_rows"]), "seed": seed}
     out["pass"] = all(out[k]["pass"] for k in ("G1", "first_menus", "Gr", "Gs", "Gp", "Ga"))
     return out
 
@@ -379,19 +415,39 @@ def in_narrow(row: dict[str, Any], f: float = SPREAD["narrow"]) -> bool:
     return bool(ok)
 
 
+def _range_mass(bounds: tuple[float, float], f: float, log: bool = False) -> float:
+    """The share of a uniform law on ``bounds`` (log-uniform when ``log``) inside shrunk_range(bounds, f)."""
+    lo, hi = shrunk_range(bounds, f, log=log)
+    g = math.log if log else float
+    return (g(hi) - g(lo)) / (g(bounds[1]) - g(bounds[0]))
+
+
+def selection_p(row: dict[str, Any], f: float = SPREAD["narrow"]) -> float:
+    """P(in_narrow | the case's branch) under the truth generator (corpus.draw_theta and draw_damage: the mass scale
+    log-uniform on its range, a filled container's on its own; mu uniform; com_s uniform when the CoM shifts): the
+    product of the constrained ranges' masses, f² without a shift or for a filled container and f³ with one."""
+    filled = float(row.get("fill") or 0.0) > 0.0
+    p = _range_mass(FILLED_MASS_SCALE_RANGE if filled else MASS_SCALE_RANGE, f, log=True) * _range_mass(MU_RANGE, f)
+    return p * _range_mass(COM_S_RANGE, f) if row["theta"].get("com_s") is not None else p
+
+
 def matched_truth(runs: dict[tuple[str, str, str, int], dict[str, Any]], W: np.ndarray, objects: list[str],
                   cases: set[tuple[str, int, int]]) -> dict[str, Any]:
     """Decision 4's matched-truth check (no verdict): on the cohort's cases whose wide truth lies in the narrow ranges
     (in_narrow, read from the absorbing and wide never row), D and I in the wide conditions and the recovery difference
-    Q = D(absorbing, wide) − D(rec20, wide)."""
+    Q = D(absorbing, wide) − D(rec20, wide). Each case enters with weight 1 / selection_p: the selection keeps every case
+    without a CoM shift that a shift case needs a third range for, so the weights restore the narrow class's mixture of
+    branches and fills. n counts the cases; n_eff is Kish's (Σw)² / Σw²."""
     keys, vals = case_values(runs, cases, conditions=(("absorbing", "wide"), ("rec20", "wide"), ("rec0", "wide")))
     rows = {s: _rows(runs[("absorbing", "wide", "never", s)]) for s in sorted({k[2] for k in keys})}
     mask = np.array([in_narrow(rows[s][(o, i)]) for o, i, s in keys], dtype=bool)
     objs = [k[0] for k, m in zip(keys, mask) if m]
-    out: dict[str, Any] = {"n": int(mask.sum()), "share": float(mask.mean()) if len(mask) else math.nan}
+    w = np.array([1.0 / selection_p(rows[s][(o, i)]) for (o, i, s), m in zip(keys, mask) if m])
+    out: dict[str, Any] = {"n": int(mask.sum()), "share": float(mask.mean()) if len(mask) else math.nan,
+                           "n_eff": float(w.sum() ** 2 / (w ** 2).sum()) if len(w) else 0.0}
     for cond in (("absorbing", "wide"), ("rec20", "wide"), ("rec0", "wide")):
-        out[label(cond)] = {q: mean_draws(vals[cond][q][mask], objs, objects, W) for q in ("D", "I")}
-    out["Q"] = mean_draws((vals[("absorbing", "wide")]["D"] - vals[("rec20", "wide")]["D"])[mask], objs, objects, W)
+        out[label(cond)] = {q: mean_draws(vals[cond][q][mask], objs, objects, W, weights=w) for q in ("D", "I")}
+    out["Q"] = mean_draws((vals[("absorbing", "wide")]["D"] - vals[("rec20", "wide")]["D"])[mask], objs, objects, W, weights=w)
     return out
 
 
@@ -409,15 +465,43 @@ def decision_change(runs: dict[tuple[str, str, str, int], dict[str, Any]], cases
     return out
 
 
+def irreversible_events(row: dict[str, Any]) -> int:
+    """A case's irreversible events: its attempts with an irreversible outcome and its probes that threw or damaged the
+    object (sweep's irreversible cases count a case once; under recovery a case can hold several)."""
+    return sum(t.get("outcome") in IRREVERSIBLE for t in row.get("attempts") or []) + sum(_event(p) for p in row.get("probes") or [])
+
+
 def _arm_tables(runs: dict[tuple[str, str, str, int], dict[str, Any]], W: np.ndarray, objects: list[str],
                 cases: set[tuple[str, int, int]]) -> dict[str, Any]:
     """sweep.arm_metrics per condition and arm over the cohort's rows of every seed (the never arm's row is the
-    condition's difficulty: decision 4)."""
+    condition's difficulty: decision 4), with the irreversible events per 1,000 cases (decision 6) next to its
+    irreversible cases per 1,000."""
     out = {}
     for cond in CONDITIONS:
         for arm in ARMS.values():
             rows = {s: _rows(runs[(*cond, arm, s)]) for s in sorted({k[2] for k in cases})}
-            out[f"{label(cond)}/{arm}"] = arm_metrics({"rows": [rows[s][(o, i)] for o, i, s in sorted(cases)]}, W, objects)
+            sel = [rows[s][(o, i)] for o, i, s in sorted(cases)]
+            m = arm_metrics({"rows": sel}, W, objects)
+            e = mean_draws(np.array([irreversible_events(r) for r in sel], dtype=float), [r["object"] for r in sel], objects, W)
+            m["irreversible_events_per_1000"] = 1000.0 * e["value"]
+            m["irreversible_events_per_1000_ci"] = [1000.0 * x for x in e["ci"]]
+            out[f"{label(cond)}/{arm}"] = m
+    return out
+
+
+def verdict_checks(runs: dict[tuple[str, str, str, int], dict[str, Any]], cases: set[tuple[str, int, int]]) -> dict[str, Any]:
+    """Decision 8 at the verdict seeds: _checks on each seed's cohort cases (the cases that enter a verdict), so Gs holds
+    in every sham case, not only the pilot's; ``pass`` when every check passes."""
+    agg: dict[str, list[Any]] = {"first_menus": [], "Gr": [], "Gs": [], "Gp": []}
+    n: Counter = Counter()
+    for seed in sorted({k[2] for k in cases}):
+        f, c = _checks(runs, seed, keep={(o, i) for o, i, s in cases if s == seed})
+        for k in agg:
+            agg[k] += f[k] + f["missing"]
+        n.update(c)
+    out: dict[str, Any] = {"first_menus": _gate(agg["first_menus"]), "Gr": _gate(agg["Gr"], restores=n["restores"]),
+                           "Gs": _gate(agg["Gs"], shams=n["shams"]), "Gp": _gate(agg["Gp"], pairs=n["pairs"])}
+    out["pass"] = all(g["pass"] for g in out.values())
     return out
 
 
@@ -443,8 +527,9 @@ def summary(runs: list[dict[str, Any]], n_boot: int = N_BOOT, rng_seed: int = 0,
     """Decision 6's verdicts and tables over the verdict seeds' runs (the pilot seed is left out): H3 (X_D) and H3-info
     (X_I) with verdicts; secondary, without a verdict: X_M, X_P, the quasi-option value per spread
     Q_u = D(absorbing, u) − D(rec20, u), rec0 against the ordered prediction D(absorbing) ≥ D(rec20) ≥ D(rec0), and the
-    matched-truth check; the contrasts per condition, the decision change, the arm and difficulty tables and the
-    sensitivity rows; with ``markdown``. JSON-ready: the per-draw arrays are dropped."""
+    matched-truth check; the contrasts per condition, the decision change, the arm and difficulty tables, the
+    sensitivity rows and decision 8's checks at every verdict seed (verdict_checks); with ``markdown``. JSON-ready: the
+    per-draw arrays are dropped."""
     idx = index([r for r in runs if int(r["seed"]) != PILOT_SEED])
     if not idx:
         raise ValueError("no H3 run outside the pilot seed")
@@ -466,6 +551,7 @@ def summary(runs: list[dict[str, Any]], n_boot: int = N_BOOT, rng_seed: int = 0,
     out["arms"] = _arm_tables(idx, W, objects, co)
     out["excluded"] = {label(k[:2]) + f"/{k[2]}/seed{k[3]}": sum(not _ok(r) for r in run["rows"]) for k, run in sorted(idx.items())}
     out["sensitivity"] = _sensitivity(idx, W, objects)
+    out["checks"] = verdict_checks(idx, co)
     out["power"] = power_result
     out["markdown"] = markdown(out)
     return _strip(out)
@@ -494,19 +580,26 @@ def markdown(s: dict[str, Any]) -> str:
         r = s["secondary"]["rec0_order"][u]
         L.append(f"| {u} | {_ci_s(s['secondary']['q'][u])} | {_ci_s(r['rec20_minus_rec0'])} |")
     m = s["secondary"]["matched_truth"]
-    L += ["", f"Matched truth (wide cases inside the narrow ranges: {m['n']}, share {_f(m['share'])}): "
+    L += ["", f"Matched truth (wide cases inside the narrow ranges: {m['n']}, share {_f(m['share'])}, effective n "
+          f"{_f(m['n_eff'], 1)}, weighted by 1 / P(selected | branch)): "
           f"D(absorbing/wide) {_ci_s(m['absorbing/wide']['D'])}, I(absorbing/wide) {_ci_s(m['absorbing/wide']['I'])}, "
           f"Q {_ci_s(m['Q'])}; narrow Q {_ci_s(s['secondary']['q']['narrow'])}.", "",
           "| condition | probed | same | other row | decline | terminal | no probe |", "|---|---|---|---|---|---|---|"]
     for k, v in s["decision_change"].items():
         L.append(f"| {k} | {v['n_probed']} | " + " | ".join(_f(v["share"][c]) for c in CHANGES) + f" | {v['no_probe']} |")
-    L += ["", "| condition / arm | placed per 1,000 | abstain rate | irreversible per 1,000 | cost |", "|---|---|---|---|---|"]
+    L += ["", "| condition / arm | placed per 1,000 | abstain rate | irreversible cases per 1,000 | irreversible events per 1,000 | cost |",
+          "|---|---|---|---|---|---|"]
     for k, v in s["arms"].items():
-        L.append(f"| {k} | {_f(v['placed_per_1000'], 1)} | {_f(v['abstain_rate'])} | {_f(v['irreversible_per_1000'], 1)} | {_f(v['cost'])} |")
+        L.append(f"| {k} | {_f(v['placed_per_1000'], 1)} | {_f(v['abstain_rate'])} | {_f(v['irreversible_per_1000'], 1)} | "
+                 f"{_f(v['irreversible_events_per_1000'], 1)} | {_f(v['cost'])} |")
     sens = s["sensitivity"]
     L += ["", f"Sensitivity: pairwise cohorts X_D {_ci_s(sens['pairwise']['D'])}, X_I {_ci_s(sens['pairwise']['I'])}; "
           f"artifact cases counted (n {sens['artifacts_counted']['n']}) X_D {_ci_s(sens['artifacts_counted']['D'])}, "
           f"X_I {_ci_s(sens['artifacts_counted']['I'])}."]
+    ck = s["checks"]
+    L += ["", "Checks at the verdict seeds (decision 8): " + ", ".join(
+        f"{k} {'ok' if ck[k]['pass'] else 'FAILED (' + str(ck[k]['n_failures']) + ')'}" for k in ("first_menus", "Gr", "Gs", "Gp"))
+          + f" ({ck['Gr']['restores']} restores, {ck['Gs']['shams']} shams, {ck['Gp']['pairs']} pairs)."]
     if s.get("power"):
         p = s["power"]
         L += ["", f"Power (pilot): X̂_D {_f(p['x_d'])}, σ_b² {_f(p['sigma_b2'], 4)}, σ_w² {_f(p['sigma_w2'], 4)}, k {p['k']}"
@@ -611,11 +704,16 @@ def main(argv: list[str] | None = None) -> int:
     if a.cmd == "gates":
         out = gates(_pilot_index(a.dir), a.m4_dir)
         _dump(out, a.out)
+        tracking.log_run("h3_gates", {"dir": a.dir, "m4_dir": a.m4_dir, "seed": out["seed"]},
+                         {"pass": out["pass"], **{f"{k}_pass": g["pass"] for k, g in out.items() if isinstance(g, dict)},
+                          **{f"{k}_failures": g["n_failures"] for k, g in out.items() if isinstance(g, dict)}})
         print(json.dumps({k: (g if not isinstance(g, dict) else {x: g[x] for x in g if x != "failures"}) for k, g in _strip(out).items()}, indent=1))
         return 0 if out["pass"] else 1
     if a.cmd == "power":
         out = power(_pilot_index(a.dir))
         _dump(out, a.out)
+        tracking.log_run("h3_power", {"dir": a.dir, "seed": PILOT_SEED},
+                         {k: out[k] for k in ("x_d", "sigma_b2", "sigma_w2", "n_objects", "n_cases", "cohort_share", "k", "target_met")})
         print(json.dumps(_strip(out), indent=1))
         return 0
     runs = load_dir(a.dir)
@@ -626,9 +724,12 @@ def main(argv: list[str] | None = None) -> int:
     md = out.pop("markdown")
     _dump(out, a.out)
     metrics = {"x_d": out["h3"]["value"], "h3_verdict": out["h3"]["verdict"], "x_i": out["h3_info"]["value"],
-               "h3_info_verdict": out["h3_info"]["verdict"], "n_cohort": out["n_cohort"]}
+               "h3_info_verdict": out["h3_info"]["verdict"], "n_cohort": out["n_cohort"], "checks_pass": out["checks"]["pass"]}
     out["wandb"] = tracking.log_run("h3", {"dir": a.dir, "seeds": out["seeds"]}, metrics)
     print(md)
+    if not out["checks"]["pass"]:
+        print("h3 summary: a decision 8 check failed at a verdict seed (see checks); the verdicts do not stand", file=sys.stderr)
+        return 1
     return 0
 
 
