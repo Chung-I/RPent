@@ -87,6 +87,14 @@ def manifest_evoi(manifest: dict[str, Any]) -> str:
     return name
 
 
+def manifest_probe_time_scale(manifest: dict[str, Any]) -> float:
+    """The probe time scale of a bundle's decision (plan 2b2 decision 4: {"decision": {"probe_time_scale": 1.0}});
+    1.0 without the field. A scale that is not a finite number at least 0 raises ValueError."""
+    from rpent.skills.pick_place.costs import probe_time_scale
+
+    return probe_time_scale((manifest.get("decision") or {}).get("probe_time_scale", 1.0))
+
+
 def load_bundle(bundle_dir: str, kind: str | None = None) -> dict[str, Any]:
     """The models a bundle's manifest names: the success model of its kind (or ``kind``), the prior (and an m2b
     prior's fragility classes), and the readout and probe models and the novelty guard when present, the decision's
@@ -141,7 +149,7 @@ def load_bundle(bundle_dir: str, kind: str | None = None) -> dict[str, Any]:
             "prior": lab_prior_fn if man.get("prior") == "lab_generator" else prior_from_manifest(man),
             "classes": (fragility_world(man) or (None,))[0],
             "readout_model": readout, "probe_models": probe_models, "guard": guard, "abstain_cost": manifest_abstain_cost(man),
-            "force_noise": manifest_force_noise(man), "evoi": manifest_evoi(man)}
+            "force_noise": manifest_force_noise(man), "evoi": manifest_evoi(man), "probe_time_scale": manifest_probe_time_scale(man)}
 
 
 def load_model(model_path: str | None = None, kind: str | None = None) -> Any:
@@ -188,7 +196,8 @@ def build_lab(sim_dir: str | None = None, model_path: str | None = None, render:
             env.slosh_zeta, env.slosh_scale = world[1].slosh_zeta, world[1].slosh_scale
         return MuJoCoLabPrimitives(env=env, model=B["model"], rng=rng, prior=B["prior"], readout_model=B["readout_model"],
                                    probe_models=B["probe_models"], threshold=threshold, manifest=B["manifest"], guard=B["guard"],
-                                   abstain_cost=B["abstain_cost"], force_noise=B["force_noise"], evoi=B["evoi"])
+                                   abstain_cost=B["abstain_cost"], force_noise=B["force_noise"], evoi=B["evoi"],
+                                   probe_time_scale=B["probe_time_scale"])
     return MuJoCoLabPrimitives(env=env, model=load_model(model_path, model_kind), rng=rng, threshold=threshold)
 
 

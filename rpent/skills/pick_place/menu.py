@@ -54,6 +54,7 @@ import numpy as np
 
 from rpent.skills.pick_place.belief import N_PARTICLES, Belief, ParticleBelief
 from rpent.skills.pick_place.costs import COST, TIME_COST_PER_S, care_scale, expected_cost, particle_costs
+from rpent.skills.pick_place.costs import probe_time_scale as _probe_time_scale  # build_menu has a parameter of that name
 from rpent.skills.pick_place.destinations import DESTINATIONS, edge_distance
 from rpent.skills.pick_place.features import (A_TRANSPORT, DAMAGE_FEATURES, FEATURES_M2, Geometry, entry_flags, extract,
                                               model_names, particle_features, particle_matrix)
@@ -249,11 +250,12 @@ def push_tip_charge(belief: ParticleBelief, probe_model: Any, X_probe: np.ndarra
 
 def _probe_rows(probe_models: dict[str, Any], belief: ParticleBelief, geometry: Geometry, mid: Any, pose: dict[str, Any],
                 f_std: float, care: str | float, continuation: list[Option], rng: np.random.Generator,
-                abstain_cost: float | None = None, estimator: str = "plugin") -> list[Option]:
+                abstain_cost: float | None = None, estimator: str = "plugin", time_scale: float = 1.0) -> list[Option]:
     """One row per probe model, at the middle proposal: the push and the weigh with the weigh squeeze, the squeeze
     (only for a crushable or bruisable object, by the pose's public entry) at ``squeeze_cap``. The continuation costs
     are those of the current pose (the push moves the object up to 4 cm, the weigh lifts it 2 cm, the squeeze
-    presses in place; each is treated as leaving the menu unchanged)."""
+    presses in place; each is treated as leaving the menu unchanged). ``time_scale`` multiplies each probe's time charge
+    (plan 2b2 decision 4)."""
     flags = entry_flags(pose.get("entry")) or {}
     a = belief.arrays()
     costs = [o._costs for o in continuation]
@@ -267,7 +269,7 @@ def _probe_rows(probe_models: dict[str, Any], belief: ParticleBelief, geometry: 
         X = particle_matrix(base, a, pose, force, model_names(pm))
         v = probe_value(belief, costs, pm, X, force, care, rng, abstain_cost=abstain_cost, estimator=estimator)
         tip = push_tip_charge(belief, pm, X) if probe == "push" else 0.0
-        cost = TIME_COST_PER_S * PROBE_SECONDS[probe] + tip + v["expected_cost_after"]
+        cost = time_scale * TIME_COST_PER_S * PROBE_SECONDS[probe] + tip + v["expected_cost_after"]
         reason = f"{probe} first: value of information {v['evoi']:.2f}, expected cost of the best row after it {v['expected_cost_after']:.2f}"
         rows.append(Option(id=f"probe_{probe}", kind="probe", action={"probe": probe, "s": mid.s, "force": force}, pred=None,
                            cost_s=PROBE_SECONDS[probe], expected_cost=cost, reason=reason, probe=v, _base=base, _pose=pose))
@@ -320,7 +322,7 @@ def build_menu(model: Any, belief: ParticleBelief | Belief, geometry: Geometry, 
                pose_fn: Callable[[Any], dict[str, Any]] | None = None, max_open: float = MAX_OPEN_WIDTH,
                threshold: float | None = None, n: int = N_PARTICLES,
                probe_models: dict[str, Any] | None = None, guard: Any = None,
-               abstain_cost: float | None = None, evoi: str = "plugin") -> tuple[list[Option], str]:
+               abstain_cost: float | None = None, evoi: str = "plugin", probe_time_scale: float = 1.0) -> tuple[list[Option], str]:
     """The ranked menu and the recommendation. ``pose_fn(proposal)`` gives the pose the particles map
     through (default: ``geometry_pose``); a milestone 1 ``Belief`` becomes n particles at the
     nominal CoM; ``threshold`` None reads DEFAULT_THRESHOLD now, not at import; ``probe_models``
@@ -330,8 +332,10 @@ def build_menu(model: Any, belief: ParticleBelief | Belief, geometry: Geometry, 
     time), else "commit" when the best row reaches the threshold, else "decline". A ``guard`` (guard.KnnGuard) that
     flags the rows makes it "decline" with the guard's reason; the decline row keeps the guard's check. With
     ``abstain_cost`` a number, the cost rule of the module docstring decides instead, and the decline row costs it.
-    ``evoi`` names probe_value's estimator ("plugin" or "heldout"; another name raises ValueError)."""
+    ``evoi`` names probe_value's estimator ("plugin" or "heldout"; another name raises ValueError);
+    ``probe_time_scale`` multiplies every probe row's time charge (a finite number at least 0, else ValueError)."""
     _check_estimator(evoi)
+    time_scale = _probe_time_scale(probe_time_scale)
     pose_fn = pose_fn or (lambda prop: geometry_pose(geometry, prop))
     usable = usable_proposals(proposals, max_open)
     options: list[Option] = []
@@ -359,7 +363,7 @@ def build_menu(model: Any, belief: ParticleBelief | Belief, geometry: Geometry, 
         continuation = [o for o in options if o.action["destination"] == destination and o.id != "inboard_place"]
         if probe_models and continuation:
             options += _probe_rows(probe_models, belief, geometry, mid, mid_pose, f_std, care, continuation, rng, abstain_cost,
-                                   estimator=evoi)
+                                   estimator=evoi, time_scale=time_scale)
         options.sort(key=lambda o: o.expected_cost)
     same = [o for o in options if o.kind in ("commit", "lower_risk") and o.action["destination"] == destination]
     check = None

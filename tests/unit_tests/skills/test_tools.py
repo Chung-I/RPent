@@ -806,3 +806,25 @@ def test_bundle_estimator_reaches_the_executed_menu():
         assess_pick(object="mug", destination="table_centre", primitives=prims, store=store)
         rows = [o for c in store["pick_place"].values() for o in c["menu"].values() if o.kind == "probe"]
         assert rows and {o.probe["estimator"] for o in rows} == {want}
+
+
+def test_bundle_probe_time_scale_reaches_the_executed_menu():
+    """Plan 2b2 decision 4: the primitives' probe_time_scale scales the probe rows of the menu that the tools build
+    (scale 1 without one); a bad scale is an error payload."""
+    from rpent.skills.pick_place.costs import TIME_COST_PER_S
+    from rpent.skills.pick_place.probes import PROBE_SECONDS
+
+    costs = {}
+    for s in (None, 0.25):
+        env = _ProbeEnv(results=[("placed_stable", {})], probes=[_push(high=1.0)])
+        prims = _probe_prims(env, push=PerfectPush(), weigh=FlatWeigh())
+        if s is not None:
+            prims.probe_time_scale = s
+        d = assess_pick(object="mug", destination="table_centre", primitives=prims, store={}).data
+        costs[s] = {o["id"]: o["expected_cost"] for o in d["options"] if o["kind"] == "probe"}
+    assert set(costs[None]) == {"probe_push", "probe_weigh"} == set(costs[0.25])
+    for pid, c in costs[None].items():
+        assert costs[0.25][pid] == pytest.approx(c - 0.75 * TIME_COST_PER_S * PROBE_SECONDS[pid.split("_", 1)[1]], abs=2e-3)
+    prims = _probe_prims(_ProbeEnv(), push=PerfectPush())
+    prims.probe_time_scale = -1.0
+    assert "probe time scale" in assess_pick(object="mug", destination="table_centre", primitives=prims, store={}).data["error"]

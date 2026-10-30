@@ -40,12 +40,13 @@ class MuJoCoLabPrimitives:
     ``threshold`` overrides the commit threshold; ``manifest`` is the loaded bundle's manifest; ``guard`` is the
     novelty guard (guard.KnnGuard) or None; ``abstain_cost`` is the cost rule's A (the bundle's decision; None: the
     milestone 2a rule); ``force_noise`` is the bundle's sensor, the force noise its models learned with (None: the
-    env's own); ``evoi`` is the probe-value estimator the bundle declares (menu.probe_value; "plugin" without one)."""
+    env's own); ``evoi`` is the probe-value estimator the bundle declares (menu.probe_value; "plugin" without one);
+    ``probe_time_scale`` multiplies every probe's time charge (the bundle's decision; 1.0 without one)."""
 
     def __init__(self, env: Any, model: Any, rng: np.random.Generator | None = None, prior: Any = None,
                  readout_model: Any = None, probe_models: dict[str, Any] | None = None, threshold: float | None = None,
                  manifest: dict[str, Any] | None = None, guard: Any = None, abstain_cost: float | None = None,
-                 force_noise: float | None = None, evoi: str = "plugin"):
+                 force_noise: float | None = None, evoi: str = "plugin", probe_time_scale: float = 1.0):
         self.env = env
         self.model = model
         self.rng = rng if rng is not None else np.random.default_rng(0)
@@ -58,6 +59,7 @@ class MuJoCoLabPrimitives:
         self.abstain_cost = abstain_cost
         self.force_noise = force_noise
         self.evoi = evoi
+        self.probe_time_scale = probe_time_scale
 
 
 class MuJoCoLabToolkit(Toolkit):

@@ -55,6 +55,14 @@ def care_scale(care: str | float) -> float:
     raise ValueError(f"care must be low, normal, high or a number above 0, not {care!r}")
 
 
+def probe_time_scale(scale: float) -> float:
+    """The factor on every probe's time charge (plan 2b2 decision 4): a finite number at least 0 (0 removes the
+    charge)."""
+    if isinstance(scale, Real) and not isinstance(scale, bool) and math.isfinite(float(scale)) and float(scale) >= 0:
+        return float(scale)
+    raise ValueError(f"the probe time scale must be a finite number at least 0, not {scale!r}")
+
+
 def _unfinished(p_placed, abstain_cost: float | None):
     return 0.0 if abstain_cost is None else float(abstain_cost) * (1.0 - p_placed)
 

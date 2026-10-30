@@ -38,7 +38,8 @@ narrow core with a wide tail (likelihood.fit_law); the readings of an inner spli
 ``--feature-schema m2b`` (milestone 2b; default m2) fits every model on features.FEATURES_M2B (the m2 features and
 the damage features) and writes ``feature_schema``, ``outcome_schema`` and the cost rule's ``decision``
 ({"abstain_cost": 1.0}) into the manifest; damage labels need it. ``--evoi heldout`` adds the probe-value estimator the
-bundle declares (plan 2b2 decision 2; without it the bundle keeps the plug-in). The hazard model models motion labels only
+bundle declares (plan 2b2 decision 2; without it the bundle keeps the plug-in), and ``--probe-time-scale s`` the factor
+on every probe's time charge (decision 4; without it 1). The hazard model models motion labels only
 (HazardModel.supports): with damage labels it is not fitted ("not eligible") and the classifier is the kind.
 Probe models and the guard follow the bundle's manifest schema. Under true features its prior is the m2b generator
 (prior.make_prior) on ``--classes`` and ``--thresholds``, which the manifest names with their sha256.
@@ -110,12 +111,25 @@ def corpus_sensor(rows: list[dict]) -> dict[str, float]:
     return {"force_noise": levels.pop() if levels else 0.0}
 
 
-def bundle_decision(schema: str, evoi: str | None) -> dict | None:
-    """The manifest's decision: the cost rule's A for an m2b bundle, and the probe-value estimator when one is named."""
+def bundle_decision(schema: str, evoi: str | None, probe_time_scale: float | None = None) -> dict | None:
+    """The manifest's decision: the cost rule's A for an m2b bundle, and the probe-value estimator and the probe time
+    scale when they are named."""
     decision = {"abstain_cost": ABSTAIN_COST} if schema == "m2b" else {}
     if evoi is not None:
         decision["evoi"] = evoi
+    if probe_time_scale is not None:
+        decision["probe_time_scale"] = probe_time_scale
     return decision or None
+
+
+def _time_scale_arg(text: str) -> float:
+    """--probe-time-scale: a finite number at least 0."""
+    from rpent.skills.pick_place.costs import probe_time_scale
+
+    try:
+        return probe_time_scale(float(text))
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
 
 
 def write_manifest(out_dir: str, **fields) -> dict:
@@ -261,6 +275,8 @@ def main(argv: list[str] | None = None) -> dict:
     ap.add_argument("--thresholds", default=None, help="m2b: the damage thresholds file (default data/thresholds_v0.json)")
     ap.add_argument("--evoi", choices=ESTIMATORS, default=None,
                     help="the probe-value estimator the bundle declares (plan 2b2 decision 2); default: none, the plug-in")
+    ap.add_argument("--probe-time-scale", type=_time_scale_arg, default=None,
+                    help="the factor on every probe's time charge the bundle declares (plan 2b2 decision 4); default: none, 1")
     a = ap.parse_args(argv)
     if a.features == "nominal" and a.feature_schema == "m2b":
         raise SystemExit("--features nominal is milestone 1's recipe: the stored features have no damage features, so the "
@@ -401,7 +417,8 @@ def train_bundle(a: argparse.Namespace, split: dict | None = None, rows: list[di
     write_manifest(a.out_dir, features=a.features, prior=prior, kind=kind, success_model="success_model.joblib",
                    hazard_model="hazard_model.joblib" if eligible else None, metrics=METRICS, corpus=out["corpus"], split_seed=a.seed,
                    feature_schema=schema, outcome_schema=schema,
-                   decision=bundle_decision(schema, getattr(a, "evoi", None)), sensor=corpus_sensor(rows),
+                   decision=bundle_decision(schema, getattr(a, "evoi", None), getattr(a, "probe_time_scale", None)),
+                   sensor=corpus_sensor(rows),
                    readout_model=READOUT_MODEL if readout else None, guard=GUARD if guard else None,
                    tempers={}, **world)                                                # new models: tempers are re-chosen
     out["wandb"] = tracking.log_run("train_models", {"corpus": out["corpus"], "features": a.features, "prior": prior,

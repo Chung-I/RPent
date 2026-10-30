@@ -437,3 +437,29 @@ def test_bundle_decision_selects_the_estimator(tmp_path):
     assert load_bundle(str(tmp_path / "h"))["evoi"] == "heldout"
     with pytest.raises(SystemExit):
         main(["--corpus", str(corpus), "--out-dir", str(tmp_path / "x"), "--n-belief", "4", "--evoi", "split"])
+
+
+def test_bundle_decision_sets_the_probe_time_scale(tmp_path):
+    """Plan 2b2 decision 4: a bundle declares its probe time scale (decision.probe_time_scale, written by
+    --probe-time-scale); 1.0 without the field; 0 is allowed; a negative, non-finite or non-numeric scale is an error."""
+    from robots.mujoco_lab.robot_spec import load_bundle, manifest_probe_time_scale
+    from robots.mujoco_lab.train_models import main
+    from tests.unit_tests.skills.synthetic import synthetic_rows, with_pose
+
+    assert manifest_probe_time_scale({}) == 1.0 and manifest_probe_time_scale({"decision": {"abstain_cost": 1.0}}) == 1.0
+    assert manifest_probe_time_scale({"decision": {"probe_time_scale": 0.25}}) == 0.25
+    assert manifest_probe_time_scale({"decision": {"probe_time_scale": 0}}) == 0.0
+    for bad in (-0.1, float("nan"), "x", None, True):
+        with pytest.raises(ValueError, match="probe time scale"):
+            manifest_probe_time_scale({"decision": {"probe_time_scale": bad}})
+    corpus = tmp_path / "c.jsonl"
+    _write(with_pose(synthetic_rows(300)), corpus)
+    main(["--corpus", str(corpus), "--out-dir", str(tmp_path / "p"), "--n-belief", "4"])
+    main(["--corpus", str(corpus), "--out-dir", str(tmp_path / "s"), "--n-belief", "4", "--probe-time-scale", "0.25"])
+    assert "probe_time_scale" not in (json.load(open(tmp_path / "p" / "manifest.json")).get("decision") or {})
+    assert load_bundle(str(tmp_path / "p"))["probe_time_scale"] == 1.0
+    assert json.load(open(tmp_path / "s" / "manifest.json"))["decision"]["probe_time_scale"] == 0.25
+    assert load_bundle(str(tmp_path / "s"))["probe_time_scale"] == 0.25
+    for bad in ("-1", "nan", "x"):
+        with pytest.raises(SystemExit):
+            main(["--corpus", str(corpus), "--out-dir", str(tmp_path / "x"), "--n-belief", "4", "--probe-time-scale", bad])

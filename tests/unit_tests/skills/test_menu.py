@@ -263,11 +263,11 @@ from tests.unit_tests.skills.probe_stubs import FlatWeigh, MuGate, PerfectPush  
 
 
 def _pmenu(model=None, probe_models=None, destination="table_centre", belief=None, care="normal", guard=None, proposals=None,
-           rng=None):
+           rng=None, **kw):
     belief = belief if belief is not None else _particles(np.random.default_rng(0).uniform(0.1, 0.9, 400), np.ones(400))
     return build_menu(model or MuGate(f_std=20.0), belief, _geometry(), proposals or [P(0.3), P(0.5), P(0.7)], 20.0, care,
                       destination, plan_fn, rng if rng is not None else np.random.default_rng(1), threshold=0.7,
-                      probe_models=probe_models, guard=guard)
+                      probe_models=probe_models, guard=guard, **kw)
 
 
 def _by_id(options):
@@ -1035,3 +1035,35 @@ def test_menu_values_its_probe_rows_with_the_named_estimator():
                                 np.random.default_rng(1), threshold=0.7, probe_models={"push": PerfectPush(), "weigh": FlatWeigh()},
                                 **kw)
         assert {o.probe["estimator"] for o in options if o.kind == "probe"} == {want}
+
+
+# ---------------------------------------------------------------- plan 2b2 decision 4: the probe time scale
+def test_probe_time_scale_scales_only_the_probe_time_charge():
+    """A probe row's expected cost moves by (1 - s) x TIME_COST_PER_S x its seconds; no other row moves, and the probe
+    values and seconds do not (the same random stream)."""
+    pms = {"push": PerfectPush(), "weigh": FlatWeigh()}
+    base = _by_id(_pmenu(probe_models=pms)[0])
+    for s in (0.25, 3.0):
+        rows = _by_id(_pmenu(probe_models=pms, probe_time_scale=s)[0])
+        assert set(rows) == set(base)
+        for rid, o in rows.items():
+            want = base[rid].expected_cost
+            if o.kind == "probe":
+                want -= (1 - s) * TIME_COST_PER_S * PROBE_SECONDS[o.action["probe"]]
+                assert o.probe == base[rid].probe and o.cost_s == base[rid].cost_s
+            assert o.expected_cost is None if want is None else o.expected_cost == pytest.approx(want)
+
+
+def test_zero_probe_time_scale_removes_the_charge():
+    """s = 0: a probe row costs its tip charge and the expected cost after it, nothing for its time."""
+    rows = _by_id(_pmenu(probe_models={"push": PerfectPush(p_tip=0.1), "weigh": FlatWeigh()}, probe_time_scale=0.0)[0])
+    for pid in ("probe_push", "probe_weigh"):
+        o = rows[pid]
+        tip = o.probe["p_kind"]["tipped"] * COST["tipped"] if pid == "probe_push" else 0.0
+        assert o.expected_cost == pytest.approx(tip + o.probe["expected_cost_after"])
+
+
+@pytest.mark.parametrize("bad", [-0.5, float("nan"), float("inf"), "x", None, True])
+def test_bad_probe_time_scale_is_an_error(bad):
+    with pytest.raises(ValueError, match="probe time scale"):
+        _pmenu(probe_models={"push": PerfectPush()}, probe_time_scale=bad)

@@ -673,10 +673,12 @@ def test_cached_primitives_come_back_with_the_bundle_settings():
     if not os.environ.get("RPENT_MUJOCO_SIM_DIR") or not os.path.exists(os.path.join(bundle, "success_model.joblib")):
         pytest.skip("needs the sim and the m2b bundle's local models")
     s = {"bundle": bundle, "fold": None, "const": None, "seed": 5, "protocol": "commit", "follow": False, "fixtures": False,
-         "threshold": None, "model_kind": None, "care": "normal", "abstain_cost": 3.0, "force_noise": 0.05}
-    _run_object(("ycb__tomato_soup_can", [0], s))
+         "threshold": None, "model_kind": None, "care": "normal", "abstain_cost": 3.0, "force_noise": 0.05,
+         "probe_time_scale": 0.25}
+    row = _run_object(("ycb__tomato_soup_can", [0], s))[0]
+    assert row["probe_time_scale"] == 0.25
     prims = _primitives(bundle, None, None)
-    assert prims.force_noise == 0.0 and prims.abstain_cost == 1.0
+    assert prims.force_noise == 0.0 and prims.abstain_cost == 1.0 and prims.probe_time_scale == 1.0
 
 
 def test_cached_primitives_take_the_bundle_estimator(monkeypatch):
@@ -684,7 +686,7 @@ def test_cached_primitives_take_the_bundle_estimator(monkeypatch):
     from robots.mujoco_lab import calibrate, robot_spec
 
     bundle = {"model": None, "prior": None, "readout_model": None, "probe_models": {}, "guard": None, "abstain_cost": 1.0,
-              "force_noise": 0.05, "evoi": "heldout", "manifest": {}}
+              "force_noise": 0.05, "evoi": "heldout", "probe_time_scale": 1.0, "manifest": {}}
     monkeypatch.setattr(robot_spec, "load_bundle", lambda b, kind=None: bundle)
     monkeypatch.setattr(calibrate, "_STATE", {"env": object(), "prims": {}})
     assert calibrate._primitives("b", None, None).evoi == "heldout"
@@ -697,3 +699,62 @@ def test_run_records_its_estimator():
     assert run_evoi([{"evoi": "heldout"}, {"error": "x"}, {"evoi": "heldout"}]) == "heldout"
     assert run_evoi([{"evoi": "heldout"}, {"evoi": "plugin"}]) == ["heldout", "plugin"]
     assert run_evoi([{"error": "x"}]) is None
+
+
+def test_policy_accounting_uses_the_probe_time_scale():
+    """Plan 2b2 decision 4: an executed probe's realized time cost is scaled by the job's probe time scale (the
+    bundle's, or the --probe-time-scale override; 1 without a bundle); the rows and the run record it."""
+    from types import SimpleNamespace
+
+    from robots.mujoco_lab.calibrate import _probe_record, job_probe_time_scale, probe_cost, run_probe_time_scale
+    from rpent.skills.pick_place.costs import COST, TIME_COST_PER_S
+    from rpent.skills.pick_place.probes import PROBE_SECONDS
+
+    t = TIME_COST_PER_S * PROBE_SECONDS["weigh"]
+    assert probe_cost("weigh", "measured", False, "normal") == pytest.approx(t)
+    assert probe_cost("weigh", "measured", False, "normal", time_scale=0.25) == pytest.approx(0.25 * t)
+    assert probe_cost("push", "tipped", False, "normal", time_scale=0.0) == pytest.approx(COST["tipped"])
+    d = {"probed": "weigh", "kind": "measured", "reading": {}, "thrown": False}
+    assert _probe_record(d, SimpleNamespace(probe_models={}, probe_time_scale=0.25), "normal")["cost"] == pytest.approx(0.25 * t)
+    assert _probe_record(d, SimpleNamespace(probe_models={}), "normal")["cost"] == pytest.approx(t)
+    assert job_probe_time_scale(None, {"decision": {"probe_time_scale": 0.25}}) == 0.25
+    assert job_probe_time_scale(0.0, {"decision": {"probe_time_scale": 0.25}}) == 0.0
+    assert job_probe_time_scale(None, {"decision": {"abstain_cost": 1.0}}) == 1.0 and job_probe_time_scale(None, None) == 1.0
+    assert run_probe_time_scale([{"probe_time_scale": 0.25}, {"error": "x"}]) == 0.25
+    assert run_probe_time_scale([{"probe_time_scale": 0.25}, {"probe_time_scale": 1.0}]) == [0.25, 1.0]
+
+
+def test_probe_time_scale_argument_is_checked():
+    import argparse
+
+    from robots.mujoco_lab.calibrate import _scale_arg
+
+    assert _scale_arg("0.25") == 0.25 and _scale_arg("0") == 0.0
+    for bad in ("-0.1", "nan", "inf", "x"):
+        with pytest.raises(argparse.ArgumentTypeError):
+            _scale_arg(bad)
+
+
+def test_compare_refuses_runs_with_different_probe_time_scales():
+    """A file without the field reads as scale 1."""
+    from robots.mujoco_lab.calibrate import compare
+
+    row = {"object": "o", "idx": 0, "cost": 1.0, "attempts": []}
+    a = {"protocol": "policy", "care_scale": 1.0, "abstain_cost": 1.0, "rows": [row]}
+    with pytest.raises(ValueError, match="different costs"):
+        compare(a, dict(a, probe_time_scale=0.25), np.random.default_rng(0))
+    assert compare(a, dict(a, probe_time_scale=1.0), np.random.default_rng(0))["n_paired"] == 1
+
+
+def test_cached_primitives_take_the_bundle_probe_time_scale(monkeypatch):
+    """calibrate's primitives start each call with the bundle's probe time scale: a job's override does not stay."""
+    from robots.mujoco_lab import calibrate, robot_spec
+
+    bundle = {"model": None, "prior": None, "readout_model": None, "probe_models": {}, "guard": None, "abstain_cost": 1.0,
+              "force_noise": 0.05, "evoi": "heldout", "probe_time_scale": 0.25, "manifest": {}}
+    monkeypatch.setattr(robot_spec, "load_bundle", lambda b, kind=None: bundle)
+    monkeypatch.setattr(calibrate, "_STATE", {"env": object(), "prims": {}})
+    prims = calibrate._primitives("b", None, None)
+    assert prims.probe_time_scale == 0.25
+    prims.probe_time_scale = 3.0                                       # a job's --probe-time-scale
+    assert calibrate._primitives("b", None, None).probe_time_scale == 0.25

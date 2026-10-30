@@ -222,7 +222,7 @@ def test_build_lab_passes_the_fill_and_the_fragility(monkeypatch):
     manifest = {"prior": "lab_generator_m2b", "classes": {"path": "fragility_classes.json"},
                 "thresholds": {"path": "thresholds_v1.json"}}
     bundle = {"model": StubModel(), "prior": None, "readout_model": None, "probe_models": {}, "guard": None,
-              "abstain_cost": 1.0, "force_noise": 0.05, "evoi": "heldout", "manifest": manifest}
+              "abstain_cost": 1.0, "force_noise": 0.05, "evoi": "heldout", "probe_time_scale": 0.25, "manifest": manifest}
     monkeypatch.setattr(adapter, "MuJoCoLabEnv", Env)
     monkeypatch.setattr(robot_spec, "load_bundle", lambda b, kind=None: bundle)
     frag = {"k_n_per_mm": 2.0, "f_damage_n": 12.0, "v_bruise_ms": None, "v_break_ms": None}
@@ -232,6 +232,7 @@ def test_build_lab_passes_the_fill_and_the_fragility(monkeypatch):
     assert prims.env.slosh_zeta == th.slosh_zeta and prims.env.slosh_scale == th.slosh_scale and th.slosh_scale
     assert prims.force_noise == prims.env.force_noise == 0.05                 # the bundle's sensor (plan 2b2)
     assert prims.evoi == "heldout"                                            # the bundle's estimator (plan 2b2)
+    assert prims.probe_time_scale == 0.25                                     # the bundle's probe time scale (plan 2b2)
     calls.clear()
     robot_spec.build_lab(object_id="ycb__mug", theta={"mu": 0.4}, seed=3, bundle="b")
     assert calls["fill"] == 0.0 and calls["frag"] is None and calls["theta"] == {"mu": 0.4}
@@ -262,3 +263,10 @@ def test_system_prompt_says_the_value_of_information_is_an_estimate():
 
     text = system_prompt()
     assert "an estimate that can be below 0" in text and "0 when no result can change the best row" not in text
+
+
+def test_primitives_keep_probe_time_scale_1_by_default():
+    from robots.mujoco_lab.toolkit import MuJoCoLabPrimitives
+
+    assert MuJoCoLabPrimitives(env=None, model=None).probe_time_scale == 1.0
+    assert MuJoCoLabPrimitives(env=None, model=None, probe_time_scale=0.25).probe_time_scale == 0.25
