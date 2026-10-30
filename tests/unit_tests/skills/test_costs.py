@@ -17,8 +17,9 @@
 import numpy as np
 import pytest
 
-from rpent.skills.pick_place.costs import ABSTAIN_COST, care_scale, expected_cost, particle_costs
-from rpent.skills.pick_place.protocol import OUTCOMES, Prediction
+from rpent.skills.pick_place.costs import (ABSTAIN_COST, TIME_COST_PER_S, care_scale, cost_vector, expected_cost, irreversible_cost,
+                                          particle_costs)
+from rpent.skills.pick_place.protocol import IRREVERSIBLE, OUTCOMES, Prediction
 
 
 def _pred(**p):
@@ -53,3 +54,38 @@ def test_particle_costs_match_expected_cost_per_particle():
     preds = [_pred(placed_stable=0.9, not_lifted=0.1), _pred(placed_stable=0.2, dropped_high=0.8)]
     c = particle_costs(preds, 8.0, 3.0, abstain_cost=1.0)
     assert c == pytest.approx(np.array([expected_cost(x, 8.0, 3.0, abstain_cost=1.0) for x in preds]))
+
+
+# ---------------------------------------------------------------- the recovery mode (plan H3 decision 3)
+def test_absorbing_is_the_default_cost():
+    """Without reset_s every cost is milestone 4's: an irreversible outcome costs 5 x the care factor."""
+    p = _pred(placed_stable=0.5, dropped_high=0.2, crushed=0.1, tipped=0.2)
+    for care in ("normal", 10.0, 30.0):
+        assert irreversible_cost(care) == irreversible_cost(care, None) == 5.0 * care_scale(care)
+        assert cost_vector(care, reset_s=None) == pytest.approx(cost_vector(care))
+        assert expected_cost(p, 8.0, care, 10.0, reset_s=None) == expected_cost(p, 8.0, care, 10.0) == pytest.approx(
+            0.3 * 5.0 * care_scale(care) + 0.2 + 0.4 + 10.0 * 0.5)
+        assert particle_costs([p], 8.0, care, 10.0, reset_s=None) == pytest.approx(particle_costs([p], 8.0, care, 10.0))
+
+
+def test_a_reset_prices_every_irreversible_kind_at_its_time():
+    """reset_s 20: each of the six irreversible outcomes costs 0.05 x 20 = 1.0 whatever the care, the recoverable ones
+    keep 1, 1, 1 and 0.5; reset_s 0 makes them free."""
+    assert len(IRREVERSIBLE) == 6
+    for care in ("normal", 10.0, 30.0):
+        v = dict(zip(OUTCOMES, cost_vector(care, reset_s=20.0)))
+        assert [v[k] for k in IRREVERSIBLE] == pytest.approx([1.0] * 6)
+        assert [v[k] for k in ("tipped", "missed", "dropped_low", "not_lifted")] == [1.0, 1.0, 1.0, 0.5]
+        assert v["placed_stable"] == 0.0
+        zero = dict(zip(OUTCOMES, cost_vector(care, reset_s=0.0)))
+        assert [zero[k] for k in IRREVERSIBLE] == [0.0] * 6
+        assert irreversible_cost(care, 20.0) == pytest.approx(TIME_COST_PER_S * 20.0) and irreversible_cost(care, 0.0) == 0.0
+    p = _pred(placed_stable=0.5, dropped_high=0.2, crushed=0.1, tipped=0.2)
+    assert expected_cost(p, 8.0, 10.0, 10.0, reset_s=20.0) == pytest.approx(0.3 * 1.0 + 0.2 + 0.4 + 10.0 * 0.5)
+    assert particle_costs([p], 8.0, 10.0, 10.0, reset_s=20.0)[0] == pytest.approx(expected_cost(p, 8.0, 10.0, 10.0, reset_s=20.0))
+
+
+def test_a_bad_reset_time_is_an_error():
+    for bad in (-1.0, float("nan"), float("inf"), True, "20"):
+        with pytest.raises(ValueError):
+            irreversible_cost("normal", bad)

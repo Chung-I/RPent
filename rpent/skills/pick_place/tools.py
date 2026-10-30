@@ -34,7 +34,7 @@ from typing import Any, Callable
 import numpy as np
 
 from rpent.skills.pick_place.belief import MIN_ESS, N_PARTICLES, REFRESH_DRAWS, Belief, ParticleBelief, refresh
-from rpent.skills.pick_place.costs import care_scale, prediction_matrix, probe_time_scale
+from rpent.skills.pick_place.costs import care_scale, prediction_matrix, probe_time_scale, reset_time
 from rpent.skills.pick_place.destinations import DESTINATIONS
 from rpent.skills.pick_place.diagnose import diagnose
 from rpent.skills.pick_place.features import A_TRANSPORT, model_names, particle_matrix, particle_sides
@@ -183,13 +183,16 @@ def _assess(object: str, destination: str, care: str | float, primitives: Any,
             store: dict[str, Any]) -> tuple[dict[str, Any] | None, Assessment | None]:
     """Build (or reuse) the assessment. Returns (error-or-semantic payload, None) or (None, assessment).
     ``primitives.abstain_cost`` (when set) selects the cost rule, ``primitives.evoi`` (when set) the probe-value
-    estimator and ``primitives.probe_time_scale`` (when set) the factor on the probe rows' time charge (menu.build_menu);
-    a bad scale is an error payload."""
+    estimator, ``primitives.probe_time_scale`` (when set) the factor on the probe rows' time charge and
+    ``primitives.reset_s`` (when set, plan H3) the recovery mode's reset seconds (menu.build_menu); a bad scale or reset
+    time is an error payload."""
     if destination not in DESTINATIONS:
         return {"error": f"unknown destination {destination!r}; known: {sorted(DESTINATIONS)}"}, None
     try:
         scale = care_scale(care)
         time_scale = probe_time_scale(getattr(primitives, "probe_time_scale", 1.0))
+        reset_s = getattr(primitives, "reset_s", None)
+        reset_s = None if reset_s is None else reset_time(reset_s)
     except ValueError as exc:
         return {"error": str(exc)}, None
     abstain = getattr(primitives, "abstain_cost", None)
@@ -220,7 +223,7 @@ def _assess(object: str, destination: str, care: str | float, primitives: Any,
                                          env.plan_trajectory, primitives.rng, pose_fn=pose_fn, max_open=pinch_limit(env),
                                          threshold=getattr(primitives, "threshold", None), probe_models=probes or None,
                                          guard=getattr(primitives, "guard", None), abstain_cost=abstain,
-                                         evoi=getattr(primitives, "evoi", "plugin"), probe_time_scale=time_scale)
+                                         evoi=getattr(primitives, "evoi", "plugin"), probe_time_scale=time_scale, reset_s=reset_s)
     evidence = belief.summary() + [f"standard squeeze {f_std:.0f} N per pad", f"{len(proposals)} pinch proposals along the long axis"]
     if rec["probes_run"]:
         evidence.append(f"probes run this episode: {', '.join(sorted(rec['probes_run']))}")
@@ -228,8 +231,9 @@ def _assess(object: str, destination: str, care: str | float, primitives: Any,
         evidence.append(AFTER_ATTEMPT)
     a = Assessment(object=object, destination=destination, options=options, evidence=evidence,
                    recommendation=recommendation, care=care, visibility=belief.visibility, episode=key[3], care_scale=scale,
-                   abstain_cost=None if abstain is None else float(abstain), probe_time_scale=time_scale,
-                   without_probe=without_probe(options, recommendation, destination, care, abstain, getattr(primitives, "threshold", None)))
+                   abstain_cost=None if abstain is None else float(abstain), probe_time_scale=time_scale, reset_s=reset_s,
+                   without_probe=without_probe(options, recommendation, destination, care, abstain, getattr(primitives, "threshold", None),
+                                               reset_s=reset_s))
     cache[key] = {"assessment": a, "menu": {o.id: o for o in options}, "belief": belief}
     return None, a
 

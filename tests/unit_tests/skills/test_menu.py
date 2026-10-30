@@ -1132,3 +1132,61 @@ def test_without_probe_uses_the_unrounded_cost():
     assert without_probe([probe, _row("commit_std", "commit", 5.0, p_ok=0.75)], "probe", "table_centre", "normal", None, 0.7) == "commit"
     assert without_probe([probe, _row("commit_std", "commit", 5.0, p_ok=0.65)], "probe", "table_centre", "normal", None, 0.7) == "decline"
     assert without_probe([probe], "probe", "table_centre", "normal", 1.0, None) == "decline"
+
+
+# ---------------------------------------------------------------- the recovery mode (plan H3 decision 3)
+def test_the_probe_value_under_a_reset():
+    """Under a reset a probe that throws or damages the object costs the reset's time plus the best continuation row
+    under the pre-probe belief (row 1, 0.7 here), in place of 5 kappa + A; the kept results keep their value. A sure
+    throw: 1.0 + 0.7 against 5 x 10 + A. RiskyPush (thrown with P 0.5 where mu is at most 0.3): the cost after is
+    f x 0.4 + (1 - f) x (0.5 x 1.7 + 0.5 x 0.7), the value 0.3 f as without the reset."""
+    b = _particles(np.linspace(0.1, 0.9, 40), np.ones(40))
+    C = [np.where(b.arrays()["mu"] > 0.3, 0.4, 5.4), np.full(40, 0.7)]
+    for A in (None, 10.0):
+        args = (b, C, PerfectPush(p_thrown=1.0), np.zeros((40, 3)), 20.0, 10.0)
+        absorbing = probe_value(*args, np.random.default_rng(0), abstain_cost=A)
+        reset = probe_value(*args, np.random.default_rng(0), abstain_cost=A, reset_s=20.0)
+        assert absorbing["expected_cost_after"] == pytest.approx(5 * 10.0 + (A or 0.0))
+        assert reset["expected_cost_after"] == pytest.approx(TIME_COST_PER_S * 20.0 + 0.7) and reset["evoi"] == 0.0
+    b = _particles(np.random.default_rng(0).uniform(0.1, 0.9, 400), np.ones(400))
+    mu = b.arrays()["mu"]
+    f = float(np.mean(mu > 0.3))
+    X = np.zeros((400, 3))
+    X[:, 0] = mu
+    v = probe_value(b, [np.where(mu > 0.3, 0.4, 5.4), np.full(400, 0.7)], RiskyPush(), X, 20.0, "normal",
+                    np.random.default_rng(3), k=4000, reset_s=20.0)
+    assert v["evoi"] == pytest.approx(0.3 * f, abs=0.012)
+    assert v["expected_cost_after"] == pytest.approx(f * 0.4 + (1 - f) * (0.5 * 1.7 + 0.5 * 0.7), abs=0.012)
+
+
+def test_the_menu_prices_every_row_with_the_reset(monkeypatch):
+    """build_menu's reset_s reaches every row: the attempt rows' expected and per-particle costs, and each probe row's
+    preposterior (probe_value)."""
+    import rpent.skills.pick_place.menu as menu_mod
+
+    seen = []
+    real = menu_mod.probe_value
+    monkeypatch.setattr(menu_mod, "probe_value", lambda *a, **k: seen.append(k.get("reset_s")) or real(*a, **k))
+    b = _particles(np.random.default_rng(0).uniform(0.1, 0.9, 400), np.ones(400))
+    options, _ = _pmenu(probe_models={"push": PerfectPush(p_tip=0.1), "weigh": FlatWeigh()}, belief=b, care=10.0,
+                        abstain_cost=10.0, reset_s=20.0)
+    assert seen == [20.0, 20.0]
+    rows = [o for o in options if o.kind in ("commit", "lower_risk")]
+    assert any(sum(o.pred.p[k] for k in IRREVERSIBLE) > 0 for o in rows)       # MuGate drops high: the reset matters
+    for o in rows:
+        assert o.expected_cost == pytest.approx(expected_cost(o.pred, o.cost_s, 10.0, 10.0, reset_s=20.0))
+        assert float(b.weights @ o._costs) == pytest.approx(o.expected_cost)
+
+
+def test_the_cost_rule_names_the_costliest_outcome_under_the_reset():
+    """The decline reason names the outcome that carries the largest expected cost under the costs in force: dropped_high
+    (0.1 x 50) when absorbing at care 10, tipped (0.4 x 1 against 0.1 x 1.0) under a 20 s reset."""
+    from rpent.skills.pick_place.menu import _cost_rule
+    from rpent.skills.pick_place.protocol import Option
+
+    p = {k: 0.0 for k in OUTCOMES}
+    p.update(placed_stable=0.5, dropped_high=0.1, tipped=0.4)
+    best = Option(id="commit_std", kind="commit", action={"destination": "table_centre"}, pred=Prediction(p=p), cost_s=8.0,
+                  expected_cost=5.0, reason="")
+    assert "dropped_high carries" in _cost_rule([best], best, 10.0, 0.1, None)[1]
+    assert "tipped carries" in _cost_rule([best], best, 10.0, 0.1, None, reset_s=20.0)[1]

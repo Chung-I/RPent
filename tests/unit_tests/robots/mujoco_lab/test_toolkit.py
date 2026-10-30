@@ -286,3 +286,12 @@ def test_system_prompt_says_probes_come_before_the_first_attempt():
 
     text = " ".join(system_prompt().split())
     assert "Probe rows appear only before the first attempt of an episode; after the push only the weigh may follow." in text
+
+
+def test_system_prompt_states_the_reset_rule():
+    """plan H3 Task 1: the cost rule says what `reset_s` changes (the price of an irreversible outcome, the restore, no
+    probe after it)."""
+    from robots.mujoco_lab.prompts.system import system_prompt
+
+    text = system_prompt()
+    assert "`reset_s`" in text and "restored" in text and "no probe runs after a restore" in text

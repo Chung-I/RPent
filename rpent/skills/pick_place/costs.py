@@ -17,7 +17,11 @@ number above 0 (the care level kappa of the paper's sweep).
 
 The abstain cost (milestone 2b) is the value of the task: a case that ends without the object placed costs it, so a
 row's expected cost adds ``abstain_cost * (1 - P(placed_stable))`` and abstaining costs ``abstain_cost``. None keeps the
-milestone 2a costs (no such term, and a decline costs nothing)."""
+milestone 2a costs (no such term, and a decline costs nothing).
+
+The recovery mode (plan H3 decision 3, ``reset_s`` a number of seconds): an irreversible outcome costs the reset's time,
+TIME_COST_PER_S x reset_s, whatever the care, in place of 5 x the care factor (the object is restored and the case goes
+on). None keeps the absorbing costs of milestone 4."""
 
 from __future__ import annotations
 
@@ -63,22 +67,46 @@ def probe_time_scale(scale: float) -> float:
     raise ValueError(f"the probe time scale must be a finite number at least 0, not {scale!r}")
 
 
+def reset_time(reset_s: float) -> float:
+    """A reset's seconds under the recovery mode (plan H3 decision 3): a finite number at least 0."""
+    if isinstance(reset_s, Real) and not isinstance(reset_s, bool) and math.isfinite(float(reset_s)) and float(reset_s) >= 0:
+        return float(reset_s)
+    raise ValueError(f"the reset time must be a finite number of seconds at least 0, not {reset_s!r}")
+
+
+def irreversible_cost(care: str | float, reset_s: float | None = None) -> float:
+    """The cost of an irreversible outcome: 5 x the care factor (absorbing), or with ``reset_s`` the reset's time."""
+    if reset_s is None:
+        return COST["dropped_high"] * care_scale(care)
+    care_scale(care)
+    return TIME_COST_PER_S * reset_time(reset_s)
+
+
+def _reset_cost(reset_s: float | None) -> float | None:
+    return None if reset_s is None else TIME_COST_PER_S * reset_time(reset_s)
+
+
 def _unfinished(p_placed, abstain_cost: float | None):
     return 0.0 if abstain_cost is None else float(abstain_cost) * (1.0 - p_placed)
 
 
-def expected_cost(pred: Prediction, cost_s: float, care: str | float = "normal", abstain_cost: float | None = None) -> float:
-    scale = care_scale(care)
+def expected_cost(pred: Prediction, cost_s: float, care: str | float = "normal", abstain_cost: float | None = None,
+                  reset_s: float | None = None) -> float:
+    scale, reset = care_scale(care), _reset_cost(reset_s)
     total = 0.0
     for k, p in pred.p.items():
-        total += p * COST[k] * (scale if k in IRREVERSIBLE else 1.0)
+        if reset is not None and k in IRREVERSIBLE:
+            total += p * reset
+        else:
+            total += p * COST[k] * (scale if k in IRREVERSIBLE else 1.0)
     return float(total + TIME_COST_PER_S * cost_s + _unfinished(pred.p.get("placed_stable", 0.0), abstain_cost))
 
 
-def cost_vector(care: str | float = "normal") -> np.ndarray:
-    """The outcome costs in OUTCOMES order, the irreversible ones scaled by care."""
-    scale = care_scale(care)
-    return np.array([COST[k] * (scale if k in IRREVERSIBLE else 1.0) for k in OUTCOMES])
+def cost_vector(care: str | float = "normal", reset_s: float | None = None) -> np.ndarray:
+    """The outcome costs in OUTCOMES order, the irreversible ones scaled by care (with ``reset_s``: the reset's time)."""
+    scale, reset = care_scale(care), _reset_cost(reset_s)
+    return np.array([reset if reset is not None and k in IRREVERSIBLE else COST[k] * (scale if k in IRREVERSIBLE else 1.0)
+                     for k in OUTCOMES])
 
 
 def prediction_matrix(preds: list[Prediction]) -> np.ndarray:
@@ -86,7 +114,7 @@ def prediction_matrix(preds: list[Prediction]) -> np.ndarray:
 
 
 def particle_costs(preds: list[Prediction], cost_s: float, care: str | float = "normal",
-                   abstain_cost: float | None = None) -> np.ndarray:
+                   abstain_cost: float | None = None, reset_s: float | None = None) -> np.ndarray:
     """Expected cost of one row under each particle (the row's expected cost is their weighted mean)."""
     P = prediction_matrix(preds)
-    return P @ cost_vector(care) + TIME_COST_PER_S * cost_s + _unfinished(P[:, OUTCOMES.index("placed_stable")], abstain_cost)
+    return P @ cost_vector(care, reset_s) + TIME_COST_PER_S * cost_s + _unfinished(P[:, OUTCOMES.index("placed_stable")], abstain_cost)

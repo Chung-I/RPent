@@ -37,7 +37,10 @@ The cost rule (milestone 2b, ``abstain_cost`` a number A): every row's expected 
 the cost of leaving the task undone, and abstaining costs A. The recommendation is the cheapest of the best row
 ("commit"), the cheapest probe row ("probe", when it beats the cheaper of the best row and A by more than EVOI_Z errors)
 and abstaining ("decline"); ``threshold`` is then an optional floor on P(placed_stable). A probe's preposterior may
-abstain after the probe, and a probe that ends the case costs the irreversible cost and A. ``abstain_cost`` None keeps
+abstain after the probe, and a probe that ends the case costs the irreversible cost and A. Under the recovery mode
+(``reset_s``, plan H3 decision 3) an irreversible outcome costs the reset's time, and a probe that throws or damages the
+object costs the reset's time plus the best continuation row now (the object is restored; its result is not valued);
+the menu stays one-step. ``abstain_cost`` None keeps
 the milestone 2a rule: commit when the best row reaches the threshold (default DEFAULT_THRESHOLD), and a decline costs
 nothing.
 
@@ -53,7 +56,7 @@ from typing import Any, Callable
 import numpy as np
 
 from rpent.skills.pick_place.belief import N_PARTICLES, Belief, ParticleBelief
-from rpent.skills.pick_place.costs import COST, TIME_COST_PER_S, care_scale, expected_cost, particle_costs
+from rpent.skills.pick_place.costs import COST, TIME_COST_PER_S, care_scale, expected_cost, irreversible_cost, particle_costs
 from rpent.skills.pick_place.costs import probe_time_scale as _probe_time_scale  # build_menu has a parameter of that name
 from rpent.skills.pick_place.destinations import DESTINATIONS, edge_distance
 from rpent.skills.pick_place.features import (A_TRANSPORT, DAMAGE_FEATURES, FEATURES_M2, Geometry, entry_flags, extract,
@@ -162,7 +165,7 @@ def heldout_rows(C: np.ndarray, u: np.ndarray, best: int, groups: np.ndarray | N
 
 def probe_value(belief: ParticleBelief, continuation_costs: list[np.ndarray], probe_model: Any, X_probe: np.ndarray, force: float,
                 care: str | float, rng: np.random.Generator, k: int = EVOI_K, abstain_cost: float | None = None,
-                estimator: str = "plugin", reading_value: bool = False) -> dict[str, Any]:
+                estimator: str = "plugin", reading_value: bool = False, reset_s: float | None = None) -> dict[str, Any]:
     """The preposterior value of one probe against the cheapest continuation row now (row b, per-particle
     costs C_b). With an abstain cost A, abstaining is a continuation row that costs A for every particle, and T
     below adds A. The probe ends the case, thrown or damaged, with each particle's risk r (``terminal_risk``; the case
@@ -188,7 +191,9 @@ def probe_value(belief: ParticleBelief, continuation_costs: list[np.ndarray], pr
     ``reading_value`` adds ``reading_gain`` and ``reading_gain_se``: per result, the saving of the row chosen from the
     whole result over the row chosen from its kind and survival only (the likelihood replayed without its reading term;
     0 when the reading term was not used), scored as the estimator scores, with ``plugin_reading_gain`` beside a held-out
-    one. An unknown estimator raises ValueError."""
+    one. With ``reset_s`` (the recovery mode, plan H3 decision 3) the probe that ends the case does not end it: the
+    object is restored and the case goes on, so T_i is the reset's time plus C_b,i (row b now, under the pre-probe
+    belief). An unknown estimator raises ValueError."""
     _check_estimator(estimator)
     C = np.asarray(continuation_costs, dtype=float).reshape(len(continuation_costs), -1)
     if abstain_cost is not None:
@@ -205,7 +210,10 @@ def probe_value(belief: ParticleBelief, continuation_costs: list[np.ndarray], pr
     Q = np.divide(kept, total, out=np.zeros_like(kept), where=total > 0)     # P(kind | the object is kept)
     a = belief.arrays()
     keep = 1.0 - risk
-    terminal = COST["dropped_high"] * care_scale(care) + (0.0 if abstain_cost is None else float(abstain_cost))
+    if reset_s is None:
+        terminal = COST["dropped_high"] * care_scale(care) + (0.0 if abstain_cost is None else float(abstain_cost))
+    else:
+        terminal = irreversible_cost(care, reset_s) + C[best]          # restored: the reset, then row b (per particle)
     unused = float(w @ (risk * terminal + keep * C[best]))
     heldout = estimator == "heldout"
     groups = a.get("ancestor")                       # copies of one draw are held out together (heldout_rows);
@@ -263,7 +271,8 @@ def push_tip_charge(belief: ParticleBelief, probe_model: Any, X_probe: np.ndarra
 
 def _probe_rows(probe_models: dict[str, Any], belief: ParticleBelief, geometry: Geometry, mid: Any, pose: dict[str, Any],
                 f_std: float, care: str | float, continuation: list[Option], rng: np.random.Generator,
-                abstain_cost: float | None = None, estimator: str = "plugin", time_scale: float = 1.0) -> list[Option]:
+                abstain_cost: float | None = None, estimator: str = "plugin", time_scale: float = 1.0,
+                reset_s: float | None = None) -> list[Option]:
     """One row per probe model, at the middle proposal: the push and the weigh with the weigh squeeze, the squeeze
     (only for a crushable or bruisable object, by the pose's public entry) at ``squeeze_cap``. The continuation costs
     are those of the current pose (the push moves the object up to 4 cm, the weigh lifts it 2 cm, the squeeze
@@ -280,7 +289,7 @@ def _probe_rows(probe_models: dict[str, Any], belief: ParticleBelief, geometry: 
         base = extract(geometry, mid.point, mid.yaw, PLACEHOLDER["mass"], PLACEHOLDER["mu"], force, PROBE_V_LIFT, 0.0,
                        PROBE_DESTINATION, None, belief.visibility)
         X = particle_matrix(base, a, pose, force, model_names(pm))
-        v = probe_value(belief, costs, pm, X, force, care, rng, abstain_cost=abstain_cost, estimator=estimator)
+        v = probe_value(belief, costs, pm, X, force, care, rng, abstain_cost=abstain_cost, estimator=estimator, reset_s=reset_s)
         tip = push_tip_charge(belief, pm, X) if probe == "push" else 0.0
         cost = time_scale * TIME_COST_PER_S * PROBE_SECONDS[probe] + tip + v["expected_cost_after"]
         reason = f"{probe} first: value of information {v['evoi']:.2f}, expected cost of the best row after it {v['expected_cost_after']:.2f}"
@@ -335,7 +344,8 @@ def build_menu(model: Any, belief: ParticleBelief | Belief, geometry: Geometry, 
                pose_fn: Callable[[Any], dict[str, Any]] | None = None, max_open: float = MAX_OPEN_WIDTH,
                threshold: float | None = None, n: int = N_PARTICLES,
                probe_models: dict[str, Any] | None = None, guard: Any = None,
-               abstain_cost: float | None = None, evoi: str = "plugin", probe_time_scale: float = 1.0) -> tuple[list[Option], str]:
+               abstain_cost: float | None = None, evoi: str = "plugin", probe_time_scale: float = 1.0,
+               reset_s: float | None = None) -> tuple[list[Option], str]:
     """The ranked menu and the recommendation. ``pose_fn(proposal)`` gives the pose the particles map
     through (default: ``geometry_pose``); a milestone 1 ``Belief`` becomes n particles at the
     nominal CoM; ``threshold`` None reads DEFAULT_THRESHOLD now, not at import; ``probe_models``
@@ -346,7 +356,8 @@ def build_menu(model: Any, belief: ParticleBelief | Belief, geometry: Geometry, 
     flags the rows makes it "decline" with the guard's reason; the decline row keeps the guard's check. With
     ``abstain_cost`` a number, the cost rule of the module docstring decides instead, and the decline row costs it.
     ``evoi`` names probe_value's estimator ("plugin" or "heldout"; another name raises ValueError);
-    ``probe_time_scale`` multiplies every probe row's time charge (a finite number at least 0, else ValueError)."""
+    ``probe_time_scale`` multiplies every probe row's time charge (a finite number at least 0, else ValueError);
+    ``reset_s`` (plan H3) prices every row's irreversible outcomes at the reset's time (costs.irreversible_cost)."""
     _check_estimator(evoi)
     time_scale = _probe_time_scale(probe_time_scale)
     pose_fn = pose_fn or (lambda prop: geometry_pose(geometry, prop))
@@ -370,13 +381,13 @@ def build_menu(model: Any, belief: ParticleBelief | Belief, geometry: Geometry, 
             pred, per = estimate(model, belief, base, pose, action["force"], planned, rng)
             act = dict(action, s=prop.s)
             options.append(Option(id=rid, kind=kind, action=act, pred=pred, cost_s=cost_s,
-                                  expected_cost=expected_cost(pred, cost_s, care, abstain_cost), reason=reason,
-                                  _costs=particle_costs(per, cost_s, care, abstain_cost), _base=base, _pose=pose,
+                                  expected_cost=expected_cost(pred, cost_s, care, abstain_cost, reset_s), reason=reason,
+                                  _costs=particle_costs(per, cost_s, care, abstain_cost, reset_s), _base=base, _pose=pose,
                                   _planned=planned))
         continuation = [o for o in options if o.action["destination"] == destination and o.id != "inboard_place"]
         if probe_models and continuation:
             options += _probe_rows(probe_models, belief, geometry, mid, mid_pose, f_std, care, continuation, rng, abstain_cost,
-                                   estimator=evoi, time_scale=time_scale)
+                                   estimator=evoi, time_scale=time_scale, reset_s=reset_s)
         options.sort(key=lambda o: o.expected_cost)
     same = [o for o in options if o.kind in ("commit", "lower_risk") and o.action["destination"] == destination]
     check = None
@@ -392,7 +403,7 @@ def build_menu(model: Any, belief: ParticleBelief | Belief, geometry: Geometry, 
                     and best.expected_cost - first.expected_cost > EVOI_Z * first.probe["evoi_se"]):
                 recommendation = "probe"
         else:
-            recommendation, reason = _cost_rule(options, best, care, float(abstain_cost), threshold)
+            recommendation, reason = _cost_rule(options, best, care, float(abstain_cost), threshold, reset_s=reset_s)
         if guard is not None:
             check = guard.check(*guard_queries(options, belief, getattr(guard, "feature_names", None) or FEATURES_M2))
             if check["flag"]:
@@ -406,7 +417,7 @@ def build_menu(model: Any, belief: ParticleBelief | Belief, geometry: Geometry, 
 
 
 def without_probe(options: list[Option], recommendation: str, destination: str, care: str | float, abstain_cost: float | None,
-                  threshold: float | None) -> str:
+                  threshold: float | None, reset_s: float | None = None) -> str:
     """The recommendation of the same menu without its probe rows, from the unrounded costs: the recommendation itself
     unless it is probe (a guard flag has already declined); else the cost rule on the best row (commit when it costs at
     most A and reaches the floor, if one is set), or without an abstain cost the milestone 2a rule (P(placed_stable) at
@@ -420,14 +431,23 @@ def without_probe(options: list[Option], recommendation: str, destination: str, 
     if abstain_cost is None:
         floor = DEFAULT_THRESHOLD if threshold is None else float(threshold)
         return "commit" if best.pred.p["placed_stable"] >= floor else "decline"
-    return _cost_rule([o for o in options if o.kind != "probe"], best, care, float(abstain_cost), threshold)[0]
+    return _cost_rule([o for o in options if o.kind != "probe"], best, care, float(abstain_cost), threshold, reset_s=reset_s)[0]
 
 
-def _cost_rule(options: list[Option], best: Option, care: str | float, A: float, floor: float | None) -> tuple[str, str]:
+def _cost_rule(options: list[Option], best: Option, care: str | float, A: float, floor: float | None,
+               reset_s: float | None = None) -> tuple[str, str]:
     """(recommendation, decline reason) under the cost rule: commit when the best row costs at most A (and reaches
-    the floor, if one is set), a probe that beats the cheaper of the two by more than EVOI_Z errors, else decline."""
+    the floor, if one is set), a probe that beats the cheaper of the two by more than EVOI_Z errors, else decline. The
+    reason names the outcome with the largest expected cost under the costs in force (``reset_s``: the recovery mode)."""
     scale = care_scale(care)
-    worst = max(best.pred.p, key=lambda k: best.pred.p[k] * COST[k] * (scale if k in IRREVERSIBLE else 1.0))
+    reset = None if reset_s is None else irreversible_cost(care, reset_s)
+
+    def charge(k: str) -> float:
+        if reset is not None and k in IRREVERSIBLE:
+            return best.pred.p[k] * reset
+        return best.pred.p[k] * COST[k] * (scale if k in IRREVERSIBLE else 1.0)
+
+    worst = max(best.pred.p, key=charge)
     c, p_ok = float(best.expected_cost), float(best.pred.p["placed_stable"])
     if floor is not None and c <= A and p_ok < float(floor):
         recommendation, reason = "decline", f"best row's P(placed_stable) {p_ok:.2f} is below the floor {float(floor):.2f}"

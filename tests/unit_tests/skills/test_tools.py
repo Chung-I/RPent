@@ -900,3 +900,20 @@ def test_menu_rng_use_does_not_depend_on_the_probe_time_scale(evoi):
         d = assess_pick(object="mug", destination="table_centre", primitives=prims, store={}).data
         out.append((prims.rng.bit_generator.state, [o for o in d["options"] if o["kind"] != "probe"], d["without_probe"]))
     assert out[0] == out[1]
+
+
+# ---------------------------------------------------------------- the recovery mode (plan H3 decision 3)
+def test_the_reset_reaches_the_menu_and_the_payload():
+    """primitives.reset_s prices every irreversible outcome of the menu at the reset's time, and the payload states
+    it (None without one: the absorbing rule); a bad reset time is an error payload."""
+    prims = _aprims()
+    d = assess_pick(object="mug", destination="table_centre", care=10, primitives=prims, store={}).data
+    assert d["reset_s"] is None
+    prims.reset_s = 20.0
+    d = assess_pick(object="mug", destination="table_centre", care=10, primitives=prims, store={}).data
+    row = next(o for o in d["options"] if o["id"] == "commit_std")
+    assert row["expected_cost"] == pytest.approx(0.1 * 1.0 + 0.1 * 1 + 0.4 + 1.0 * 0.2, abs=1e-3)
+    assert d["reset_s"] == 20.0
+    prims.reset_s = -1.0
+    assert "reset" in assess_pick(object="mug", destination="table_centre", primitives=prims, store={}).data["error"]
+
