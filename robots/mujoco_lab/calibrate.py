@@ -43,8 +43,8 @@ protocols are paired case by case), resets the lab, and runs one protocol throug
   "no_probe") and ``changed`` (decision_change against the first menu's decision without probes).
 
 Each case records its first menu's costs (``first_menu``: the best row's and the recommended option's expected
-cost, the decision without the probe rows and the best row), and each probe its place (``position`` among the
-case's probes, ``after_attempts``). ``--cases FILE`` (``{"seed", "cases": {object: [idx, ...]}}``, for the run's
+cost; in the forced arms also the decision without the probe rows and the best row), and each probe its place
+(``position`` among the case's probes, ``after_attempts``). ``--cases FILE`` (``{"seed", "cases": {object: [idx, ...]}}``, for the run's
 seed) runs exactly the listed cases, which are the same cases a full run draws; the output records the file's
 sha256. The output records the code that made it (``code``: git HEAD and whether tracked files differed) and, for
 the forced arms, their rule (``forced_rule``); it is written to a temporary file first, then renamed.
@@ -161,12 +161,14 @@ def _without_probe(a: dict[str, Any], prims: Any) -> str:
     return "commit" if float(row["expected_cost"]) <= float(A) and (floor is None or p >= float(floor)) else "decline"
 
 
-def _first_menu(a: dict[str, Any]) -> dict[str, Any]:
-    """The first assessment's best row and recommended option costs (plan m4: the declared saving), its decision without
-    the probe rows and its best row (plan H3 decision 6); None when missing."""
+def _first_menu(a: dict[str, Any], forced: bool = False) -> dict[str, Any]:
+    """The first assessment's best row and recommended option costs (plan m4: the declared saving); in the forced arms
+    (plan H3 decision 6) also its decision without the probe rows and its best row; None when missing."""
     cost = {o["id"]: o.get("expected_cost") for o in a.get("options") or []}
-    return {"best_cost": cost.get(a.get("best_option")), "recommended_cost": cost.get(a.get("recommended_option")),
-            "without_probe": a.get("without_probe"), "best_row": a.get("best_option")}
+    out = {"best_cost": cost.get(a.get("best_option")), "recommended_cost": cost.get(a.get("recommended_option"))}
+    if forced:
+        out.update(without_probe=a.get("without_probe"), best_row=a.get("best_option"))
+    return out
 
 
 def forced_probe(a: dict[str, Any]) -> str | None:
@@ -253,7 +255,7 @@ def run_protocol(prims: Any, protocol: str, destination: str, rng: np.random.Gen
     if not a.get("assessed", True):
         return end("unreachable")
     case["recommendation"], case["best_option"], case["guard"] = a.get("recommendation"), a.get("best_option"), a.get("guard")
-    case["first_menu"] = _first_menu(a)
+    case["first_menu"] = _first_menu(a, protocol in FORCED)
     if follow and a.get("recommendation") == "decline":
         return end("abstained")
     def probe(option_id: str, sham: bool = False) -> str | None:
