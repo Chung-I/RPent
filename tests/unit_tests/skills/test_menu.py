@@ -1067,3 +1067,42 @@ def test_zero_probe_time_scale_removes_the_charge():
 def test_bad_probe_time_scale_is_an_error(bad):
     with pytest.raises(ValueError, match="probe time scale"):
         _pmenu(probe_models={"push": PerfectPush()}, probe_time_scale=bad)
+
+
+# ---------------------------------------------------------------- the final review of plan 2b2: copies of one draw
+def _copies(b, C, X, m):
+    """The belief b as m copies of each particle with its index as ``ancestor`` (a refresh resamples copies of its prior
+    draws), with the costs and the probe features repeated to match."""
+    from rpent.skills.pick_place.belief import ParticleBelief
+
+    parts = [dict(p, ancestor=i) for i, p in enumerate(b.particles) for _ in range(m)]
+    return ParticleBelief(parts, np.ones(len(parts))), [np.repeat(c, m) for c in C], np.repeat(X, m, axis=0)
+
+
+def test_heldout_value_of_copies_equals_the_value_of_their_draws():
+    """A refreshed belief holds copies of its prior draws. Leaving out one copy keeps its twins with the chooser and
+    brings the chance correlation back; the held-out value leaves out every copy of the particle's draw. So 10 copies of
+    each of 50 null draws have the values of the 50 draws on the same random stream: the plug-in's, the held-out value
+    and the reading's held-out value."""
+    rng = np.random.default_rng(5)
+    for _ in range(4):
+        b, C, X = _typed(50, rng, null=True)
+        bc, Cc, Xc = _copies(b, C, X, 10)
+        seed = int(rng.integers(1 << 30))
+        one, ten = (probe_value(bb, CC, _GaussReading(0.5), XX, 20.0, "normal", np.random.default_rng(seed), k=200,
+                                estimator="heldout", reading_value=True) for bb, CC, XX in ((b, C, X), (bc, Cc, Xc)))
+        for key in ("plugin_evoi", "evoi", "plugin_reading_gain", "reading_gain"):
+            assert ten[key] == pytest.approx(one[key], abs=1e-9), (key, ten[key], one[key])
+
+
+def test_heldout_rows_of_distinct_draws_are_the_per_particle_rows():
+    """Every particle its own draw (a first menu: the prior's particles carry distinct ancestors): the rows equal the
+    per-particle rows exactly, so plan 2b2's first menus and its squeeze sensitivity keep their values."""
+    from rpent.skills.pick_place.menu import heldout_rows
+
+    rng = np.random.default_rng(3)
+    C, u = rng.random((7, 300)), rng.random(300)
+    groups = rng.permutation(300)
+    assert np.array_equal(heldout_rows(C, u, 2, groups=groups), heldout_rows(C, u, 2))
+    u[5:] = 0.0                                                     # the first five keep all the weight
+    assert np.array_equal(heldout_rows(C, u, 2, groups=groups), heldout_rows(C, u, 2))

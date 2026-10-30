@@ -29,8 +29,8 @@ result, over results simulated from the belief (``probe_value``). Every probe ma
 (``terminal_risk``), at the irreversible cost and A. A probe row's expected cost is its time, the push's tip risk and
 that expected cost after it; it competes with the other rows in the same ranking. The plug-in value is
 estimated per simulated result against the best row now, so it is exactly 0 when no result can
-change that row; the held-out value (``evoi="heldout"``, plan 2b2) scores each particle with the row chosen without it,
-so it is not biased upward by a chance correlation and can be below 0. A probe is recommended only when its value is
+change that row; the held-out value (``evoi="heldout"``, plan 2b2) scores each particle with the row chosen without
+its draw (every copy of its ``ancestor``), so it is not biased upward by a chance correlation and can be below 0. A probe is recommended only when its value is
 above 0 and its row beats the best row by more than EVOI_Z Monte Carlo errors.
 
 The cost rule (milestone 2b, ``abstain_cost`` a number A): every row's expected cost adds A x (1 - P(placed_stable)),
@@ -144,11 +144,20 @@ def _check_estimator(estimator: str) -> str:
     return estimator
 
 
-def heldout_rows(C: np.ndarray, u: np.ndarray, best: int) -> np.ndarray:
-    """Per particle l, the row chosen by the weights u without l: argmin_r (C_r . u - u_l C_r,l), one (rows x particles)
-    argmin; row ``best`` where the rest of u is (numerically) 0, so a chooser with no weight never falls back to a prior."""
-    a = np.argmin((C @ u)[:, None] - C * u[None, :], axis=0)
-    return np.where(u.sum() - u > HELDOUT_REST * u.sum(), a, best)
+def heldout_rows(C: np.ndarray, u: np.ndarray, best: int, groups: np.ndarray | None = None) -> np.ndarray:
+    """Per particle l, the row chosen by the weights u without l's draw: argmin_r (C_r . u - sum_{l' in g(l)} u_l' C_r,l'),
+    one (rows x particles) argmin, where g(l) holds the particles with l's label in ``groups`` (its ancestor: a refresh
+    resamples copies of one prior draw, and a copy left with the chooser brings l's chance correlation back); without
+    groups each particle is its own draw. Row ``best`` where the rest of u is (numerically) 0, so a chooser with no
+    weight never falls back to a prior."""
+    own, rest = C * u[None, :], u.sum() - u
+    if groups is not None:
+        inv = np.unique(np.asarray(groups), return_inverse=True)[1].reshape(-1)
+        sums = np.zeros((int(inv.max()) + 1, C.shape[0]))
+        np.add.at(sums, inv, own.T)
+        own, rest = sums[inv].T, u.sum() - np.bincount(inv, weights=u)[inv]
+    a = np.argmin((C @ u)[:, None] - own, axis=0)
+    return np.where(rest > HELDOUT_REST * u.sum(), a, best)
 
 
 def probe_value(belief: ParticleBelief, continuation_costs: list[np.ndarray], probe_model: Any, X_probe: np.ndarray, force: float,
@@ -170,10 +179,11 @@ def probe_value(belief: ParticleBelief, continuation_costs: list[np.ndarray], pr
 
     That plug-in value chooses row a and scores it on the same particles, so it finds value in a chance correlation
     between a reading and the costs (the optimizer's curse). ``estimator`` "heldout" (plan 2b2 decision 2) scores each
-    particle l with the row chosen by the posterior without l (``heldout_rows``): the result's gain is
-    sum_l w'_l (1 - r_l) (C_b,l - C_a-l,l). The target is the population the particles sample: for equally weighted
-    particles drawn from it, the held-out cost after the probe is in expectation at least the population's optimal
-    cost after it (up to the self-normalized importance bias, O(1/ESS), for a weighted belief). Its ``evoi`` is the raw
+    particle l with the row chosen by the posterior without l's draw (``heldout_rows`` over the belief's ``ancestor``
+    key: a refreshed belief holds copies of its draws): the result's gain is sum_l w'_l (1 - r_l) (C_b,l - C_a-l,l).
+    The target is the population the draws sample: for equally weighted draws from it, the held-out cost after the
+    probe is in expectation at least the population's optimal cost after it (up to the self-normalized importance
+    bias, O(1/ESS), for a weighted belief). Its ``evoi`` is the raw
     mean (it can be below 0) and ``plugin_evoi`` the plug-in's on the same draws; no extra randomness is drawn.
     ``reading_value`` adds ``reading_gain`` and ``reading_gain_se``: per result, the saving of the row chosen from the
     whole result over the row chosen from its kind and survival only (the likelihood replayed without its reading term;
@@ -198,6 +208,9 @@ def probe_value(belief: ParticleBelief, continuation_costs: list[np.ndarray], pr
     terminal = COST["dropped_high"] * care_scale(care) + (0.0 if abstain_cost is None else float(abstain_cost))
     unused = float(w @ (risk * terminal + keep * C[best]))
     heldout = estimator == "heldout"
+    groups = a.get("ancestor")                       # copies of one draw are held out together (heldout_rows);
+    if groups is not None and len(np.unique(groups)) == len(groups):
+        groups = None                                # distinct draws (a first menu): the per-particle rows, exactly
     cols = np.arange(C.shape[1])
     gains, held = np.zeros(int(k)), np.zeros(int(k))
     read, read_held = np.zeros(int(k)), np.zeros(int(k))
@@ -211,14 +224,14 @@ def probe_value(belief: ParticleBelief, continuation_costs: list[np.ndarray], pr
         if pick != best:
             gains[j] = float(wk @ (C[best] - C[pick]))
         if heldout:
-            rows_l = heldout_rows(C, wk, best)
+            rows_l = heldout_rows(C, wk, best, groups)
             held[j] = float(wk @ (C[best] - C[rows_l, cols]))
         if reading_value and "reading" in info["used"]:
             terms = [t for t in info["used"] if t != "reading"]
             uk = belief.reweight(probe_model.loglik(obs, X_probe, a, force, P=Q, terms=terms)[0]).weights * keep
             read[j] = float(wk @ (C[int(np.argmin(C @ uk))] - C[pick]))
             if heldout:
-                read_held[j] = float(wk @ (C[heldout_rows(C, uk, best), cols] - C[rows_l, cols]))
+                read_held[j] = float(wk @ (C[heldout_rows(C, uk, best, groups), cols] - C[rows_l, cols]))
     mean = lambda g: float(np.mean(g)) if len(g) else 0.0  # noqa: E731
     err = lambda g: float(np.std(g, ddof=1) / np.sqrt(len(g))) if len(g) > 1 else 0.0  # noqa: E731
     gain = mean(gains)
