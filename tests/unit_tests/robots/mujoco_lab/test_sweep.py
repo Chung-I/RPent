@@ -260,3 +260,21 @@ def test_summary_runs_on_a_small_sweep():
     assert len(out["cells"]) == 45 and out["probe_value"]["sum_delta"] > 0
     json.dumps(out)
     assert "H1-pays" in out["markdown"]
+
+
+def test_the_summary_leaves_an_error_row_out_of_the_subgroups():
+    """An error row carries no draw (calibrate writes object, idx, error, executed, fold, bundle, const and seconds): the
+    summary labels only the rows with a draw, so it runs, and the error row adds to no subgroup, as any case that is not
+    counted (milestone 4: three carton cases ended in error rows and the summary raised KeyError 'theta')."""
+    def with_row(make):
+        runs = _sweep(seeds=(12, 13))
+        run = next(r for r in runs if r["protocol"] == "policy" and r["seed"] == 13
+                   and (r["care_scale"], r["abstain_cost"], r["probe_time_scale"]) == TEST_CELLS[0])
+        run["rows"] = [make(r) if (r["object"], r["idx"]) == ("a", 0) else r for r in run["rows"]]
+        return summary(runs, classes={}, n_boot=50)
+
+    err = with_row(lambda r: {"object": "a", "idx": 0, "error": "max() arg is an empty sequence", "executed": False, "fold": 0,
+                              "bundle": "b", "const": [0.5], "seconds": 1.0})
+    art = with_row(lambda r: dict(r, artifact=True))
+    assert err["subgroups"] == art["subgroups"] and err["subgroups"]["class"]
+    assert sum(g["errors"] for e in err["exclusions"].values() for g in e.values()) == 1

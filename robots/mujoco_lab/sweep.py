@@ -583,10 +583,11 @@ def summary(runs: list[dict[str, Any]], classes: dict[str, dict[str, Any]], n_bo
     groups: dict[str, dict[str, np.ndarray]] = {"class": {}, "tercile": {}}
     for c, P, p in test_pairs:
         by_key = {_key(r): r for r in P["rows"]}
-        labels = [subgroup(by_key[(str(o), int(i))], classes) for o, i in zip(p["object"], p["idx"])]
+        rows = [by_key[(str(o), int(i))] for o, i in zip(p["object"], p["idx"])]
+        labels = [subgroup(r, classes) if "theta" in r else None for r in rows]      # an error row has no draw, and never counts
         for j, kind in enumerate(("class", "tercile")):
-            for g in sorted({lab[j] for lab in labels}):
-                mask = p["counted"] & np.array([lab[j] == g for lab in labels], dtype=bool)
+            for g in sorted({lab[j] for lab in labels if lab is not None}):
+                mask = p["counted"] & np.array([lab is not None and lab[j] == g for lab in labels], dtype=bool)
                 groups[kind][g] = groups[kind].get(g, np.zeros((len(objects), 4))) + object_sums(p, objects, mask)
     subgroups = {kind: {g: cell_draws(S, W) for g, S in sorted(d.items())} for kind, d in groups.items()}
 
