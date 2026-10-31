@@ -1,0 +1,1919 @@
+{
+ "policy_k10_A10_s0.25_seed14.json": {
+  "key": [
+   "hope__orange_juice_carton",
+   8
+  ],
+  "registered": true,
+  "registered_error": "max() arg is an empty sequence",
+  "same_as_registered": false,
+  "diff_keys": [
+   "abstain_part",
+   "artifact",
+   "attempts",
+   "best_option",
+   "com_end",
+   "cost",
+   "declared",
+   "destination",
+   "ended",
+   "error",
+   "evoi",
+   "fill",
+   "first_menu",
+   "force_noise",
+   "guard",
+   "probe_time_scale",
+   "probes",
+   "protocol",
+   "recommendation",
+   "reset",
+   "theta",
+   "theta_frag",
+   "truth"
+  ],
+  "rerun": {
+   "ended": "damaged",
+   "artifact": true,
+   "cost": 60.0375,
+   "recommendation": "probe",
+   "error": null
+  },
+  "rerun_probes": [
+   {
+    "probe": "squeeze",
+    "kind": "damaged",
+    "thrown": true,
+    "displacement_m": 0.056373538827574426,
+    "tilt_deg": 2.7082416161814593,
+    "artifact": true,
+    "damage": {
+     "label": "crushed",
+     "channel": "force",
+     "t": 1.622
+    },
+    "cost": 50.0375
+   }
+  ]
+ },
+ "policy_k10_A10_s0.25_seed18.json": {
+  "key": [
+   "hope__orange_juice_carton",
+   4
+  ],
+  "registered": true,
+  "registered_error": "max() arg is an empty sequence",
+  "same_as_registered": false,
+  "diff_keys": [
+   "abstain_part",
+   "artifact",
+   "attempts",
+   "best_option",
+   "com_end",
+   "cost",
+   "declared",
+   "destination",
+   "ended",
+   "error",
+   "evoi",
+   "fill",
+   "first_menu",
+   "force_noise",
+   "guard",
+   "probe_time_scale",
+   "probes",
+   "protocol",
+   "recommendation",
+   "reset",
+   "theta",
+   "theta_frag",
+   "truth"
+  ],
+  "rerun": {
+   "ended": "damaged",
+   "artifact": true,
+   "cost": 60.0375,
+   "recommendation": "probe",
+   "error": null
+  },
+  "rerun_probes": [
+   {
+    "probe": "squeeze",
+    "kind": "damaged",
+    "thrown": false,
+    "displacement_m": 0.028031446730412128,
+    "tilt_deg": 8.219038079931082,
+    "artifact": true,
+    "damage": {
+     "label": "crushed",
+     "channel": "force",
+     "t": 1.62
+    },
+    "cost": 50.0375
+   }
+  ]
+ },
+ "policy_k10_A10_s0.25_seed19.json": {
+  "key": [
+   "hope__orange_juice_carton",
+   8
+  ],
+  "registered": true,
+  "registered_error": "max() arg is an empty sequence",
+  "same_as_registered": false,
+  "diff_keys": [
+   "abstain_part",
+   "artifact",
+   "attempts",
+   "best_option",
+   "com_end",
+   "cost",
+   "declared",
+   "destination",
+   "ended",
+   "error",
+   "evoi",
+   "fill",
+   "first_menu",
+   "force_noise",
+   "guard",
+   "probe_time_scale",
+   "probes",
+   "protocol",
+   "recommendation",
+   "reset",
+   "theta",
+   "theta_frag",
+   "truth"
+  ],
+  "rerun": {
+   "ended": "damaged",
+   "artifact": true,
+   "cost": 60.0375,
+   "recommendation": "probe",
+   "error": null
+  },
+  "rerun_probes": [
+   {
+    "probe": "squeeze",
+    "kind": "damaged",
+    "thrown": false,
+    "displacement_m": 0.09802770789507036,
+    "tilt_deg": 90.6045192154143,
+    "artifact": true,
+    "damage": {
+     "label": "crushed",
+     "channel": "force",
+     "t": 1.642
+    },
+    "cost": 50.0375
+   }
+  ]
+ },
+ "policy_k10_A10_s0_seed14.json": {
+  "key": [
+   "hope__orange_juice_carton",
+   8
+  ],
+  "registered": true,
+  "registered_error": "max() arg is an empty sequence",
+  "same_as_registered": false,
+  "diff_keys": [
+   "abstain_part",
+   "artifact",
+   "attempts",
+   "best_option",
+   "com_end",
+   "cost",
+   "declared",
+   "destination",
+   "ended",
+   "error",
+   "evoi",
+   "fill",
+   "first_menu",
+   "force_noise",
+   "guard",
+   "probe_time_scale",
+   "probes",
+   "protocol",
+   "recommendation",
+   "reset",
+   "theta",
+   "theta_frag",
+   "truth"
+  ],
+  "rerun": {
+   "ended": "damaged",
+   "artifact": true,
+   "cost": 60.0,
+   "recommendation": "probe",
+   "error": null
+  },
+  "rerun_probes": [
+   {
+    "probe": "squeeze",
+    "kind": "damaged",
+    "thrown": true,
+    "displacement_m": 0.056373538827574426,
+    "tilt_deg": 2.7082416161814593,
+    "artifact": true,
+    "damage": {
+     "label": "crushed",
+     "channel": "force",
+     "t": 1.622
+    },
+    "cost": 50.0
+   }
+  ]
+ },
+ "policy_k10_A10_s0_seed18.json": {
+  "key": [
+   "hope__orange_juice_carton",
+   4
+  ],
+  "registered": true,
+  "registered_error": "max() arg is an empty sequence",
+  "same_as_registered": false,
+  "diff_keys": [
+   "abstain_part",
+   "artifact",
+   "attempts",
+   "best_option",
+   "com_end",
+   "cost",
+   "declared",
+   "destination",
+   "ended",
+   "error",
+   "evoi",
+   "fill",
+   "first_menu",
+   "force_noise",
+   "guard",
+   "probe_time_scale",
+   "probes",
+   "protocol",
+   "recommendation",
+   "reset",
+   "theta",
+   "theta_frag",
+   "truth"
+  ],
+  "rerun": {
+   "ended": "damaged",
+   "artifact": true,
+   "cost": 60.0,
+   "recommendation": "probe",
+   "error": null
+  },
+  "rerun_probes": [
+   {
+    "probe": "squeeze",
+    "kind": "damaged",
+    "thrown": false,
+    "displacement_m": 0.028031446730412128,
+    "tilt_deg": 8.219038079931082,
+    "artifact": true,
+    "damage": {
+     "label": "crushed",
+     "channel": "force",
+     "t": 1.62
+    },
+    "cost": 50.0
+   }
+  ]
+ },
+ "policy_k10_A10_s0_seed19.json": {
+  "key": [
+   "hope__orange_juice_carton",
+   8
+  ],
+  "registered": true,
+  "registered_error": "max() arg is an empty sequence",
+  "same_as_registered": false,
+  "diff_keys": [
+   "abstain_part",
+   "artifact",
+   "attempts",
+   "best_option",
+   "com_end",
+   "cost",
+   "declared",
+   "destination",
+   "ended",
+   "error",
+   "evoi",
+   "fill",
+   "first_menu",
+   "force_noise",
+   "guard",
+   "probe_time_scale",
+   "probes",
+   "protocol",
+   "recommendation",
+   "reset",
+   "theta",
+   "theta_frag",
+   "truth"
+  ],
+  "rerun": {
+   "ended": "damaged",
+   "artifact": true,
+   "cost": 60.0,
+   "recommendation": "probe",
+   "error": null
+  },
+  "rerun_probes": [
+   {
+    "probe": "squeeze",
+    "kind": "damaged",
+    "thrown": false,
+    "displacement_m": 0.09802770789507036,
+    "tilt_deg": 90.6045192154143,
+    "artifact": true,
+    "damage": {
+     "label": "crushed",
+     "channel": "force",
+     "t": 1.642
+    },
+    "cost": 50.0
+   }
+  ]
+ },
+ "policy_k10_A10_s1_seed14.json": {
+  "key": [
+   "hope__orange_juice_carton",
+   8
+  ],
+  "registered": true,
+  "registered_error": "max() arg is an empty sequence",
+  "same_as_registered": false,
+  "diff_keys": [
+   "abstain_part",
+   "artifact",
+   "attempts",
+   "best_option",
+   "com_end",
+   "cost",
+   "declared",
+   "destination",
+   "ended",
+   "error",
+   "evoi",
+   "fill",
+   "first_menu",
+   "force_noise",
+   "guard",
+   "probe_time_scale",
+   "probes",
+   "protocol",
+   "recommendation",
+   "reset",
+   "theta",
+   "theta_frag",
+   "truth"
+  ],
+  "rerun": {
+   "ended": "damaged",
+   "artifact": true,
+   "cost": 60.15,
+   "recommendation": "probe",
+   "error": null
+  },
+  "rerun_probes": [
+   {
+    "probe": "squeeze",
+    "kind": "damaged",
+    "thrown": true,
+    "displacement_m": 0.056373538827574426,
+    "tilt_deg": 2.7082416161814593,
+    "artifact": true,
+    "damage": {
+     "label": "crushed",
+     "channel": "force",
+     "t": 1.622
+    },
+    "cost": 50.15
+   }
+  ]
+ },
+ "policy_k10_A10_s1_seed18.json": {
+  "key": [
+   "hope__orange_juice_carton",
+   4
+  ],
+  "registered": true,
+  "registered_error": "max() arg is an empty sequence",
+  "same_as_registered": false,
+  "diff_keys": [
+   "abstain_part",
+   "artifact",
+   "attempts",
+   "best_option",
+   "com_end",
+   "cost",
+   "declared",
+   "destination",
+   "ended",
+   "error",
+   "evoi",
+   "fill",
+   "first_menu",
+   "force_noise",
+   "guard",
+   "probe_time_scale",
+   "probes",
+   "protocol",
+   "recommendation",
+   "reset",
+   "theta",
+   "theta_frag",
+   "truth"
+  ],
+  "rerun": {
+   "ended": "damaged",
+   "artifact": true,
+   "cost": 60.15,
+   "recommendation": "probe",
+   "error": null
+  },
+  "rerun_probes": [
+   {
+    "probe": "squeeze",
+    "kind": "damaged",
+    "thrown": false,
+    "displacement_m": 0.028031446730412128,
+    "tilt_deg": 8.219038079931082,
+    "artifact": true,
+    "damage": {
+     "label": "crushed",
+     "channel": "force",
+     "t": 1.62
+    },
+    "cost": 50.15
+   }
+  ]
+ },
+ "policy_k10_A10_s1_seed19.json": {
+  "key": [
+   "hope__orange_juice_carton",
+   8
+  ],
+  "registered": true,
+  "registered_error": "max() arg is an empty sequence",
+  "same_as_registered": false,
+  "diff_keys": [
+   "abstain_part",
+   "artifact",
+   "attempts",
+   "best_option",
+   "com_end",
+   "cost",
+   "declared",
+   "destination",
+   "ended",
+   "error",
+   "evoi",
+   "fill",
+   "first_menu",
+   "force_noise",
+   "guard",
+   "probe_time_scale",
+   "probes",
+   "protocol",
+   "recommendation",
+   "reset",
+   "theta",
+   "theta_frag",
+   "truth"
+  ],
+  "rerun": {
+   "ended": "damaged",
+   "artifact": true,
+   "cost": 60.15,
+   "recommendation": "probe",
+   "error": null
+  },
+  "rerun_probes": [
+   {
+    "probe": "squeeze",
+    "kind": "damaged",
+    "thrown": false,
+    "displacement_m": 0.09802770789507036,
+    "tilt_deg": 90.6045192154143,
+    "artifact": true,
+    "damage": {
+     "label": "crushed",
+     "channel": "force",
+     "t": 1.642
+    },
+    "cost": 50.15
+   }
+  ]
+ },
+ "policy_k10_A3_s0.25_seed14.json": {
+  "key": [
+   "hope__orange_juice_carton",
+   8
+  ],
+  "registered": true,
+  "registered_error": "max() arg is an empty sequence",
+  "same_as_registered": false,
+  "diff_keys": [
+   "abstain_part",
+   "artifact",
+   "attempts",
+   "best_option",
+   "com_end",
+   "cost",
+   "declared",
+   "destination",
+   "ended",
+   "error",
+   "evoi",
+   "fill",
+   "first_menu",
+   "force_noise",
+   "guard",
+   "probe_time_scale",
+   "probes",
+   "protocol",
+   "recommendation",
+   "reset",
+   "theta",
+   "theta_frag",
+   "truth"
+  ],
+  "rerun": {
+   "ended": "damaged",
+   "artifact": true,
+   "cost": 53.0375,
+   "recommendation": "probe",
+   "error": null
+  },
+  "rerun_probes": [
+   {
+    "probe": "squeeze",
+    "kind": "damaged",
+    "thrown": true,
+    "displacement_m": 0.056373538827574426,
+    "tilt_deg": 2.7082416161814593,
+    "artifact": true,
+    "damage": {
+     "label": "crushed",
+     "channel": "force",
+     "t": 1.622
+    },
+    "cost": 50.0375
+   }
+  ]
+ },
+ "policy_k10_A3_s0.25_seed18.json": {
+  "key": [
+   "hope__orange_juice_carton",
+   4
+  ],
+  "registered": true,
+  "registered_error": "max() arg is an empty sequence",
+  "same_as_registered": false,
+  "diff_keys": [
+   "abstain_part",
+   "artifact",
+   "attempts",
+   "best_option",
+   "com_end",
+   "cost",
+   "declared",
+   "destination",
+   "ended",
+   "error",
+   "evoi",
+   "fill",
+   "first_menu",
+   "force_noise",
+   "guard",
+   "probe_time_scale",
+   "probes",
+   "protocol",
+   "recommendation",
+   "reset",
+   "theta",
+   "theta_frag",
+   "truth"
+  ],
+  "rerun": {
+   "ended": "damaged",
+   "artifact": true,
+   "cost": 53.0375,
+   "recommendation": "probe",
+   "error": null
+  },
+  "rerun_probes": [
+   {
+    "probe": "squeeze",
+    "kind": "damaged",
+    "thrown": false,
+    "displacement_m": 0.028031446730412128,
+    "tilt_deg": 8.219038079931082,
+    "artifact": true,
+    "damage": {
+     "label": "crushed",
+     "channel": "force",
+     "t": 1.62
+    },
+    "cost": 50.0375
+   }
+  ]
+ },
+ "policy_k10_A3_s0.25_seed19.json": {
+  "key": [
+   "hope__orange_juice_carton",
+   8
+  ],
+  "registered": true,
+  "registered_error": "max() arg is an empty sequence",
+  "same_as_registered": false,
+  "diff_keys": [
+   "abstain_part",
+   "artifact",
+   "attempts",
+   "best_option",
+   "com_end",
+   "cost",
+   "declared",
+   "destination",
+   "ended",
+   "error",
+   "evoi",
+   "fill",
+   "first_menu",
+   "force_noise",
+   "guard",
+   "probe_time_scale",
+   "probes",
+   "protocol",
+   "recommendation",
+   "reset",
+   "theta",
+   "theta_frag",
+   "truth"
+  ],
+  "rerun": {
+   "ended": "damaged",
+   "artifact": true,
+   "cost": 53.0375,
+   "recommendation": "probe",
+   "error": null
+  },
+  "rerun_probes": [
+   {
+    "probe": "squeeze",
+    "kind": "damaged",
+    "thrown": false,
+    "displacement_m": 0.09802770789507036,
+    "tilt_deg": 90.6045192154143,
+    "artifact": true,
+    "damage": {
+     "label": "crushed",
+     "channel": "force",
+     "t": 1.642
+    },
+    "cost": 50.0375
+   }
+  ]
+ },
+ "policy_k10_A3_s0_seed14.json": {
+  "key": [
+   "hope__orange_juice_carton",
+   8
+  ],
+  "registered": true,
+  "registered_error": "max() arg is an empty sequence",
+  "same_as_registered": false,
+  "diff_keys": [
+   "abstain_part",
+   "artifact",
+   "attempts",
+   "best_option",
+   "com_end",
+   "cost",
+   "declared",
+   "destination",
+   "ended",
+   "error",
+   "evoi",
+   "fill",
+   "first_menu",
+   "force_noise",
+   "guard",
+   "probe_time_scale",
+   "probes",
+   "protocol",
+   "recommendation",
+   "reset",
+   "theta",
+   "theta_frag",
+   "truth"
+  ],
+  "rerun": {
+   "ended": "damaged",
+   "artifact": true,
+   "cost": 53.0,
+   "recommendation": "probe",
+   "error": null
+  },
+  "rerun_probes": [
+   {
+    "probe": "squeeze",
+    "kind": "damaged",
+    "thrown": true,
+    "displacement_m": 0.056373538827574426,
+    "tilt_deg": 2.7082416161814593,
+    "artifact": true,
+    "damage": {
+     "label": "crushed",
+     "channel": "force",
+     "t": 1.622
+    },
+    "cost": 50.0
+   }
+  ]
+ },
+ "policy_k10_A3_s0_seed18.json": {
+  "key": [
+   "hope__orange_juice_carton",
+   4
+  ],
+  "registered": true,
+  "registered_error": "max() arg is an empty sequence",
+  "same_as_registered": false,
+  "diff_keys": [
+   "abstain_part",
+   "artifact",
+   "attempts",
+   "best_option",
+   "com_end",
+   "cost",
+   "declared",
+   "destination",
+   "ended",
+   "error",
+   "evoi",
+   "fill",
+   "first_menu",
+   "force_noise",
+   "guard",
+   "probe_time_scale",
+   "probes",
+   "protocol",
+   "recommendation",
+   "reset",
+   "theta",
+   "theta_frag",
+   "truth"
+  ],
+  "rerun": {
+   "ended": "damaged",
+   "artifact": true,
+   "cost": 53.0,
+   "recommendation": "probe",
+   "error": null
+  },
+  "rerun_probes": [
+   {
+    "probe": "squeeze",
+    "kind": "damaged",
+    "thrown": false,
+    "displacement_m": 0.028031446730412128,
+    "tilt_deg": 8.219038079931082,
+    "artifact": true,
+    "damage": {
+     "label": "crushed",
+     "channel": "force",
+     "t": 1.62
+    },
+    "cost": 50.0
+   }
+  ]
+ },
+ "policy_k10_A3_s0_seed19.json": {
+  "key": [
+   "hope__orange_juice_carton",
+   8
+  ],
+  "registered": true,
+  "registered_error": "max() arg is an empty sequence",
+  "same_as_registered": false,
+  "diff_keys": [
+   "abstain_part",
+   "artifact",
+   "attempts",
+   "best_option",
+   "com_end",
+   "cost",
+   "declared",
+   "destination",
+   "ended",
+   "error",
+   "evoi",
+   "fill",
+   "first_menu",
+   "force_noise",
+   "guard",
+   "probe_time_scale",
+   "probes",
+   "protocol",
+   "recommendation",
+   "reset",
+   "theta",
+   "theta_frag",
+   "truth"
+  ],
+  "rerun": {
+   "ended": "damaged",
+   "artifact": true,
+   "cost": 53.0,
+   "recommendation": "probe",
+   "error": null
+  },
+  "rerun_probes": [
+   {
+    "probe": "squeeze",
+    "kind": "damaged",
+    "thrown": false,
+    "displacement_m": 0.09802770789507036,
+    "tilt_deg": 90.6045192154143,
+    "artifact": true,
+    "damage": {
+     "label": "crushed",
+     "channel": "force",
+     "t": 1.642
+    },
+    "cost": 50.0
+   }
+  ]
+ },
+ "policy_k10_A3_s1_seed14.json": {
+  "key": [
+   "hope__orange_juice_carton",
+   8
+  ],
+  "registered": true,
+  "registered_error": "max() arg is an empty sequence",
+  "same_as_registered": false,
+  "diff_keys": [
+   "abstain_part",
+   "artifact",
+   "attempts",
+   "best_option",
+   "com_end",
+   "cost",
+   "declared",
+   "destination",
+   "ended",
+   "error",
+   "evoi",
+   "fill",
+   "first_menu",
+   "force_noise",
+   "guard",
+   "probe_time_scale",
+   "probes",
+   "protocol",
+   "recommendation",
+   "reset",
+   "theta",
+   "theta_frag",
+   "truth"
+  ],
+  "rerun": {
+   "ended": "damaged",
+   "artifact": true,
+   "cost": 53.15,
+   "recommendation": "probe",
+   "error": null
+  },
+  "rerun_probes": [
+   {
+    "probe": "squeeze",
+    "kind": "damaged",
+    "thrown": true,
+    "displacement_m": 0.056373538827574426,
+    "tilt_deg": 2.7082416161814593,
+    "artifact": true,
+    "damage": {
+     "label": "crushed",
+     "channel": "force",
+     "t": 1.622
+    },
+    "cost": 50.15
+   }
+  ]
+ },
+ "policy_k10_A3_s1_seed18.json": {
+  "key": [
+   "hope__orange_juice_carton",
+   4
+  ],
+  "registered": true,
+  "registered_error": "max() arg is an empty sequence",
+  "same_as_registered": false,
+  "diff_keys": [
+   "abstain_part",
+   "artifact",
+   "attempts",
+   "best_option",
+   "com_end",
+   "cost",
+   "declared",
+   "destination",
+   "ended",
+   "error",
+   "evoi",
+   "fill",
+   "first_menu",
+   "force_noise",
+   "guard",
+   "probe_time_scale",
+   "probes",
+   "protocol",
+   "recommendation",
+   "reset",
+   "theta",
+   "theta_frag",
+   "truth"
+  ],
+  "rerun": {
+   "ended": "damaged",
+   "artifact": true,
+   "cost": 53.15,
+   "recommendation": "probe",
+   "error": null
+  },
+  "rerun_probes": [
+   {
+    "probe": "squeeze",
+    "kind": "damaged",
+    "thrown": false,
+    "displacement_m": 0.028031446730412128,
+    "tilt_deg": 8.219038079931082,
+    "artifact": true,
+    "damage": {
+     "label": "crushed",
+     "channel": "force",
+     "t": 1.62
+    },
+    "cost": 50.15
+   }
+  ]
+ },
+ "policy_k10_A3_s1_seed19.json": {
+  "key": [
+   "hope__orange_juice_carton",
+   8
+  ],
+  "registered": true,
+  "registered_error": "max() arg is an empty sequence",
+  "same_as_registered": false,
+  "diff_keys": [
+   "abstain_part",
+   "artifact",
+   "attempts",
+   "best_option",
+   "com_end",
+   "cost",
+   "declared",
+   "destination",
+   "ended",
+   "error",
+   "evoi",
+   "fill",
+   "first_menu",
+   "force_noise",
+   "guard",
+   "probe_time_scale",
+   "probes",
+   "protocol",
+   "recommendation",
+   "reset",
+   "theta",
+   "theta_frag",
+   "truth"
+  ],
+  "rerun": {
+   "ended": "damaged",
+   "artifact": true,
+   "cost": 53.15,
+   "recommendation": "probe",
+   "error": null
+  },
+  "rerun_probes": [
+   {
+    "probe": "squeeze",
+    "kind": "damaged",
+    "thrown": false,
+    "displacement_m": 0.09802770789507036,
+    "tilt_deg": 90.6045192154143,
+    "artifact": true,
+    "damage": {
+     "label": "crushed",
+     "channel": "force",
+     "t": 1.642
+    },
+    "cost": 50.15
+   }
+  ]
+ },
+ "policy_k30_A10_s0.25_seed14.json": {
+  "key": [
+   "hope__orange_juice_carton",
+   8
+  ],
+  "registered": true,
+  "registered_error": "max() arg is an empty sequence",
+  "same_as_registered": false,
+  "diff_keys": [
+   "abstain_part",
+   "artifact",
+   "attempts",
+   "best_option",
+   "com_end",
+   "cost",
+   "declared",
+   "destination",
+   "ended",
+   "error",
+   "evoi",
+   "fill",
+   "first_menu",
+   "force_noise",
+   "guard",
+   "probe_time_scale",
+   "probes",
+   "protocol",
+   "recommendation",
+   "reset",
+   "theta",
+   "theta_frag",
+   "truth"
+  ],
+  "rerun": {
+   "ended": "damaged",
+   "artifact": true,
+   "cost": 160.0375,
+   "recommendation": "probe",
+   "error": null
+  },
+  "rerun_probes": [
+   {
+    "probe": "squeeze",
+    "kind": "damaged",
+    "thrown": true,
+    "displacement_m": 0.056373538827574426,
+    "tilt_deg": 2.7082416161814593,
+    "artifact": true,
+    "damage": {
+     "label": "crushed",
+     "channel": "force",
+     "t": 1.622
+    },
+    "cost": 150.0375
+   }
+  ]
+ },
+ "policy_k30_A10_s0.25_seed18.json": {
+  "key": [
+   "hope__orange_juice_carton",
+   4
+  ],
+  "registered": true,
+  "registered_error": "max() arg is an empty sequence",
+  "same_as_registered": false,
+  "diff_keys": [
+   "abstain_part",
+   "artifact",
+   "attempts",
+   "best_option",
+   "com_end",
+   "cost",
+   "declared",
+   "destination",
+   "ended",
+   "error",
+   "evoi",
+   "fill",
+   "first_menu",
+   "force_noise",
+   "guard",
+   "probe_time_scale",
+   "probes",
+   "protocol",
+   "recommendation",
+   "reset",
+   "theta",
+   "theta_frag",
+   "truth"
+  ],
+  "rerun": {
+   "ended": "damaged",
+   "artifact": true,
+   "cost": 160.0375,
+   "recommendation": "probe",
+   "error": null
+  },
+  "rerun_probes": [
+   {
+    "probe": "squeeze",
+    "kind": "damaged",
+    "thrown": false,
+    "displacement_m": 0.028031446730412128,
+    "tilt_deg": 8.219038079931082,
+    "artifact": true,
+    "damage": {
+     "label": "crushed",
+     "channel": "force",
+     "t": 1.62
+    },
+    "cost": 150.0375
+   }
+  ]
+ },
+ "policy_k30_A10_s0.25_seed19.json": {
+  "key": [
+   "hope__orange_juice_carton",
+   8
+  ],
+  "registered": true,
+  "registered_error": "max() arg is an empty sequence",
+  "same_as_registered": false,
+  "diff_keys": [
+   "abstain_part",
+   "artifact",
+   "attempts",
+   "best_option",
+   "com_end",
+   "cost",
+   "declared",
+   "destination",
+   "ended",
+   "error",
+   "evoi",
+   "fill",
+   "first_menu",
+   "force_noise",
+   "guard",
+   "probe_time_scale",
+   "probes",
+   "protocol",
+   "recommendation",
+   "reset",
+   "theta",
+   "theta_frag",
+   "truth"
+  ],
+  "rerun": {
+   "ended": "damaged",
+   "artifact": true,
+   "cost": 160.0375,
+   "recommendation": "probe",
+   "error": null
+  },
+  "rerun_probes": [
+   {
+    "probe": "squeeze",
+    "kind": "damaged",
+    "thrown": false,
+    "displacement_m": 0.09802770789507036,
+    "tilt_deg": 90.6045192154143,
+    "artifact": true,
+    "damage": {
+     "label": "crushed",
+     "channel": "force",
+     "t": 1.642
+    },
+    "cost": 150.0375
+   }
+  ]
+ },
+ "policy_k30_A10_s0_seed14.json": {
+  "key": [
+   "hope__orange_juice_carton",
+   8
+  ],
+  "registered": true,
+  "registered_error": "max() arg is an empty sequence",
+  "same_as_registered": false,
+  "diff_keys": [
+   "abstain_part",
+   "artifact",
+   "attempts",
+   "best_option",
+   "com_end",
+   "cost",
+   "declared",
+   "destination",
+   "ended",
+   "error",
+   "evoi",
+   "fill",
+   "first_menu",
+   "force_noise",
+   "guard",
+   "probe_time_scale",
+   "probes",
+   "protocol",
+   "recommendation",
+   "reset",
+   "theta",
+   "theta_frag",
+   "truth"
+  ],
+  "rerun": {
+   "ended": "damaged",
+   "artifact": true,
+   "cost": 160.0,
+   "recommendation": "probe",
+   "error": null
+  },
+  "rerun_probes": [
+   {
+    "probe": "squeeze",
+    "kind": "damaged",
+    "thrown": true,
+    "displacement_m": 0.056373538827574426,
+    "tilt_deg": 2.7082416161814593,
+    "artifact": true,
+    "damage": {
+     "label": "crushed",
+     "channel": "force",
+     "t": 1.622
+    },
+    "cost": 150.0
+   }
+  ]
+ },
+ "policy_k30_A10_s0_seed18.json": {
+  "key": [
+   "hope__orange_juice_carton",
+   4
+  ],
+  "registered": true,
+  "registered_error": "max() arg is an empty sequence",
+  "same_as_registered": false,
+  "diff_keys": [
+   "abstain_part",
+   "artifact",
+   "attempts",
+   "best_option",
+   "com_end",
+   "cost",
+   "declared",
+   "destination",
+   "ended",
+   "error",
+   "evoi",
+   "fill",
+   "first_menu",
+   "force_noise",
+   "guard",
+   "probe_time_scale",
+   "probes",
+   "protocol",
+   "recommendation",
+   "reset",
+   "theta",
+   "theta_frag",
+   "truth"
+  ],
+  "rerun": {
+   "ended": "damaged",
+   "artifact": true,
+   "cost": 160.0,
+   "recommendation": "probe",
+   "error": null
+  },
+  "rerun_probes": [
+   {
+    "probe": "squeeze",
+    "kind": "damaged",
+    "thrown": false,
+    "displacement_m": 0.028031446730412128,
+    "tilt_deg": 8.219038079931082,
+    "artifact": true,
+    "damage": {
+     "label": "crushed",
+     "channel": "force",
+     "t": 1.62
+    },
+    "cost": 150.0
+   }
+  ]
+ },
+ "policy_k30_A10_s0_seed19.json": {
+  "key": [
+   "hope__orange_juice_carton",
+   8
+  ],
+  "registered": true,
+  "registered_error": "max() arg is an empty sequence",
+  "same_as_registered": false,
+  "diff_keys": [
+   "abstain_part",
+   "artifact",
+   "attempts",
+   "best_option",
+   "com_end",
+   "cost",
+   "declared",
+   "destination",
+   "ended",
+   "error",
+   "evoi",
+   "fill",
+   "first_menu",
+   "force_noise",
+   "guard",
+   "probe_time_scale",
+   "probes",
+   "protocol",
+   "recommendation",
+   "reset",
+   "theta",
+   "theta_frag",
+   "truth"
+  ],
+  "rerun": {
+   "ended": "damaged",
+   "artifact": true,
+   "cost": 160.0,
+   "recommendation": "probe",
+   "error": null
+  },
+  "rerun_probes": [
+   {
+    "probe": "squeeze",
+    "kind": "damaged",
+    "thrown": false,
+    "displacement_m": 0.09802770789507036,
+    "tilt_deg": 90.6045192154143,
+    "artifact": true,
+    "damage": {
+     "label": "crushed",
+     "channel": "force",
+     "t": 1.642
+    },
+    "cost": 150.0
+   }
+  ]
+ },
+ "policy_k30_A10_s1_seed14.json": {
+  "key": [
+   "hope__orange_juice_carton",
+   8
+  ],
+  "registered": true,
+  "registered_error": "max() arg is an empty sequence",
+  "same_as_registered": false,
+  "diff_keys": [
+   "abstain_part",
+   "artifact",
+   "attempts",
+   "best_option",
+   "com_end",
+   "cost",
+   "declared",
+   "destination",
+   "ended",
+   "error",
+   "evoi",
+   "fill",
+   "first_menu",
+   "force_noise",
+   "guard",
+   "probe_time_scale",
+   "probes",
+   "protocol",
+   "recommendation",
+   "reset",
+   "theta",
+   "theta_frag",
+   "truth"
+  ],
+  "rerun": {
+   "ended": "damaged",
+   "artifact": true,
+   "cost": 160.15,
+   "recommendation": "probe",
+   "error": null
+  },
+  "rerun_probes": [
+   {
+    "probe": "squeeze",
+    "kind": "damaged",
+    "thrown": true,
+    "displacement_m": 0.056373538827574426,
+    "tilt_deg": 2.7082416161814593,
+    "artifact": true,
+    "damage": {
+     "label": "crushed",
+     "channel": "force",
+     "t": 1.622
+    },
+    "cost": 150.15
+   }
+  ]
+ },
+ "policy_k30_A10_s1_seed18.json": {
+  "key": [
+   "hope__orange_juice_carton",
+   4
+  ],
+  "registered": true,
+  "registered_error": "max() arg is an empty sequence",
+  "same_as_registered": false,
+  "diff_keys": [
+   "abstain_part",
+   "artifact",
+   "attempts",
+   "best_option",
+   "com_end",
+   "cost",
+   "declared",
+   "destination",
+   "ended",
+   "error",
+   "evoi",
+   "fill",
+   "first_menu",
+   "force_noise",
+   "guard",
+   "probe_time_scale",
+   "probes",
+   "protocol",
+   "recommendation",
+   "reset",
+   "theta",
+   "theta_frag",
+   "truth"
+  ],
+  "rerun": {
+   "ended": "damaged",
+   "artifact": true,
+   "cost": 160.15,
+   "recommendation": "probe",
+   "error": null
+  },
+  "rerun_probes": [
+   {
+    "probe": "squeeze",
+    "kind": "damaged",
+    "thrown": false,
+    "displacement_m": 0.028031446730412128,
+    "tilt_deg": 8.219038079931082,
+    "artifact": true,
+    "damage": {
+     "label": "crushed",
+     "channel": "force",
+     "t": 1.62
+    },
+    "cost": 150.15
+   }
+  ]
+ },
+ "policy_k30_A10_s1_seed19.json": {
+  "key": [
+   "hope__orange_juice_carton",
+   8
+  ],
+  "registered": true,
+  "registered_error": "max() arg is an empty sequence",
+  "same_as_registered": false,
+  "diff_keys": [
+   "abstain_part",
+   "artifact",
+   "attempts",
+   "best_option",
+   "com_end",
+   "cost",
+   "declared",
+   "destination",
+   "ended",
+   "error",
+   "evoi",
+   "fill",
+   "first_menu",
+   "force_noise",
+   "guard",
+   "probe_time_scale",
+   "probes",
+   "protocol",
+   "recommendation",
+   "reset",
+   "theta",
+   "theta_frag",
+   "truth"
+  ],
+  "rerun": {
+   "ended": "damaged",
+   "artifact": true,
+   "cost": 160.15,
+   "recommendation": "probe",
+   "error": null
+  },
+  "rerun_probes": [
+   {
+    "probe": "squeeze",
+    "kind": "damaged",
+    "thrown": false,
+    "displacement_m": 0.09802770789507036,
+    "tilt_deg": 90.6045192154143,
+    "artifact": true,
+    "damage": {
+     "label": "crushed",
+     "channel": "force",
+     "t": 1.642
+    },
+    "cost": 150.15
+   }
+  ]
+ },
+ "policy_k30_A3_s0.25_seed14.json": {
+  "key": [
+   "hope__orange_juice_carton",
+   8
+  ],
+  "registered": true,
+  "registered_error": null,
+  "same_as_registered": true,
+  "diff_keys": [],
+  "rerun": {
+   "ended": "abstained",
+   "artifact": false,
+   "cost": 3.0,
+   "recommendation": "decline",
+   "error": null
+  },
+  "rerun_probes": []
+ },
+ "policy_k30_A3_s0.25_seed18.json": {
+  "key": [
+   "hope__orange_juice_carton",
+   4
+  ],
+  "registered": true,
+  "registered_error": null,
+  "same_as_registered": true,
+  "diff_keys": [],
+  "rerun": {
+   "ended": "abstained",
+   "artifact": false,
+   "cost": 3.0,
+   "recommendation": "decline",
+   "error": null
+  },
+  "rerun_probes": []
+ },
+ "policy_k30_A3_s0.25_seed19.json": {
+  "key": [
+   "hope__orange_juice_carton",
+   8
+  ],
+  "registered": true,
+  "registered_error": null,
+  "same_as_registered": true,
+  "diff_keys": [],
+  "rerun": {
+   "ended": "abstained",
+   "artifact": false,
+   "cost": 3.0,
+   "recommendation": "decline",
+   "error": null
+  },
+  "rerun_probes": []
+ },
+ "policy_k30_A3_s0_seed14.json": {
+  "key": [
+   "hope__orange_juice_carton",
+   8
+  ],
+  "registered": true,
+  "registered_error": null,
+  "same_as_registered": true,
+  "diff_keys": [],
+  "rerun": {
+   "ended": "abstained",
+   "artifact": false,
+   "cost": 3.0,
+   "recommendation": "decline",
+   "error": null
+  },
+  "rerun_probes": []
+ },
+ "policy_k30_A3_s0_seed18.json": {
+  "key": [
+   "hope__orange_juice_carton",
+   4
+  ],
+  "registered": true,
+  "registered_error": null,
+  "same_as_registered": true,
+  "diff_keys": [],
+  "rerun": {
+   "ended": "abstained",
+   "artifact": false,
+   "cost": 3.0,
+   "recommendation": "decline",
+   "error": null
+  },
+  "rerun_probes": []
+ },
+ "policy_k30_A3_s0_seed19.json": {
+  "key": [
+   "hope__orange_juice_carton",
+   8
+  ],
+  "registered": true,
+  "registered_error": null,
+  "same_as_registered": true,
+  "diff_keys": [],
+  "rerun": {
+   "ended": "abstained",
+   "artifact": false,
+   "cost": 3.0,
+   "recommendation": "decline",
+   "error": null
+  },
+  "rerun_probes": []
+ },
+ "policy_k30_A3_s1_seed14.json": {
+  "key": [
+   "hope__orange_juice_carton",
+   8
+  ],
+  "registered": true,
+  "registered_error": null,
+  "same_as_registered": true,
+  "diff_keys": [],
+  "rerun": {
+   "ended": "abstained",
+   "artifact": false,
+   "cost": 3.0,
+   "recommendation": "decline",
+   "error": null
+  },
+  "rerun_probes": []
+ },
+ "policy_k30_A3_s1_seed18.json": {
+  "key": [
+   "hope__orange_juice_carton",
+   4
+  ],
+  "registered": true,
+  "registered_error": null,
+  "same_as_registered": true,
+  "diff_keys": [],
+  "rerun": {
+   "ended": "abstained",
+   "artifact": false,
+   "cost": 3.0,
+   "recommendation": "decline",
+   "error": null
+  },
+  "rerun_probes": []
+ },
+ "policy_k30_A3_s1_seed19.json": {
+  "key": [
+   "hope__orange_juice_carton",
+   8
+  ],
+  "registered": true,
+  "registered_error": null,
+  "same_as_registered": true,
+  "diff_keys": [],
+  "rerun": {
+   "ended": "abstained",
+   "artifact": false,
+   "cost": 3.0,
+   "recommendation": "decline",
+   "error": null
+  },
+  "rerun_probes": []
+ },
+ "policy_no_probe_k10_A10_s1_seed14_cases.json": {
+  "key": [
+   "hope__orange_juice_carton",
+   8
+  ],
+  "registered": false,
+  "registered_error": null,
+  "same_as_registered": null,
+  "diff_keys": null,
+  "rerun": {
+   "ended": "failed",
+   "artifact": true,
+   "cost": 60.4,
+   "recommendation": "probe",
+   "error": null
+  },
+  "rerun_probes": []
+ },
+ "policy_no_probe_k10_A10_s1_seed18_cases.json": {
+  "key": [
+   "hope__orange_juice_carton",
+   4
+  ],
+  "registered": false,
+  "registered_error": null,
+  "same_as_registered": null,
+  "diff_keys": null,
+  "rerun": {
+   "ended": "placed",
+   "artifact": false,
+   "cost": 0.4,
+   "recommendation": "probe",
+   "error": null
+  },
+  "rerun_probes": []
+ },
+ "policy_no_probe_k10_A10_s1_seed19_cases.json": {
+  "key": [
+   "hope__orange_juice_carton",
+   8
+  ],
+  "registered": false,
+  "registered_error": null,
+  "same_as_registered": null,
+  "diff_keys": null,
+  "rerun": {
+   "ended": "placed",
+   "artifact": false,
+   "cost": 0.4,
+   "recommendation": "probe",
+   "error": null
+  },
+  "rerun_probes": []
+ },
+ "policy_no_probe_k10_A3_s1_seed14_cases.json": {
+  "key": [
+   "hope__orange_juice_carton",
+   8
+  ],
+  "registered": false,
+  "registered_error": null,
+  "same_as_registered": null,
+  "diff_keys": null,
+  "rerun": {
+   "ended": "failed",
+   "artifact": true,
+   "cost": 53.4,
+   "recommendation": "probe",
+   "error": null
+  },
+  "rerun_probes": []
+ },
+ "policy_no_probe_k10_A3_s1_seed18_cases.json": {
+  "key": [
+   "hope__orange_juice_carton",
+   4
+  ],
+  "registered": false,
+  "registered_error": null,
+  "same_as_registered": null,
+  "diff_keys": null,
+  "rerun": {
+   "ended": "placed",
+   "artifact": false,
+   "cost": 0.4,
+   "recommendation": "probe",
+   "error": null
+  },
+  "rerun_probes": []
+ },
+ "policy_no_probe_k10_A3_s1_seed19_cases.json": {
+  "key": [
+   "hope__orange_juice_carton",
+   8
+  ],
+  "registered": false,
+  "registered_error": null,
+  "same_as_registered": null,
+  "diff_keys": null,
+  "rerun": {
+   "ended": "placed",
+   "artifact": false,
+   "cost": 0.4,
+   "recommendation": "probe",
+   "error": null
+  },
+  "rerun_probes": []
+ },
+ "policy_no_probe_k30_A10_s1_seed14_cases.json": {
+  "key": [
+   "hope__orange_juice_carton",
+   8
+  ],
+  "registered": false,
+  "registered_error": null,
+  "same_as_registered": null,
+  "diff_keys": null,
+  "rerun": {
+   "ended": "failed",
+   "artifact": true,
+   "cost": 160.4,
+   "recommendation": "probe",
+   "error": null
+  },
+  "rerun_probes": []
+ },
+ "policy_no_probe_k30_A10_s1_seed18_cases.json": {
+  "key": [
+   "hope__orange_juice_carton",
+   4
+  ],
+  "registered": false,
+  "registered_error": null,
+  "same_as_registered": null,
+  "diff_keys": null,
+  "rerun": {
+   "ended": "placed",
+   "artifact": false,
+   "cost": 0.4,
+   "recommendation": "probe",
+   "error": null
+  },
+  "rerun_probes": []
+ },
+ "policy_no_probe_k30_A10_s1_seed19_cases.json": {
+  "key": [
+   "hope__orange_juice_carton",
+   8
+  ],
+  "registered": false,
+  "registered_error": null,
+  "same_as_registered": null,
+  "diff_keys": null,
+  "rerun": {
+   "ended": "placed",
+   "artifact": false,
+   "cost": 0.4,
+   "recommendation": "probe",
+   "error": null
+  },
+  "rerun_probes": []
+ },
+ "policy_no_probe_k30_A3_s1_seed14_cases.json": {
+  "key": [
+   "hope__orange_juice_carton",
+   8
+  ],
+  "registered": false,
+  "registered_error": null,
+  "same_as_registered": null,
+  "diff_keys": null,
+  "rerun": {
+   "ended": "abstained",
+   "artifact": false,
+   "cost": 3.0,
+   "recommendation": "decline",
+   "error": null
+  },
+  "rerun_probes": []
+ },
+ "policy_no_probe_k30_A3_s1_seed18_cases.json": {
+  "key": [
+   "hope__orange_juice_carton",
+   4
+  ],
+  "registered": false,
+  "registered_error": null,
+  "same_as_registered": null,
+  "diff_keys": null,
+  "rerun": {
+   "ended": "abstained",
+   "artifact": false,
+   "cost": 3.0,
+   "recommendation": "decline",
+   "error": null
+  },
+  "rerun_probes": []
+ },
+ "policy_no_probe_k30_A3_s1_seed19_cases.json": {
+  "key": [
+   "hope__orange_juice_carton",
+   8
+  ],
+  "registered": false,
+  "registered_error": null,
+  "same_as_registered": null,
+  "diff_keys": null,
+  "rerun": {
+   "ended": "abstained",
+   "artifact": false,
+   "cost": 3.0,
+   "recommendation": "decline",
+   "error": null
+  },
+  "rerun_probes": []
+ }
+}
