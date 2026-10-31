@@ -17,16 +17,21 @@
 common cohort, contrasts, interactions, power, gates and summary over calibrate outputs (plan
 ``plans/2026-10-31-grasp-place-h3-recoverability-uncertainty-plan.md`` in daily-logs).
 
-A condition is a recovery level (absorbing, rec20, rec0: calibrate ``--reset-s`` none, 20, 0) and a spread (wide f = 1,
-narrow f = 0.25), all at the one cost cell κ = 10, A = 10, s = 1. Each condition and seed has four arms: never
+A condition is a recovery level (absorbing, rec20, rec0: calibrate ``--reset-s`` none, 20, 0; Addendum A1's rec_hi,
+``--reset-s 0 --reset-price care``: restored, but each irreversible event costs the absorbing 5κ) and a spread (wide
+f = 1, narrow f = 0.25; Addendum A2's narrowT_wideB: the narrow truth, ``--truth-spread 0.25``, under the wide prior,
+``--prior-spread 1``). Ten conditions: the 3 × 2 design, rec_hi × (wide, narrow) and (absorbing, rec20) ×
+narrowT_wideB, all at the one cost cell κ = 10, A = 10, s = 1. Each condition and seed has four arms: never
 (policy_no_probe), probe_once, sham_once and the policy. At the verdict seeds the policy runs on the never arm's probe
 cases only (``calibrate --cases``), and full_policy rebuilds the full run: every other case takes its never row (gate G1).
 Every contrast is a mean over one common cohort, the cases (object, idx, seed) counted (no error, no artifact) in every
 arm and every condition of their seed, so D = I + M holds case by case and the cells of an interaction share their
 cases. Intervals are 95 % percentile intervals of one joint object bootstrap (sweep.bootstrap_weights): one multiplicity
-per object for every seed, condition and arm, every contrast and interaction recomputed inside each draw.
+per object for every seed, condition and arm, every contrast and interaction recomputed inside each draw. Four
+verdicts (X_D, X_I, X_T, X_M*), each by its 95 % interval; Holm over their bootstrap p is the sensitivity row.
 
-    python -P -m robots.mujoco_lab.h3 valid FILE --revision R --protocol P --reset-s X --spread F --seed S (--n N | --cases F)
+    python -P -m robots.mujoco_lab.h3 valid FILE --revision R --protocol P --reset-s X --reset-price {time,care} --truth-spread F
+        --prior-spread F --seed S (--n N | --cases F)
     python -P -m robots.mujoco_lab.h3 cases --never FILE --out F
     python -P -m robots.mujoco_lab.h3 gates --dir D --m4-dir M --out F
     python -P -m robots.mujoco_lab.h3 power --dir D --out F
@@ -56,12 +61,26 @@ from rpent.skills.pick_place.probes import DAMAGED
 from rpent.skills.pick_place.protocol import IRREVERSIBLE
 
 CARE, ABSTAIN, SCALE = 10.0, 10.0, 1.0                          # decision 2: the one cost cell (5κ + A = 60)
-RECOVERY = {"absorbing": None, "rec20": 20.0, "rec0": 0.0}      # decision 3: calibrate --reset-s (None: absorbing)
-SPREAD = {"wide": 1.0, "narrow": 0.25}                          # decision 4: calibrate --spread
-CONDITIONS = tuple((r, u) for r in RECOVERY for u in SPREAD)
+RECOVERY = {"absorbing": (None, "time"), "rec20": (20.0, "time"), "rec0": (0.0, "time"),   # decision 3, Addendum A1: calibrate
+            "rec_hi": (0.0, "care")}                                                  # (--reset-s, --reset-price)
+SPREAD = {"wide": (1.0, 1.0), "narrow": (0.25, 0.25),             # decision 4, Addendum A2: calibrate
+          "narrowT_wideB": (0.25, 1.0)}                           # (--truth-spread, --prior-spread)
+CONDITIONS6 = tuple((r, u) for r in ("absorbing", "rec20", "rec0") for u in ("wide", "narrow"))   # the design before Addendum A
+CONDITIONS = CONDITIONS6 + (("rec_hi", "wide"), ("rec_hi", "narrow"), ("absorbing", "narrowT_wideB"), ("rec20", "narrowT_wideB"))
 ARMS = {"policy_no_probe": "never", "probe_once": "probe_once", "sham_once": "sham_once", "policy": "policy"}   # protocol: arm
 QUANTITIES = {"D": ("never", "probe_once"), "I": ("sham_once", "probe_once"), "M": ("never", "sham_once"), "P": ("never", "policy")}
 X_WEIGHTS = {("absorbing", "wide"): 1.0, ("rec20", "wide"): -1.0, ("absorbing", "narrow"): -1.0, ("rec20", "narrow"): 1.0}
+X_T_WEIGHTS = {("absorbing", "wide"): 1.0, ("rec_hi", "wide"): -1.0, ("absorbing", "narrow"): -1.0,     # Addendum A1: termination
+               ("rec_hi", "narrow"): 1.0}                                                              # at a fixed penalty
+X_M_WEIGHTS = {("absorbing", "narrowT_wideB"): 1.0, ("rec20", "narrowT_wideB"): -1.0,                   # Addendum A2: the belief
+               ("absorbing", "narrow"): -1.0, ("rec20", "narrow"): 1.0}                                 # at matched truths
+X_PEN_WEIGHTS = {("rec_hi", "wide"): 1.0, ("rec20", "wide"): -1.0, ("rec_hi", "narrow"): -1.0,          # X_D − X_T: the penalty
+                 ("rec20", "narrow"): 1.0}                                                             # at a fixed recovery
+X_TRUTH_WEIGHTS = {("absorbing", "wide"): 1.0, ("rec20", "wide"): -1.0,                                 # X_D − X_M*: the truth
+                   ("absorbing", "narrowT_wideB"): -1.0, ("rec20", "narrowT_wideB"): 1.0}              # spread at the wide belief
+VERDICTS = {"X_D": ("D", X_WEIGHTS), "X_I": ("I", X_WEIGHTS), "X_T": ("D", X_T_WEIGHTS), "X_M*": ("D", X_M_WEIGHTS)}
+HOLM_ALPHA = 0.05             # Addendum A correction 5: the sensitivity row; the 95 % interval rule stays primary
+EVENTS = ("probe", "attempt", "none")                          # Addendum A correction 2: what ended an absorbing case
 PILOT_SEED = 11               # stage 0: gates and power, never a verdict
 K_CHOICES = (2, 4, 6)         # decision 9: the verdict seeds 12 to 11 + k
 POWER_SHARE = 0.7             # decision 9: 1.96 SE(k) ≤ 0.7 X̂_D (80 % power)
@@ -78,15 +97,19 @@ def label(cond: tuple[str, str]) -> str:
 
 
 def condition(run: dict[str, Any]) -> tuple[str, str]:
-    """(recovery, spread) of a run; a ValueError for a run outside the design (another cost cell, reset time or spread)."""
+    """(recovery, spread) of a run from its reset time and price and its truth and prior spreads (a file without these
+    fields, milestone 4's, reads as absorbing and wide); a ValueError for a run outside the design (another cost cell,
+    reset or spreads, or a pair of CONDITIONS the design does not run)."""
     care, A, s = cell(run)
     if not (_num(care, CARE) and _num(A, ABSTAIN) and _num(s, SCALE)):
         raise ValueError(f"{run.get('protocol')} at care {care}, A {A}, s {s} is not H3's cell ({CARE:g}, {ABSTAIN:g}, {SCALE:g})")
-    spread = 1.0 if run.get("spread") is None else run["spread"]
-    rec = next((r for r, x in RECOVERY.items() if _num(run.get("reset_s"), x)), None)
-    u = next((k for k, f in SPREAD.items() if _num(spread, f)), None)
-    if rec is None or u is None:
-        raise ValueError(f"reset_s {run.get('reset_s')} and spread {run.get('spread')} are not an H3 condition")
+    price = run.get("reset_price") or "time"
+    truth, belief = (1.0 if run.get(k) is None else run[k] for k in ("truth_spread", "prior_spread"))
+    rec = next((r for r, (x, p) in RECOVERY.items() if _num(run.get("reset_s"), x) and price == p), None)
+    u = next((k for k, (t, b) in SPREAD.items() if _num(truth, t) and _num(belief, b)), None)
+    if rec is None or u is None or (rec, u) not in CONDITIONS:
+        raise ValueError(f"reset_s {run.get('reset_s')} at the {price} price and the spreads (truth {truth}, prior {belief}) are "
+                         "not an H3 condition")
     return rec, u
 
 
@@ -165,7 +188,8 @@ def _cohort(runs: dict[tuple[str, str, str, int], dict[str, Any]], ok: Callable[
 
 def cohort(runs: dict[tuple[str, str, str, int], dict[str, Any]]) -> set[tuple[str, int, int]]:
     """Decision 6's common cohort over index()'s runs: the cases (object, idx, seed) counted (no error, no artifact) in
-    every arm and every condition of their seed. A ValueError when a seed lacks an arm in a condition."""
+    every arm and every condition of their seed, the ten (Addendum A correction 6; the six of CONDITIONS6 are the
+    sensitivity row). A ValueError when a seed lacks an arm in a condition."""
     return _cohort(runs)
 
 
@@ -191,6 +215,11 @@ def case_values(runs: dict[tuple[str, str, str, int], dict[str, Any]], cases: se
     return keys, vals
 
 
+def case_x(vals: dict[tuple[str, str], dict[str, np.ndarray]], quantity: str, weights: dict[tuple[str, str], float]) -> np.ndarray:
+    """Each case's contribution to an interaction: Σ weight × quantity over case_values' ``vals``."""
+    return sum(w * vals[cond][quantity] for cond, w in weights.items())
+
+
 def mean_draws(u: np.ndarray, case_objects: list[str], objects: list[str], W: np.ndarray,
                weights: np.ndarray | None = None) -> dict[str, Any]:
     """The mean of the per-case values ``u`` (weighted by ``weights`` when given), its joint-bootstrap draws (W: rows of
@@ -208,14 +237,15 @@ def mean_draws(u: np.ndarray, case_objects: list[str], objects: list[str], W: np
 
 
 def contrasts(runs: dict[tuple[str, str, str, int], dict[str, Any]], W: np.ndarray, objects: list[str],
-              cohort: set[tuple[str, int, int]]) -> dict[str, Any]:
+              cohort: set[tuple[str, int, int]], conditions: tuple[tuple[str, str], ...] = CONDITIONS) -> dict[str, Any]:
     """Decision 6 per condition: D = cost(never) − cost(probe_once), I = cost(sham_once) − cost(probe_once),
     M = cost(never) − cost(sham_once) and P = cost(never) − cost(policy), each the mean over ``cohort`` with its
-    joint-bootstrap draws (W, shared by every condition) and interval; each arm's mean cost; the number of cases."""
-    keys, vals = case_values(runs, cohort)
+    joint-bootstrap draws (W, shared by every condition) and interval; each arm's mean cost; the number of cases (over
+    ``conditions``)."""
+    keys, vals = case_values(runs, cohort, conditions=conditions)
     objs = [k[0] for k in keys]
     out = {}
-    for cond in CONDITIONS:
+    for cond in conditions:
         out[cond] = {q: mean_draws(vals[cond][q], objs, objects, W) for q in QUANTITIES}
         out[cond]["cost"] = {arm: mean_draws(vals[cond][f"cost_{arm}"], objs, objects, W) for arm in ARMS.values()}
         out[cond]["n"] = len(keys)
@@ -230,41 +260,83 @@ def combine(c: dict[str, Any], quantity: str, weights: dict[tuple[str, str], flo
     return {"value": float(value), "ci": _ci(draws), "draws": draws}
 
 
-def interaction(c: dict[str, Any], quantity: str) -> dict[str, Any]:
+def interaction(c: dict[str, Any], quantity: str, weights: dict[tuple[str, str], float] = X_WEIGHTS) -> dict[str, Any]:
     """Decision 6: X_q = [q(absorbing, wide) − q(rec20, wide)] − [q(absorbing, narrow) − q(rec20, narrow)] from contrasts'
-    result ``c``: the value, its interval (X recomputed in every joint draw) and verdict (pass when the interval lies above
-    0, fail below, otherwise undecided)."""
-    out = combine(c, quantity, X_WEIGHTS)
+    result ``c`` (Addendum A: another interaction's ``weights``, X_T_WEIGHTS or X_M_WEIGHTS): the value, its interval (X
+    recomputed in every joint draw), its two-sided bootstrap p (boot_p) and verdict (pass when the interval lies above 0,
+    fail below, otherwise undecided)."""
+    out = combine(c, quantity, weights)
+    out["p"] = boot_p(out["draws"])
     out["verdict"] = verdict(out["ci"])
+    return out
+
+
+def boot_p(draws: np.ndarray) -> float:
+    """Addendum A correction 5: the two-sided bootstrap p, 2 × min(share of draws ≤ 0, share ≥ 0), at most 1, over the
+    finite draws (nan without one)."""
+    d = np.asarray(draws, dtype=float)
+    d = d[np.isfinite(d)]
+    if not d.size:
+        return math.nan
+    return float(min(1.0, 2.0 * min(np.mean(d <= 0.0), np.mean(d >= 0.0))))
+
+
+def holm(p: dict[str, float], alpha: float = HOLM_ALPHA) -> dict[str, dict[str, Any]]:
+    """Holm's step-down over the verdicts' p (Addendum A correction 5, the sensitivity row): each one's adjusted p (the
+    running maximum of (m − j) p_(j), at most 1) and whether it rejects at ``alpha``; a nan p sorts last and never rejects."""
+    order = sorted(p, key=lambda k: (math.isnan(p[k]), p[k]))
+    out, run = {}, 0.0
+    for j, k in enumerate(order):
+        if math.isnan(p[k]):
+            out[k] = {"p": p[k], "p_holm": math.nan, "reject": False}
+            continue
+        run = max(run, min(1.0, (len(order) - j) * p[k]))
+        out[k] = {"p": p[k], "p_holm": run, "reject": bool(run <= alpha)}
     return out
 
 
 # ---------------------------------------------------------------- power (decision 9)
 
-def power(pilot: dict[tuple[str, str, str, int], dict[str, Any]]) -> dict[str, Any]:
-    """Decision 9 on the pilot (index()'s runs of the pilot seed, the policy in full): X̂_D on the common cohort, the
-    variance split (σ_b², σ_w²) of the per-case contributions to X_D (each case's D in the four cells, combined as X),
-    SE(k)² = (σ_b² + σ_w² / (c k)) / n for k verdict seeds (c: the cohort's cases per object, n: its objects) and k, the
-    smallest of K_CHOICES with 1.96 SE(k) ≤ 0.7 X̂_D; k = 6 and ``target_met`` False when none qualifies or X̂_D ≤ 0.
-    Also the never arm's first-recommendation probe cases per condition (the size of a verdict seed's policy subset)
-    and the cohort's share of the cases."""
-    keys, vals = case_values(pilot, cohort(pilot), conditions=tuple(X_WEIGHTS))
-    if not keys:
-        raise ValueError("the pilot has no case in its common cohort")
-    u = sum(w * vals[cond]["D"] for cond, w in X_WEIGHTS.items())
-    objs = np.array([k[0] for k in keys])
+def _pilot_se(u: np.ndarray, objs: np.ndarray) -> dict[str, Any]:
+    """The pilot mean of the per-case contributions ``u``, their variance split (σ_b², σ_w²) and decision 9's
+    SE(k)² = (σ_b² + σ_w² / (c k)) / n for k verdict seeds (c: the cases per object, n: the objects)."""
     sb, sw = variance_split(u, objs)
     n_obj = len(set(objs.tolist()))
-    c = len(keys) / n_obj
-    x = float(np.mean(u))
-    se = {str(k): math.sqrt((sb + sw / (c * k)) / n_obj) for k in K_CHOICES}
+    c = len(u) / n_obj
+    return {"value": float(np.mean(u)), "sigma_b2": sb, "sigma_w2": sw, "n_objects": n_obj, "cases_per_object": c,
+            "se": {str(k): math.sqrt((sb + sw / (c * k)) / n_obj) for k in K_CHOICES}}
+
+
+def power(pilot: dict[tuple[str, str, str, int], dict[str, Any]]) -> dict[str, Any]:
+    """Decision 9 on the pilot (index()'s runs of the pilot seed, the policy in full): X̂_D on the common cohort (the
+    ten conditions), the variance split (σ_b², σ_w²) of the per-case contributions to X_D (each case's D in the four
+    cells, combined as X), SE(k)² = (σ_b² + σ_w² / (c k)) / n for k verdict seeds (c: the cohort's cases per object, n:
+    its objects) and k, the smallest of K_CHOICES with 1.96 SE(k) ≤ 0.7 X̂_D; k = 6 and ``target_met`` False when none
+    qualifies or X̂_D ≤ 0. Addendum A: X̂_T and X̂_M* with their SE(k) (k still from X_D alone), their SE at the chosen k
+    and the verdict their 95 % interval would give there (``projected``). Also the never arm's first-recommendation probe
+    cases per condition (the size of a verdict seed's policy subset) and the shares of the cases in the ten-condition
+    cohort and in the six-condition one."""
+    keys, vals = case_values(pilot, cohort(pilot))
+    if not keys:
+        raise ValueError("the pilot has no case in its common cohort")
+    objs = np.array([k[0] for k in keys])
+    d, t, m = (_pilot_se(case_x(vals, "D", w), objs) for w in (X_WEIGHTS, X_T_WEIGHTS, X_M_WEIGHTS))
+    x, se = d["value"], d["se"]
     k = next((k for k in K_CHOICES if x > 0 and 1.96 * se[str(k)] <= POWER_SHARE * x), None)
+    kk = str(K_CHOICES[-1] if k is None else k)
+    for e in (t, m):
+        e["projected"] = verdict([e["value"] - 1.96 * e["se"][kk], e["value"] + 1.96 * e["se"][kk]])
     never = {cond: [run for key, run in pilot.items() if key[:3] == (*cond, "never")] for cond in CONDITIONS}
     probes = {label(cond): sum(r.get("recommendation") == "probe" for run in rs for r in run["rows"]) for cond, rs in never.items()}
     n_all = sum(len(run["rows"]) for run in never[("absorbing", "wide")])
-    return {"x_d": x, "sigma_b2": sb, "sigma_w2": sw, "n_objects": n_obj, "cases_per_object": c, "n_cases": len(keys), "se": se,
-            "k": K_CHOICES[-1] if k is None else k, "target_met": k is not None, "note": None if k is not None else "power target not met",
-            "probe_cases": probes, "cohort_share": len(keys) / n_all if n_all else math.nan}
+    n6 = len(_cohort(pilot, conditions=CONDITIONS6))
+    return {"x_d": x, "sigma_b2": d["sigma_b2"], "sigma_w2": d["sigma_w2"], "n_objects": d["n_objects"],
+            "cases_per_object": d["cases_per_object"], "n_cases": len(keys), "se": se, "k": int(kk), "target_met": k is not None,
+            "note": None if k is not None else "power target not met",
+            "x_t": {q: t[q] for q in ("value", "sigma_b2", "sigma_w2", "se", "projected")},
+            "x_m": {q: m[q] for q in ("value", "sigma_b2", "sigma_w2", "se", "projected")},
+            "se_at_k": {"x_d": se[kk], "x_t": t["se"][kk], "x_m": m["se"][kk]}, "probe_cases": probes,
+            "cohort_share": len(keys) / n_all if n_all else math.nan, "cohort6_share": n6 / n_all if n_all else math.nan}
 
 
 # ---------------------------------------------------------------- gates (decision 8)
@@ -401,7 +473,7 @@ def gates(runs: dict[tuple[str, str, str, int], dict[str, Any]], m4_dir: str, se
 
 # ---------------------------------------------------------------- the summary
 
-def in_narrow(row: dict[str, Any], f: float = SPREAD["narrow"]) -> bool:
+def in_narrow(row: dict[str, Any], f: float = SPREAD["narrow"][0]) -> bool:
     """Whether a case's truth lies in the narrow class's ranges (decision 4's matched-truth check): the mass scale (on a
     filled container's range when its fill is above 0), mu, and a non-None com_s inside shrunk_range at ``f``."""
     th = row["theta"]
@@ -422,7 +494,7 @@ def _range_mass(bounds: tuple[float, float], f: float, log: bool = False) -> flo
     return (g(hi) - g(lo)) / (g(bounds[1]) - g(bounds[0]))
 
 
-def selection_p(row: dict[str, Any], f: float = SPREAD["narrow"]) -> float:
+def selection_p(row: dict[str, Any], f: float = SPREAD["narrow"][0]) -> float:
     """P(in_narrow | the case's branch) under the truth generator (corpus.draw_theta and draw_damage: the mass scale
     log-uniform on its range, a filled container's on its own; mu uniform; com_s uniform when the CoM shifts): the
     product of the constrained ranges' masses, f² without a shift or for a filled container and f³ with one."""
@@ -471,11 +543,42 @@ def irreversible_events(row: dict[str, Any]) -> int:
     return sum(t.get("outcome") in IRREVERSIBLE for t in row.get("attempts") or []) + sum(_event(p) for p in row.get("probes") or [])
 
 
+def ending_event(row: dict[str, Any]) -> str:
+    """The event that ended an absorbing case (Addendum A correction 2): "probe" when a probe threw or damaged the
+    object, else "attempt" when an attempt's outcome was irreversible, else "none"."""
+    if any(_event(p) for p in row.get("probes") or []):
+        return "probe"
+    if any(t.get("outcome") in IRREVERSIBLE for t in row.get("attempts") or []):
+        return "attempt"
+    return "none"
+
+
+def x_t_by_event(runs: dict[tuple[str, str, str, int], dict[str, Any]], W: np.ndarray, objects: list[str],
+                 cases: set[tuple[str, int, int]]) -> dict[str, Any]:
+    """X_T split by the event that ended the absorbing case (Addendum A correction 2): in each spread (wide +, narrow −)
+    and arm (never +, probe_once −), a case's absorbing − rec_hi cost difference goes to the ending_event of its absorbing
+    row: the forced probe's own event, a commit attempt's, or none (where the two modes run alike). The parts, means over
+    ``cases`` with their joint draws, sum to X_T case by case."""
+    keys = sorted(cases)
+    seeds = sorted({k[2] for k in keys})
+    parts = {e: np.zeros(len(keys)) for e in EVENTS}
+    for u, su in (("wide", 1.0), ("narrow", -1.0)):
+        for arm, sa in (("never", 1.0), ("probe_once", -1.0)):
+            ab = {s: _rows(runs[("absorbing", u, arm, s)]) for s in seeds}
+            hi = {s: _rows(runs[("rec_hi", u, arm, s)]) for s in seeds}
+            for j, (o, i, s) in enumerate(keys):
+                row = ab[s][(o, i)]
+                parts[ending_event(row)][j] += su * sa * (float(row["cost"]) - float(hi[s][(o, i)]["cost"]))
+    objs = [k[0] for k in keys]
+    return {e: mean_draws(parts[e], objs, objects, W) for e in EVENTS}
+
+
 def _arm_tables(runs: dict[tuple[str, str, str, int], dict[str, Any]], W: np.ndarray, objects: list[str],
                 cases: set[tuple[str, int, int]]) -> dict[str, Any]:
     """sweep.arm_metrics per condition and arm over the cohort's rows of every seed (the never arm's row is the
     condition's difficulty: decision 4), with the irreversible events per 1,000 cases (decision 6) next to its
-    irreversible cases per 1,000."""
+    irreversible cases per 1,000, and the share of the cases whose first menu the guard flagged (Addendum A correction
+    4)."""
     out = {}
     for cond in CONDITIONS:
         for arm in ARMS.values():
@@ -485,6 +588,9 @@ def _arm_tables(runs: dict[tuple[str, str, str, int], dict[str, Any]], W: np.nda
             e = mean_draws(np.array([irreversible_events(r) for r in sel], dtype=float), [r["object"] for r in sel], objects, W)
             m["irreversible_events_per_1000"] = 1000.0 * e["value"]
             m["irreversible_events_per_1000_ci"] = [1000.0 * x for x in e["ci"]]
+            g = mean_draws(np.array([bool((r.get("guard") or {}).get("flag")) for r in sel], dtype=float), [r["object"] for r in sel],
+                           objects, W)
+            m["guard_flag_share"], m["guard_flag_share_ci"] = g["value"], g["ci"]
             out[f"{label(cond)}/{arm}"] = m
     return out
 
@@ -507,7 +613,8 @@ def verdict_checks(runs: dict[tuple[str, str, str, int], dict[str, Any]], cases:
 
 def _sensitivity(runs: dict[tuple[str, str, str, int], dict[str, Any]], W: np.ndarray, objects: list[str]) -> dict[str, Any]:
     """Decision 6's sensitivity rows: X_D and X_I with pairwise cohorts (each condition's quantity on the cases counted in
-    its two arms) and with artifact cases counted (the common cohort of the cases without an error)."""
+    its two arms), with artifact cases counted (the common cohort of the cases without an error) and on the six
+    conditions' cohort (CONDITIONS6, Addendum A correction 6)."""
     out: dict[str, Any] = {}
     pair = {}
     for cond in X_WEIGHTS:
@@ -520,12 +627,16 @@ def _sensitivity(runs: dict[tuple[str, str, str, int], dict[str, Any]], W: np.nd
     loose = _cohort(runs, ok=lambda r: "error" not in r)
     c = contrasts(runs, W, objects, loose)
     out["artifacts_counted"] = {"n": c["n"], **{q: combine(c, q, X_WEIGHTS) for q in ("D", "I")}}
+    c6 = contrasts(runs, W, objects, _cohort(runs, conditions=CONDITIONS6), conditions=CONDITIONS6)
+    out["cohort6"] = {"n": c6["n"], **{q: combine(c6, q, X_WEIGHTS) for q in ("D", "I")}}
     return out
 
 
 def summary(runs: list[dict[str, Any]], n_boot: int = N_BOOT, rng_seed: int = 0, power_result: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Decision 6's verdicts and tables over the verdict seeds' runs (the pilot seed is left out): H3 (X_D) and H3-info
-    (X_I) with verdicts; secondary, without a verdict: X_M, X_P, the quasi-option value per spread
+    """Decision 6's verdicts and tables over the verdict seeds' runs (the pilot seed is left out): H3 (X_D), H3-info
+    (X_I), and Addendum A's H3-term (X_T) and H3-matched (X_M*) with verdicts and Holm's sensitivity row; secondary,
+    without a verdict: X_M, X_P, X_pen = X_D − X_T, X_truth = X_D − X_M* (the truth spread at the wide belief), the
+    I-versions of X_T and X_M*, X_T split by the event that ended the absorbing case, the quasi-option value per spread
     Q_u = D(absorbing, u) − D(rec20, u), rec0 against the ordered prediction D(absorbing) ≥ D(rec20) ≥ D(rec0), and the
     matched-truth check; the contrasts per condition, the decision change, the arm and difficulty tables, the
     sensitivity rows and decision 8's checks at every verdict seed (verdict_checks); with ``markdown``. JSON-ready: the
@@ -538,13 +649,18 @@ def summary(runs: list[dict[str, Any]], n_boot: int = N_BOOT, rng_seed: int = 0,
     W = bootstrap_weights(objects, n_boot, np.random.default_rng(rng_seed))
     co = cohort(idx)
     c = contrasts(idx, W, objects, co)
+    x = {name: interaction(c, q, w) for name, (q, w) in VERDICTS.items()}
     out: dict[str, Any] = {"seeds": seeds, "n_objects": len(objects), "n_cohort": len(co), "n_boot": n_boot,
-                           "h3": interaction(c, "D"), "h3_info": interaction(c, "I")}
+                           "h3": x["X_D"], "h3_info": x["X_I"], "h3_term": x["X_T"], "h3_matched": x["X_M*"],
+                           "holm": holm({name: v["p"] for name, v in x.items()})}
     out["secondary"] = {
         "x_m": combine(c, "M", X_WEIGHTS), "x_p": combine(c, "P", X_WEIGHTS),
+        "x_pen": combine(c, "D", X_PEN_WEIGHTS), "x_truth": combine(c, "D", X_TRUTH_WEIGHTS),
+        "x_i_term": combine(c, "I", X_T_WEIGHTS), "x_i_matched": combine(c, "I", X_M_WEIGHTS),
+        "x_t_by_event": x_t_by_event(idx, W, objects, co),
         "q": {u: combine(c, "D", {("absorbing", u): 1.0, ("rec20", u): -1.0}) for u in SPREAD},
         "rec0_order": {u: {"absorbing_minus_rec20": combine(c, "D", {("absorbing", u): 1.0, ("rec20", u): -1.0}),
-                           "rec20_minus_rec0": combine(c, "D", {("rec20", u): 1.0, ("rec0", u): -1.0})} for u in SPREAD},
+                           "rec20_minus_rec0": combine(c, "D", {("rec20", u): 1.0, ("rec0", u): -1.0})} for u in ("wide", "narrow")},
         "matched_truth": matched_truth(idx, W, objects, co)}
     out["conditions"] = {label(k): v for k, v in c["conditions"].items()}
     out["decision_change"] = decision_change(idx, co)
@@ -571,14 +687,27 @@ def markdown(s: dict[str, Any]) -> str:
          f"cohort {s['n_cohort']} cases; {s['n_boot']} joint draws)", "",
          "| quantity | value [95 % interval] | verdict |", "|---|---|---|",
          f"| H3: X_D | {_ci_s(s['h3'])} | {s['h3']['verdict']} |", f"| H3-info: X_I | {_ci_s(s['h3_info'])} | {s['h3_info']['verdict']} |",
-         f"| X_M (reported) | {_ci_s(s['secondary']['x_m'])} | — |", f"| X_P (reported) | {_ci_s(s['secondary']['x_p'])} | — |", "",
-         "| condition | n | D | I | M | P | never cost |", "|---|---|---|---|---|---|---|"]
+         f"| H3-term: X_T | {_ci_s(s['h3_term'])} | {s['h3_term']['verdict']} |",
+         f"| H3-matched: X_M* | {_ci_s(s['h3_matched'])} | {s['h3_matched']['verdict']} |"]
+    sec = s["secondary"]
+    for name, key in (("X_M (reported)", "x_m"), ("X_P (reported)", "x_p"), ("X_pen = X_D − X_T (reported)", "x_pen"),
+                      ("X_truth = X_D − X_M*, truth spread at the wide belief (reported)", "x_truth"),
+                      ("X_I,T (reported)", "x_i_term"), ("X_I,M* (reported)", "x_i_matched")):
+        L.append(f"| {name} | {_ci_s(sec[key])} | — |")
+    L += ["", "Holm at 0.05 over the four verdicts (sensitivity; the 95 % interval rule is primary):", "",
+          "| verdict | bootstrap p | Holm p | Holm rejects |", "|---|---|---|---|"]
+    for name in VERDICTS:
+        h = s["holm"][name]
+        L.append(f"| {name} | {_f(h['p'], 4)} | {_f(h['p_holm'], 4)} | {'yes' if h['reject'] else 'no'} |")
+    L += ["", "X_T by the event that ended the absorbing case: " + ", ".join(
+        f"{e} {_ci_s(sec['x_t_by_event'][e])}" for e in EVENTS) + ".", "",
+          "| condition | n | D | I | M | P | never cost |", "|---|---|---|---|---|---|---|"]
     for k, v in s["conditions"].items():
         L.append(f"| {k} | {v['n']} | " + " | ".join(_ci_s(v[q]) for q in QUANTITIES) + f" | {_ci_s(v['cost']['never'])} |")
     L += ["", "| spread | Q = D(absorbing) − D(rec20) | D(rec20) − D(rec0) |", "|---|---|---|"]
     for u in SPREAD:
-        r = s["secondary"]["rec0_order"][u]
-        L.append(f"| {u} | {_ci_s(s['secondary']['q'][u])} | {_ci_s(r['rec20_minus_rec0'])} |")
+        r = s["secondary"]["rec0_order"].get(u)
+        L.append(f"| {u} | {_ci_s(s['secondary']['q'][u])} | {'—' if r is None else _ci_s(r['rec20_minus_rec0'])} |")
     m = s["secondary"]["matched_truth"]
     L += ["", f"Matched truth (wide cases inside the narrow ranges: {m['n']}, share {_f(m['share'])}, effective n "
           f"{_f(m['n_eff'], 1)}, weighted by 1 / P(selected | branch)): "
@@ -587,15 +716,16 @@ def markdown(s: dict[str, Any]) -> str:
           "| condition | probed | same | other row | decline | terminal | no probe |", "|---|---|---|---|---|---|---|"]
     for k, v in s["decision_change"].items():
         L.append(f"| {k} | {v['n_probed']} | " + " | ".join(_f(v["share"][c]) for c in CHANGES) + f" | {v['no_probe']} |")
-    L += ["", "| condition / arm | placed per 1,000 | abstain rate | irreversible cases per 1,000 | irreversible events per 1,000 | cost |",
-          "|---|---|---|---|---|---|"]
+    L += ["", "| condition / arm | placed per 1,000 | abstain rate | irreversible cases per 1,000 | irreversible events per 1,000 | "
+          "guard flag share | cost |", "|---|---|---|---|---|---|---|"]
     for k, v in s["arms"].items():
         L.append(f"| {k} | {_f(v['placed_per_1000'], 1)} | {_f(v['abstain_rate'])} | {_f(v['irreversible_per_1000'], 1)} | "
-                 f"{_f(v['irreversible_events_per_1000'], 1)} | {_f(v['cost'])} |")
+                 f"{_f(v['irreversible_events_per_1000'], 1)} | {_f(v['guard_flag_share'])} | {_f(v['cost'])} |")
     sens = s["sensitivity"]
     L += ["", f"Sensitivity: pairwise cohorts X_D {_ci_s(sens['pairwise']['D'])}, X_I {_ci_s(sens['pairwise']['I'])}; "
           f"artifact cases counted (n {sens['artifacts_counted']['n']}) X_D {_ci_s(sens['artifacts_counted']['D'])}, "
-          f"X_I {_ci_s(sens['artifacts_counted']['I'])}."]
+          f"X_I {_ci_s(sens['artifacts_counted']['I'])}; the six conditions' cohort (n {sens['cohort6']['n']}) X_D "
+          f"{_ci_s(sens['cohort6']['D'])}, X_I {_ci_s(sens['cohort6']['I'])}."]
     ck = s["checks"]
     L += ["", "Checks at the verdict seeds (decision 8): " + ", ".join(
         f"{k} {'ok' if ck[k]['pass'] else 'FAILED (' + str(ck[k]['n_failures']) + ')'}" for k in ("first_menus", "Gr", "Gs", "Gp"))
@@ -604,6 +734,9 @@ def markdown(s: dict[str, Any]) -> str:
         p = s["power"]
         L += ["", f"Power (pilot): X̂_D {_f(p['x_d'])}, σ_b² {_f(p['sigma_b2'], 4)}, σ_w² {_f(p['sigma_w2'], 4)}, k {p['k']}"
               + ("" if p.get("target_met") else " (power target not met)") + "."]
+        if p.get("x_t"):
+            L[-1] += (f" At k: SE(X_T) {_f(p['se_at_k']['x_t'])} on X̂_T {_f(p['x_t']['value'])} ({p['x_t']['projected']}), "
+                      f"SE(X_M*) {_f(p['se_at_k']['x_m'])} on X̂_M* {_f(p['x_m']['value'])} ({p['x_m']['projected']}).")
     return "\n".join(L) + "\n"
 
 
@@ -612,9 +745,10 @@ def markdown(s: dict[str, Any]) -> str:
 def valid(path: str, expect: dict[str, Any]) -> list[str]:
     """Why the output at ``path`` cannot be reused (empty when it can), decision 11: sweep.valid at H3's cell (the code
     revision on a clean tree, the protocol, κ = 10, A = 10, s = 1, the seed and the case count), the reset time, the
-    spread, the forced-probe rule (calibrate.FORCED_RULE in the forced arms, else None) and, with ``expect["cases"]`` (a
-    cases file), the file's sha256 and the case membership; without one, a full run (no cases record). ``expect``:
-    revision, protocol, reset_s, spread, seed, and n or cases."""
+    reset price, the truth and prior spreads, the forced-probe rule (calibrate.FORCED_RULE in the forced arms, else None)
+    and, with ``expect["cases"]`` (a cases file), the file's sha256 and the case membership; without one, a full run (no
+    cases record). ``expect``: revision, protocol, reset_s, reset_price, truth_spread, prior_spread, seed, and n or
+    cases."""
     listed = None
     if expect.get("cases"):
         try:
@@ -631,8 +765,11 @@ def valid(path: str, expect: dict[str, Any]) -> list[str]:
         return why
     if not _num(run.get("reset_s"), expect.get("reset_s")):
         why.append(f"reset_s {run.get('reset_s')} is not {expect.get('reset_s')}")
-    if not _num(1.0 if run.get("spread") is None else run["spread"], expect["spread"]):
-        why.append(f"spread {run.get('spread')} is not {expect['spread']}")
+    if (run.get("reset_price") or "time") != expect["reset_price"]:
+        why.append(f"reset price {run.get('reset_price')} is not {expect['reset_price']}")
+    for k in ("truth_spread", "prior_spread"):
+        if not _num(1.0 if run.get(k) is None else run[k], expect[k]):
+            why.append(f"{k} {run.get(k)} is not {expect[k]}")
     rule = FORCED_RULE if expect["protocol"] in FORCED else None
     if run.get("forced_rule") != rule:
         why.append(f"forced-probe rule {run.get('forced_rule')!r} is not {rule!r}")
@@ -666,7 +803,9 @@ def main(argv: list[str] | None = None) -> int:
     v.add_argument("--revision", required=True)
     v.add_argument("--protocol", required=True)
     v.add_argument("--reset-s", type=_reset_arg, required=True, help="none (absorbing) or the reset time in seconds")
-    v.add_argument("--spread", type=float, required=True)
+    v.add_argument("--reset-price", choices=("time", "care"), default="time")
+    v.add_argument("--truth-spread", type=float, required=True)
+    v.add_argument("--prior-spread", type=float, required=True)
     v.add_argument("--seed", type=int, required=True)
     v.add_argument("--n", type=int, default=None)
     v.add_argument("--cases", default=None, help="the cases file of a subset run")
@@ -688,8 +827,8 @@ def main(argv: list[str] | None = None) -> int:
     if a.cmd == "valid":
         if (a.n is None) == (a.cases is None):
             ap.error("give --n or --cases")
-        why = valid(a.file, {"revision": a.revision, "protocol": a.protocol, "reset_s": a.reset_s, "spread": a.spread, "seed": a.seed,
-                             "n": a.n, "cases": a.cases})
+        why = valid(a.file, {"revision": a.revision, "protocol": a.protocol, "reset_s": a.reset_s, "reset_price": a.reset_price,
+                             "truth_spread": a.truth_spread, "prior_spread": a.prior_spread, "seed": a.seed, "n": a.n, "cases": a.cases})
         print("valid" if not why else "not valid: " + "; ".join(why))
         return 0 if not why else 1
     if a.cmd == "cases":
@@ -713,7 +852,10 @@ def main(argv: list[str] | None = None) -> int:
         out = power(_pilot_index(a.dir))
         _dump(out, a.out)
         tracking.log_run("h3_power", {"dir": a.dir, "seed": PILOT_SEED},
-                         {k: out[k] for k in ("x_d", "sigma_b2", "sigma_w2", "n_objects", "n_cases", "cohort_share", "k", "target_met")})
+                         {**{k: out[k] for k in ("x_d", "sigma_b2", "sigma_w2", "n_objects", "n_cases", "cohort_share", "cohort6_share", "k",
+                                                 "target_met")},
+                          "x_t": out["x_t"]["value"], "x_m_star": out["x_m"]["value"], "se_x_t": out["se_at_k"]["x_t"],
+                          "se_x_m_star": out["se_at_k"]["x_m"]})
         print(json.dumps(_strip(out), indent=1))
         return 0
     runs = load_dir(a.dir)
@@ -724,7 +866,9 @@ def main(argv: list[str] | None = None) -> int:
     md = out.pop("markdown")
     _dump(out, a.out)
     metrics = {"x_d": out["h3"]["value"], "h3_verdict": out["h3"]["verdict"], "x_i": out["h3_info"]["value"],
-               "h3_info_verdict": out["h3_info"]["verdict"], "n_cohort": out["n_cohort"], "checks_pass": out["checks"]["pass"]}
+               "h3_info_verdict": out["h3_info"]["verdict"], "x_t": out["h3_term"]["value"], "h3_term_verdict": out["h3_term"]["verdict"],
+               "x_m_star": out["h3_matched"]["value"], "h3_matched_verdict": out["h3_matched"]["verdict"], "n_cohort": out["n_cohort"],
+               "checks_pass": out["checks"]["pass"]}
     out["wandb"] = tracking.log_run("h3", {"dir": a.dir, "seeds": out["seeds"]}, metrics)
     print(md)
     if not out["checks"]["pass"]:
