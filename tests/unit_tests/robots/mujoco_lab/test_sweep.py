@@ -21,11 +21,12 @@ import json
 import numpy as np
 import pytest
 
-from robots.mujoco_lab.sweep import (CHEAP, TEST_CELLS, arm_metrics, bootstrap_weights, cell_draws, check_identical, check_same,
+from robots.mujoco_lab.sweep import (CHEAP, TEST_CELLS, arm_metrics, bootstrap_weights, cell, cell_draws, check_identical, check_same,
                                      declared_saving, h1_only, h1_pays, load_dir, load_run, object_sums, pairs, probe_cases, probe_risk,
                                      seeds_needed, subgroup, summary, valid, variance_split, verdict)
 
 OK = [{"option": "commit_std", "outcome": "placed_stable"}]
+CODE = {"revision": "a" * 40, "dirty": False, "sim_revision": "s" * 40, "sim_dirty": False, "changed_during_run": False}
 
 
 def _case(obj, idx, cost, rec="commit", probes=(), ended="placed", first_menu=None, artifact=False, theta=None, fill=0.0,
@@ -40,7 +41,7 @@ def _case(obj, idx, cost, rec="commit", probes=(), ended="placed", first_menu=No
 
 def _run(protocol, care, A, s, seed, rows, force_noise=0.05, code=None):
     return {"protocol": protocol, "care_scale": float(care), "abstain_cost": float(A), "probe_time_scale": float(s), "seed": seed,
-            "force_noise": force_noise, "n": len(rows), "rows": rows, "code": code or {"revision": "a" * 40, "dirty": False}, "cases": None}
+            "force_noise": force_noise, "n": len(rows), "rows": rows, "code": code or dict(CODE), "cases": None}
 
 
 def _probe(probe, thrown=False, kind="measured", position=0, p_thrown=0.1, damaged=0.0, evoi=0.2):
@@ -180,7 +181,7 @@ def test_power_picks_the_smallest_k_that_reaches_80_percent():
 
 def test_valid_rejects_a_truncated_or_foreign_output(tmp_path):
     run = _run("policy", 10.0, 3.0, 0.25, 12, [_case("a", 0, 1.0), _case("a", 1, 1.0)])
-    expect = {"revision": "a" * 40, "protocol": "policy", "care": 10.0, "abstain": 3.0, "scale": 0.25, "seed": 12, "n": 2}
+    expect = {"revision": "a" * 40, "sim_revision": "s" * 40, "protocol": "policy", "care": 10.0, "abstain": 3.0, "scale": 0.25, "seed": 12, "n": 2}
     good = tmp_path / "good.json"
     good.write_text(json.dumps(run))
     assert valid(str(good), expect) == []
@@ -190,7 +191,7 @@ def test_valid_rejects_a_truncated_or_foreign_output(tmp_path):
     for k, v in (("revision", "b" * 40), ("scale", 1.0), ("n", 3), ("protocol", "commit"), ("seed", 13)):
         assert valid(str(good), dict(expect, **{k: v})), k
     dirty = tmp_path / "dirty.json"
-    dirty.write_text(json.dumps(dict(run, code={"revision": "a" * 40, "dirty": True})))
+    dirty.write_text(json.dumps(dict(run, code=dict(CODE, dirty=True))))
     assert valid(str(dirty), expect)
 
 
@@ -278,3 +279,87 @@ def test_the_summary_leaves_an_error_row_out_of_the_subgroups():
     art = with_row(lambda r: dict(r, artifact=True))
     assert err["subgroups"] == art["subgroups"] and err["subgroups"]["class"]
     assert sum(g["errors"] for e in err["exclusions"].values() for g in e.values()) == 1
+
+
+def test_valid_rejects_another_simulator_or_a_change_during_the_run(tmp_path):
+    """Final review (Opus 1): the simulator lives outside RPent, so an output is reusable only when it records the expected
+    simulator revision, no uncommitted simulator change, and the same code and simulator at its end as at its start."""
+    expect = {"revision": "a" * 40, "sim_revision": "s" * 40, "protocol": "policy", "care": 10.0, "abstain": 3.0, "scale": 1.0, "seed": 12,
+              "n": 1}
+
+    def why(**code):
+        f = tmp_path / "r.json"
+        f.write_text(json.dumps(_run("policy", 10.0, 3.0, 1.0, 12, [_case("a", 0, 1.0)], code={k: v for k, v in dict(CODE, **code).items()
+                                                                                                 if v is not None})))
+        return valid(str(f), expect)
+
+    assert why() == []
+    assert why(sim_revision="t" * 40) and why(sim_dirty=True) and why(changed_during_run=True)
+    assert why(sim_revision=None) and why(sim_dirty=None) and why(changed_during_run=None)        # an output from before the fix
+
+
+def test_valid_checks_the_cases_of_a_subset_run(tmp_path):
+    """Final review (Codex 1): `sweep valid --cases` accepts a subset run only for the cases its cases file lists; a stale
+    run of the same size over other cases is rerun, not skipped."""
+    from robots.mujoco_lab.sweep import main as sweep_main
+
+    out, cases = tmp_path / "never.json", tmp_path / "cases.json"
+    out.write_text(json.dumps(_run("policy_no_probe", 10.0, 3.0, 1.0, 13, [_case("a", 0, 1.0), _case("b", 1, 1.0)])))
+    args = ["valid", str(out), "--revision", "a" * 40, "--sim-revision", "s" * 40, "--protocol", "policy_no_probe", "--care", "10",
+            "--abstain", "3", "--scale", "1", "--seed", "13", "--cases", str(cases)]
+    cases.write_text(json.dumps({"seed": 13, "cases": {"a": [0], "b": [1]}}))
+    assert sweep_main(args) == 0
+    cases.write_text(json.dumps({"seed": 13, "cases": {"a": [0], "b": [2]}}))
+    assert sweep_main(args) == 1
+
+
+def test_check_stops_when_a_gate_run_is_missing(tmp_path, capsys):
+    """Final review (Codex 3): the stage-1 gates need the stage-1 grid at the seed: the policy in the 45 cells, the
+    never-probe arm at s = 1 for the 15 (κ, A), and at s 0.25 and 0 for the 4 test (κ, A) (G1b). A missing run stops the
+    stage, and an empty directory does not pass."""
+    from robots.mujoco_lab.sweep import main as sweep_main
+
+    runs = _sweep(seeds=(12,))
+    for k, A in sorted({c[:2] for c in TEST_CELLS}):
+        nv = next(r for r in runs if r["protocol"] == "policy_no_probe" and (r["care_scale"], r["abstain_cost"]) == (k, A))
+        runs += [dict(nv, probe_time_scale=s) for s in (0.25, 0.0)]
+    d = tmp_path / "out"
+    d.mkdir()
+    for i, r in enumerate(runs):
+        (d / f"r{i}.json").write_text(json.dumps(r))
+    assert sweep_main(["check", "--dir", str(d), "--seed", "12"]) == 0
+    capsys.readouterr()
+    i = next(i for i, r in enumerate(runs) if r["protocol"] == "policy_no_probe" and r["probe_time_scale"] == 0.0)
+    (d / f"r{i}.json").unlink()
+    assert sweep_main(["check", "--dir", str(d), "--seed", "12"]) == 1
+    out = json.loads(capsys.readouterr().out)
+    assert out["verdict"] == "stop" and f"policy_no_probe k{runs[i]['care_scale']:g}_A{runs[i]['abstain_cost']:g}_s0" in out["missing"]
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    assert sweep_main(["check", "--dir", str(empty), "--seed", "12"]) == 1
+
+
+def test_summary_is_incomplete_when_a_seed_of_a_test_cell_is_missing():
+    """Final review (Codex 2): H1-pays pools the seeds of every test cell; a missing policy or never-probe run of one seed,
+    or a seed short of the power result's k, makes the verdict incomplete and names the runs, instead of a verdict over
+    fewer seeds."""
+    runs = [r for r in _sweep(seeds=(12, 13)) if not (r["protocol"] == "policy" and r["seed"] == 13 and cell(r) == TEST_CELLS[0])]
+    out = summary(runs, classes={}, n_boot=50)
+    assert out["h1_pays"]["verdict"] == "incomplete" and out["h1_pays"]["missing"] == ["policy k10_A3_s1 seed 13"]
+    full = summary(_sweep(seeds=(12, 13)), classes={}, n_boot=50)
+    assert full["h1_pays"]["missing"] == [] and full["h1_pays"]["verdict"] in ("pass", "fail", "undecided")
+    pw = {"R": 0.1, "R_declared": 0.1, "sigma_b2": 0.0, "sigma_w2": 1.0, "se": {}, "k": 4}
+    short = summary(_sweep(seeds=(12, 13)), classes={}, n_boot=50, power_result=pw)
+    assert short["h1_pays"]["verdict"] == "incomplete" and len(short["h1_pays"]["missing"]) == 3 * (12 + 4)     # seeds 14 to 16
+    assert "policy_no_probe k10_A3_s1 seed 16" in short["h1_pays"]["missing"]
+
+
+def test_the_exclusions_count_a_row_without_a_recommendation_as_unknown():
+    """Final review (Opus 2): a row that carries no first recommendation (a case that raised before its first menu) is not
+    a case without a probe recommendation; the exclusions count it as unknown (milestone 4 counted its 27 carton errors,
+    all probe cases, as other)."""
+    runs = _sweep(seeds=(12,))
+    run = next(r for r in runs if r["protocol"] == "policy" and cell(r) == TEST_CELLS[0])
+    run["rows"][1] = {"object": run["rows"][1]["object"], "idx": run["rows"][1]["idx"], "error": "boom", "executed": False}
+    e = summary(runs, classes={}, n_boot=50)["exclusions"]["policy_k10_A3_s1_seed12"]
+    assert e["unknown"] == {"errors": 1, "artifacts": 0} and e["other"] == {"errors": 0, "artifacts": 0}

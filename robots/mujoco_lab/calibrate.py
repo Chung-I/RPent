@@ -196,7 +196,12 @@ def run_protocol(prims: Any, protocol: str, destination: str, rng: np.random.Gen
         return case
 
     def call(**kw) -> dict[str, Any]:
-        return pick_and_place(object="object", destination=destination, care=care, primitives=prims, store=store, **kw).data
+        """A tool call; one that raises (a simulator fault) gives its error, so the case ends in an error row that keeps
+        what it had (its first recommendation, first menu, probes and attempts)."""
+        try:
+            return pick_and_place(object="object", destination=destination, care=care, primitives=prims, store=store, **kw).data
+        except Exception as exc:  # noqa: BLE001  one bad case must not stop the run
+            return {"error": str(exc)[:200]}
 
     a = assess_pick(object="object", destination=destination, care=care, primitives=prims, store=store).data
     if "error" in a:
@@ -844,16 +849,27 @@ def _write(out: dict[str, Any], path: str) -> None:
     os.replace(tmp, path)
 
 
-def code_revision() -> dict[str, Any]:
-    """The RPent checkout's git HEAD and whether its tracked files differ from it; None for both outside a checkout."""
-    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+def _git_state(path: str, revision: list[str], pathspec: list[str]) -> tuple[str | None, bool | None]:
+    """(the revision ``git revision`` prints, whether tracked files under ``pathspec`` differ from HEAD) for the checkout
+    at ``path``; None for both outside a checkout."""
     try:
-        rev = subprocess.run(["git", "-C", root, "rev-parse", "HEAD"], capture_output=True, text=True, timeout=30, check=True).stdout.strip()
-        status = subprocess.run(["git", "-C", root, "status", "--porcelain", "--untracked-files=no"], capture_output=True, text=True,
-                                timeout=60, check=True).stdout
+        rev = subprocess.run(["git", "-C", path, *revision], capture_output=True, text=True, timeout=30, check=True).stdout.strip()
+        status = subprocess.run(["git", "-C", path, "status", "--porcelain", "--untracked-files=no", *pathspec], capture_output=True,
+                                text=True, timeout=60, check=True).stdout
     except (OSError, subprocess.SubprocessError):
-        return {"revision": None, "dirty": None}
-    return {"revision": rev, "dirty": bool(status.strip())}
+        return None, None
+    return rev or None, bool(status.strip())
+
+
+def code_revision() -> dict[str, Any]:
+    """The RPent checkout's git HEAD and whether its tracked files differ from it; the same for the simulator folder
+    (``RPENT_MUJOCO_SIM_DIR``, a folder of another repository): the last commit that touched it and whether its tracked
+    files differ, the rest of that repository aside. None outside a checkout or with no folder set."""
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    rev, dirty = _git_state(root, ["rev-parse", "HEAD"], [])
+    sim = os.environ.get("RPENT_MUJOCO_SIM_DIR")
+    sim_rev, sim_dirty = _git_state(sim, ["log", "-1", "--format=%H", "--", "."], ["--", "."]) if sim else (None, None)
+    return {"revision": rev, "dirty": dirty, "sim_revision": sim_rev, "sim_dirty": sim_dirty}
 
 
 def listed_cases(a: argparse.Namespace) -> dict[str, list[int]] | None:
@@ -951,6 +967,7 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
         ap.error("--follow-recommendation applies to the commit protocol")
     if a.cases and a.objects:
         ap.error("--cases names the objects; drop --objects")
+    code = code_revision()          # before the cases run; an output whose code or simulator changed by its end says so
     plan = plan_cases(a)
     rows = run_cases(a, plan)
     out = summarize(rows, a.protocol, rng, a.coverage_sims, nested=bool(a.crossfit))
@@ -958,7 +975,8 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
                care=a.care, care_scale=care_scale(a.care), abstain_cost=run_abstain_cost(a, plan), force_noise=run_force_noise(rows),
                evoi=run_evoi(rows), probe_time_scale=run_probe_time_scale(rows),
                source={"crossfit": a.crossfit, "bundle": a.bundle, "metrics": a.metrics}, seconds=round(time.time() - t0, 1),
-               cases=None if not a.cases else {"path": a.cases, "n": len(rows)}, code=code_revision())
+               cases=None if not a.cases else {"path": a.cases, "n": len(rows)},
+               code=dict(code, changed_during_run=code_revision() != code))
     _write(out, a.out)
     summary = {k: out[k] for k in ("protocol", "kind", "care", "abstain_cost", "n", "n_executed", "abstained", "errors", "artifacts", "ece",
                                    "ece_ci95_object_bootstrap", "brier", "brier_const", "ece_iid_floor", "outcomes", "probes_run",

@@ -366,6 +366,23 @@ def test_policy_protocol_abstains_at_once_on_a_decline(monkeypatch):
     assert sc.calls == [] and case["ended"] == "abstained" and case["cost"] == pytest.approx(1.0)
 
 
+def test_a_case_that_raises_keeps_its_first_recommendation(monkeypatch):
+    """Final review (Opus 2): a tool call that raises (milestone 4: three carton squeezes) ends the case in an error row that
+    keeps what the case had (its first recommendation, first menu and probes), so the exclusions count it as a probe case."""
+    from robots.mujoco_lab import calibrate
+    from robots.mujoco_lab.calibrate import run_protocol
+
+    _scripted(monkeypatch, [_assessment("probe", probe=True)], [])
+
+    def crash(**kw):
+        raise ValueError("max() arg is an empty sequence")
+
+    monkeypatch.setattr(calibrate, "pick_and_place", crash)
+    case = run_protocol(SimpleNamespace(abstain_cost=1.0), "policy", "table_centre", np.random.default_rng(0))
+    assert case["ended"] == "error" and case["error"] == "max() arg is an empty sequence"
+    assert case["recommendation"] == "probe" and case["first_menu"] is not None and case["cost"] == 0.0
+
+
 def test_case_cost_charges_the_abstain_cost_when_unfinished(monkeypatch):
     from robots.mujoco_lab.calibrate import attempt_cost, run_protocol
 
@@ -885,3 +902,52 @@ def test_the_output_records_its_code_revision(tmp_path):
     rev = saved["code"]["revision"]
     assert (rev is None or re.fullmatch(r"[0-9a-f]{40}", rev)) and saved["code"]["dirty"] in (True, False, None)
     assert saved["cases"] is None and not list(tmp_path.glob("*.tmp"))
+
+
+def test_code_revision_records_the_simulator_folder(tmp_path, monkeypatch):
+    """Final review (Opus 1): the simulator is imported from RPENT_MUJOCO_SIM_DIR, a folder of another repository; the
+    provenance records the folder's last commit and whether its tracked files differ, and ignores the rest of that
+    repository (daily-logs commits often)."""
+    import subprocess
+
+    from robots.mujoco_lab.calibrate import code_revision
+
+    repo = tmp_path / "logs"
+    sim = repo / "sim"
+    sim.mkdir(parents=True)
+    (sim / "scene.py").write_text("x = 1\n")
+    (repo / "notes.md").write_text("a\n")
+
+    def git(*args):
+        return subprocess.run(["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@example.invalid", *args], check=True,
+                              capture_output=True, text=True).stdout.strip()
+
+    git("init", "-q")
+    git("add", ".")
+    git("commit", "-qm", "sim")
+    rev = git("rev-parse", "HEAD")
+    monkeypatch.setenv("RPENT_MUJOCO_SIM_DIR", str(sim))
+    assert {k: code_revision()[k] for k in ("sim_revision", "sim_dirty")} == {"sim_revision": rev, "sim_dirty": False}
+    (repo / "notes.md").write_text("b\n")
+    git("commit", "-qam", "notes")                                      # a commit outside the folder
+    (repo / "notes.md").write_text("c\n")                              # and an edit outside it
+    assert {k: code_revision()[k] for k in ("sim_revision", "sim_dirty")} == {"sim_revision": rev, "sim_dirty": False}
+    (sim / "scene.py").write_text("x = 2\n")
+    assert code_revision()["sim_dirty"] is True
+    monkeypatch.delenv("RPENT_MUJOCO_SIM_DIR")
+    assert {k: code_revision()[k] for k in ("sim_revision", "sim_dirty")} == {"sim_revision": None, "sim_dirty": None}
+
+
+def test_the_output_records_its_provenance_from_before_the_cases_ran(tmp_path, monkeypatch):
+    """Final review (Opus 1): the provenance is taken before the cases run and again after them; an output whose code or
+    simulator changed in between says so (sweep valid then rejects it)."""
+    from robots.mujoco_lab import calibrate
+
+    start = {"revision": "a" * 40, "dirty": False, "sim_revision": "s" * 40, "sim_dirty": False}
+    for end, changed in ((dict(start), False), (dict(start, sim_revision="t" * 40), True)):
+        snaps = iter([dict(start), end])
+        monkeypatch.setattr(calibrate, "code_revision", lambda: next(snaps))
+        out = tmp_path / f"c{changed}.json"
+        calibrate.main(["--metrics", METRICS, "--repeats", "1", "--out", str(out), "--objects", "ycb__banana", "--seed", "2",
+                        "--coverage-sims", "0"])
+        assert json.load(open(out))["code"] == dict(start, changed_during_run=changed)
