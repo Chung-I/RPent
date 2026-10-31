@@ -17,8 +17,8 @@
 import numpy as np
 import pytest
 
-from rpent.skills.pick_place.costs import (ABSTAIN_COST, TIME_COST_PER_S, care_scale, cost_vector, expected_cost, irreversible_cost,
-                                          particle_costs)
+from rpent.skills.pick_place.costs import (ABSTAIN_COST, RESET_PRICES, TIME_COST_PER_S, care_scale, cost_vector, expected_cost,
+                                          irreversible_cost, particle_costs, reset_price)
 from rpent.skills.pick_place.protocol import IRREVERSIBLE, OUTCOMES, Prediction
 
 
@@ -89,3 +89,26 @@ def test_a_bad_reset_time_is_an_error():
     for bad in (-1.0, float("nan"), float("inf"), True, "20"):
         with pytest.raises(ValueError):
             irreversible_cost("normal", bad)
+
+
+def test_the_care_price_charges_the_absorbing_penalty():
+    """rec_hi (plan H3 Addendum A): reset_price "care" charges an irreversible outcome 5 x the care factor, absorbing's
+    penalty, whatever the reset time, so every cost equals absorbing's; "time" (the default) keeps the reset's time."""
+    p = _pred(placed_stable=0.5, dropped_high=0.2, crushed=0.1, tipped=0.2)
+    for care in ("normal", 10.0, 30.0):
+        for reset in (0.0, 20.0):
+            assert irreversible_cost(care, reset, "care") == irreversible_cost(care) == 5.0 * care_scale(care)
+            assert cost_vector(care, reset_s=reset, reset_price="care") == pytest.approx(cost_vector(care))
+            assert expected_cost(p, 8.0, care, 10.0, reset_s=reset, reset_price="care") == pytest.approx(expected_cost(p, 8.0, care, 10.0))
+            assert particle_costs([p], 8.0, care, 10.0, reset_s=reset, reset_price="care") == pytest.approx(
+                particle_costs([p], 8.0, care, 10.0))
+    assert irreversible_cost(10.0, 20.0, "time") == irreversible_cost(10.0, 20.0) == pytest.approx(TIME_COST_PER_S * 20.0)
+    assert RESET_PRICES == ("time", "care") and reset_price("care") == "care" and reset_price("time") == "time"
+
+
+def test_a_bad_reset_price_is_an_error():
+    for bad in ("Care", "", None, 1):
+        with pytest.raises(ValueError):
+            reset_price(bad)
+        with pytest.raises(ValueError):
+            irreversible_cost(10.0, 20.0, bad)

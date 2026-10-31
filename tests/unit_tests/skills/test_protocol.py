@@ -28,7 +28,7 @@ EXPECTED_KEYS = {
     "assessed", "object", "destination", "best_option", "p_success", "p_held_to_release",
     "p_irreversible", "p_recoverable", "p_drop_height", "evidence", "options",
     "recommendation", "recommended_option", "decline_reason", "care", "care_scale", "abstain_cost",
-    "probe_time_scale", "reset_s", "visibility", "guard", "without_probe",
+    "probe_time_scale", "reset_s", "reset_price", "visibility", "guard", "without_probe",
 }
 
 
@@ -67,6 +67,7 @@ def test_to_data_keys_and_best_row():
     d = a.to_data()
     assert set(d) == EXPECTED_KEYS
     assert d["reset_s"] is None                   # plan H3: absorbing unless the recovery mode sets a reset time
+    assert d["reset_price"] == "time"             # plan H3 Addendum A: rec_hi sets "care"
     assert d["assessed"] is True
     assert d["best_option"] == "commit_std"
     assert d["p_success"] == 0.712

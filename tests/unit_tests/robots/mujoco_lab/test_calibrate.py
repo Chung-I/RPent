@@ -994,6 +994,63 @@ def test_compare_refuses_runs_with_different_reset_times():
     assert compare(a, dict(a, reset_s=None), np.random.default_rng(0))["n_paired"] == 1
 
 
+# ---------------------------------------------------------------- rec_hi, the care price (plan H3 Addendum A)
+def test_the_care_price_charges_the_realized_absorbing_penalty():
+    """Under reset_price "care" an irreversible attempt or probe costs 5 kappa (no reset seconds)."""
+    from robots.mujoco_lab.calibrate import attempt_cost, probe_cost
+    from rpent.skills.pick_place.costs import TIME_COST_PER_S
+    from rpent.skills.pick_place.probes import PROBE_SECONDS
+
+    assert attempt_cost("dropped_high", 8.0, 10.0, reset_s=0.0, reset_price="care") == pytest.approx(50.0 + TIME_COST_PER_S * 8.0)
+    assert attempt_cost("tipped", 8.0, 10.0, reset_s=0.0, reset_price="care") == attempt_cost("tipped", 8.0, 10.0)
+    assert probe_cost("squeeze", "damaged", False, 10.0, reset_s=0.0, reset_price="care") == pytest.approx(
+        50.0 + TIME_COST_PER_S * PROBE_SECONDS["squeeze"])
+    assert attempt_cost("dropped_high", 8.0, 10.0, reset_s=20.0, reset_price="time") == attempt_cost("dropped_high", 8.0, 10.0, reset_s=20.0)
+
+
+def test_recovery_at_the_care_price_retries_and_charges_5_kappa(monkeypatch):
+    """rec_hi: a dropped_high costs 5 kappa = 50, the object comes back, the policy retries and places: 0.05 x 16 + 50,
+    with no A (absorbing, the same script ends at 50 + A + 0.05 x 8)."""
+    from robots.mujoco_lab.calibrate import run_protocol
+    from rpent.skills.pick_place.costs import TIME_COST_PER_S
+
+    _restoring(monkeypatch, [_assessment("commit")] * 3, ["dropped_high", "placed_stable"])
+    case = run_protocol(SimpleNamespace(abstain_cost=10.0, reset_s=0.0, reset_price="care"), "policy", "table_centre",
+                        np.random.default_rng(0), care=10.0)
+    assert case["ended"] == "placed" and case["cost"] == pytest.approx(TIME_COST_PER_S * 16.0 + 50.0)
+    assert [(r["after"], r["event"]) for r in case["restores"]] == [("attempt", "dropped_high")]
+
+
+def test_reset_price_argument_reaches_the_workers_and_the_output(tmp_path):
+    from robots.mujoco_lab.calibrate import attempt_cost, main, run_reset_price
+
+    assert run_reset_price([{"reset_price": "care"}, {"error": "x"}]) == "care" and run_reset_price([{"reset_price": "time"}]) == "time"
+    base = ["--metrics", METRICS, "--repeats", "1", "--objects", "ycb__banana", "--seed", "2", "--care", "10", "--abstain-cost", "2"]
+    with pytest.raises(SystemExit):
+        main(base + ["--out", str(tmp_path / "x.json"), "--reset-price", "care"])        # care needs --reset-s
+    with pytest.raises(SystemExit):
+        main(base + ["--out", str(tmp_path / "y.json"), "--reset-s", "0", "--reset-price", "free"])
+    out = tmp_path / "c.json"
+    main(base + ["--out", str(out), "--reset-s", "0", "--reset-price", "care"])
+    saved = json.load(open(out))
+    assert saved["reset_price"] == "care" and saved["rows"][0]["reset_price"] == "care" and saved["reset_s"] == 0.0
+    t = saved["rows"][0]["attempts"][0]
+    assert t["cost"] == pytest.approx(attempt_cost(t["outcome"], t["cost_s"], 10.0, reset_s=0.0, reset_price="care"))
+    main(base + ["--out", str(tmp_path / "d.json"), "--reset-s", "20"])
+    assert json.load(open(tmp_path / "d.json"))["reset_price"] == "time"
+
+
+def test_compare_refuses_runs_with_different_reset_prices():
+    """plan H3 Addendum A: a file without the field reads as the time price."""
+    from robots.mujoco_lab.calibrate import compare
+
+    row = {"object": "o", "idx": 0, "cost": 1.0, "attempts": []}
+    a = {"protocol": "policy", "care_scale": 1.0, "abstain_cost": 1.0, "reset_s": 0.0, "rows": [row]}
+    with pytest.raises(ValueError, match="different costs"):
+        compare(a, dict(a, reset_price="care"), np.random.default_rng(0))
+    assert compare(a, dict(a, reset_price="time"), np.random.default_rng(0))["n_paired"] == 1
+
+
 # ---------------------------------------------------------------- the spread factor (plan H3 decision 4)
 def test_shrink_keeps_the_case_stream():
     """A narrow case is its wide case with the shrunk theta: over 50 cases the CoM end, destination, v_lift, fill and

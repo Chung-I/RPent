@@ -918,6 +918,21 @@ def test_the_reset_reaches_the_menu_and_the_payload():
     assert "reset" in assess_pick(object="mug", destination="table_centre", primitives=prims, store={}).data["error"]
 
 
+def test_the_care_price_reaches_the_menu_and_the_payload():
+    """primitives.reset_price "care" (rec_hi, plan H3 Addendum A) prices the menu's irreversible outcomes at 5 kappa, as
+    absorbing does, and the payload states it ("time" by default); a bad price is an error payload."""
+    prims = _aprims()
+    absorbing = assess_pick(object="mug", destination="table_centre", care=10, primitives=prims, store={}).data
+    assert absorbing["reset_price"] == "time"
+    prims.reset_s, prims.reset_price = 0.0, "care"
+    d = assess_pick(object="mug", destination="table_centre", care=10, primitives=prims, store={}).data
+    assert d["reset_s"] == 0.0 and d["reset_price"] == "care"
+    row = lambda x: next(o for o in x["options"] if o["id"] == "commit_std")  # noqa: E731
+    assert row(d)["expected_cost"] == pytest.approx(row(absorbing)["expected_cost"])
+    prims.reset_price = "free"
+    assert "reset price" in assess_pick(object="mug", destination="table_centre", primitives=prims, store={}).data["error"]
+
+
 
 # ---------------------------------------------------------------- the restore (plan H3 decision 3)
 PERFECT_CHECK = {"pos_err_mm": 0.0, "rot_err_deg": 0.0, "qpos_err": 0.0, "qvel_err": 0.0, "mocap_err": 0.0, "same_case": True,

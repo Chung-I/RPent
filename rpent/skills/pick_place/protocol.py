@@ -154,6 +154,7 @@ class Assessment:
     probe_time_scale: float = 1.0                # the factor on a probe's time charge (plan 2b2 decision 4)
     without_probe: str | None = None             # the recommendation without the probe rows (menu.without_probe)
     reset_s: float | None = None                 # the recovery mode's reset seconds (plan H3); None: absorbing
+    reset_price: str = "time"                    # the recovery mode's price of an event (plan H3 Addendum A): time or care
     extras: dict[str, Any] = field(default_factory=dict)
 
     def best(self) -> Option | None:
@@ -222,6 +223,7 @@ class Assessment:
             "abstain_cost": self.abstain_cost,
             "probe_time_scale": self.probe_time_scale,
             "reset_s": self.reset_s,
+            "reset_price": self.reset_price,
             "visibility": _r(self.visibility),
             "guard": _guard_data(self.guard()),
         }

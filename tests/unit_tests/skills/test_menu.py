@@ -1190,3 +1190,36 @@ def test_the_cost_rule_names_the_costliest_outcome_under_the_reset():
                   expected_cost=5.0, reason="")
     assert "dropped_high carries" in _cost_rule([best], best, 10.0, 0.1, None)[1]
     assert "tipped carries" in _cost_rule([best], best, 10.0, 0.1, None, reset_s=20.0)[1]
+    assert "dropped_high carries" in _cost_rule([best], best, 10.0, 0.1, None, reset_s=0.0, reset_price="care")[1]
+
+
+def test_the_probe_value_under_the_care_price():
+    """rec_hi (plan H3 Addendum A): a probe that throws costs 5 kappa plus the best continuation row now (0.7), in place
+    of 5 kappa + A (absorbing) or the reset's time plus that row (rec20)."""
+    b = _particles(np.linspace(0.1, 0.9, 40), np.ones(40))
+    C = [np.where(b.arrays()["mu"] > 0.3, 0.4, 5.4), np.full(40, 0.7)]
+    args = (b, C, PerfectPush(p_thrown=1.0), np.zeros((40, 3)), 20.0, 10.0)
+    hi = probe_value(*args, np.random.default_rng(0), abstain_cost=10.0, reset_s=0.0, reset_price="care")
+    assert hi["expected_cost_after"] == pytest.approx(5 * 10.0 + 0.7) and hi["evoi"] == 0.0
+
+
+def test_the_care_price_prices_the_attempt_rows_as_absorbing(monkeypatch):
+    """build_menu under rec_hi: every attempt row's expected and per-particle costs equal absorbing's (the one-step menu
+    adds A after every unplaced outcome in every mode), and each probe row's preposterior gets the care price."""
+    import rpent.skills.pick_place.menu as menu_mod
+
+    seen = []
+    real = menu_mod.probe_value
+    monkeypatch.setattr(menu_mod, "probe_value",
+                        lambda *a, **k: seen.append((k.get("reset_s"), k.get("reset_price"))) or real(*a, **k))
+    b = _particles(np.random.default_rng(0).uniform(0.1, 0.9, 400), np.ones(400))
+    kw = dict(probe_models={"push": PerfectPush(p_tip=0.1), "weigh": FlatWeigh()}, belief=b, care=10.0, abstain_cost=10.0)
+    hi, _ = _pmenu(**kw, reset_s=0.0, reset_price="care")
+    assert seen == [(0.0, "care"), (0.0, "care")]
+    absorbing, _ = _pmenu(**kw)
+    a = {o.id: o for o in absorbing if o.kind in ("commit", "lower_risk")}
+    h = {o.id: o for o in hi if o.kind in ("commit", "lower_risk")}
+    assert set(a) == set(h) and any(sum(o.pred.p[k] for k in IRREVERSIBLE) > 0 for o in a.values())
+    for i in a:
+        assert h[i].expected_cost == pytest.approx(a[i].expected_cost)
+        assert h[i]._costs == pytest.approx(a[i]._costs)
