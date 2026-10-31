@@ -430,7 +430,7 @@ def run_case(prims: Any, object_id: str, idx: int, seed: int, protocol: str = "c
     env.force_noise = getattr(prims, "force_noise", None)       # the job's sensor (job_force_noise); None: the lab default
     world = fragility_world(getattr(prims, "manifest", None))
     theta, com_end, destination, hidden = case_draw(seed, object_id, idx, object_props(object_id)["mass"], use_fixtures,
-                                                    fragility=world, spread=getattr(prims, "spread", 1.0))
+                                                    fragility=world, spread=getattr(prims, "truth_spread", 1.0))
     if world is not None:
         env.slosh_zeta = world[1].slosh_zeta
         env.slosh_scale = world[1].slosh_scale
@@ -453,7 +453,7 @@ def run_case(prims: Any, object_id: str, idx: int, seed: int, protocol: str = "c
            "fill": hidden["fill"], "theta_frag": hidden["frag"], "force_noise": env.force_noise,
            "evoi": getattr(prims, "evoi", "plugin"), "probe_time_scale": getattr(prims, "probe_time_scale", 1.0),
            "reset_s": getattr(prims, "reset_s", None), "reset_price": getattr(prims, "reset_price", "time"),
-           "spread": getattr(prims, "spread", 1.0),
+           "truth_spread": getattr(prims, "truth_spread", 1.0), "prior_spread": getattr(prims, "prior_spread", 1.0),
            "truth": {k: truth[k] for k in ("mass", "mu", "com_s")}, "reset": reset_info, **case}
     first = case["attempts"][0] if case["attempts"] else None
     row.update(executed=first is not None, option=first and first["option"], outcome=first and first["outcome"],
@@ -521,9 +521,14 @@ def run_reset_price(rows: list[dict[str, Any]]) -> str | list[str] | None:
     return _run_value(rows, "reset_price")
 
 
-def run_spread(rows: list[dict[str, Any]]) -> float | list[float] | None:
-    """The spread factor a run's cases were drawn and believed at (plan H3 decision 4)."""
-    return _run_value(rows, "spread", float)
+def run_truth_spread(rows: list[dict[str, Any]]) -> float | list[float] | None:
+    """The spread factor a run's cases were drawn at (plan H3 decision 4, Addendum A2)."""
+    return _run_value(rows, "truth_spread", float)
+
+
+def run_prior_spread(rows: list[dict[str, Any]]) -> float | list[float] | None:
+    """The spread factor a run's beliefs were drawn at, the first prior and every refresh (plan H3 Addendum A2)."""
+    return _run_value(rows, "prior_spread", float)
 
 
 def _primitives(bundle: str | None, threshold: float | None, model_kind: str | None) -> Any:
@@ -563,7 +568,8 @@ def _run_object(job: tuple[str, list[int], dict[str, Any]]) -> list[dict[str, An
     prims.probe_time_scale = job_probe_time_scale(s.get("probe_time_scale"), prims.manifest)
     prims.reset_s = s.get("reset_s")             # plan H3: every job sets it (None: absorbing)
     prims.reset_price = s.get("reset_price") or "time"   # plan H3 Addendum A: every job sets it
-    prims.spread = 1.0 if s.get("spread") is None else spread_factor(s["spread"])   # plan H3 decision 4 (1: milestone 4)
+    prims.truth_spread = 1.0 if s.get("truth_spread") is None else spread_factor(s["truth_spread"])   # plan H3 decision 4,
+    prims.prior_spread = 1.0 if s.get("prior_spread") is None else spread_factor(s["prior_spread"])   # Addendum A2 (1: m4)
     rows = []
     for idx in idxs:
         t0 = time.time()
@@ -678,7 +684,9 @@ def run_cases(a: argparse.Namespace, plan: dict[str, Any]) -> list[dict[str, Any
                                                  "abstain_cost": A, "force_noise": getattr(a, "force_noise", None),
                                                  "probe_time_scale": getattr(a, "probe_time_scale", None),
                                                  "reset_s": getattr(a, "reset_s", None),
-                                                 "reset_price": getattr(a, "reset_price", "time"), "spread": getattr(a, "spread", None)}))
+                                                 "reset_price": getattr(a, "reset_price", "time"),
+                                                 "truth_spread": getattr(a, "truth_spread", None),
+                                                 "prior_spread": getattr(a, "prior_spread", None)}))
     rows: list[dict[str, Any]] = []
     if a.workers <= 1:
         for job in jobs:
@@ -913,16 +921,16 @@ def compare(A: dict[str, Any], B: dict[str, Any], rng: np.random.Generator, n_bo
     realized cost and the first attempts' ECE on P(placed_stable), each with a 95 % interval that resamples
     objects jointly for both. The two runs must use the same costs (care scale, abstain cost, probe time scale, reset
     time and price; files from before these fields read as care normal, no abstain cost, scale 1, no reset and the time
-    price) and the same spread factor (1 when absent, plan H3)."""
+    price) and the same spread factors, the truth's and the prior's (1 when absent, plan H3)."""
     costs_a, costs_b = ((R.get("care_scale", 1.0), R.get("abstain_cost"),
                          1.0 if R.get("probe_time_scale") is None else R["probe_time_scale"], R.get("reset_s"),
                          R.get("reset_price") or "time") for R in (A, B))
     if costs_a != costs_b:
         raise ValueError("the runs use different costs (care_scale, abstain_cost, probe_time_scale, reset_s, reset_price): "
                          f"a {costs_a}, b {costs_b}")
-    spread_a, spread_b = (1.0 if R.get("spread") is None else R["spread"] for R in (A, B))
+    spread_a, spread_b = (tuple(1.0 if R.get(k) is None else R[k] for k in ("truth_spread", "prior_spread")) for R in (A, B))
     if spread_a != spread_b:
-        raise ValueError(f"the runs use different spreads: a {spread_a}, b {spread_b}")
+        raise ValueError(f"the runs use different spreads (truth, prior): a {spread_a}, b {spread_b}")
     ka = {(r["object"], r["idx"]): r for r in _counted(A["rows"])}
     kb = {(r["object"], r["idx"]): r for r in _counted(B["rows"])}
     keys = sorted(set(ka) & set(kb))
@@ -1078,14 +1086,21 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
     ap.add_argument("--reset-price", choices=RESET_PRICES, default="time",
                     help="plan H3 Addendum A, with --reset-s: what an irreversible event costs, time (0.05 per reset second) or "
                          "care (the absorbing 5 x care, rec_hi with --reset-s 0)")
-    ap.add_argument("--spread", type=_spread_arg, default=1.0,
+    ap.add_argument("--spread", type=_spread_arg, default=None,
                     help="plan H3 decision 4: shrink the hidden properties' ranges and the prior's by this factor, quantile-coupled "
-                         "(default 1: the corpus ranges)")
+                         "(default 1: the corpus ranges); sets both --truth-spread and --prior-spread")
+    ap.add_argument("--truth-spread", type=_spread_arg, default=None,
+                    help="plan H3 Addendum A2: the factor on the hidden properties' ranges only (default: --spread)")
+    ap.add_argument("--prior-spread", type=_spread_arg, default=None,
+                    help="plan H3 Addendum A2: the factor on the prior's ranges only, the first belief and every refresh "
+                         "(default: --spread)")
     ap.add_argument("--model-kind", default=None)
     ap.add_argument("--fixtures", action="store_true", help="draw half the destinations from the inspected mesh fixtures")
     ap.add_argument("--workers", type=int, default=1)
     ap.add_argument("--coverage-sims", type=int, default=200, help="simulations for the interval coverage (0: skip)")
     a = ap.parse_args(argv)
+    both = 1.0 if a.spread is None else a.spread                         # plan H3 Addendum A2: --spread sets both
+    a.truth_spread, a.prior_spread = (both if f is None else f for f in (a.truth_spread, a.prior_spread))
     t0 = time.time()
     rng = np.random.default_rng(a.seed)
     if a.compare:
@@ -1109,7 +1124,7 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
     out.update(kind=plan["kind"], objects=plan["objects"], folds=plan["folds"], seed=a.seed, repeats=a.repeats,
                care=a.care, care_scale=care_scale(a.care), abstain_cost=run_abstain_cost(a, plan), force_noise=run_force_noise(rows),
                evoi=run_evoi(rows), probe_time_scale=run_probe_time_scale(rows), reset_s=run_reset_s(rows),
-               reset_price=run_reset_price(rows), spread=run_spread(rows),
+               reset_price=run_reset_price(rows), truth_spread=run_truth_spread(rows), prior_spread=run_prior_spread(rows),
                source={"crossfit": a.crossfit, "bundle": a.bundle, "metrics": a.metrics}, seconds=round(time.time() - t0, 1),
                cases=None if not a.cases else {"path": a.cases, "n": len(rows), "sha256": cases_hash},
                forced_rule=FORCED_RULE if a.protocol in FORCED else None, code=code_revision())
@@ -1122,7 +1137,8 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
     out["wandb"] = tracking.log_run("calibrate", {"protocol": a.protocol, "seed": a.seed, "repeats": a.repeats, "source": out["source"],
                                                   "n_objects": len(plan["objects"]), "threshold": a.threshold,
                                                   "care": a.care, "abstain_cost": out["abstain_cost"], "reset_s": out["reset_s"],
-                                                  "reset_price": out["reset_price"], "spread": out["spread"]}, summary)
+                                                  "reset_price": out["reset_price"], "truth_spread": out["truth_spread"],
+                                                  "prior_spread": out["prior_spread"]}, summary)
     print(json.dumps(summary, indent=1, default=float))
     return out
 

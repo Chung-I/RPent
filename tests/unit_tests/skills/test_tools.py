@@ -1015,9 +1015,10 @@ def test_no_probe_after_a_restore():
 
 
 # ---------------------------------------------------------------- the spread factor (plan H3 decision 4)
-def test_the_refresh_keeps_the_spread(monkeypatch):
-    """Under primitives.spread both prior calls of the skill (the first belief and every refresh) draw at that spread;
-    at f = 1, or without the field, the prior is called as before, with no spread argument."""
+def test_the_refresh_keeps_the_prior_spread(monkeypatch):
+    """Under primitives.prior_spread both prior calls of the skill (the first belief and every refresh) draw at that
+    spread; at f = 1, or without the field, the prior is called as before, with no spread argument. The truth's spread
+    (primitives.truth_spread, plan H3 Addendum A2) never reaches the belief."""
     monkeypatch.setattr(tools_mod, "REFRESH_ESS", float("inf"))
     calls = []
 
@@ -1025,11 +1026,14 @@ def test_the_refresh_keeps_the_spread(monkeypatch):
         calls.append(kw.get("spread"))
         return _gen_prior(pose, n, rng)
 
-    for spread, want in ((0.25, {0.25}), (1.0, {None}), (None, {None})):
+    for (truth, belief), want in (((None, 0.25), {0.25}), ((None, 1.0), {None}), ((None, None), {None}),
+                                  ((0.25, 1.0), {None}), ((0.25, None), {None}), ((1.0, 0.25), {0.25})):
         prims, store = _bprims(_ReadingEnv([("placed_stable", _hold(0.2))])), {}
         prims.prior, calls[:] = prior, []
-        if spread is not None:
-            prims.spread = spread
+        if truth is not None:
+            prims.truth_spread = truth
+        if belief is not None:
+            prims.prior_spread = belief
         _commit(prims, store)
         assert any(f.startswith("refreshed from") for f in store["beliefs"]["ycb__mug"]["belief"].flags)
         assert len(calls) >= 2 and set(calls) == want

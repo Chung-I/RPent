@@ -1110,31 +1110,34 @@ def test_spread_one_is_milestone4():
 def test_spread_argument_reaches_the_workers_and_the_output(tmp_path):
     import argparse
 
-    from robots.mujoco_lab.calibrate import _spread_arg, main, run_spread
+    from robots.mujoco_lab.calibrate import _spread_arg, main, run_prior_spread, run_truth_spread
 
     assert _spread_arg("0.25") == 0.25 and _spread_arg("1") == 1.0
     for bad in ("0", "-0.5", "1.5", "nan", "x"):
         with pytest.raises(argparse.ArgumentTypeError):
             _spread_arg(bad)
-    assert run_spread([{"spread": 0.25}, {"error": "x"}]) == 0.25 and run_spread([{"spread": 1.0}]) == 1.0
+    assert run_truth_spread([{"truth_spread": 0.25}, {"error": "x"}]) == 0.25 and run_truth_spread([{"truth_spread": 1.0}]) == 1.0
+    assert run_prior_spread([{"prior_spread": 0.25}, {"error": "x"}]) == 0.25 and run_prior_spread([{"prior_spread": 1.0}]) == 1.0
     out = tmp_path / "c.json"
     main(["--metrics", METRICS, "--repeats", "2", "--out", str(out), "--objects", "ycb__banana", "--seed", "2", "--spread", "0.25"])
     saved = json.load(open(out))
-    assert saved["spread"] == 0.25 and all(r["spread"] == 0.25 for r in saved["rows"])
+    assert saved["truth_spread"] == saved["prior_spread"] == 0.25 and "spread" not in saved      # --spread sets both
+    assert all(r["truth_spread"] == r["prior_spread"] == 0.25 and "spread" not in r for r in saved["rows"])
     for r in saved["rows"]:
         assert 0.4 <= r["theta"]["mu"] <= 0.6 and 0.978 <= r["theta"]["mass_scale"] <= 1.533
         assert r["theta"]["com_s"] is None or 0.4875 <= r["theta"]["com_s"] <= 0.6125
 
 
 def test_compare_refuses_runs_with_different_spreads():
-    """plan H3: a file without the field reads as f = 1."""
+    """plan H3: a file without the fields reads as f = 1, the truth's and the prior's (Addendum A2)."""
     from robots.mujoco_lab.calibrate import compare
 
     row = {"object": "o", "idx": 0, "cost": 1.0, "attempts": []}
     a = {"protocol": "policy", "care_scale": 1.0, "abstain_cost": 1.0, "rows": [row]}
-    with pytest.raises(ValueError, match="different spreads"):
-        compare(a, dict(a, spread=0.25), np.random.default_rng(0))
-    assert compare(a, dict(a, spread=1.0), np.random.default_rng(0))["n_paired"] == 1
+    for key in ("truth_spread", "prior_spread"):
+        with pytest.raises(ValueError, match="different spreads"):
+            compare(a, dict(a, **{key: 0.25}), np.random.default_rng(0))
+    assert compare(a, dict(a, truth_spread=1.0, prior_spread=1.0), np.random.default_rng(0))["n_paired"] == 1
 
 
 # ---------------------------------------------------------------- the forced probe and the sham (plan H3 decisions 5, 6)
@@ -1313,3 +1316,56 @@ def test_sham_once_leaves_the_belief_unchanged(tmp_path, monkeypatch):
         ran += 1
     assert ran == 4 and len(states["probe_once"]) == 4 and all(s != n for s, n in states["probe_once"])
     assert states["sham_once"] == states["probe_once"]
+
+
+@needs_m2b2
+def test_split_spreads_draw_the_narrow_truth_and_believe_the_wide_prior(tmp_path, monkeypatch):
+    """plan H3 Addendum A2 (narrowT_wideB) on the m2b2 prior: at truth 0.25 and prior 1 every case draws what the narrow
+    condition's case draws (theta, CoM end, destination, fill), so the object rests as it does there; every prior draw
+    of the skill (the first belief and each refresh) is the wide one (no spread argument), and the first belief's
+    particles equal the wide condition's exactly. --spread sets both factors and the split flags override it. (The rest
+    pose is an observation that follows the truth, so the menus, and the stream after the first menu, are neither
+    condition's.)"""
+    import hashlib
+
+    import robots.mujoco_lab.calibrate as cal
+    import rpent.skills.pick_place.tools as tools_mod
+    from rpent.skills.pick_place.belief import N_PARTICLES
+
+    calls, primitives = [], cal._primitives
+
+    def spied(*a, **k):
+        prims = primitives(*a, **k)
+        inner = prims.prior
+        if not getattr(inner, "spied", False):
+            def prior(pose, n, rng, **kw):
+                b = inner(pose, n, rng, **kw)
+                parts = json.dumps(b.particles, sort_keys=True, default=lambda o: np.asarray(o).tolist())
+                calls.append({"first": n == N_PARTICLES, "spread": kw.get("spread"), "pose": (pose["R"], pose["p"]),
+                              "particles": hashlib.sha256(parts.encode()).hexdigest()})
+                return b
+            prior.spied = True
+            monkeypatch.setattr(prims, "prior", prior)
+        return prims
+
+    monkeypatch.setattr(cal, "_primitives", spied)
+    monkeypatch.setattr(tools_mod, "REFRESH_ESS", float("inf"))        # every update refreshes: the refreshes draw too
+    base = ["--bundle", M2B2, "--repeats", "2", "--objects", "ycb__jello,ycb__tomato_soup_can", "--seed", "2", "--protocol", "probe_once",
+            "--care", "10", "--abstain-cost", "10", "--coverage-sims", "0"]
+    runs, drawn = {}, {}
+    for name, flags in (("wide", []), ("narrow", ["--spread", "0.25"]), ("split", ["--truth-spread", "0.25", "--prior-spread", "1"]),
+                        ("override", ["--spread", "0.25", "--prior-spread", "1"])):
+        calls.clear()
+        cal.main(base + flags + ["--out", str(tmp_path / f"{name}.json")])
+        runs[name], drawn[name] = json.load(open(tmp_path / f"{name}.json")), list(calls)
+    assert [(R["truth_spread"], R["prior_spread"]) for R in runs.values()] == [(1.0, 1.0), (0.25, 0.25), (0.25, 1.0), (0.25, 1.0)]
+    keys = ("theta", "com_end", "destination", "fill")
+    for s, n, w in zip(*(runs[k]["rows"] for k in ("split", "narrow", "wide"))):
+        assert {k: s[k] for k in keys} == {k: n[k] for k in keys} and s["theta"] != w["theta"]
+    for name, want in (("wide", None), ("narrow", 0.25), ("split", None), ("override", None)):
+        assert {c["spread"] for c in drawn[name]} == {want}, name
+        assert sum(c["first"] for c in drawn[name]) == 4 and sum(not c["first"] for c in drawn[name]) >= 4, name
+    first = {k: [c for c in drawn[k] if c["first"]] for k in drawn}
+    assert [c["particles"] for c in first["split"]] == [c["particles"] for c in first["wide"]] == [c["particles"] for c in first["override"]]
+    assert all(a["particles"] != b["particles"] for a, b in zip(first["narrow"], first["wide"]))
+    assert [c["pose"] for c in first["split"]] == [c["pose"] for c in first["narrow"]]

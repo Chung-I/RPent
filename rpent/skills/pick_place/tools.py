@@ -89,9 +89,10 @@ def _beliefs(store: dict[str, Any]) -> dict[str, dict[str, Any]]:
 
 
 def _spread_kw(primitives: Any) -> dict[str, float]:
-    """The prior's spread argument (plan H3 decision 4): none at f = 1 or without ``primitives.spread``, so a prior
-    without the argument keeps working."""
-    f = getattr(primitives, "spread", None)
+    """The prior's spread argument (plan H3 decision 4; Addendum A2: the belief's own factor, apart from the truth's
+    ``primitives.truth_spread``): none at f = 1 or without ``primitives.prior_spread``, so a prior without the argument
+    keeps working."""
+    f = getattr(primitives, "prior_spread", None)
     return {} if f is None or float(f) == 1.0 else {"spread": float(f)}
 
 
