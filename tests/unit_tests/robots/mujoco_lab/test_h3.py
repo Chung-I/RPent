@@ -591,9 +591,10 @@ def test_the_bootstrap_p_and_holm_on_known_values():
     assert n["X_D"]["reject"] and n["X_D"]["p_holm"] == pytest.approx(0.002) and not n["X_I"]["reject"]
 
 
-def test_power_reports_x_t_and_x_m_with_their_ses_and_both_cohort_shares():
-    """Addendum A: the pilot's X_T and X_M* with SE(k) as for X_D (k still from X_D), the projected verdict at the chosen
-    k, and the 10- and 6-condition cohorts' shares."""
+def test_power_reports_x_t_and_x_m_star_with_their_ses_power_and_both_cohort_shares():
+    """Addendum A: the pilot's X_T and X_M* with SE(k) as for X_D (k still from X_D), their projection at the chosen k
+    (X_D's power standard and the power), and the 10- and 6-condition cohorts' shares; X_M* is "x_m_star" ("x_m" is the
+    M interaction)."""
     rng = np.random.default_rng(8)
     u = {(o, i): 1.0 + float(rng.normal(0.0, 0.5)) for o in ("a", "b", "c") for i in range(3)}
     runs = _pilot_with_contributions(u)                  # u in D(absorbing, wide): X_D = X_T = mean u, X_M* = 0
@@ -601,12 +602,37 @@ def test_power_reports_x_t_and_x_m_with_their_ses_and_both_cohort_shares():
     p = power(index(runs))
     rest = [v for k, v in sorted(u.items()) if k != ("a", 0)]
     assert p["x_d"] == pytest.approx(float(np.mean(rest))) and p["x_t"]["value"] == pytest.approx(p["x_d"])
-    assert p["x_t"]["se"] == pytest.approx(p["se"]) and p["x_m"]["value"] == pytest.approx(0.0)
-    assert all(v == pytest.approx(0.0) for v in p["x_m"]["se"].values())
+    assert "x_m" not in p and p["x_t"]["se"] == pytest.approx(p["se"]) and p["x_m_star"]["value"] == pytest.approx(0.0)
+    assert all(v == pytest.approx(0.0) for v in p["x_m_star"]["se"].values())
     k = str(p["k"])
-    assert p["se_at_k"] == pytest.approx({"x_d": p["se"][k], "x_t": p["x_t"]["se"][k], "x_m": 0.0})
-    assert p["x_t"]["projected"] == h3m.verdict([p["x_d"] - 1.96 * p["se"][k], p["x_d"] + 1.96 * p["se"][k]])
+    assert p["se_at_k"] == pytest.approx({"x_d": p["se"][k], "x_t": p["x_t"]["se"][k], "x_m_star": 0.0})
+    for name in ("x_t", "x_m_star"):
+        want = h3m.projection(p[name]["value"], p["se_at_k"][name])
+        assert p[name]["projected"] == want["projected"] and p[name]["power"] == pytest.approx(want["power"]), name
+    assert p["x_m_star"]["projected"] == "undecided" and p["x_m_star"]["power"] == 0.0
     assert p["cohort_share"] == pytest.approx(8 / 9) and p["cohort6_share"] == pytest.approx(1.0) and p["n_cases"] == 8
+    assert p["n_cases_run"] == 9
+
+
+def test_the_projection_uses_the_x_d_standard_and_reports_the_power():
+    """Addendum A correction 2, as agreed with the paper session: stage 0 projects X_T or X_M* as decided only at X_D's
+    power standard, 1.96 SE(k) <= 0.7 |X^| (about 80 % power), not where X^ +- 1.96 SE(k) merely excludes 0 (50 % power
+    at that boundary); power = Phi(|X^|/SE - 1.96) + Phi(-|X^|/SE - 1.96), the normal approximation of a decided interval."""
+    def phi(z):
+        return 0.5 * (1.0 + math.erf(z / math.sqrt(2.0)))
+
+    mid = h3m.projection(0.30, 0.15)                     # |X^|/SE = 2.0: the interval excludes 0, but the power is 52 %
+    assert mid["projected"] == "undecided" and mid["power"] == pytest.approx(phi(0.04) + phi(-3.96))
+    hi = h3m.projection(0.30, 0.10)                      # 3.0: 1.96 SE = 0.196 <= 0.7 X^ = 0.21
+    assert hi["projected"] == "pass" and hi["power"] == pytest.approx(phi(1.04) + phi(-4.96)) and hi["power"] > 0.8
+    assert h3m.projection(-0.30, 0.10) == {"projected": "fail", "power": pytest.approx(hi["power"])}
+    assert h3m.projection(0.0, 0.10) == {"projected": "undecided", "power": pytest.approx(0.05, abs=1e-3)}
+    assert h3m.projection(0.281, 0.10)["projected"] == "pass" and h3m.projection(0.279, 0.10)["projected"] == "undecided"
+    assert h3m.projection(0.3, 0.0) == {"projected": "pass", "power": 1.0}
+    assert h3m.projection(0.0, 0.0) == {"projected": "undecided", "power": 0.0}
+    for bad in ((math.nan, 0.1), (0.3, math.nan), (math.nan, 0.0)):
+        p = h3m.projection(*bad)
+        assert p["projected"] == "undecided" and math.isnan(p["power"]), bad
 
 
 def test_the_cohort_spans_ten_conditions_and_the_sensitivity_row_six():
@@ -623,6 +649,8 @@ def test_the_cohort_spans_ten_conditions_and_the_sensitivity_row_six():
     s = summary(runs, n_boot=50)
     c6 = s["sensitivity"]["cohort6"]
     assert s["n_cohort"] == 5 and c6["n"] == 6
+    assert s["n_cases_run"] == 6 and s["cohort_share"] == pytest.approx(5 / 6) and c6["share"] == pytest.approx(1.0)
+    assert "cohort 5 of 6 cases" in s["markdown"] and "(n 6, share 1.000)" in s["markdown"]
     assert c6["D"]["value"] == pytest.approx(float(h3m.case_x(vals, "D", X_WEIGHTS).mean()))
     assert c6["I"]["value"] == pytest.approx(float(h3m.case_x(vals, "I", X_WEIGHTS).mean()))
 
@@ -637,3 +665,55 @@ def test_the_arm_table_reports_the_guard_flag_share():
     assert s["arms"]["absorbing/narrowT_wideB/never"]["guard_flag_share"] == pytest.approx(2 / 6)
     assert s["arms"]["absorbing/narrow/never"]["guard_flag_share"] == pytest.approx(0.0)
     assert "guard flag" in s["markdown"]
+
+
+def test_gate_gt_holds_each_absorbing_case_and_its_rec_hi_twin_alike_until_its_first_event(tmp_path):
+    """Gate Gt (Addendum A1, agreed with the paper session): in never, probe_once and sham_once, for wide and narrow, an
+    absorbing row and its rec_hi twin run the same attempts and probes, with the same readings and costs, up to the
+    absorbing case's first irreversible event, and agree in full where it had none. The policy arm is outside Gt: under
+    rec_hi a probe row's end branch is priced differently, so the policy's recommendation may differ before any event."""
+    runs = _pilot()
+    m4 = _m4(tmp_path, runs)
+    g = gates(index(runs), m4)
+    assert g["Gt"]["pass"] and g["Gt"]["twins"] == 36 and g["pass"]          # 2 spreads x 3 arms x 6 cases
+
+    def gt(edit):
+        rs = copy.deepcopy(runs)
+        edit(rs)
+        return gates(index(rs), m4)["Gt"]
+
+    def dropped(rs):                 # a commit dropped case (a, 1): absorbing ends there, rec_hi restores and places it
+        drop = {"option": "commit_std", "outcome": "dropped_high", "cost": 50.2}
+        _of(rs, "never", ("absorbing", "wide"), 11)["rows"][1].update(attempts=[dict(drop)], cost=60.2, ended="dropped_high")
+        _of(rs, "never", ("rec_hi", "wide"), 11)["rows"][1].update(
+            attempts=[dict(drop), {"option": "commit_std", "outcome": "placed_stable", "cost": 0.2}], cost=50.4,
+            restores=[{"after": "attempt", "event": "dropped_high", "check": dict(CHECK)}])
+
+    def thrown(rs):                  # the forced probe threw case (c, 0) in both twins; rec_hi goes on and places it
+        for rec, extra in (("absorbing", []), ("rec_hi", [{"option": "commit_std", "outcome": "placed_stable", "cost": 0.2}])):
+            _of(rs, "probe_once", (rec, "narrow"), 11)["rows"][4].update(probes=[dict(TRACE, thrown=True)], attempts=extra)
+
+    assert gt(dropped)["pass"] and gt(thrown)["pass"]
+    assert not gt(lambda rs: _of(rs, "never", ("rec_hi", "wide"), 11)["rows"][2].update(cost=6.0))["pass"]     # no event, other cost
+    assert not gt(lambda rs: _of(rs, "sham_once", ("rec_hi", "narrow"), 11)["rows"][0]["probes"][0].update(reading={"mass": 1.1}))["pass"]
+    assert not gt(lambda rs: (dropped(rs), _of(rs, "never", ("rec_hi", "wide"), 11)["rows"][1]["attempts"][0].update(cost=1.2)))["pass"]
+    assert not gt(lambda rs: (dropped(rs), _of(rs, "never", ("rec_hi", "wide"), 11)["rows"][1]["attempts"][0].update(option="light_grip")))["pass"]
+    assert not gt(lambda rs: (dropped(rs), _of(rs, "never", ("rec_hi", "wide"), 11)["rows"][1].update(attempts=[])))["pass"]   # fewer steps
+    assert not gt(lambda rs: _of(rs, "probe_once", ("rec_hi", "wide"), 11)["rows"].pop(5))["pass"]               # a twin missing
+    assert gt(lambda rs: _of(rs, "policy", ("rec_hi", "wide"), 11)["rows"][3].update(cost=7.0))["pass"]          # the policy arm
+    assert not gates(index([r for r in runs if r is not _of(runs, "sham_once", ("rec_hi", "narrow"), 11)]), m4)["Gt"]["pass"]
+    both = copy.deepcopy(runs)
+    for arm in ("never", "policy"):                 # G1 holds (the policy runs as the never arm there); only Gt fails
+        _of(both, arm, ("rec_hi", "wide"), 11)["rows"][2].update(cost=6.0)
+    g = gates(index(both), m4)
+    assert g["G1"]["pass"] and not g["Gt"]["pass"] and not g["pass"]
+
+
+def test_the_summary_checks_gt_at_every_verdict_seed():
+    """Gate Gt holds on the cohort's cases at every verdict seed, as Gr, Gs and Gp do."""
+    runs = _with_forced_probes(_design(lambda *k: 5.0, seeds=(12, 13)), (12, 13))
+    s = summary(runs, n_boot=20)
+    assert s["checks"]["Gt"]["pass"] and s["checks"]["Gt"]["twins"] == 72 and "Gt ok" in s["markdown"]   # 2 seeds x 2 x 3 x 6
+    _of(runs, "sham_once", ("rec_hi", "wide"), 13)["rows"][2].update(cost=6.0)
+    s = summary(runs, n_boot=20)
+    assert not s["checks"]["Gt"]["pass"] and not s["checks"]["pass"] and "Gt FAILED (1)" in s["markdown"]
