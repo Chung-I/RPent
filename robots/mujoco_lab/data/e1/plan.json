@@ -1,0 +1,1840 @@
+{
+ "templates": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-11-02-e1-pilot/templates.json",
+ "templates_version": "e1-pilot-v1",
+ "settings": {
+  "hi_abs": {
+   "care_scale": 30,
+   "abstain_cost": 10,
+   "recovery": "absorbing",
+   "meaning": "a failure is very costly and cannot be undone"
+  },
+  "hi_rec": {
+   "care_scale": 30,
+   "abstain_cost": 10,
+   "recovery": "rec20",
+   "meaning": "the object matters, but a fall or throw is caught and restored at a small time cost"
+  },
+  "lo_abs": {
+   "care_scale": 1,
+   "abstain_cost": 10,
+   "recovery": "absorbing",
+   "meaning": "a failure cannot be undone, but the object has little value"
+  },
+  "lo_rec": {
+   "care_scale": 1,
+   "abstain_cost": 10,
+   "recovery": "rec20",
+   "meaning": "a failure costs little and is restored"
+  }
+ },
+ "default_rule": {
+  "care_scale": 10,
+  "abstain_cost": 10,
+  "recovery": "absorbing"
+ },
+ "final_cases": "/home/chungyili/Codes/RPent-h3/logs/h3/cases/seed12_absorbing_wide.json",
+ "tune_cases": "/home/chungyili/Codes/RPent-h3/logs/h3/cases/seed13_absorbing_wide.json",
+ "plan_seed": 0,
+ "jobs": [
+  {
+   "split": "final",
+   "object": "hot3d__pitcher",
+   "idx": 3,
+   "seed": 12,
+   "setting": "hi_abs",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? A spill or a crack would not be a small thing here: it would be the end of it."
+  },
+  {
+   "split": "final",
+   "object": "hot3d__pitcher",
+   "idx": 3,
+   "seed": 12,
+   "setting": "lo_rec",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? Another one costs nothing, and nothing that falls is lost, since I will hand it back."
+  },
+  {
+   "split": "final",
+   "object": "handal__hammer_6",
+   "idx": 8,
+   "seed": 12,
+   "setting": "lo_abs",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? Do not treat it as precious, since another one costs nothing. Still, if it falls, it is not getting picked up."
+  },
+  {
+   "split": "final",
+   "object": "handal__hammer_6",
+   "idx": 8,
+   "seed": 12,
+   "setting": "hi_rec",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? I would not like to lose it, but nothing that falls here is lost, since I can return it to you."
+  },
+  {
+   "split": "final",
+   "object": "ycb__mug",
+   "idx": 0,
+   "seed": 12,
+   "setting": "hi_abs",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. It is not something we can buy again, and it is not something I can rescue once it hits the ground."
+  },
+  {
+   "split": "final",
+   "object": "ycb__mug",
+   "idx": 0,
+   "seed": 12,
+   "setting": "lo_rec",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? Another one costs nothing, and nothing that falls is lost, since I will hand it back."
+  },
+  {
+   "split": "final",
+   "object": "fruits_veggies__lemon1",
+   "idx": 6,
+   "seed": 12,
+   "setting": "lo_abs",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. Losing this one would not be a big loss in itself, but it is not coming back if it goes over the edge."
+  },
+  {
+   "split": "final",
+   "object": "fruits_veggies__lemon1",
+   "idx": 6,
+   "seed": 12,
+   "setting": "hi_rec",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? I would not like to lose it, but nothing that falls here is lost, since I can return it to you."
+  },
+  {
+   "split": "final",
+   "object": "hot3d__wooden_spoons",
+   "idx": 1,
+   "seed": 12,
+   "setting": "hi_abs",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? A spill or a crack would not be a small thing here: it would be the end of it."
+  },
+  {
+   "split": "final",
+   "object": "hot3d__wooden_spoons",
+   "idx": 1,
+   "seed": 12,
+   "setting": "lo_rec",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. It is not valuable, and a drop is not a problem: I can always put it back for you."
+  },
+  {
+   "split": "final",
+   "object": "fruits_veggies__orange1",
+   "idx": 0,
+   "seed": 12,
+   "setting": "lo_abs",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. Losing this one would not be a big loss in itself, but it is not coming back if it goes over the edge."
+  },
+  {
+   "split": "final",
+   "object": "fruits_veggies__orange1",
+   "idx": 0,
+   "seed": 12,
+   "setting": "hi_rec",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. It is not a throwaway item, but a slip is not a disaster either: I will be here to put it back."
+  },
+  {
+   "split": "final",
+   "object": "ycb__mustard",
+   "idx": 5,
+   "seed": 12,
+   "setting": "hi_abs",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. It is not something we can buy again, and it is not something I can rescue once it hits the ground."
+  },
+  {
+   "split": "final",
+   "object": "ycb__mustard",
+   "idx": 5,
+   "seed": 12,
+   "setting": "lo_rec",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? Another one costs nothing, and nothing that falls is lost, since I will hand it back."
+  },
+  {
+   "split": "final",
+   "object": "ycb__chocolate_pudding",
+   "idx": 5,
+   "seed": 12,
+   "setting": "lo_abs",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. Losing this one would not be a big loss in itself, but it is not coming back if it goes over the edge."
+  },
+  {
+   "split": "final",
+   "object": "ycb__chocolate_pudding",
+   "idx": 5,
+   "seed": 12,
+   "setting": "hi_rec",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. It is not a throwaway item, but a slip is not a disaster either: I will be here to put it back."
+  },
+  {
+   "split": "final",
+   "object": "hope__orange_juice_carton",
+   "idx": 3,
+   "seed": 12,
+   "setting": "hi_abs",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. It is not something we can buy again, and it is not something I can rescue once it hits the ground."
+  },
+  {
+   "split": "final",
+   "object": "hope__orange_juice_carton",
+   "idx": 3,
+   "seed": 12,
+   "setting": "lo_rec",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? Another one costs nothing, and nothing that falls is lost, since I will hand it back."
+  },
+  {
+   "split": "final",
+   "object": "ycb__soft_scrub",
+   "idx": 4,
+   "seed": 12,
+   "setting": "lo_abs",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? Do not treat it as precious, since another one costs nothing. Still, if it falls, it is not getting picked up."
+  },
+  {
+   "split": "final",
+   "object": "ycb__soft_scrub",
+   "idx": 4,
+   "seed": 12,
+   "setting": "hi_rec",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? I would not like to lose it, but nothing that falls here is lost, since I can return it to you."
+  },
+  {
+   "split": "final",
+   "object": "hope__granola_bars",
+   "idx": 7,
+   "seed": 12,
+   "setting": "hi_abs",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. It is not something we can buy again, and it is not something I can rescue once it hits the ground."
+  },
+  {
+   "split": "final",
+   "object": "hope__granola_bars",
+   "idx": 7,
+   "seed": 12,
+   "setting": "lo_rec",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. It is not valuable, and a drop is not a problem: I can always put it back for you."
+  },
+  {
+   "split": "final",
+   "object": "ycb__cheez_it",
+   "idx": 7,
+   "seed": 12,
+   "setting": "lo_abs",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? Do not treat it as precious, since another one costs nothing. Still, if it falls, it is not getting picked up."
+  },
+  {
+   "split": "final",
+   "object": "ycb__cheez_it",
+   "idx": 7,
+   "seed": 12,
+   "setting": "hi_rec",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. It is not a throwaway item, but a slip is not a disaster either: I will be here to put it back."
+  },
+  {
+   "split": "final",
+   "object": "ycb__jello",
+   "idx": 8,
+   "seed": 12,
+   "setting": "hi_abs",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. It is not something we can buy again, and it is not something I can rescue once it hits the ground."
+  },
+  {
+   "split": "final",
+   "object": "ycb__jello",
+   "idx": 8,
+   "seed": 12,
+   "setting": "lo_rec",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. It is not valuable, and a drop is not a problem: I can always put it back for you."
+  },
+  {
+   "split": "final",
+   "object": "hope__mayonnaise_bottle",
+   "idx": 7,
+   "seed": 12,
+   "setting": "lo_abs",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. Losing this one would not be a big loss in itself, but it is not coming back if it goes over the edge."
+  },
+  {
+   "split": "final",
+   "object": "hope__mayonnaise_bottle",
+   "idx": 7,
+   "seed": 12,
+   "setting": "hi_rec",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? I would not like to lose it, but nothing that falls here is lost, since I can return it to you."
+  },
+  {
+   "split": "final",
+   "object": "fruits_veggies__red_onion",
+   "idx": 2,
+   "seed": 12,
+   "setting": "hi_abs",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. It is not something we can buy again, and it is not something I can rescue once it hits the ground."
+  },
+  {
+   "split": "final",
+   "object": "fruits_veggies__red_onion",
+   "idx": 2,
+   "seed": 12,
+   "setting": "lo_rec",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? Another one costs nothing, and nothing that falls is lost, since I will hand it back."
+  },
+  {
+   "split": "final",
+   "object": "hope__ranch_dressing",
+   "idx": 7,
+   "seed": 12,
+   "setting": "lo_abs",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. Losing this one would not be a big loss in itself, but it is not coming back if it goes over the edge."
+  },
+  {
+   "split": "final",
+   "object": "hope__ranch_dressing",
+   "idx": 7,
+   "seed": 12,
+   "setting": "hi_rec",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. It is not a throwaway item, but a slip is not a disaster either: I will be here to put it back."
+  },
+  {
+   "split": "final",
+   "object": "fruits_veggies__lime",
+   "idx": 5,
+   "seed": 12,
+   "setting": "hi_abs",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. It is not something we can buy again, and it is not something I can rescue once it hits the ground."
+  },
+  {
+   "split": "final",
+   "object": "fruits_veggies__lime",
+   "idx": 5,
+   "seed": 12,
+   "setting": "lo_rec",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? Another one costs nothing, and nothing that falls is lost, since I will hand it back."
+  },
+  {
+   "split": "final",
+   "object": "hope__spaghetti",
+   "idx": 3,
+   "seed": 12,
+   "setting": "lo_abs",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? Do not treat it as precious, since another one costs nothing. Still, if it falls, it is not getting picked up."
+  },
+  {
+   "split": "final",
+   "object": "hope__spaghetti",
+   "idx": 3,
+   "seed": 12,
+   "setting": "hi_rec",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. It is not a throwaway item, but a slip is not a disaster either: I will be here to put it back."
+  },
+  {
+   "split": "final",
+   "object": "fruits_veggies__avocado",
+   "idx": 5,
+   "seed": 12,
+   "setting": "hi_abs",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. It is not something we can buy again, and it is not something I can rescue once it hits the ground."
+  },
+  {
+   "split": "final",
+   "object": "fruits_veggies__avocado",
+   "idx": 5,
+   "seed": 12,
+   "setting": "lo_rec",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. It is not valuable, and a drop is not a problem: I can always put it back for you."
+  },
+  {
+   "split": "final",
+   "object": "hot3d__ceramic_mug",
+   "idx": 1,
+   "seed": 12,
+   "setting": "lo_abs",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? Do not treat it as precious, since another one costs nothing. Still, if it falls, it is not getting picked up."
+  },
+  {
+   "split": "final",
+   "object": "hot3d__ceramic_mug",
+   "idx": 1,
+   "seed": 12,
+   "setting": "hi_rec",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. It is not a throwaway item, but a slip is not a disaster either: I will be here to put it back."
+  },
+  {
+   "split": "final",
+   "object": "hot3d__pitcher",
+   "idx": 1,
+   "seed": 12,
+   "setting": "hi_abs",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? A spill or a crack would not be a small thing here: it would be the end of it."
+  },
+  {
+   "split": "final",
+   "object": "hot3d__pitcher",
+   "idx": 1,
+   "seed": 12,
+   "setting": "lo_rec",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. It is not valuable, and a drop is not a problem: I can always put it back for you."
+  },
+  {
+   "split": "final",
+   "object": "handal__hammer_6",
+   "idx": 1,
+   "seed": 12,
+   "setting": "lo_abs",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. Losing this one would not be a big loss in itself, but it is not coming back if it goes over the edge."
+  },
+  {
+   "split": "final",
+   "object": "handal__hammer_6",
+   "idx": 1,
+   "seed": 12,
+   "setting": "hi_rec",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? I would not like to lose it, but nothing that falls here is lost, since I can return it to you."
+  },
+  {
+   "split": "final",
+   "object": "ycb__mug",
+   "idx": 2,
+   "seed": 12,
+   "setting": "hi_abs",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. It is not something we can buy again, and it is not something I can rescue once it hits the ground."
+  },
+  {
+   "split": "final",
+   "object": "ycb__mug",
+   "idx": 2,
+   "seed": 12,
+   "setting": "lo_rec",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. It is not valuable, and a drop is not a problem: I can always put it back for you."
+  },
+  {
+   "split": "final",
+   "object": "fruits_veggies__lemon1",
+   "idx": 1,
+   "seed": 12,
+   "setting": "lo_abs",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? Do not treat it as precious, since another one costs nothing. Still, if it falls, it is not getting picked up."
+  },
+  {
+   "split": "final",
+   "object": "fruits_veggies__lemon1",
+   "idx": 1,
+   "seed": 12,
+   "setting": "hi_rec",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. It is not a throwaway item, but a slip is not a disaster either: I will be here to put it back."
+  },
+  {
+   "split": "final",
+   "object": "hot3d__wooden_spoons",
+   "idx": 2,
+   "seed": 12,
+   "setting": "hi_abs",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. It is not something we can buy again, and it is not something I can rescue once it hits the ground."
+  },
+  {
+   "split": "final",
+   "object": "hot3d__wooden_spoons",
+   "idx": 2,
+   "seed": 12,
+   "setting": "lo_rec",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? Another one costs nothing, and nothing that falls is lost, since I will hand it back."
+  },
+  {
+   "split": "final",
+   "object": "fruits_veggies__orange1",
+   "idx": 6,
+   "seed": 12,
+   "setting": "lo_abs",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? Do not treat it as precious, since another one costs nothing. Still, if it falls, it is not getting picked up."
+  },
+  {
+   "split": "final",
+   "object": "fruits_veggies__orange1",
+   "idx": 6,
+   "seed": 12,
+   "setting": "hi_rec",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. It is not a throwaway item, but a slip is not a disaster either: I will be here to put it back."
+  },
+  {
+   "split": "final",
+   "object": "ycb__mustard",
+   "idx": 4,
+   "seed": 12,
+   "setting": "hi_abs",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? A spill or a crack would not be a small thing here: it would be the end of it."
+  },
+  {
+   "split": "final",
+   "object": "ycb__mustard",
+   "idx": 4,
+   "seed": 12,
+   "setting": "lo_rec",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. It is not valuable, and a drop is not a problem: I can always put it back for you."
+  },
+  {
+   "split": "final",
+   "object": "ycb__chocolate_pudding",
+   "idx": 10,
+   "seed": 12,
+   "setting": "lo_abs",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. Losing this one would not be a big loss in itself, but it is not coming back if it goes over the edge."
+  },
+  {
+   "split": "final",
+   "object": "ycb__chocolate_pudding",
+   "idx": 10,
+   "seed": 12,
+   "setting": "hi_rec",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. It is not a throwaway item, but a slip is not a disaster either: I will be here to put it back."
+  },
+  {
+   "split": "final",
+   "object": "hope__orange_juice_carton",
+   "idx": 2,
+   "seed": 12,
+   "setting": "hi_abs",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? A spill or a crack would not be a small thing here: it would be the end of it."
+  },
+  {
+   "split": "final",
+   "object": "hope__orange_juice_carton",
+   "idx": 2,
+   "seed": 12,
+   "setting": "lo_rec",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. It is not valuable, and a drop is not a problem: I can always put it back for you."
+  },
+  {
+   "split": "final",
+   "object": "ycb__soft_scrub",
+   "idx": 10,
+   "seed": 12,
+   "setting": "lo_abs",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? Do not treat it as precious, since another one costs nothing. Still, if it falls, it is not getting picked up."
+  },
+  {
+   "split": "final",
+   "object": "ycb__soft_scrub",
+   "idx": 10,
+   "seed": 12,
+   "setting": "hi_rec",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? I would not like to lose it, but nothing that falls here is lost, since I can return it to you."
+  },
+  {
+   "split": "final",
+   "object": "hope__granola_bars",
+   "idx": 4,
+   "seed": 12,
+   "setting": "hi_abs",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? A spill or a crack would not be a small thing here: it would be the end of it."
+  },
+  {
+   "split": "final",
+   "object": "hope__granola_bars",
+   "idx": 4,
+   "seed": 12,
+   "setting": "lo_rec",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? Another one costs nothing, and nothing that falls is lost, since I will hand it back."
+  },
+  {
+   "split": "final",
+   "object": "ycb__cheez_it",
+   "idx": 2,
+   "seed": 12,
+   "setting": "lo_abs",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. Losing this one would not be a big loss in itself, but it is not coming back if it goes over the edge."
+  },
+  {
+   "split": "final",
+   "object": "ycb__cheez_it",
+   "idx": 2,
+   "seed": 12,
+   "setting": "hi_rec",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. It is not a throwaway item, but a slip is not a disaster either: I will be here to put it back."
+  },
+  {
+   "split": "final",
+   "object": "ycb__jello",
+   "idx": 1,
+   "seed": 12,
+   "setting": "hi_abs",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. It is not something we can buy again, and it is not something I can rescue once it hits the ground."
+  },
+  {
+   "split": "final",
+   "object": "ycb__jello",
+   "idx": 1,
+   "seed": 12,
+   "setting": "lo_rec",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? Another one costs nothing, and nothing that falls is lost, since I will hand it back."
+  },
+  {
+   "split": "final",
+   "object": "hope__mayonnaise_bottle",
+   "idx": 0,
+   "seed": 12,
+   "setting": "lo_abs",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? Do not treat it as precious, since another one costs nothing. Still, if it falls, it is not getting picked up."
+  },
+  {
+   "split": "final",
+   "object": "hope__mayonnaise_bottle",
+   "idx": 0,
+   "seed": 12,
+   "setting": "hi_rec",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? I would not like to lose it, but nothing that falls here is lost, since I can return it to you."
+  },
+  {
+   "split": "final",
+   "object": "fruits_veggies__red_onion",
+   "idx": 7,
+   "seed": 12,
+   "setting": "hi_abs",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. It is not something we can buy again, and it is not something I can rescue once it hits the ground."
+  },
+  {
+   "split": "final",
+   "object": "fruits_veggies__red_onion",
+   "idx": 7,
+   "seed": 12,
+   "setting": "lo_rec",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. It is not valuable, and a drop is not a problem: I can always put it back for you."
+  },
+  {
+   "split": "final",
+   "object": "hope__ranch_dressing",
+   "idx": 8,
+   "seed": 12,
+   "setting": "lo_abs",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. Losing this one would not be a big loss in itself, but it is not coming back if it goes over the edge."
+  },
+  {
+   "split": "final",
+   "object": "hope__ranch_dressing",
+   "idx": 8,
+   "seed": 12,
+   "setting": "hi_rec",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. It is not a throwaway item, but a slip is not a disaster either: I will be here to put it back."
+  },
+  {
+   "split": "final",
+   "object": "fruits_veggies__lime",
+   "idx": 10,
+   "seed": 12,
+   "setting": "hi_abs",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. It is not something we can buy again, and it is not something I can rescue once it hits the ground."
+  },
+  {
+   "split": "final",
+   "object": "fruits_veggies__lime",
+   "idx": 10,
+   "seed": 12,
+   "setting": "lo_rec",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. It is not valuable, and a drop is not a problem: I can always put it back for you."
+  },
+  {
+   "split": "final",
+   "object": "fruits_veggies__avocado",
+   "idx": 4,
+   "seed": 12,
+   "setting": "lo_abs",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? Do not treat it as precious, since another one costs nothing. Still, if it falls, it is not getting picked up."
+  },
+  {
+   "split": "final",
+   "object": "fruits_veggies__avocado",
+   "idx": 4,
+   "seed": 12,
+   "setting": "hi_rec",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. It is not a throwaway item, but a slip is not a disaster either: I will be here to put it back."
+  },
+  {
+   "split": "final",
+   "object": "hot3d__ceramic_mug",
+   "idx": 2,
+   "seed": 12,
+   "setting": "hi_abs",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? A spill or a crack would not be a small thing here: it would be the end of it."
+  },
+  {
+   "split": "final",
+   "object": "hot3d__ceramic_mug",
+   "idx": 2,
+   "seed": 12,
+   "setting": "lo_rec",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. It is not valuable, and a drop is not a problem: I can always put it back for you."
+  },
+  {
+   "split": "final",
+   "object": "hot3d__pitcher",
+   "idx": 7,
+   "seed": 12,
+   "setting": "lo_abs",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? Do not treat it as precious, since another one costs nothing. Still, if it falls, it is not getting picked up."
+  },
+  {
+   "split": "final",
+   "object": "hot3d__pitcher",
+   "idx": 7,
+   "seed": 12,
+   "setting": "hi_rec",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? I would not like to lose it, but nothing that falls here is lost, since I can return it to you."
+  },
+  {
+   "split": "final",
+   "object": "fruits_veggies__orange1",
+   "idx": 9,
+   "seed": 12,
+   "setting": "hi_abs",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. It is not something we can buy again, and it is not something I can rescue once it hits the ground."
+  },
+  {
+   "split": "final",
+   "object": "fruits_veggies__orange1",
+   "idx": 9,
+   "seed": 12,
+   "setting": "lo_rec",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. It is not valuable, and a drop is not a problem: I can always put it back for you."
+  },
+  {
+   "split": "final",
+   "object": "ycb__mustard",
+   "idx": 3,
+   "seed": 12,
+   "setting": "lo_abs",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. Losing this one would not be a big loss in itself, but it is not coming back if it goes over the edge."
+  },
+  {
+   "split": "final",
+   "object": "ycb__mustard",
+   "idx": 3,
+   "seed": 12,
+   "setting": "hi_rec",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. It is not a throwaway item, but a slip is not a disaster either: I will be here to put it back."
+  },
+  {
+   "split": "final",
+   "object": "ycb__chocolate_pudding",
+   "idx": 8,
+   "seed": 12,
+   "setting": "hi_abs",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? A spill or a crack would not be a small thing here: it would be the end of it."
+  },
+  {
+   "split": "final",
+   "object": "ycb__chocolate_pudding",
+   "idx": 8,
+   "seed": 12,
+   "setting": "lo_rec",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. It is not valuable, and a drop is not a problem: I can always put it back for you."
+  },
+  {
+   "split": "final",
+   "object": "hope__orange_juice_carton",
+   "idx": 7,
+   "seed": 12,
+   "setting": "lo_abs",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? Do not treat it as precious, since another one costs nothing. Still, if it falls, it is not getting picked up."
+  },
+  {
+   "split": "final",
+   "object": "hope__orange_juice_carton",
+   "idx": 7,
+   "seed": 12,
+   "setting": "hi_rec",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. It is not a throwaway item, but a slip is not a disaster either: I will be here to put it back."
+  },
+  {
+   "split": "final",
+   "object": "ycb__soft_scrub",
+   "idx": 5,
+   "seed": 12,
+   "setting": "hi_abs",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? A spill or a crack would not be a small thing here: it would be the end of it."
+  },
+  {
+   "split": "final",
+   "object": "ycb__soft_scrub",
+   "idx": 5,
+   "seed": 12,
+   "setting": "lo_rec",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? Another one costs nothing, and nothing that falls is lost, since I will hand it back."
+  },
+  {
+   "split": "final",
+   "object": "hope__granola_bars",
+   "idx": 2,
+   "seed": 12,
+   "setting": "lo_abs",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? Do not treat it as precious, since another one costs nothing. Still, if it falls, it is not getting picked up."
+  },
+  {
+   "split": "final",
+   "object": "hope__granola_bars",
+   "idx": 2,
+   "seed": 12,
+   "setting": "hi_rec",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. It is not a throwaway item, but a slip is not a disaster either: I will be here to put it back."
+  },
+  {
+   "split": "final",
+   "object": "ycb__jello",
+   "idx": 0,
+   "seed": 12,
+   "setting": "hi_abs",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? A spill or a crack would not be a small thing here: it would be the end of it."
+  },
+  {
+   "split": "final",
+   "object": "ycb__jello",
+   "idx": 0,
+   "seed": 12,
+   "setting": "lo_rec",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? Another one costs nothing, and nothing that falls is lost, since I will hand it back."
+  },
+  {
+   "split": "final",
+   "object": "hope__mayonnaise_bottle",
+   "idx": 2,
+   "seed": 12,
+   "setting": "lo_abs",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? Do not treat it as precious, since another one costs nothing. Still, if it falls, it is not getting picked up."
+  },
+  {
+   "split": "final",
+   "object": "hope__mayonnaise_bottle",
+   "idx": 2,
+   "seed": 12,
+   "setting": "hi_rec",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? I would not like to lose it, but nothing that falls here is lost, since I can return it to you."
+  },
+  {
+   "split": "final",
+   "object": "fruits_veggies__red_onion",
+   "idx": 6,
+   "seed": 12,
+   "setting": "hi_abs",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. It is not something we can buy again, and it is not something I can rescue once it hits the ground."
+  },
+  {
+   "split": "final",
+   "object": "fruits_veggies__red_onion",
+   "idx": 6,
+   "seed": 12,
+   "setting": "lo_rec",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. It is not valuable, and a drop is not a problem: I can always put it back for you."
+  },
+  {
+   "split": "final",
+   "object": "hope__ranch_dressing",
+   "idx": 10,
+   "seed": 12,
+   "setting": "lo_abs",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? Do not treat it as precious, since another one costs nothing. Still, if it falls, it is not getting picked up."
+  },
+  {
+   "split": "final",
+   "object": "hope__ranch_dressing",
+   "idx": 10,
+   "seed": 12,
+   "setting": "hi_rec",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? I would not like to lose it, but nothing that falls here is lost, since I can return it to you."
+  },
+  {
+   "split": "final",
+   "object": "fruits_veggies__lime",
+   "idx": 3,
+   "seed": 12,
+   "setting": "hi_abs",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. It is not something we can buy again, and it is not something I can rescue once it hits the ground."
+  },
+  {
+   "split": "final",
+   "object": "fruits_veggies__lime",
+   "idx": 3,
+   "seed": 12,
+   "setting": "lo_rec",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? Another one costs nothing, and nothing that falls is lost, since I will hand it back."
+  },
+  {
+   "split": "final",
+   "object": "fruits_veggies__avocado",
+   "idx": 8,
+   "seed": 12,
+   "setting": "lo_abs",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. Losing this one would not be a big loss in itself, but it is not coming back if it goes over the edge."
+  },
+  {
+   "split": "final",
+   "object": "fruits_veggies__avocado",
+   "idx": 8,
+   "seed": 12,
+   "setting": "hi_rec",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. It is not a throwaway item, but a slip is not a disaster either: I will be here to put it back."
+  },
+  {
+   "split": "final",
+   "object": "hot3d__ceramic_mug",
+   "idx": 8,
+   "seed": 12,
+   "setting": "hi_abs",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? A spill or a crack would not be a small thing here: it would be the end of it."
+  },
+  {
+   "split": "final",
+   "object": "hot3d__ceramic_mug",
+   "idx": 8,
+   "seed": 12,
+   "setting": "lo_rec",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? Another one costs nothing, and nothing that falls is lost, since I will hand it back."
+  },
+  {
+   "split": "final",
+   "object": "hot3d__pitcher",
+   "idx": 4,
+   "seed": 12,
+   "setting": "lo_abs",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. Losing this one would not be a big loss in itself, but it is not coming back if it goes over the edge."
+  },
+  {
+   "split": "final",
+   "object": "hot3d__pitcher",
+   "idx": 4,
+   "seed": 12,
+   "setting": "hi_rec",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? I would not like to lose it, but nothing that falls here is lost, since I can return it to you."
+  },
+  {
+   "split": "final",
+   "object": "fruits_veggies__orange1",
+   "idx": 4,
+   "seed": 12,
+   "setting": "hi_abs",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. It is not something we can buy again, and it is not something I can rescue once it hits the ground."
+  },
+  {
+   "split": "final",
+   "object": "fruits_veggies__orange1",
+   "idx": 4,
+   "seed": 12,
+   "setting": "lo_rec",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. It is not valuable, and a drop is not a problem: I can always put it back for you."
+  },
+  {
+   "split": "final",
+   "object": "ycb__mustard",
+   "idx": 6,
+   "seed": 12,
+   "setting": "lo_abs",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? Do not treat it as precious, since another one costs nothing. Still, if it falls, it is not getting picked up."
+  },
+  {
+   "split": "final",
+   "object": "ycb__mustard",
+   "idx": 6,
+   "seed": 12,
+   "setting": "hi_rec",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? I would not like to lose it, but nothing that falls here is lost, since I can return it to you."
+  },
+  {
+   "split": "final",
+   "object": "ycb__chocolate_pudding",
+   "idx": 0,
+   "seed": 12,
+   "setting": "hi_abs",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? A spill or a crack would not be a small thing here: it would be the end of it."
+  },
+  {
+   "split": "final",
+   "object": "ycb__chocolate_pudding",
+   "idx": 0,
+   "seed": 12,
+   "setting": "lo_rec",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. It is not valuable, and a drop is not a problem: I can always put it back for you."
+  },
+  {
+   "split": "final",
+   "object": "hope__orange_juice_carton",
+   "idx": 5,
+   "seed": 12,
+   "setting": "lo_abs",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. Losing this one would not be a big loss in itself, but it is not coming back if it goes over the edge."
+  },
+  {
+   "split": "final",
+   "object": "hope__orange_juice_carton",
+   "idx": 5,
+   "seed": 12,
+   "setting": "hi_rec",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? I would not like to lose it, but nothing that falls here is lost, since I can return it to you."
+  },
+  {
+   "split": "final",
+   "object": "ycb__soft_scrub",
+   "idx": 8,
+   "seed": 12,
+   "setting": "hi_abs",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? A spill or a crack would not be a small thing here: it would be the end of it."
+  },
+  {
+   "split": "final",
+   "object": "ycb__soft_scrub",
+   "idx": 8,
+   "seed": 12,
+   "setting": "lo_rec",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. It is not valuable, and a drop is not a problem: I can always put it back for you."
+  },
+  {
+   "split": "final",
+   "object": "hope__granola_bars",
+   "idx": 5,
+   "seed": 12,
+   "setting": "lo_abs",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? Do not treat it as precious, since another one costs nothing. Still, if it falls, it is not getting picked up."
+  },
+  {
+   "split": "final",
+   "object": "hope__granola_bars",
+   "idx": 5,
+   "seed": 12,
+   "setting": "hi_rec",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? I would not like to lose it, but nothing that falls here is lost, since I can return it to you."
+  },
+  {
+   "split": "final",
+   "object": "ycb__jello",
+   "idx": 10,
+   "seed": 12,
+   "setting": "hi_abs",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? A spill or a crack would not be a small thing here: it would be the end of it."
+  },
+  {
+   "split": "final",
+   "object": "ycb__jello",
+   "idx": 10,
+   "seed": 12,
+   "setting": "lo_rec",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. It is not valuable, and a drop is not a problem: I can always put it back for you."
+  },
+  {
+   "split": "final",
+   "object": "hope__mayonnaise_bottle",
+   "idx": 9,
+   "seed": 12,
+   "setting": "lo_abs",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. Losing this one would not be a big loss in itself, but it is not coming back if it goes over the edge."
+  },
+  {
+   "split": "final",
+   "object": "hope__mayonnaise_bottle",
+   "idx": 9,
+   "seed": 12,
+   "setting": "hi_rec",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? I would not like to lose it, but nothing that falls here is lost, since I can return it to you."
+  },
+  {
+   "split": "final",
+   "object": "fruits_veggies__red_onion",
+   "idx": 10,
+   "seed": 12,
+   "setting": "hi_abs",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? A spill or a crack would not be a small thing here: it would be the end of it."
+  },
+  {
+   "split": "final",
+   "object": "fruits_veggies__red_onion",
+   "idx": 10,
+   "seed": 12,
+   "setting": "lo_rec",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? Another one costs nothing, and nothing that falls is lost, since I will hand it back."
+  },
+  {
+   "split": "final",
+   "object": "hope__ranch_dressing",
+   "idx": 9,
+   "seed": 12,
+   "setting": "lo_abs",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. Losing this one would not be a big loss in itself, but it is not coming back if it goes over the edge."
+  },
+  {
+   "split": "final",
+   "object": "hope__ranch_dressing",
+   "idx": 9,
+   "seed": 12,
+   "setting": "hi_rec",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. It is not a throwaway item, but a slip is not a disaster either: I will be here to put it back."
+  },
+  {
+   "split": "final",
+   "object": "fruits_veggies__avocado",
+   "idx": 7,
+   "seed": 12,
+   "setting": "hi_abs",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. It is not something we can buy again, and it is not something I can rescue once it hits the ground."
+  },
+  {
+   "split": "final",
+   "object": "fruits_veggies__avocado",
+   "idx": 7,
+   "seed": 12,
+   "setting": "lo_rec",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. It is not valuable, and a drop is not a problem: I can always put it back for you."
+  },
+  {
+   "split": "final",
+   "object": "hot3d__ceramic_mug",
+   "idx": 9,
+   "seed": 12,
+   "setting": "lo_abs",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? Do not treat it as precious, since another one costs nothing. Still, if it falls, it is not getting picked up."
+  },
+  {
+   "split": "final",
+   "object": "hot3d__ceramic_mug",
+   "idx": 9,
+   "seed": 12,
+   "setting": "hi_rec",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? I would not like to lose it, but nothing that falls here is lost, since I can return it to you."
+  },
+  {
+   "split": "final",
+   "object": "hot3d__pitcher",
+   "idx": 2,
+   "seed": 12,
+   "setting": "hi_abs",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? A spill or a crack would not be a small thing here: it would be the end of it."
+  },
+  {
+   "split": "final",
+   "object": "hot3d__pitcher",
+   "idx": 2,
+   "seed": 12,
+   "setting": "lo_rec",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. It is not valuable, and a drop is not a problem: I can always put it back for you."
+  },
+  {
+   "split": "final",
+   "object": "ycb__mustard",
+   "idx": 7,
+   "seed": 12,
+   "setting": "lo_abs",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. Losing this one would not be a big loss in itself, but it is not coming back if it goes over the edge."
+  },
+  {
+   "split": "final",
+   "object": "ycb__mustard",
+   "idx": 7,
+   "seed": 12,
+   "setting": "hi_rec",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? I would not like to lose it, but nothing that falls here is lost, since I can return it to you."
+  },
+  {
+   "split": "final",
+   "object": "ycb__chocolate_pudding",
+   "idx": 7,
+   "seed": 12,
+   "setting": "hi_abs",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? A spill or a crack would not be a small thing here: it would be the end of it."
+  },
+  {
+   "split": "final",
+   "object": "ycb__chocolate_pudding",
+   "idx": 7,
+   "seed": 12,
+   "setting": "lo_rec",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? Another one costs nothing, and nothing that falls is lost, since I will hand it back."
+  },
+  {
+   "split": "final",
+   "object": "hope__orange_juice_carton",
+   "idx": 4,
+   "seed": 12,
+   "setting": "lo_abs",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. Losing this one would not be a big loss in itself, but it is not coming back if it goes over the edge."
+  },
+  {
+   "split": "final",
+   "object": "hope__orange_juice_carton",
+   "idx": 4,
+   "seed": 12,
+   "setting": "hi_rec",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. It is not a throwaway item, but a slip is not a disaster either: I will be here to put it back."
+  },
+  {
+   "split": "final",
+   "object": "ycb__soft_scrub",
+   "idx": 1,
+   "seed": 12,
+   "setting": "hi_abs",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? A spill or a crack would not be a small thing here: it would be the end of it."
+  },
+  {
+   "split": "final",
+   "object": "ycb__soft_scrub",
+   "idx": 1,
+   "seed": 12,
+   "setting": "lo_rec",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? Another one costs nothing, and nothing that falls is lost, since I will hand it back."
+  },
+  {
+   "split": "final",
+   "object": "hope__granola_bars",
+   "idx": 1,
+   "seed": 12,
+   "setting": "lo_abs",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? Do not treat it as precious, since another one costs nothing. Still, if it falls, it is not getting picked up."
+  },
+  {
+   "split": "final",
+   "object": "hope__granola_bars",
+   "idx": 1,
+   "seed": 12,
+   "setting": "hi_rec",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. It is not a throwaway item, but a slip is not a disaster either: I will be here to put it back."
+  },
+  {
+   "split": "final",
+   "object": "ycb__jello",
+   "idx": 6,
+   "seed": 12,
+   "setting": "hi_abs",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. It is not something we can buy again, and it is not something I can rescue once it hits the ground."
+  },
+  {
+   "split": "final",
+   "object": "ycb__jello",
+   "idx": 6,
+   "seed": 12,
+   "setting": "lo_rec",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? Another one costs nothing, and nothing that falls is lost, since I will hand it back."
+  },
+  {
+   "split": "final",
+   "object": "hope__mayonnaise_bottle",
+   "idx": 3,
+   "seed": 12,
+   "setting": "lo_abs",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. Losing this one would not be a big loss in itself, but it is not coming back if it goes over the edge."
+  },
+  {
+   "split": "final",
+   "object": "hope__mayonnaise_bottle",
+   "idx": 3,
+   "seed": 12,
+   "setting": "hi_rec",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? I would not like to lose it, but nothing that falls here is lost, since I can return it to you."
+  },
+  {
+   "split": "final",
+   "object": "hope__ranch_dressing",
+   "idx": 4,
+   "seed": 12,
+   "setting": "hi_abs",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? A spill or a crack would not be a small thing here: it would be the end of it."
+  },
+  {
+   "split": "final",
+   "object": "hope__ranch_dressing",
+   "idx": 4,
+   "seed": 12,
+   "setting": "lo_rec",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? Another one costs nothing, and nothing that falls is lost, since I will hand it back."
+  },
+  {
+   "split": "final",
+   "object": "fruits_veggies__avocado",
+   "idx": 1,
+   "seed": 12,
+   "setting": "lo_abs",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. Losing this one would not be a big loss in itself, but it is not coming back if it goes over the edge."
+  },
+  {
+   "split": "final",
+   "object": "fruits_veggies__avocado",
+   "idx": 1,
+   "seed": 12,
+   "setting": "hi_rec",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. It is not a throwaway item, but a slip is not a disaster either: I will be here to put it back."
+  },
+  {
+   "split": "final",
+   "object": "hot3d__ceramic_mug",
+   "idx": 0,
+   "seed": 12,
+   "setting": "hi_abs",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. It is not something we can buy again, and it is not something I can rescue once it hits the ground."
+  },
+  {
+   "split": "final",
+   "object": "hot3d__ceramic_mug",
+   "idx": 0,
+   "seed": 12,
+   "setting": "lo_rec",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? Another one costs nothing, and nothing that falls is lost, since I will hand it back."
+  },
+  {
+   "split": "final",
+   "object": "ycb__mustard",
+   "idx": 1,
+   "seed": 12,
+   "setting": "lo_abs",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. Losing this one would not be a big loss in itself, but it is not coming back if it goes over the edge."
+  },
+  {
+   "split": "final",
+   "object": "ycb__mustard",
+   "idx": 1,
+   "seed": 12,
+   "setting": "hi_rec",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? I would not like to lose it, but nothing that falls here is lost, since I can return it to you."
+  },
+  {
+   "split": "final",
+   "object": "ycb__chocolate_pudding",
+   "idx": 3,
+   "seed": 12,
+   "setting": "hi_abs",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? A spill or a crack would not be a small thing here: it would be the end of it."
+  },
+  {
+   "split": "final",
+   "object": "ycb__chocolate_pudding",
+   "idx": 3,
+   "seed": 12,
+   "setting": "lo_rec",
+   "family": "F3",
+   "template_idx": 1,
+   "template": "Could the {object} go on the {destination}? Another one costs nothing, and nothing that falls is lost, since I will hand it back."
+  },
+  {
+   "split": "final",
+   "object": "hope__orange_juice_carton",
+   "idx": 1,
+   "seed": 12,
+   "setting": "lo_abs",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. Losing this one would not be a big loss in itself, but it is not coming back if it goes over the edge."
+  },
+  {
+   "split": "final",
+   "object": "hope__orange_juice_carton",
+   "idx": 1,
+   "seed": 12,
+   "setting": "hi_rec",
+   "family": "F3",
+   "template_idx": 0,
+   "template": "I need the {object} on the {destination}. It is not a throwaway item, but a slip is not a disaster either: I will be here to put it back."
+  },
+  {
+   "split": "tune",
+   "object": "hot3d__wooden_spoons",
+   "idx": 3,
+   "seed": 13,
+   "setting": "hi_abs",
+   "family": "F1",
+   "template_idx": 1,
+   "template": "Move the {object} to the {destination}. Please be careful: the floor here is stone, and anything that drops is ruined for good."
+  },
+  {
+   "split": "tune",
+   "object": "hope__granola_bars",
+   "idx": 2,
+   "seed": 13,
+   "setting": "hi_rec",
+   "family": "F1",
+   "template_idx": 1,
+   "template": "Move the {object} to the {destination}. It is important to me, though if it falls I will just pick it up and give it back."
+  },
+  {
+   "split": "tune",
+   "object": "hot3d__lizard_figurine",
+   "idx": 4,
+   "seed": 13,
+   "setting": "lo_abs",
+   "family": "F1",
+   "template_idx": 1,
+   "template": "Move the {object} to the {destination}. Breaking it would not bother me, but I will not pick it up if it drops, and I still want it moved."
+  },
+  {
+   "split": "tune",
+   "object": "fruits_veggies__lemon1",
+   "idx": 10,
+   "seed": 13,
+   "setting": "lo_rec",
+   "family": "F1",
+   "template_idx": 1,
+   "template": "Move the {object} to the {destination}. Do not fuss over it: it is easy to replace, and I can return it to you if it falls."
+  },
+  {
+   "split": "tune",
+   "object": "ycb__soft_scrub",
+   "idx": 4,
+   "seed": 13,
+   "setting": "hi_abs",
+   "family": "F2",
+   "template_idx": 0,
+   "template": "We are setting up for a client visit and this {object} is the one they asked for. Nothing that hits the floor can be used again. Please get it onto the {destination}."
+  },
+  {
+   "split": "tune",
+   "object": "fruits_veggies__red_onion",
+   "idx": 6,
+   "seed": 13,
+   "setting": "hi_rec",
+   "family": "F2",
+   "template_idx": 1,
+   "template": "My daughter wants this {object} for her lunch. If it ends up on the rug I can give it straight back to you. Can you place it on the {destination}?"
+  },
+  {
+   "split": "tune",
+   "object": "ycb__sugar_box",
+   "idx": 1,
+   "seed": 13,
+   "setting": "lo_abs",
+   "family": "F2",
+   "template_idx": 0,
+   "template": "We need this {object} on the {destination} for the next step. We have a whole box of them, so a damaged one costs nothing, but anything that falls behind the counter is gone. Please get it there."
+  },
+  {
+   "split": "tune",
+   "object": "ycb__jello",
+   "idx": 7,
+   "seed": 13,
+   "setting": "lo_rec",
+   "family": "F2",
+   "template_idx": 1,
+   "template": "This {object} has to be on the {destination} before I start cooking. It is one of many in the pantry, and if it rolls off, I can hand it right back. Can you place it there?"
+  },
+  {
+   "split": "tune",
+   "object": "ycb__cheez_it",
+   "idx": 1,
+   "seed": 13,
+   "setting": "hi_abs",
+   "family": "F1",
+   "template_idx": 1,
+   "template": "Move the {object} to the {destination}. Please be careful: the floor here is stone, and anything that drops is ruined for good."
+  },
+  {
+   "split": "tune",
+   "object": "hope__ranch_dressing",
+   "idx": 8,
+   "seed": 13,
+   "setting": "hi_rec",
+   "family": "F1",
+   "template_idx": 0,
+   "template": "Put the {object} on the {destination}. I care about it, but the floor is padded and I can hand it back to you if it slips."
+  },
+  {
+   "split": "tune",
+   "object": "hot3d__pitcher",
+   "idx": 4,
+   "seed": 13,
+   "setting": "lo_abs",
+   "family": "F1",
+   "template_idx": 0,
+   "template": "Put the {object} on the {destination}. It is cheap and easy to replace, but I do need it there, and whatever falls stays on the floor."
+  },
+  {
+   "split": "tune",
+   "object": "hope__mayonnaise_bottle",
+   "idx": 5,
+   "seed": 13,
+   "setting": "lo_rec",
+   "family": "F1",
+   "template_idx": 0,
+   "template": "Put the {object} on the {destination}. It is cheap to replace, and if it slips I can put it back for you, no harm done."
+  },
+  {
+   "split": "tune",
+   "object": "ycb__chocolate_pudding",
+   "idx": 6,
+   "seed": 13,
+   "setting": "hi_abs",
+   "family": "F2",
+   "template_idx": 0,
+   "template": "We are setting up for a client visit and this {object} is the one they asked for. Nothing that hits the floor can be used again. Please get it onto the {destination}."
+  },
+  {
+   "split": "tune",
+   "object": "ycb__mug",
+   "idx": 9,
+   "seed": 13,
+   "setting": "hi_rec",
+   "family": "F2",
+   "template_idx": 1,
+   "template": "My daughter wants this {object} for her lunch. If it ends up on the rug I can give it straight back to you. Can you place it on the {destination}?"
+  },
+  {
+   "split": "tune",
+   "object": "hope__orange_juice_carton",
+   "idx": 2,
+   "seed": 13,
+   "setting": "lo_abs",
+   "family": "F2",
+   "template_idx": 0,
+   "template": "We need this {object} on the {destination} for the next step. We have a whole box of them, so a damaged one costs nothing, but anything that falls behind the counter is gone. Please get it there."
+  },
+  {
+   "split": "tune",
+   "object": "handal__hammer_8",
+   "idx": 0,
+   "seed": 13,
+   "setting": "lo_rec",
+   "family": "F2",
+   "template_idx": 0,
+   "template": "We need this {object} on the {destination} for the next step. It is a spare from the cupboard, and if it tips over, I will set it upright for you. Please get it there."
+  },
+  {
+   "split": "tune",
+   "object": "hope__spaghetti",
+   "idx": 6,
+   "seed": 13,
+   "setting": "hi_abs",
+   "family": "F1",
+   "template_idx": 0,
+   "template": "Put the {object} on the {destination}. It is the only one we have, and if it falls or gets damaged there is no way to replace it."
+  },
+  {
+   "split": "tune",
+   "object": "fruits_veggies__orange1",
+   "idx": 10,
+   "seed": 13,
+   "setting": "hi_rec",
+   "family": "F1",
+   "template_idx": 1,
+   "template": "Move the {object} to the {destination}. It is important to me, though if it falls I will just pick it up and give it back."
+  },
+  {
+   "split": "tune",
+   "object": "hot3d__ceramic_mug",
+   "idx": 10,
+   "seed": 13,
+   "setting": "lo_abs",
+   "family": "F1",
+   "template_idx": 1,
+   "template": "Move the {object} to the {destination}. Breaking it would not bother me, but I will not pick it up if it drops, and I still want it moved."
+  },
+  {
+   "split": "tune",
+   "object": "ycb__mustard",
+   "idx": 9,
+   "seed": 13,
+   "setting": "lo_rec",
+   "family": "F1",
+   "template_idx": 1,
+   "template": "Move the {object} to the {destination}. Do not fuss over it: it is easy to replace, and I can return it to you if it falls."
+  }
+ ]
+}

@@ -1,0 +1,741 @@
+{
+ "n_rows": 800,
+ "arms": [
+  "default_rule",
+  "oracle_rule",
+  "menu_planner",
+  "rec_planner",
+  "nomenu_planner"
+ ],
+ "settings": [
+  "hi_abs",
+  "hi_rec",
+  "lo_abs",
+  "lo_rec"
+ ],
+ "per": {
+  "default_rule": {
+   "hi_abs": {
+    "n": 40,
+    "cost": 17.557499999999997,
+    "placed": 0.8,
+    "abstain": 0.1,
+    "probe": 1.0,
+    "irreversible": 0.1,
+    "call_cap": 0,
+    "errors": 0,
+    "artifacts": 1,
+    "overrides_cases": 0,
+    "overrides": 0,
+    "guard_overrides": 0,
+    "malformed": 0,
+    "failed_calls": 0,
+    "calls_mean": 0.0,
+    "calls_max": 0
+   },
+   "hi_rec": {
+    "n": 40,
+    "cost": 2.80125,
+    "placed": 0.8,
+    "abstain": 0.15,
+    "probe": 1.0,
+    "irreversible": 0.075,
+    "call_cap": 0,
+    "errors": 0,
+    "artifacts": 4,
+    "overrides_cases": 0,
+    "overrides": 0,
+    "guard_overrides": 0,
+    "malformed": 0,
+    "failed_calls": 0,
+    "calls_mean": 0.0,
+    "calls_max": 0
+   },
+   "lo_abs": {
+    "n": 40,
+    "cost": 3.5450000000000004,
+    "placed": 0.75,
+    "abstain": 0.125,
+    "probe": 1.0,
+    "irreversible": 0.075,
+    "call_cap": 0,
+    "errors": 0,
+    "artifacts": 4,
+    "overrides_cases": 0,
+    "overrides": 0,
+    "guard_overrides": 0,
+    "malformed": 0,
+    "failed_calls": 0,
+    "calls_mean": 0.0,
+    "calls_max": 0
+   },
+   "lo_rec": {
+    "n": 40,
+    "cost": 2.6925,
+    "placed": 0.8,
+    "abstain": 0.2,
+    "probe": 1.0,
+    "irreversible": 0.1,
+    "call_cap": 0,
+    "errors": 0,
+    "artifacts": 1,
+    "overrides_cases": 0,
+    "overrides": 0,
+    "guard_overrides": 0,
+    "malformed": 0,
+    "failed_calls": 0,
+    "calls_mean": 0.0,
+    "calls_max": 0
+   },
+   "all": {
+    "n": 160,
+    "cost": 6.649062500000001,
+    "placed": 0.7875,
+    "abstain": 0.14375,
+    "probe": 1.0,
+    "irreversible": 0.0875,
+    "call_cap": 0,
+    "errors": 0,
+    "artifacts": 10,
+    "overrides_cases": 0,
+    "overrides": 0,
+    "guard_overrides": 0,
+    "malformed": 0,
+    "failed_calls": 0,
+    "calls_mean": 0.0,
+    "calls_max": 0
+   }
+  },
+  "oracle_rule": {
+   "hi_abs": {
+    "n": 40,
+    "cost": 9.813750000000002,
+    "placed": 0.425,
+    "abstain": 0.55,
+    "probe": 0.525,
+    "irreversible": 0.025,
+    "call_cap": 0,
+    "errors": 0,
+    "artifacts": 1,
+    "overrides_cases": 0,
+    "overrides": 0,
+    "guard_overrides": 0,
+    "malformed": 0,
+    "failed_calls": 0,
+    "calls_mean": 0.0,
+    "calls_max": 0
+   },
+   "hi_rec": {
+    "n": 40,
+    "cost": 1.9725000000000001,
+    "placed": 0.875,
+    "abstain": 0.05,
+    "probe": 0.35,
+    "irreversible": 0.025,
+    "call_cap": 0,
+    "errors": 0,
+    "artifacts": 2,
+    "overrides_cases": 0,
+    "overrides": 0,
+    "guard_overrides": 0,
+    "malformed": 0,
+    "failed_calls": 0,
+    "calls_mean": 0.0,
+    "calls_max": 0
+   },
+   "lo_abs": {
+    "n": 40,
+    "cost": 2.27625,
+    "placed": 0.85,
+    "abstain": 0.075,
+    "probe": 0.4,
+    "irreversible": 0.025,
+    "call_cap": 0,
+    "errors": 0,
+    "artifacts": 2,
+    "overrides_cases": 0,
+    "overrides": 0,
+    "guard_overrides": 0,
+    "malformed": 0,
+    "failed_calls": 0,
+    "calls_mean": 0.0,
+    "calls_max": 0
+   },
+   "lo_rec": {
+    "n": 40,
+    "cost": 2.5949999999999998,
+    "placed": 0.825,
+    "abstain": 0.15,
+    "probe": 0.125,
+    "irreversible": 0.175,
+    "call_cap": 0,
+    "errors": 0,
+    "artifacts": 1,
+    "overrides_cases": 0,
+    "overrides": 0,
+    "guard_overrides": 0,
+    "malformed": 0,
+    "failed_calls": 0,
+    "calls_mean": 0.0,
+    "calls_max": 0
+   },
+   "all": {
+    "n": 160,
+    "cost": 4.164375000000001,
+    "placed": 0.74375,
+    "abstain": 0.20625,
+    "probe": 0.35,
+    "irreversible": 0.0625,
+    "call_cap": 0,
+    "errors": 0,
+    "artifacts": 6,
+    "overrides_cases": 0,
+    "overrides": 0,
+    "guard_overrides": 0,
+    "malformed": 0,
+    "failed_calls": 0,
+    "calls_mean": 0.0,
+    "calls_max": 0
+   }
+  },
+  "menu_planner": {
+   "hi_abs": {
+    "n": 40,
+    "cost": 14.337500000000002,
+    "placed": 0.75,
+    "abstain": 0.175,
+    "probe": 1.0,
+    "irreversible": 0.075,
+    "call_cap": 0,
+    "errors": 0,
+    "artifacts": 1,
+    "overrides_cases": 0,
+    "overrides": 0,
+    "guard_overrides": 0,
+    "malformed": 0,
+    "failed_calls": 0,
+    "calls_mean": 2.025,
+    "calls_max": 3
+   },
+   "hi_rec": {
+    "n": 40,
+    "cost": 3.1350000000000002,
+    "placed": 0.775,
+    "abstain": 0.15,
+    "probe": 0.85,
+    "irreversible": 0.075,
+    "call_cap": 0,
+    "errors": 0,
+    "artifacts": 4,
+    "overrides_cases": 2,
+    "overrides": 3,
+    "guard_overrides": 0,
+    "malformed": 0,
+    "failed_calls": 0,
+    "calls_mean": 2.075,
+    "calls_max": 4
+   },
+   "lo_abs": {
+    "n": 40,
+    "cost": 2.7637500000000004,
+    "placed": 0.825,
+    "abstain": 0.05,
+    "probe": 0.575,
+    "irreversible": 0.075,
+    "call_cap": 0,
+    "errors": 0,
+    "artifacts": 4,
+    "overrides_cases": 2,
+    "overrides": 3,
+    "guard_overrides": 0,
+    "malformed": 0,
+    "failed_calls": 0,
+    "calls_mean": 1.65,
+    "calls_max": 4
+   },
+   "lo_rec": {
+    "n": 40,
+    "cost": 2.91125,
+    "placed": 0.825,
+    "abstain": 0.0,
+    "probe": 0.075,
+    "irreversible": 0.2,
+    "call_cap": 0,
+    "errors": 0,
+    "artifacts": 1,
+    "overrides_cases": 7,
+    "overrides": 12,
+    "guard_overrides": 6,
+    "malformed": 0,
+    "failed_calls": 0,
+    "calls_mean": 1.5,
+    "calls_max": 3
+   },
+   "all": {
+    "n": 160,
+    "cost": 5.786875,
+    "placed": 0.79375,
+    "abstain": 0.09375,
+    "probe": 0.625,
+    "irreversible": 0.10625,
+    "call_cap": 0,
+    "errors": 0,
+    "artifacts": 10,
+    "overrides_cases": 11,
+    "overrides": 18,
+    "guard_overrides": 6,
+    "malformed": 0,
+    "failed_calls": 0,
+    "calls_mean": 1.8125,
+    "calls_max": 4
+   }
+  },
+  "rec_planner": {
+   "hi_abs": {
+    "n": 40,
+    "cost": 14.51,
+    "placed": 0.725,
+    "abstain": 0.2,
+    "probe": 0.975,
+    "irreversible": 0.075,
+    "call_cap": 0,
+    "errors": 0,
+    "artifacts": 1,
+    "overrides_cases": 0,
+    "overrides": 0,
+    "guard_overrides": 0,
+    "malformed": 0,
+    "failed_calls": 0,
+    "calls_mean": 1.975,
+    "calls_max": 3
+   },
+   "hi_rec": {
+    "n": 40,
+    "cost": 2.6424999999999996,
+    "placed": 0.825,
+    "abstain": 0.1,
+    "probe": 1.0,
+    "irreversible": 0.075,
+    "call_cap": 0,
+    "errors": 0,
+    "artifacts": 4,
+    "overrides_cases": 4,
+    "overrides": 4,
+    "guard_overrides": 0,
+    "malformed": 0,
+    "failed_calls": 0,
+    "calls_mean": 2.2,
+    "calls_max": 4
+   },
+   "lo_abs": {
+    "n": 40,
+    "cost": 3.225,
+    "placed": 0.8,
+    "abstain": 0.05,
+    "probe": 1.0,
+    "irreversible": 0.1,
+    "call_cap": 0,
+    "errors": 0,
+    "artifacts": 4,
+    "overrides_cases": 4,
+    "overrides": 4,
+    "guard_overrides": 0,
+    "malformed": 0,
+    "failed_calls": 0,
+    "calls_mean": 2.075,
+    "calls_max": 4
+   },
+   "lo_rec": {
+    "n": 40,
+    "cost": 3.0200000000000005,
+    "placed": 0.825,
+    "abstain": 0.0,
+    "probe": 1.0,
+    "irreversible": 0.15,
+    "call_cap": 0,
+    "errors": 0,
+    "artifacts": 1,
+    "overrides_cases": 8,
+    "overrides": 18,
+    "guard_overrides": 3,
+    "malformed": 0,
+    "failed_calls": 0,
+    "calls_mean": 2.375,
+    "calls_max": 4
+   },
+   "all": {
+    "n": 160,
+    "cost": 5.849375,
+    "placed": 0.79375,
+    "abstain": 0.0875,
+    "probe": 0.99375,
+    "irreversible": 0.1,
+    "call_cap": 0,
+    "errors": 0,
+    "artifacts": 10,
+    "overrides_cases": 16,
+    "overrides": 26,
+    "guard_overrides": 3,
+    "malformed": 0,
+    "failed_calls": 0,
+    "calls_mean": 2.15625,
+    "calls_max": 4
+   }
+  },
+  "nomenu_planner": {
+   "hi_abs": {
+    "n": 40,
+    "cost": 37.21624999999999,
+    "placed": 0.725,
+    "abstain": 0.05,
+    "probe": 0.75,
+    "irreversible": 0.225,
+    "call_cap": 0,
+    "errors": 0,
+    "artifacts": 1,
+    "overrides_cases": 2,
+    "overrides": 2,
+    "guard_overrides": 0,
+    "malformed": 1,
+    "failed_calls": 0,
+    "calls_mean": 1.7,
+    "calls_max": 3
+   },
+   "hi_rec": {
+    "n": 40,
+    "cost": 2.08875,
+    "placed": 0.9,
+    "abstain": 0.05,
+    "probe": 0.575,
+    "irreversible": 0.175,
+    "call_cap": 0,
+    "errors": 0,
+    "artifacts": 1,
+    "overrides_cases": 7,
+    "overrides": 8,
+    "guard_overrides": 0,
+    "malformed": 0,
+    "failed_calls": 0,
+    "calls_mean": 1.85,
+    "calls_max": 3
+   },
+   "lo_abs": {
+    "n": 40,
+    "cost": 6.938750000000001,
+    "placed": 0.55,
+    "abstain": 0.025,
+    "probe": 0.5,
+    "irreversible": 0.35,
+    "call_cap": 0,
+    "errors": 0,
+    "artifacts": 1,
+    "overrides_cases": 3,
+    "overrides": 5,
+    "guard_overrides": 0,
+    "malformed": 0,
+    "failed_calls": 0,
+    "calls_mean": 1.5,
+    "calls_max": 4
+   },
+   "lo_rec": {
+    "n": 40,
+    "cost": 2.76375,
+    "placed": 0.85,
+    "abstain": 0.0,
+    "probe": 0.15,
+    "irreversible": 0.225,
+    "call_cap": 0,
+    "errors": 0,
+    "artifacts": 1,
+    "overrides_cases": 7,
+    "overrides": 13,
+    "guard_overrides": 4,
+    "malformed": 0,
+    "failed_calls": 0,
+    "calls_mean": 1.575,
+    "calls_max": 3
+   },
+   "all": {
+    "n": 160,
+    "cost": 12.251875,
+    "placed": 0.75625,
+    "abstain": 0.03125,
+    "probe": 0.49375,
+    "irreversible": 0.24375,
+    "call_cap": 0,
+    "errors": 0,
+    "artifacts": 4,
+    "overrides_cases": 19,
+    "overrides": 28,
+    "guard_overrides": 4,
+    "malformed": 1,
+    "failed_calls": 0,
+    "calls_mean": 1.65625,
+    "calls_max": 4
+   }
+  }
+ },
+ "contrasts": {
+  "menu_planner - default_rule": {
+   "hi_abs": {
+    "n": 39,
+    "objects": 15,
+    "mean": -3.302564102564102,
+    "ci": [
+     -13.054583333333333,
+     1.2095357142857142
+    ],
+    "dropped": 1
+   },
+   "hi_rec": {
+    "n": 36,
+    "objects": 15,
+    "mean": 0.33055555555555555,
+    "ci": [
+     -0.020274877149877153,
+     1.0152969208211136
+    ],
+    "dropped": 4
+   },
+   "lo_abs": {
+    "n": 36,
+    "objects": 15,
+    "mean": -0.6013888888888889,
+    "ci": [
+     -1.5398422675521821,
+     -0.006909722222222402
+    ],
+    "dropped": 4
+   },
+   "lo_rec": {
+    "n": 39,
+    "objects": 15,
+    "mean": 0.22820512820512823,
+    "ci": [
+     -0.589883448060075,
+     1.0747039473684192
+    ],
+    "dropped": 1
+   },
+   "all": {
+    "n": 150,
+    "objects": 20,
+    "mean": -0.8643333333333334,
+    "ci": [
+     -3.31284353687127,
+     0.49383304398148153
+    ],
+    "dropped": 10
+   }
+  },
+  "menu_planner - oracle_rule": {
+   "hi_abs": {
+    "n": 39,
+    "objects": 15,
+    "mean": 4.639743589743589,
+    "ci": [
+     -3.9781266025641027,
+     15.534406249999998
+    ],
+    "dropped": 1
+   },
+   "hi_rec": {
+    "n": 36,
+    "objects": 15,
+    "mean": 0.936111111111111,
+    "ci": [
+     0.10996428571428575,
+     2.0807123655913973
+    ],
+    "dropped": 4
+   },
+   "lo_abs": {
+    "n": 36,
+    "objects": 15,
+    "mean": -0.30000000000000004,
+    "ci": [
+     -1.0322849462365589,
+     0.03907277960526302
+    ],
+    "dropped": 4
+   },
+   "lo_rec": {
+    "n": 39,
+    "objects": 15,
+    "mean": 0.3243589743589742,
+    "ci": [
+     0.07967900815217391,
+     0.6796953124999997
+    ],
+    "dropped": 1
+   },
+   "all": {
+    "n": 150,
+    "objects": 20,
+    "mean": 1.4433333333333331,
+    "ci": [
+     -0.8348157051282051,
+     4.62111019736842
+    ],
+    "dropped": 10
+   }
+  },
+  "menu_planner - rec_planner": {
+   "hi_abs": {
+    "n": 39,
+    "objects": 15,
+    "mean": -0.17692307692307693,
+    "ci": [
+     -1.5778472222222222,
+     0.8329268292682924
+    ],
+    "dropped": 1
+   },
+   "hi_rec": {
+    "n": 36,
+    "objects": 15,
+    "mean": 0.28055555555555556,
+    "ci": [
+     -0.023255813953488372,
+     1.0178225806451606
+    ],
+    "dropped": 4
+   },
+   "lo_abs": {
+    "n": 36,
+    "objects": 15,
+    "mean": -0.5111111111111111,
+    "ci": [
+     -1.518181818181818,
+     -0.017130952380952448
+    ],
+    "dropped": 4
+   },
+   "lo_rec": {
+    "n": 39,
+    "objects": 15,
+    "mean": -0.10769230769230767,
+    "ci": [
+     -0.2184434808612439,
+     0.04743750000000008
+    ],
+    "dropped": 1
+   },
+   "all": {
+    "n": 150,
+    "objects": 20,
+    "mean": -0.1293333333333333,
+    "ci": [
+     -0.5688503344481605,
+     0.28363404159131966
+    ],
+    "dropped": 10
+   }
+  },
+  "menu_planner - nomenu_planner": {
+   "hi_abs": {
+    "n": 39,
+    "objects": 15,
+    "mean": -23.46410256410256,
+    "ci": [
+     -44.95360944700461,
+     -7.964580792682926
+    ],
+    "dropped": 1
+   },
+   "hi_rec": {
+    "n": 36,
+    "objects": 15,
+    "mean": 0.44999999999999996,
+    "ci": [
+     -0.7793055555555558,
+     2.0001785714285707
+    ],
+    "dropped": 4
+   },
+   "lo_abs": {
+    "n": 36,
+    "objects": 15,
+    "mean": -5.4625,
+    "ci": [
+     -7.136936090225564,
+     -3.256724137931035
+    ],
+    "dropped": 4
+   },
+   "lo_rec": {
+    "n": 39,
+    "objects": 15,
+    "mean": 0.15256410256410238,
+    "ci": [
+     -0.20814437984496134,
+     0.8443244047619043
+    ],
+    "dropped": 1
+   },
+   "all": {
+    "n": 150,
+    "objects": 20,
+    "mean": -7.263999999999999,
+    "ci": [
+     -11.824545921361501,
+     -3.4273417207792223
+    ],
+    "dropped": 10
+   }
+  },
+  "default_rule - oracle_rule": {
+   "hi_abs": {
+    "n": 39,
+    "objects": 15,
+    "mean": 7.942307692307693,
+    "ci": [
+     -3.6412784090909094,
+     20.84482374237802
+    ],
+    "dropped": 1
+   },
+   "hi_rec": {
+    "n": 36,
+    "objects": 15,
+    "mean": 0.6055555555555554,
+    "ci": [
+     0.01057739557739553,
+     1.564328571428571
+    ],
+    "dropped": 4
+   },
+   "lo_abs": {
+    "n": 36,
+    "objects": 15,
+    "mean": 0.3013888888888888,
+    "ci": [
+     -0.09878124999999993,
+     0.9581570208728645
+    ],
+    "dropped": 4
+   },
+   "lo_rec": {
+    "n": 39,
+    "objects": 15,
+    "mean": 0.09615384615384603,
+    "ci": [
+     -0.45,
+     0.7474999999999996
+    ],
+    "dropped": 1
+   },
+   "all": {
+    "n": 150,
+    "objects": 20,
+    "mean": 2.3076666666666665,
+    "ci": [
+     -0.6547083397653598,
+     6.195749999999993
+    ],
+    "dropped": 10
+   }
+  }
+ },
+ "oracle_cost_mismatches": 0
+}

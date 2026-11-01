@@ -1,0 +1,741 @@
+{
+ "n_rows": 100,
+ "arms": [
+  "default_rule",
+  "oracle_rule",
+  "menu_planner",
+  "rec_planner",
+  "nomenu_planner"
+ ],
+ "settings": [
+  "hi_abs",
+  "hi_rec",
+  "lo_abs",
+  "lo_rec"
+ ],
+ "per": {
+  "default_rule": {
+   "hi_abs": {
+    "n": 5,
+    "cost": 2.9699999999999998,
+    "placed": 0.8,
+    "abstain": 0.2,
+    "probe": 1.0,
+    "irreversible": 0.0,
+    "call_cap": 0,
+    "errors": 0,
+    "artifacts": 0,
+    "overrides_cases": 0,
+    "overrides": 0,
+    "guard_overrides": 0,
+    "malformed": 0,
+    "failed_calls": 0,
+    "calls_mean": 0.0,
+    "calls_max": 0
+   },
+   "hi_rec": {
+    "n": 5,
+    "cost": 3.0700000000000003,
+    "placed": 0.8,
+    "abstain": 0.0,
+    "probe": 1.0,
+    "irreversible": 0.0,
+    "call_cap": 0,
+    "errors": 0,
+    "artifacts": 0,
+    "overrides_cases": 0,
+    "overrides": 0,
+    "guard_overrides": 0,
+    "malformed": 0,
+    "failed_calls": 0,
+    "calls_mean": 0.0,
+    "calls_max": 0
+   },
+   "lo_abs": {
+    "n": 5,
+    "cost": 4.4399999999999995,
+    "placed": 0.6,
+    "abstain": 0.4,
+    "probe": 1.0,
+    "irreversible": 0.0,
+    "call_cap": 0,
+    "errors": 0,
+    "artifacts": 0,
+    "overrides_cases": 0,
+    "overrides": 0,
+    "guard_overrides": 0,
+    "malformed": 0,
+    "failed_calls": 0,
+    "calls_mean": 0.0,
+    "calls_max": 0
+   },
+   "lo_rec": {
+    "n": 5,
+    "cost": 2.4699999999999998,
+    "placed": 0.8,
+    "abstain": 0.2,
+    "probe": 1.0,
+    "irreversible": 0.0,
+    "call_cap": 0,
+    "errors": 0,
+    "artifacts": 0,
+    "overrides_cases": 0,
+    "overrides": 0,
+    "guard_overrides": 0,
+    "malformed": 0,
+    "failed_calls": 0,
+    "calls_mean": 0.0,
+    "calls_max": 0
+   },
+   "all": {
+    "n": 20,
+    "cost": 3.2375,
+    "placed": 0.75,
+    "abstain": 0.2,
+    "probe": 1.0,
+    "irreversible": 0.0,
+    "call_cap": 0,
+    "errors": 0,
+    "artifacts": 0,
+    "overrides_cases": 0,
+    "overrides": 0,
+    "guard_overrides": 0,
+    "malformed": 0,
+    "failed_calls": 0,
+    "calls_mean": 0.0,
+    "calls_max": 0
+   }
+  },
+  "oracle_rule": {
+   "hi_abs": {
+    "n": 5,
+    "cost": 4.65,
+    "placed": 0.6,
+    "abstain": 0.4,
+    "probe": 0.6,
+    "irreversible": 0.0,
+    "call_cap": 0,
+    "errors": 0,
+    "artifacts": 0,
+    "overrides_cases": 0,
+    "overrides": 0,
+    "guard_overrides": 0,
+    "malformed": 0,
+    "failed_calls": 0,
+    "calls_mean": 0.0,
+    "calls_max": 0
+   },
+   "hi_rec": {
+    "n": 5,
+    "cost": 0.61,
+    "placed": 1.0,
+    "abstain": 0.0,
+    "probe": 0.2,
+    "irreversible": 0.0,
+    "call_cap": 0,
+    "errors": 0,
+    "artifacts": 0,
+    "overrides_cases": 0,
+    "overrides": 0,
+    "guard_overrides": 0,
+    "malformed": 0,
+    "failed_calls": 0,
+    "calls_mean": 0.0,
+    "calls_max": 0
+   },
+   "lo_abs": {
+    "n": 5,
+    "cost": 2.46,
+    "placed": 0.8,
+    "abstain": 0.2,
+    "probe": 0.0,
+    "irreversible": 0.0,
+    "call_cap": 0,
+    "errors": 0,
+    "artifacts": 0,
+    "overrides_cases": 0,
+    "overrides": 0,
+    "guard_overrides": 0,
+    "malformed": 0,
+    "failed_calls": 0,
+    "calls_mean": 0.0,
+    "calls_max": 0
+   },
+   "lo_rec": {
+    "n": 5,
+    "cost": 0.45,
+    "placed": 1.0,
+    "abstain": 0.0,
+    "probe": 0.4,
+    "irreversible": 0.0,
+    "call_cap": 0,
+    "errors": 0,
+    "artifacts": 0,
+    "overrides_cases": 0,
+    "overrides": 0,
+    "guard_overrides": 0,
+    "malformed": 0,
+    "failed_calls": 0,
+    "calls_mean": 0.0,
+    "calls_max": 0
+   },
+   "all": {
+    "n": 20,
+    "cost": 2.0424999999999995,
+    "placed": 0.85,
+    "abstain": 0.15,
+    "probe": 0.3,
+    "irreversible": 0.0,
+    "call_cap": 0,
+    "errors": 0,
+    "artifacts": 0,
+    "overrides_cases": 0,
+    "overrides": 0,
+    "guard_overrides": 0,
+    "malformed": 0,
+    "failed_calls": 0,
+    "calls_mean": 0.0,
+    "calls_max": 0
+   }
+  },
+  "menu_planner": {
+   "hi_abs": {
+    "n": 5,
+    "cost": 3.0,
+    "placed": 0.8,
+    "abstain": 0.2,
+    "probe": 1.0,
+    "irreversible": 0.0,
+    "call_cap": 0,
+    "errors": 0,
+    "artifacts": 0,
+    "overrides_cases": 0,
+    "overrides": 0,
+    "guard_overrides": 0,
+    "malformed": 0,
+    "failed_calls": 0,
+    "calls_mean": 2.4,
+    "calls_max": 3
+   },
+   "hi_rec": {
+    "n": 5,
+    "cost": 3.0300000000000002,
+    "placed": 0.8,
+    "abstain": 0.0,
+    "probe": 0.8,
+    "irreversible": 0.0,
+    "call_cap": 0,
+    "errors": 0,
+    "artifacts": 0,
+    "overrides_cases": 0,
+    "overrides": 0,
+    "guard_overrides": 0,
+    "malformed": 0,
+    "failed_calls": 0,
+    "calls_mean": 2.2,
+    "calls_max": 4
+   },
+   "lo_abs": {
+    "n": 5,
+    "cost": 2.9699999999999998,
+    "placed": 0.8,
+    "abstain": 0.0,
+    "probe": 0.4,
+    "irreversible": 0.0,
+    "call_cap": 0,
+    "errors": 0,
+    "artifacts": 0,
+    "overrides_cases": 2,
+    "overrides": 4,
+    "guard_overrides": 1,
+    "malformed": 0,
+    "failed_calls": 0,
+    "calls_mean": 1.8,
+    "calls_max": 4
+   },
+   "lo_rec": {
+    "n": 5,
+    "cost": 0.53,
+    "placed": 1.0,
+    "abstain": 0.0,
+    "probe": 0.4,
+    "irreversible": 0.0,
+    "call_cap": 0,
+    "errors": 0,
+    "artifacts": 0,
+    "overrides_cases": 1,
+    "overrides": 1,
+    "guard_overrides": 0,
+    "malformed": 0,
+    "failed_calls": 0,
+    "calls_mean": 1.4,
+    "calls_max": 2
+   },
+   "all": {
+    "n": 20,
+    "cost": 2.3825000000000003,
+    "placed": 0.85,
+    "abstain": 0.05,
+    "probe": 0.65,
+    "irreversible": 0.0,
+    "call_cap": 0,
+    "errors": 0,
+    "artifacts": 0,
+    "overrides_cases": 3,
+    "overrides": 5,
+    "guard_overrides": 1,
+    "malformed": 0,
+    "failed_calls": 0,
+    "calls_mean": 1.95,
+    "calls_max": 4
+   }
+  },
+  "rec_planner": {
+   "hi_abs": {
+    "n": 5,
+    "cost": 4.88,
+    "placed": 0.6,
+    "abstain": 0.4,
+    "probe": 1.0,
+    "irreversible": 0.0,
+    "call_cap": 0,
+    "errors": 0,
+    "artifacts": 0,
+    "overrides_cases": 0,
+    "overrides": 0,
+    "guard_overrides": 0,
+    "malformed": 0,
+    "failed_calls": 0,
+    "calls_mean": 2.4,
+    "calls_max": 3
+   },
+   "hi_rec": {
+    "n": 5,
+    "cost": 3.0700000000000003,
+    "placed": 0.8,
+    "abstain": 0.0,
+    "probe": 1.0,
+    "irreversible": 0.0,
+    "call_cap": 0,
+    "errors": 0,
+    "artifacts": 0,
+    "overrides_cases": 0,
+    "overrides": 0,
+    "guard_overrides": 0,
+    "malformed": 0,
+    "failed_calls": 0,
+    "calls_mean": 2.4,
+    "calls_max": 4
+   },
+   "lo_abs": {
+    "n": 5,
+    "cost": 4.8,
+    "placed": 0.6,
+    "abstain": 0.4,
+    "probe": 1.0,
+    "irreversible": 0.0,
+    "call_cap": 0,
+    "errors": 0,
+    "artifacts": 0,
+    "overrides_cases": 1,
+    "overrides": 2,
+    "guard_overrides": 0,
+    "malformed": 0,
+    "failed_calls": 0,
+    "calls_mean": 2.4,
+    "calls_max": 4
+   },
+   "lo_rec": {
+    "n": 5,
+    "cost": 0.55,
+    "placed": 1.0,
+    "abstain": 0.0,
+    "probe": 1.0,
+    "irreversible": 0.0,
+    "call_cap": 0,
+    "errors": 0,
+    "artifacts": 0,
+    "overrides_cases": 1,
+    "overrides": 1,
+    "guard_overrides": 0,
+    "malformed": 0,
+    "failed_calls": 0,
+    "calls_mean": 2.0,
+    "calls_max": 2
+   },
+   "all": {
+    "n": 20,
+    "cost": 3.325,
+    "placed": 0.75,
+    "abstain": 0.2,
+    "probe": 1.0,
+    "irreversible": 0.0,
+    "call_cap": 0,
+    "errors": 0,
+    "artifacts": 0,
+    "overrides_cases": 2,
+    "overrides": 3,
+    "guard_overrides": 0,
+    "malformed": 0,
+    "failed_calls": 0,
+    "calls_mean": 2.3,
+    "calls_max": 4
+   }
+  },
+  "nomenu_planner": {
+   "hi_abs": {
+    "n": 5,
+    "cost": 2.88,
+    "placed": 0.8,
+    "abstain": 0.2,
+    "probe": 0.6,
+    "irreversible": 0.0,
+    "call_cap": 0,
+    "errors": 0,
+    "artifacts": 0,
+    "overrides_cases": 1,
+    "overrides": 1,
+    "guard_overrides": 0,
+    "malformed": 0,
+    "failed_calls": 0,
+    "calls_mean": 1.8,
+    "calls_max": 3
+   },
+   "hi_rec": {
+    "n": 5,
+    "cost": 0.8900000000000002,
+    "placed": 1.0,
+    "abstain": 0.0,
+    "probe": 0.6,
+    "irreversible": 0.2,
+    "call_cap": 0,
+    "errors": 0,
+    "artifacts": 0,
+    "overrides_cases": 0,
+    "overrides": 0,
+    "guard_overrides": 0,
+    "malformed": 0,
+    "failed_calls": 0,
+    "calls_mean": 1.8,
+    "calls_max": 3
+   },
+   "lo_abs": {
+    "n": 5,
+    "cost": 2.98,
+    "placed": 0.8,
+    "abstain": 0.0,
+    "probe": 0.2,
+    "irreversible": 0.0,
+    "call_cap": 0,
+    "errors": 0,
+    "artifacts": 0,
+    "overrides_cases": 2,
+    "overrides": 3,
+    "guard_overrides": 1,
+    "malformed": 0,
+    "failed_calls": 0,
+    "calls_mean": 1.6,
+    "calls_max": 3
+   },
+   "lo_rec": {
+    "n": 5,
+    "cost": 0.71,
+    "placed": 1.0,
+    "abstain": 0.0,
+    "probe": 0.2,
+    "irreversible": 0.0,
+    "call_cap": 0,
+    "errors": 0,
+    "artifacts": 0,
+    "overrides_cases": 1,
+    "overrides": 1,
+    "guard_overrides": 0,
+    "malformed": 0,
+    "failed_calls": 0,
+    "calls_mean": 1.4,
+    "calls_max": 2
+   },
+   "all": {
+    "n": 20,
+    "cost": 1.8650000000000002,
+    "placed": 0.9,
+    "abstain": 0.05,
+    "probe": 0.4,
+    "irreversible": 0.05,
+    "call_cap": 0,
+    "errors": 0,
+    "artifacts": 0,
+    "overrides_cases": 4,
+    "overrides": 5,
+    "guard_overrides": 1,
+    "malformed": 0,
+    "failed_calls": 0,
+    "calls_mean": 1.65,
+    "calls_max": 3
+   }
+  }
+ },
+ "contrasts": {
+  "menu_planner - default_rule": {
+   "hi_abs": {
+    "n": 5,
+    "objects": 5,
+    "mean": 0.02999999999999998,
+    "ci": [
+     0.0,
+     0.059999999999999984
+    ],
+    "dropped": 0
+   },
+   "hi_rec": {
+    "n": 5,
+    "objects": 5,
+    "mean": -0.040000000000000015,
+    "ci": [
+     -0.12000000000000004,
+     0.0
+    ],
+    "dropped": 0
+   },
+   "lo_abs": {
+    "n": 5,
+    "objects": 5,
+    "mean": -1.47,
+    "ci": [
+     -5.83,
+     1.6000000000000003
+    ],
+    "dropped": 0
+   },
+   "lo_rec": {
+    "n": 5,
+    "objects": 5,
+    "mean": -1.94,
+    "ci": [
+     -5.7700000000000005,
+     0.049999999999999975
+    ],
+    "dropped": 0
+   },
+   "all": {
+    "n": 20,
+    "objects": 20,
+    "mean": -0.8549999999999999,
+    "ci": [
+     -2.3200624999999997,
+     0.24006249999999993
+    ],
+    "dropped": 0
+   }
+  },
+  "menu_planner - oracle_rule": {
+   "hi_abs": {
+    "n": 5,
+    "objects": 5,
+    "mean": -1.65,
+    "ci": [
+     -5.609999999999999,
+     0.6499999999999998
+    ],
+    "dropped": 0
+   },
+   "hi_rec": {
+    "n": 5,
+    "objects": 5,
+    "mean": 2.42,
+    "ci": [
+     0.030000000000000006,
+     7.08
+    ],
+    "dropped": 0
+   },
+   "lo_abs": {
+    "n": 5,
+    "objects": 5,
+    "mean": 0.51,
+    "ci": [
+     0.06000000000000001,
+     1.3199999999999998
+    ],
+    "dropped": 0
+   },
+   "lo_rec": {
+    "n": 5,
+    "objects": 5,
+    "mean": 0.08,
+    "ci": [
+     -0.050000000000000024,
+     0.1902499999999998
+    ],
+    "dropped": 0
+   },
+   "all": {
+    "n": 20,
+    "objects": 20,
+    "mean": 0.33999999999999997,
+    "ci": [
+     -1.2374999999999998,
+     1.9625624999999998
+    ],
+    "dropped": 0
+   }
+  },
+  "menu_planner - rec_planner": {
+   "hi_abs": {
+    "n": 5,
+    "objects": 5,
+    "mean": -1.8800000000000001,
+    "ci": [
+     -5.720000000000001,
+     0.06999999999999995
+    ],
+    "dropped": 0
+   },
+   "hi_rec": {
+    "n": 5,
+    "objects": 5,
+    "mean": -0.040000000000000015,
+    "ci": [
+     -0.12000000000000004,
+     0.0
+    ],
+    "dropped": 0
+   },
+   "lo_abs": {
+    "n": 5,
+    "objects": 5,
+    "mean": -1.83,
+    "ci": [
+     -5.83,
+     0.5199999999999999
+    ],
+    "dropped": 0
+   },
+   "lo_rec": {
+    "n": 5,
+    "objects": 5,
+    "mean": -0.020000000000000018,
+    "ci": [
+     -0.12000000000000002,
+     0.07999999999999999
+    ],
+    "dropped": 0
+   },
+   "all": {
+    "n": 20,
+    "objects": 20,
+    "mean": -0.9425000000000001,
+    "ci": [
+     -2.3500624999999995,
+     0.04756249999999993
+    ],
+    "dropped": 0
+   }
+  },
+  "menu_planner - nomenu_planner": {
+   "hi_abs": {
+    "n": 5,
+    "objects": 5,
+    "mean": 0.11999999999999966,
+    "ci": [
+     -5.68,
+     6.21
+    ],
+    "dropped": 0
+   },
+   "hi_rec": {
+    "n": 5,
+    "objects": 5,
+    "mean": 2.14,
+    "ci": [
+     -0.6,
+     6.960000000000001
+    ],
+    "dropped": 0
+   },
+   "lo_abs": {
+    "n": 5,
+    "objects": 5,
+    "mean": -0.00999999999999993,
+    "ci": [
+     -0.05999999999999979,
+     0.029999999999999992
+    ],
+    "dropped": 0
+   },
+   "lo_rec": {
+    "n": 5,
+    "objects": 5,
+    "mean": -0.17999999999999994,
+    "ci": [
+     -0.7199999999999999,
+     0.18000000000000002
+    ],
+    "dropped": 0
+   },
+   "all": {
+    "n": 20,
+    "objects": 20,
+    "mean": 0.5175000000000002,
+    "ci": [
+     -1.0375625000000002,
+     2.56275
+    ],
+    "dropped": 0
+   }
+  },
+  "default_rule - oracle_rule": {
+   "hi_abs": {
+    "n": 5,
+    "objects": 5,
+    "mean": -1.6800000000000002,
+    "ci": [
+     -5.640000000000001,
+     0.6299999999999998
+    ],
+    "dropped": 0
+   },
+   "hi_rec": {
+    "n": 5,
+    "objects": 5,
+    "mean": 2.46,
+    "ci": [
+     0.08000000000000003,
+     7.12
+    ],
+    "dropped": 0
+   },
+   "lo_abs": {
+    "n": 5,
+    "objects": 5,
+    "mean": 1.9799999999999998,
+    "ci": [
+     -0.3000000000000006,
+     5.9799999999999995
+    ],
+    "dropped": 0
+   },
+   "lo_rec": {
+    "n": 5,
+    "objects": 5,
+    "mean": 2.02,
+    "ci": [
+     0.030000000000000006,
+     5.909999999999999
+    ],
+    "dropped": 0
+   },
+   "all": {
+    "n": 20,
+    "objects": 20,
+    "mean": 1.1949999999999998,
+    "ci": [
+     -0.4459375000000001,
+     3.1729374999999993
+    ],
+    "dropped": 0
+   }
+  }
+ },
+ "oracle_cost_mismatches": 0
+}
