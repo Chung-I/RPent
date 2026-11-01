@@ -220,7 +220,16 @@ against the instruction above.""",
 run a probe first and read its result. Then choose an action and execute it, or decline: report its reason. If an attempt
 fails, read its result; you can retry. Finish when the object has been set down, when it is out of reach, when you
 decline, or when every action you are willing to run has been tried. Weigh the risks against the instruction above.""",
+    # A post-hoc variant (after the Codex review of the pilot): "menu" tells the planner to run a recommended probe and to
+    # decline on a recommended decline, which the system prompt's "re-weigh" contradicts. This text leaves the choice open.
+    "menu_neutral": """Task: pick up the {object} and set it down at `{destination}`. The skill has assessed the pick: its menu is
+below. The recommendation is the skill's choice under the menu's default costs: advice, not an order. Choose the action
+that is best for this user: a probe (then read how the belief changed), a menu row to execute, or decline (report your
+reason). If an attempt fails, read its diagnosis; you can retry from the fresh menu in its result. Finish when the object
+has been set down, when it is out of reach, when you decline, or when every row you are willing to run has been tried. The
+menu's costs assume a default care level and no recovery: weigh them against the instruction above.""",
 }
+TASK_TEXTS = ("v1", "neutral")     # v1: the pilot as run; neutral: the post-hoc variant
 
 
 def system_prompt(arm: str, max_calls: int = MAX_CALLS) -> str:
@@ -228,8 +237,11 @@ def system_prompt(arm: str, max_calls: int = MAX_CALLS) -> str:
     return SYSTEM.format(max_calls=max_calls) + "\n\n" + part
 
 
-def user_text(instruction_text: str, object_name: str, destination: str, arm: str) -> str:
-    task = TASK["nomenu" if arm == "nomenu_planner" else "menu"].format(object=object_name, destination=destination)
+def user_text(instruction_text: str, object_name: str, destination: str, arm: str, task: str = "v1") -> str:
+    if task not in TASK_TEXTS:
+        raise ValueError(f"unknown task text {task!r}")
+    key = "nomenu" if arm == "nomenu_planner" else ("menu" if task == "v1" else "menu_neutral")
+    task = TASK[key].format(object=object_name, destination=destination)
     return f"User: {instruction_text}\n\n{task}"
 
 
@@ -390,7 +402,7 @@ def _attempt_record(d: dict[str, Any], row: dict[str, Any], a: dict[str, Any]) -
 
 def planner_loop(tools: Any, model: Callable[..., dict[str, Any]], arm: str, instruction_text: str, object_name: str,
                  destination: str, rng: np.random.Generator, max_calls: int = MAX_CALLS,
-                 max_attempts: int = MAX_ATTEMPTS) -> dict[str, Any]:
+                 max_attempts: int = MAX_ATTEMPTS, task: str = "v1") -> dict[str, Any]:
     """One planner case: ``tools.assess()`` gives the first assessment payload and ``tools.act(option_id)`` runs a row
     (pick_and_place's payload); ``model(messages, tool_schema)`` returns {tool, args, content, reasoning, seconds, usage,
     error}. Returns the case record (calibrate's probe and attempt fields, plus calls, decisions, overrides, malformed,
@@ -415,7 +427,7 @@ def planner_loop(tools: Any, model: Callable[..., dict[str, Any]], arm: str, ins
                 first_menu={"without_probe": a.get("without_probe"), "recommended_option": a.get("recommended_option")})
     text, ids = render_menu(a, arm, destination, rng)
     messages: list[dict[str, Any]] = [{"role": "system", "content": system_prompt(arm, max_calls)},
-                                      {"role": "user", "content": user_text(instruction_text, object_name, destination, arm) + "\n\n" + text}]
+                                      {"role": "user", "content": user_text(instruction_text, object_name, destination, arm, task) + "\n\n" + text}]
     case["transcript"] = list(messages)
     rows = {o["id"]: o for o in a["options"]}
     while True:
@@ -620,11 +632,12 @@ def run_job(item: tuple[dict[str, Any], dict[str, Any]]) -> list[dict[str, Any]]
             else:
                 rng = np.random.default_rng([job["seed"], zlib.crc32(job["object"].encode()), job["idx"], 7])
                 case = planner_loop(LabTools(prims, destination, care), _model(cfg), arm, text, display_object(job["object"]), destination, rng,
-                                    max_calls=cfg.get("max_calls", MAX_CALLS))
+                                    max_calls=cfg.get("max_calls", MAX_CALLS), task=cfg.get("task", "v1"))
         except Exception as exc:  # noqa: BLE001  one bad case must not stop the run
             case = {"ended": "error", "error": f"{type(exc).__name__}: {exc}"[:300], "probes": [], "attempts": []}
         case["artifact"] = calibrate.case_artifact(case, reset_info)
-        row = dict(job, arm=arm, destination=destination, instruction=text, truth=truth, reset=reset_info, menu_care=care, **case)
+        row = dict(job, arm=arm, destination=destination, instruction=text, truth=truth, reset=reset_info, menu_care=care,
+                   task=cfg.get("task", "v1"), **case)
         row["protocol_cost"] = case.get("cost")          # run_protocol's own cost (the menu's care): the oracle's equals cost
         row["cost"] = realized_cost(case, setting)
         row["irreversible"] = irreversible_events(case)
@@ -648,7 +661,7 @@ def _done(path: str) -> set[tuple]:
 
 
 def run(plan_path: str, split: str, arms: list[str], workers: int, out_dir: str, base_url: str | None, stub: bool,
-        limit: int | None = None, crossfit: str | None = None, max_calls: int = MAX_CALLS) -> str:
+        limit: int | None = None, crossfit: str | None = None, max_calls: int = MAX_CALLS, task: str = "v1") -> str:
     """Run a split's jobs (resuming: a (case, setting, arm) already in rows.jsonl is skipped); returns the rows path."""
     from robots.mujoco_lab.train_models import repo_path
 
@@ -656,14 +669,14 @@ def run(plan_path: str, split: str, arms: list[str], workers: int, out_dir: str,
     crossfit = crossfit or repo_path("robots/mujoco_lab/data/m2b2/folds")
     cfg = {"arms": arms, "settings": plan["settings"], "crossfit": crossfit,
            "folds": json.load(open(os.path.join(crossfit, "folds.json"))), "base_url": base_url, "stub": stub,
-           "max_calls": max_calls}
+           "max_calls": max_calls, "task": task}
     os.makedirs(out_dir, exist_ok=True)
     path = os.path.join(out_dir, "rows.jsonl")
     from robots.mujoco_lab.calibrate import code_revision
 
     with open(os.path.join(out_dir, f"run_config_{time.strftime('%Y%m%dT%H%M%S')}.json"), "w") as f:
         json.dump({"plan": os.path.abspath(plan_path), "split": split, "arms": arms, "workers": workers, "base_url": base_url,
-                   "stub": stub, "limit": limit, "crossfit": crossfit, "max_calls": max_calls, "model": MODEL,
+                   "stub": stub, "limit": limit, "crossfit": crossfit, "max_calls": max_calls, "task": task, "model": MODEL,
                    "planner": {"temperature": 0.0, "max_tokens": 6144, "thinking": True}, "code": code_revision()}, f, indent=1)
     done = _done(path)
     jobs = [j for j in plan["jobs"] if j["split"] == split][: limit or None]
@@ -841,6 +854,7 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--stub", action="store_true")
     r.add_argument("--limit", type=int, default=None)
     r.add_argument("--max-calls", type=int, default=MAX_CALLS)
+    r.add_argument("--task", choices=TASK_TEXTS, default="v1")
     r.add_argument("--out", required=True)
     s = sub.add_parser("summary")
     s.add_argument("--dir", required=True)
@@ -867,7 +881,7 @@ def main(argv: list[str] | None = None) -> int:
         bad = [x for x in arms if x not in ARMS]
         if bad:
             ap.error(f"unknown arms {bad}")
-        print(run(a.plan, a.split, arms, a.workers, a.out, a.base_url, a.stub, a.limit, max_calls=a.max_calls))
+        print(run(a.plan, a.split, arms, a.workers, a.out, a.base_url, a.stub, a.limit, max_calls=a.max_calls, task=a.task))
         return 0
     rows = load_rows(os.path.join(a.dir, "rows.jsonl"))
     summ = summarize(rows, a.n_boot)

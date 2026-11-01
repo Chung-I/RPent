@@ -219,3 +219,27 @@ def test_examples_skip_the_pairs_the_contrasts_drop():
     assert "### The planner lost to the rule (difference +5.00)" in text
     assert "### An override of a decline (difference +4.00)" in text
     assert "-9.60" not in text and "+11.00" not in text
+
+
+def test_the_neutral_task_text_leaves_the_recommendation_as_advice():
+    v1 = e1.user_text("Put it there.", "mug", "plate", "menu_planner")
+    assert "If the recommendation is a probe, run it" in v1 and "decline when the recommendation is decline" in v1   # as run
+    for arm in ("menu_planner", "rec_planner"):
+        t = e1.user_text("Put it there.", "mug", "plate", arm, task="neutral")
+        assert "run it" not in t and "when the recommendation is decline" not in t and "advice, not an order" in t
+    assert e1.user_text("Put it there.", "mug", "plate", "nomenu_planner", task="neutral") == \
+        e1.user_text("Put it there.", "mug", "plate", "nomenu_planner")
+    with pytest.raises(ValueError):
+        e1.user_text("Put it there.", "mug", "plate", "menu_planner", task="other")
+
+
+class RecordingModel(ScriptModel):
+    def __call__(self, messages, tools):
+        self.messages = [dict(m) for m in messages]
+        return super().__call__(messages, tools)
+
+
+def test_the_planner_loop_sends_the_chosen_task_text():
+    tools, model = FakeTools(), RecordingModel(["decline"])
+    e1.planner_loop(tools, model, "menu_planner", "Put it there.", "object", "table_edge", np.random.default_rng(0), task="neutral")
+    assert "advice, not an order" in model.messages[1]["content"]
