@@ -1102,3 +1102,23 @@ def test_a_sham_probe_keeps_the_belief(monkeypatch):
     _commit(sham, ss)
     b = ss["beliefs"]["ycb__mug"]["belief"]
     assert any(f.startswith("refreshed from") for f in b.flags) and [e["type"] for e in b.history] == ["attempt"]
+
+
+# ---------------------------------------------------------------- the menu's own recovery (E1 pilot)
+def test_a_menu_recovery_prices_the_menu_apart_from_the_restore():
+    """primitives.menu_recovery (the E1 pilot), a (reset_s, reset_price) pair, prices the menu while primitives.reset_s keeps
+    the lab's restore: a menu priced as absorbing ((None, "time")) under reset_s 20 has the absorbing costs and says so, and
+    an irreversible attempt is still restored."""
+    prims = _aprims()
+    absorbing = assess_pick(object="mug", destination="table_centre", care=10, primitives=prims, store={}).data
+    prims.reset_s, prims.menu_recovery = 20.0, (None, "time")
+    d = assess_pick(object="mug", destination="table_centre", care=10, primitives=prims, store={}).data
+    row = lambda x: next(o for o in x["options"] if o["id"] == "commit_std")  # noqa: E731
+    assert d["reset_s"] is None and row(d)["expected_cost"] == pytest.approx(row(absorbing)["expected_cost"])
+    env = _RestoreEnv([("dropped_high", _hold(0.3))])
+    prims, store = _bprims(env), {}
+    prims.reset_s, prims.menu_recovery = 20.0, (None, "time")
+    out = _commit(prims, store)
+    assert env.restores == 1 and out["restored"]["event"] == "dropped_high" and out["assessment"]["reset_s"] is None
+    prims.menu_recovery = (-1.0, "time")
+    assert "reset" in assess_pick(object="mug", destination="table_centre", primitives=prims, store={}).data["error"]

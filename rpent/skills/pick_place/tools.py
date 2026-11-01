@@ -206,22 +206,29 @@ def update_belief(belief: ParticleBelief, entry: dict[str, Any], primitives: Any
     return refresh(post, prior_fn, replay, primitives.rng, n_draws=refresh_draws, n_keep=len(belief))
 
 
+def _menu_recovery(primitives: Any) -> tuple[float | None, str]:
+    """The recovery mode the menu prices, (reset_s, reset_price), checked: ``primitives.menu_recovery`` when set (the E1
+    pilot: a menu priced at the default, absorbing, while the lab restores under ``primitives.reset_s``), else the lab's own
+    ``reset_s`` and ``reset_price``. A ValueError for a bad reset time or price."""
+    pair = getattr(primitives, "menu_recovery", None)
+    seconds, price = pair if pair is not None else (getattr(primitives, "reset_s", None), getattr(primitives, "reset_price", "time"))
+    return (None if seconds is None else reset_time(seconds)), reset_price(price)
+
+
 def _assess(object: str, destination: str, care: str | float, primitives: Any,
             store: dict[str, Any]) -> tuple[dict[str, Any] | None, Assessment | None]:
     """Build (or reuse) the assessment. Returns (error-or-semantic payload, None) or (None, assessment).
     ``primitives.abstain_cost`` (when set) selects the cost rule, ``primitives.evoi`` (when set) the probe-value
     estimator, ``primitives.probe_time_scale`` (when set) the factor on the probe rows' time charge and
     ``primitives.reset_s`` (when set, plan H3) the recovery mode's reset seconds and ``primitives.reset_price`` (when set,
-    plan H3 Addendum A) its price, "time" or "care" (menu.build_menu); a bad scale, reset time or reset price is an error
-    payload."""
+    plan H3 Addendum A) its price, "time" or "care" (menu.build_menu), or ``primitives.menu_recovery`` the menu's own pair
+    (_menu_recovery); a bad scale, reset time or reset price is an error payload."""
     if destination not in DESTINATIONS:
         return {"error": f"unknown destination {destination!r}; known: {sorted(DESTINATIONS)}"}, None
     try:
         scale = care_scale(care)
         time_scale = probe_time_scale(getattr(primitives, "probe_time_scale", 1.0))
-        reset_s = getattr(primitives, "reset_s", None)
-        reset_s = None if reset_s is None else reset_time(reset_s)
-        price = reset_price(getattr(primitives, "reset_price", "time"))
+        reset_s, price = _menu_recovery(primitives)
     except ValueError as exc:
         return {"error": str(exc)}, None
     abstain = getattr(primitives, "abstain_cost", None)
