@@ -199,3 +199,23 @@ def test_object_bootstrap_interval_contains_the_mean():
     rows = [{"object": f"o{k % 5}", "d": float(v)} for k, v in enumerate(rng.normal(1.0, 0.5, 50))]
     mean, lo, hi = e1.object_bootstrap([r["d"] for r in rows], [r["object"] for r in rows], n_boot=500, seed=0)
     assert lo < mean < hi and mean == pytest.approx(np.mean([r["d"] for r in rows]))
+
+
+def _pair_rows(obj, idx, menu_cost, rule_cost, overrides=0, artifact=(False, False)):
+    base = {"object": obj, "idx": idx, "setting": "lo_abs", "destination": "plate", "instruction": "Put it there.",
+            "ended": "placed", "probes": [], "attempts": [], "calls": [], "transcript": []}
+    return [dict(base, arm="menu_planner", cost=menu_cost, overrides=overrides, artifact=artifact[0]),
+            dict(base, arm="default_rule", cost=rule_cost, overrides=0, artifact=artifact[1])]
+
+
+def test_examples_skip_the_pairs_the_contrasts_drop():
+    rows = (_pair_rows("a", 0, 0.6, 10.2, overrides=1, artifact=(True, True))      # the largest override, but an artifact
+            + _pair_rows("b", 1, 14.2, 10.2, overrides=1)                          # the only clean override
+            + _pair_rows("c", 2, 10.0, 160.0)                                       # the largest gain
+            + _pair_rows("d", 3, 11.5, 0.5, artifact=(False, True))                 # the largest loss, but an artifact
+            + _pair_rows("e", 4, 5.5, 0.5))                                         # the largest clean loss
+    text = e1.examples(rows)
+    assert "### The planner beat the rule (difference -150.00)" in text
+    assert "### The planner lost to the rule (difference +5.00)" in text
+    assert "### An override of a decline (difference +4.00)" in text
+    assert "-9.60" not in text and "+11.00" not in text

@@ -795,12 +795,13 @@ def _transcript_md(r: dict[str, Any]) -> str:
 
 def examples(rows: list[dict[str, Any]], base: str = "default_rule") -> str:
     """Three menu_planner transcripts against ``base``: the largest gain, the largest loss, and an override (the one with the
-    largest cost difference in either direction)."""
+    largest cost difference in either direction), over the pairs the contrasts keep (no error or artifact in either arm)."""
     key = {(r["object"], r["idx"], r["setting"], r["arm"]): r for r in rows}
     pairs = []
     for (o, i, s, arm), r in key.items():
         q = key.get((o, i, s, base))
-        if arm == "menu_planner" and q is not None and r["ended"] != "error" and q["ended"] != "error":
+        if (arm == "menu_planner" and q is not None and r["ended"] != "error" and q["ended"] != "error"
+                and not r.get("artifact") and not q.get("artifact")):
             pairs.append((r["cost"] - q["cost"], r, q))
     if not pairs:
         return ""
