@@ -581,7 +581,8 @@ def matched_truth(runs: dict[tuple[str, str, str, int], dict[str, Any]], W: np.n
 
 def decision_change(runs: dict[tuple[str, str, str, int], dict[str, Any]], cases: set[tuple[str, int, int]]) -> dict[str, Any]:
     """Decision 6 per condition, over the cohort's probe_once cases: the shares of CHANGES among the cases where the probe
-    ran, the cases without a probe (a guard flag) and those without a category (an error or an unreachable object)."""
+    ran, the cases without a probe (calibrate.forced_probe: a guard flag, or a first menu with no probe row because no
+    row reaches the destination) and those without a category (an error or an unreachable object)."""
     out = {}
     for cond in CONDITIONS:
         rows = {s: _rows(runs[(*cond, "probe_once", s)]) for s in sorted({k[2] for k in cases})}
