@@ -1,0 +1,91 @@
+wandb: [wandb.login()] Loaded credentials for https://api.forge.coreweave.com from /home/chungyili/.netrc.
+wandb: Currently logged in as: leon129506 to https://api.forge.coreweave.com. Use `wandb login --relogin` to force relogin
+wandb: Tracking run with wandb version 0.31.0
+wandb: Run data is saved locally in /home/chungyili/Codes/RPent-e1/logs/wandb/wandb/run-20261102_165753-6ole0h8e
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Syncing run light-snowflake-1084
+wandb: ⭐️ View project at https://forge.coreweave.com/wandb/leon129506/rpent-pick-place
+wandb: 🚀 View run at https://forge.coreweave.com/wandb/leon129506/rpent-pick-place/runs/6ole0h8e
+wandb: updating run metadata; uploading summary
+wandb: uploading wandb-metadata.json; uploading wandb-summary.json; uploading config.yaml
+wandb: 
+wandb: Run summary:
+wandb:                 checks/default_rule 0
+wandb:                 checks/menu_planner 0
+wandb:         checks/menu_planner_neutral 0
+wandb:               checks/nomenu_planner 0
+wandb:                  checks/oracle_rule 0
+wandb:                  checks/rec_planner 0
+wandb:          checks/rec_planner_neutral 0
+wandb:    contrasts/menu_planner/first/all 0.03719
+wandb: contrasts/menu_planner/first/hi_abs 0
+wandb: contrasts/menu_planner/first/hi_rec 0.14358
+wandb:                                 +57 ...
+wandb: 
+wandb: 🚀 View run light-snowflake-1084 at: https://forge.coreweave.com/wandb/leon129506/rpent-pick-place/runs/6ole0h8e
+wandb: ⭐️ View project at: https://forge.coreweave.com/wandb/leon129506/rpent-pick-place
+wandb: Synced 4 W&B file(s), 0 media file(s), 0 artifact file(s) and 0 other file(s)
+wandb: Find logs at: ./logs/wandb/wandb/run-20261102_165753-6ole0h8e/logs
+wandb: https://forge.coreweave.com/wandb/leon129506/rpent-pick-place/runs/6ole0h8e
+# E1 pilot: expected cost under the true setting
+
+Regret as in the gap check (a choice's expected cost under the true setting minus the cheapest row of the same true menu). Each arm - default_rule, per setting and pooled (below 0: the arm's choices are cheaper under the true setting); kept pairs (no error and no artifact in either run); 95 % object-bootstrap intervals (2000 draws).
+
+First decision:
+
+| contrast | hi_abs | hi_rec | lo_abs | lo_rec | all |
+|---|---|---|---|---|---|
+| oracle_rule - default_rule | -0.26 [-0.64, -0.05] (39) | -0.04 [-0.08, -0.01] (36) | -0.02 [-0.06, +0.00] (36) | -0.09 [-0.12, -0.05] (39) | -0.11 [-0.23, -0.04] (150) |
+| menu_planner - default_rule | +0.00 [+0.00, +0.00] (39) | +0.14 [+0.02, +0.39] (36) | +0.07 [+0.00, +0.14] (36) | -0.05 [-0.10, +0.01] (39) | +0.04 [-0.02, +0.11] (150) |
+| rec_planner - default_rule | -0.01 [-0.02, +0.00] (39) | +0.00 [+0.00, +0.00] (36) | +0.00 [+0.00, +0.00] (36) | +0.00 [+0.00, +0.00] (39) | -0.00 [-0.01, +0.00] (150) |
+| nomenu_planner - default_rule | +10.37 [+3.17, +19.78] (39) | +0.44 [+0.25, +0.61] (36) | +4.22 [+2.51, +5.78] (36) | +0.31 [+0.10, +0.57] (39) | +3.90 [+1.84, +6.18] (150) |
+| menu_planner_neutral - default_rule | -0.01 [-0.02, +0.00] (39) | +0.25 [+0.06, +0.48] (36) | +0.07 [+0.01, +0.13] (36) | -0.03 [-0.10, +0.08] (39) | +0.07 [-0.01, +0.15] (150) |
+| rec_planner_neutral - default_rule | -0.06 [-0.19, +0.00] (39) | +0.00 [+0.00, +0.00] (36) | +0.00 [+0.00, +0.00] (36) | +0.00 [+0.00, +0.00] (39) | -0.02 [-0.05, +0.00] (150) |
+
+Every decision point:
+
+| contrast | hi_abs | hi_rec | lo_abs | lo_rec | all |
+|---|---|---|---|---|---|
+| oracle_rule - default_rule | -1.44 [-2.50, -0.63] (39) | -0.21 [-0.37, -0.09] (36) | -0.10 [-0.18, -0.04] (36) | -0.74 [-1.26, -0.29] (39) | -0.64 [-1.02, -0.33] (150) |
+| menu_planner - default_rule | -0.26 [-1.05, +0.19] (39) | +0.13 [+0.00, +0.36] (36) | +0.00 [-0.08, +0.10] (36) | -0.90 [-1.52, -0.36] (39) | -0.27 [-0.61, -0.04] (150) |
+| rec_planner - default_rule | -0.60 [-1.51, -0.01] (39) | +0.02 [+0.00, +0.05] (36) | +0.06 [-0.01, +0.18] (36) | -0.60 [-1.16, -0.17] (39) | -0.30 [-0.59, -0.08] (150) |
+| nomenu_planner - default_rule | +14.67 [+7.62, +24.12] (39) | +0.62 [+0.34, +0.85] (36) | +4.45 [+2.84, +5.86] (36) | +0.00 [-0.67, +0.62] (39) | +5.03 [+3.10, +7.10] (150) |
+| menu_planner_neutral - default_rule | -0.25 [-1.00, +0.19] (39) | +0.28 [+0.10, +0.56] (36) | +0.04 [-0.05, +0.11] (36) | -0.89 [-1.49, -0.34] (39) | -0.22 [-0.54, +0.02] (150) |
+| rec_planner_neutral - default_rule | -1.03 [-2.09, -0.25] (39) | +0.04 [+0.00, +0.15] (36) | +0.10 [+0.00, +0.24] (36) | -0.60 [-1.14, -0.16] (39) | -0.39 [-0.78, -0.08] (150) |
+
+Every decision point, the points whose true menu has a guard flag left out:
+
+| contrast | hi_abs | hi_rec | lo_abs | lo_rec | all |
+|---|---|---|---|---|---|
+| oracle_rule - default_rule | -1.44 [-2.50, -0.58] (39) | -0.21 [-0.37, -0.09] (36) | -0.10 [-0.18, -0.03] (36) | -0.82 [-1.39, -0.32] (39) | -0.66 [-1.07, -0.36] (150) |
+| menu_planner - default_rule | -0.26 [-1.04, +0.20] (39) | +0.13 [+0.00, +0.36] (36) | +0.00 [-0.08, +0.10] (36) | -0.77 [-1.35, -0.29] (39) | -0.24 [-0.50, -0.04] (150) |
+| rec_planner - default_rule | -0.60 [-1.56, -0.01] (39) | +0.02 [+0.00, +0.05] (36) | +0.06 [-0.01, +0.17] (36) | -0.47 [-0.97, -0.07] (39) | -0.26 [-0.51, -0.08] (150) |
+| nomenu_planner - default_rule | +14.67 [+7.35, +23.81] (39) | +0.62 [+0.34, +0.83] (36) | +4.45 [+2.87, +5.85] (36) | -0.09 [-0.65, +0.39] (39) | +5.01 [+3.09, +7.07] (150) |
+| menu_planner_neutral - default_rule | -0.25 [-1.01, +0.19] (39) | +0.28 [+0.10, +0.56] (36) | +0.04 [-0.05, +0.11] (36) | -0.76 [-1.38, -0.25] (39) | -0.19 [-0.47, +0.02] (150) |
+| rec_planner_neutral - default_rule | -1.03 [-2.09, -0.30] (39) | +0.04 [+0.00, +0.13] (36) | +0.10 [+0.00, +0.25] (36) | -0.47 [-0.97, -0.07] (39) | -0.36 [-0.71, -0.09] (150) |
+
+Mean regret per arm, all rows (first decision / every point):
+
+| arm | hi_abs | hi_rec | lo_abs | lo_rec | all |
+|---|---|---|---|---|---|
+| default_rule | 0.25 / 1.41 | 0.05 / 0.41 | 0.04 / 0.22 | 0.09 / 0.93 | 0.11 / 0.74 |
+| oracle_rule | 0.00 / 0.00 | 0.00 / 0.00 | 0.01 / 0.01 | 0.00 / 0.21 | 0.00 / 0.06 |
+| menu_planner | 0.25 / 1.16 | 0.18 / 0.45 | 0.10 / 0.12 | 0.03 / 0.04 | 0.14 / 0.44 |
+| rec_planner | 0.25 / 0.82 | 0.05 / 0.29 | 0.04 / 0.20 | 0.09 / 0.34 | 0.11 / 0.42 |
+| nomenu_planner | 10.37 / 15.71 | 0.48 / 0.80 | 4.30 / 4.59 | 0.38 / 0.93 | 3.88 / 5.51 |
+| menu_planner_neutral | 0.25 / 1.17 | 0.28 / 0.52 | 0.10 / 0.16 | 0.06 / 0.06 | 0.17 / 0.48 |
+| rec_planner_neutral | 0.19 / 0.49 | 0.05 / 0.32 | 0.04 / 0.25 | 0.09 / 0.34 | 0.09 / 0.35 |
+
+First choices that are not a row of the true menu: {"default_rule": 0, "oracle_rule": 0, "menu_planner": 0, "rec_planner": 0, "nomenu_planner": 0, "menu_planner_neutral": 0, "rec_planner_neutral": 0}.
+The oracle off the cheapest row of its own menu: first decision {"probe_margin": 11}, later points {"guard": 4}.
+
+Checks:
+
+- oracle_rule: {"records": 160, "first_mismatch": 0, "later_mismatch": 0, "no_menu": 0, "m0_bad": 0, "examples": []}
+- default_rule: {"records": 160, "first_mismatch": 0, "later_mismatch": 0, "no_menu": 0, "m0_bad": 0, "examples": []}
+- menu_planner: {"records": 160, "first_mismatch": 0, "later_mismatch": 0, "no_menu": 0, "m0_bad": 0, "examples": []}
+- rec_planner: {"records": 160, "first_mismatch": 0, "later_mismatch": 0, "no_menu": 0, "m0_bad": 0, "examples": []}
+- nomenu_planner: {"records": 160, "first_mismatch": 0, "later_mismatch": 0, "no_menu": 0, "m0_bad": 0, "examples": []}
+- menu_planner_neutral: {"records": 160, "first_mismatch": 0, "later_mismatch": 0, "no_menu": 0, "m0_bad": 0, "examples": []}
+- rec_planner_neutral: {"records": 160, "first_mismatch": 0, "later_mismatch": 0, "no_menu": 0, "m0_bad": 0, "examples": []}
+

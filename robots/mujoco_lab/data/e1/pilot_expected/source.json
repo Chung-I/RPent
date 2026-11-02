@@ -1,0 +1,6 @@
+{
+ "kind": "pilot",
+ "final": "/home/chungyili/Codes/RPent-e1/robots/mujoco_lab/data/e1/final",
+ "neutral": "/home/chungyili/Codes/RPent-e1/robots/mujoco_lab/data/e1/neutral/final",
+ "plan": "/home/chungyili/Codes/RPent-e1/robots/mujoco_lab/data/e1/plan.json"
+}
