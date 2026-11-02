@@ -68,3 +68,28 @@ def test_compare_puts_the_priors_side_by_side(tmp_path):
     out, md = compare(dirs, None, n_boot=20, seed=0)
     assert set(out["priors"]) == {"class", "generic"} and out["priors"]["generic"]["downstream"]["brier"]["value"] == 0.3
     assert "| generic |" in md and "Brier" in md
+
+
+def test_regret_leaves_out_the_row_that_changes_the_destination():
+    """inboard_place sets the object down elsewhere: the menu shows it but never chooses it (menu.py), so it is not the
+    cheapest row of a menu here either (as in e1_expected)."""
+    from robots.mujoco_lab.masscom_report import regret_vs_class
+
+    costs = {"decline": 10.0, "firm_grip": 4.0, "inboard_place": 1.0}
+    recs = [{"object": "a", "idx": 0, "setting": "s", "menus": {"class": _m("commit", "firm_grip", costs),
+                                                                 "vlm": _m("decline", None, {})}}]
+    v = regret_vs_class(recs, n_boot=20, seed=0)["s"]["vlm"]
+    assert v["mean"] == pytest.approx(6.0) and v["class_own"] == pytest.approx(0.0)
+
+
+def test_regret_difference_is_paired_by_case():
+    """diff: the prior's regret minus the class rule's own regret on the same case (the decision cost of the swap)."""
+    from robots.mujoco_lab.masscom_report import regret_vs_class
+
+    costs = {"decline": 10.0, "firm_grip": 4.0}
+    recs = [{"object": "a", "idx": 0, "setting": "s", "menus": {"class": _m("commit", "firm_grip", costs), "vlm": _m("decline", None, {})}},
+            {"object": "b", "idx": 0, "setting": "s", "menus": {"class": _m("decline", None, costs), "vlm": _m("commit", "firm_grip", {})}},
+            {"object": "b", "idx": 1, "setting": "s", "menus": {"class": _m("decline", None, costs), "vlm": _m("commit", "firm_grip", {})}}]
+    v = regret_vs_class(recs, n_boot=50, seed=0)["s"]["vlm"]
+    assert v["mean"] == pytest.approx(2.0) and v["class_own"] == pytest.approx(4.0)      # (6 + 0 + 0) / 3; (0 + 6 + 6) / 3
+    assert v["diff"]["mean"] == pytest.approx(-2.0) and len(v["diff"]["ci"]) == 2         # (+6 − 6 − 6) / 3

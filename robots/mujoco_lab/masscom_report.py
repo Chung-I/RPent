@@ -44,6 +44,7 @@ from rpent.skills.pick_place.evaluate import object_weights
 
 N_BOOT = 2000
 STAGES = ("prior", "attempt", "weigh", "push")
+HIDDEN_ROWS = ("inboard_place",)   # shown but never chosen: it sets the object down elsewhere (menu.py; e1_expected)
 
 
 def choice_of(m: dict[str, Any]) -> str | None:
@@ -62,15 +63,16 @@ def _mean_ci(values: list[float], objects: list[str], rng: np.random.Generator, 
 
 
 def regret_vs_class(records: list[dict[str, Any]], n_boot: int = N_BOOT, seed: int = 0) -> dict[str, dict[str, Any]]:
-    """Per setting and prior other than class: each case's first choice priced on the class prior's menu (every row with a
-    cost; decline at A), minus that menu's cheapest row; the mean with a 95 % object-bootstrap interval, and the class rule's
-    own regret on the same cases (its probe margin and guard). A case with an error under either prior is left out; a choice
-    that is not a row of the class menu is counted as unmatched."""
+    """Per setting and prior other than class: each case's first choice priced on the class prior's menu (every row
+    with a cost but HIDDEN_ROWS; decline at A), minus that menu's cheapest row: the mean with a 95 % object-bootstrap
+    interval, the class rule's own regret on the same cases (its probe margin and guard), and ``diff``, the two paired
+    by case (the swap's cost). A case with an error under either prior is left out; a choice that is not a row of the
+    class menu is counted as unmatched."""
     rng = np.random.default_rng(seed)
     acc: dict[tuple[str, str], dict[str, list]] = defaultdict(lambda: {"v": [], "own": [], "obj": [], "left_out": 0, "unmatched": 0})
     for r in records:
         mc = r["menus"]["class"]
-        costs = {k: float(v) for k, v in (mc.get("costs") or {}).items() if v is not None}
+        costs = {k: float(v) for k, v in (mc.get("costs") or {}).items() if v is not None and k not in HIDDEN_ROWS}
         own = choice_of(mc)
         for p, m in r["menus"].items():
             if p == "class":
@@ -92,6 +94,7 @@ def regret_vs_class(records: list[dict[str, Any]], n_boot: int = N_BOOT, seed: i
         if a["v"]:
             block.update(_mean_ci(a["v"], a["obj"], rng, n_boot))
             block["class_own"] = float(np.mean(a["own"]))
+            block["diff"] = _mean_ci(list(np.subtract(a["v"], a["own"])), a["obj"], rng, n_boot)   # the swap's cost, case by case
         out[setting][p] = block
     return dict(out)
 
@@ -142,15 +145,17 @@ def compare(part_a: dict[str, str], menus: str | None, n_boot: int = N_BOOT, see
         out["menus"] = {"dir": menus, "n_records": len(recs), "rates": rates, "regret": regret}
         lines += ["", "First menus against the class prior's (same case, setting and menu stream). Regret: the prior's first "
                   "choice priced on the class prior's menu, minus that menu's cheapest row (class own: the class rule's own).", "",
-                  "| setting | prior | n | recommendation changed | recommended row changed | regret on the class menu | class own | unmatched |",
-                  "|---|---|---|---|---|---|---|---|"]
+                  "| setting | prior | n | recommendation changed | recommended row changed | regret on the class menu | class own "
+                  "| prior − class own | unmatched |",
+                  "|---|---|---|---|---|---|---|---|---|"]
         for setting, block in rates.items():
             for p, v in block.items():
                 g = regret.get(setting, {}).get(p, {})
                 reg = f"{g['mean']:+.3f} [{g['ci'][0]:+.3f}, {g['ci'][1]:+.3f}]" if g.get("n") else "−"
                 own = f"{g['class_own']:+.3f}" if g.get("n") else "−"
+                dif = f"{g['diff']['mean']:+.3f} [{g['diff']['ci'][0]:+.3f}, {g['diff']['ci'][1]:+.3f}]" if g.get("n") else "−"
                 lines.append(f"| {setting} | {p} | {v['n']} | {_iv(v['recommendation'], 'rate', 3)} | {_iv(v['option'], 'rate', 3)} | "
-                             f"{reg} | {own} | {g.get('n_unmatched', 0)} |")
+                             f"{reg} | {own} | {dif} | {g.get('n_unmatched', 0)} |")
     return out, "\n".join(lines) + "\n"
 
 
@@ -166,7 +171,8 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
     out, md = compare(dict(v.split("=", 1) for v in a.part_a), a.menus, a.n_boot, a.seed)
     os.makedirs(a.out, exist_ok=True)
     if a.wandb:
-        flat = {f"{n}/downstream/{k}": p["downstream"][k]["value"] for n, p in out["priors"].items() for k in ("brier", "ece_irreversible")}
+        flat = {f"{n}/downstream/{k}": p["downstream"][k]["value"] for n, p in out["priors"].items()
+                for k in ("brier", "ece_irreversible")}
         for setting, block in ((out["menus"] or {}).get("regret") or {}).items():
             flat.update({f"{setting}/{p}/regret": g["mean"] for p, g in block.items() if g.get("n")})
         out["wandb"] = tracking.log_run("masscom_report", {"part_a": a.part_a, "menus": a.menus, "n_boot": a.n_boot}, flat)
