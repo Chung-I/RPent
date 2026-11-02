@@ -23,6 +23,8 @@ bundle that never saw it).
   class prior's menu of the same case and setting (its regret: the choice's expected cost minus that menu's cheapest row).
   The class prior is privileged (it knows each object's nominal mass and CoM), so this regret is the decision cost of
   replacing it, as the class model prices it; it is not a regret against the truth.
+* Paired against the generic prior: each other prior's Brier minus the generic prior's on the same attempt rows, and its
+  regret minus the generic prior's on the same first-menu cases: what the image adds over no image.
 
     python -P -m robots.mujoco_lab.masscom_report --part-a class=DIR --part-a generic=DIR [--part-a NAME=DIR ...]
         [--menus DIR] --out DIR [--wandb]
@@ -41,6 +43,7 @@ import numpy as np
 from robots.mujoco_lab import tracking
 from robots.mujoco_lab.first_menus import change_rates
 from rpent.skills.pick_place.evaluate import object_weights
+from rpent.skills.pick_place.protocol import OUTCOMES
 
 N_BOOT = 2000
 STAGES = ("prior", "attempt", "weigh", "push")
@@ -67,9 +70,10 @@ def regret_vs_class(records: list[dict[str, Any]], n_boot: int = N_BOOT, seed: i
     with a cost but HIDDEN_ROWS; decline at A), minus that menu's cheapest row: the mean with a 95 % object-bootstrap
     interval, the class rule's own regret on the same cases (its probe margin and guard), and ``diff``, the two paired
     by case (the swap's cost). A case with an error under either prior is left out; a choice that is not a row of the
-    class menu is counted as unmatched."""
+    class menu is counted as unmatched. ``vs_generic`` (each prior but class and generic): its regret minus the generic
+    prior's on the cases both keep, from a second random stream (seed + 1), so the other intervals do not move."""
     rng = np.random.default_rng(seed)
-    acc: dict[tuple[str, str], dict[str, list]] = defaultdict(lambda: {"v": [], "own": [], "obj": [], "left_out": 0, "unmatched": 0})
+    acc: dict[tuple[str, str], dict[str, list]] = defaultdict(lambda: {"v": [], "own": [], "obj": [], "case": [], "left_out": 0, "unmatched": 0})
     for r in records:
         mc = r["menus"]["class"]
         costs = {k: float(v) for k, v in (mc.get("costs") or {}).items() if v is not None and k not in HIDDEN_ROWS}
@@ -88,6 +92,7 @@ def regret_vs_class(records: list[dict[str, Any]], n_boot: int = N_BOOT, seed: i
                 a["v"].append(costs[c] - best)
                 a["own"].append(costs[own] - best)
                 a["obj"].append(r["object"])
+                a["case"].append((r["object"], r["idx"]))
     out: dict[str, dict[str, Any]] = defaultdict(dict)
     for (setting, p), a in sorted(acc.items()):
         block = {"n": len(a["v"]), "n_left_out": a["left_out"], "n_unmatched": a["unmatched"]}
@@ -96,7 +101,45 @@ def regret_vs_class(records: list[dict[str, Any]], n_boot: int = N_BOOT, seed: i
             block["class_own"] = float(np.mean(a["own"]))
             block["diff"] = _mean_ci(list(np.subtract(a["v"], a["own"])), a["obj"], rng, n_boot)   # the swap's cost, case by case
         out[setting][p] = block
+    rng_g = np.random.default_rng(seed + 1)
+    for (setting, p), a in sorted(acc.items()):
+        g = acc.get((setting, "generic"))
+        if p == "generic" or g is None:
+            continue
+        gv = dict(zip(g["case"], g["v"]))
+        pairs = [(v - gv[c], c[0]) for v, c in zip(a["v"], a["case"]) if c in gv]
+        if pairs:
+            out[setting][p]["vs_generic"] = {"n": len(pairs), **_mean_ci([x for x, _ in pairs], [o for _, o in pairs], rng_g, n_boot)}
     return dict(out)
+
+
+def _attempt_brier(records: list[dict[str, Any]]) -> dict[tuple[str, Any, int], tuple[float, str, float]]:
+    """(object, key, occurrence) -> (the Brier over OUTCOMES, the label, the true mass) of each attempt row with a prior
+    predictive. Keys repeat across the corpus files; an object's rows all come from one fold's job, in its order."""
+    out, seen = {}, defaultdict(int)
+    for r in records:
+        if r.get("stage") != "attempt" or not r.get("p_prior"):
+            continue
+        ok = (r["object"], r.get("key"))
+        k = (*ok, seen[ok])
+        seen[ok] += 1
+        pp = np.array([float(r["p_prior"].get(o, 0.0)) for o in OUTCOMES])
+        y = np.array([1.0 if r["label"] == o else 0.0 for o in OUTCOMES])
+        out[k] = (float(np.sum((pp - y) ** 2)), r["label"], float(r["prior"]["mass"]["truth"]))
+    return out
+
+
+def paired_brier(a: list[dict[str, Any]], b: list[dict[str, Any]], n_boot: int = N_BOOT, seed: int = 0) -> dict[str, Any]:
+    """Run a's Brier minus run b's on the same attempt rows (paired by object, key and occurrence), with a 95 %
+    object-bootstrap interval. Raises ValueError when a pair's label or true mass differs (the rows do not pair)."""
+    A, B = _attempt_brier(a), _attempt_brier(b)
+    common = sorted(set(A) & set(B), key=str)
+    for k in common:
+        if A[k][1] != B[k][1] or not np.isclose(A[k][2], B[k][2]):
+            raise ValueError(f"rows do not pair at {k}: {A[k][1:]} against {B[k][1:]}")
+    out: dict[str, Any] = {"n": len(common), "n_only_a": len(A) - len(common), "n_only_b": len(B) - len(common)}
+    out.update(_mean_ci([A[k][0] - B[k][0] for k in common], [k[0] for k in common], np.random.default_rng(seed), n_boot))
+    return out
 
 
 def _cell(c: dict[str, Any], d: int = 3) -> str:
@@ -156,6 +199,27 @@ def compare(part_a: dict[str, str], menus: str | None, n_boot: int = N_BOOT, see
                 dif = f"{g['diff']['mean']:+.3f} [{g['diff']['ci'][0]:+.3f}, {g['diff']['ci'][1]:+.3f}]" if g.get("n") else "−"
                 lines.append(f"| {setting} | {p} | {v['n']} | {_iv(v['recommendation'], 'rate', 3)} | {_iv(v['option'], 'rate', 3)} | "
                              f"{reg} | {own} | {dif} | {g.get('n_unmatched', 0)} |")
+    out["vs_generic"] = {}
+    gfile = os.path.join(part_a["generic"], "records.jsonl") if "generic" in part_a else None
+    if gfile and os.path.exists(gfile):
+        g = [json.loads(line) for line in open(gfile)]
+        for name, d in part_a.items():
+            f = os.path.join(d, "records.jsonl")
+            if name not in ("class", "generic") and os.path.exists(f):
+                out["vs_generic"][name] = {"brier": paired_brier([json.loads(line) for line in open(f)], g, n_boot, seed)}
+    reg_g = [(st, p, v["vs_generic"]) for st, block in ((out["menus"] or {}).get("regret") or {}).items()
+             for p, v in block.items() if "vs_generic" in v]
+    if out["vs_generic"] or reg_g:
+        lines += ["", "Paired against the generic prior: what the image adds over no image (below 0: better than generic). "
+                  "Brier on the same attempt rows; regret on the same first-menu cases, both priced on the class menu.", ""]
+        if out["vs_generic"]:
+            lines += ["| prior | rows | Brier − generic |", "|---|---|---|"]
+            for name, v in out["vs_generic"].items():
+                b = v["brier"]
+                lines.append(f"| {name} | {b['n']} | {b['mean']:+.4f} [{b['ci'][0]:+.4f}, {b['ci'][1]:+.4f}] |")
+        if reg_g:
+            lines += ["", "| setting | prior | cases | regret − generic |", "|---|---|---|---|"]
+            lines += [f"| {st} | {p} | {v['n']} | {v['mean']:+.3f} [{v['ci'][0]:+.3f}, {v['ci'][1]:+.3f}] |" for st, p, v in reg_g]
     return out, "\n".join(lines) + "\n"
 
 
