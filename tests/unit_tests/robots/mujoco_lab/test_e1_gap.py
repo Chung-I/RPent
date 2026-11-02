@@ -17,6 +17,7 @@ pairs, the power line, the summary, the run checks and the case draw."""
 
 from __future__ import annotations
 
+import json
 import math
 
 import pytest
@@ -102,6 +103,21 @@ def test_the_power_line_matches_the_closed_form():
     # the same gains on two objects (5 cases each): the object clusters raise the variance five-fold
     assert e1_gap.power_n([1.0] * 5 + [3.0] * 5, ["a"] * 5 + ["b"] * 5, share=1.0) == math.ceil(10 * Z2 * 0.5 / 4)
     assert e1_gap.power_n([0.0, -1.0] * 5, objs) is None
+
+
+def test_the_power_line_needs_at_least_one_case():
+    assert e1_gap.power_n([2.0, 2.0], ["a", "b"], share=1.0) == 1
+
+
+def test_a_run_refuses_a_directory_that_holds_another_cases_file(tmp_path):
+    out = tmp_path / "run"
+    out.mkdir()
+    (out / "cases.json").write_text(json.dumps({"seed": 13, "n": 1, "cases": [["a", 0]]}))
+    other = tmp_path / "other.json"
+    other.write_text(json.dumps({"seed": 13, "n": 1, "cases": [["b", 0]]}))
+    with pytest.raises(ValueError, match="another cases file"):
+        e1_gap.run(str(other), workers=1, out_dir=str(out))
+    assert json.loads((out / "cases.json").read_text())["cases"] == [["a", 0]]
 
 
 def _pair(obj, setting, rec, d_total, o_total, kept=True, drop=None):

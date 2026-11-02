@@ -136,7 +136,7 @@ def power_n(d, objects, share: float = 0.5, z: float = Z_POWER) -> int | None:
     a random ``share`` of the cases it pays the oracle's cost, on the rest the default's. From the gaps d (default - oracle)
     at N cases: the planner's mean gain is share x mean(d), and the object-clustered variance of that mean is
     (share (1 - share) sum d^2 + share^2 sum_o (S_o - mean(d) n_o)^2) / N^2 (S_o, n_o: an object's gap sum and its cases),
-    which falls as N / N' at N' cases of the same mix. None when the mean gap is not above 0."""
+    which falls as N / N' at N' cases of the same mix; at least 1. None when the mean gap is not above 0."""
     v = np.asarray(d, dtype=float)
     if not len(v) or float(v.mean()) <= 0:
         return None
@@ -146,7 +146,7 @@ def power_n(d, objects, share: float = 0.5, z: float = Z_POWER) -> int | None:
     S = np.bincount(inv, weights=v, minlength=len(index))
     n = np.bincount(inv, minlength=len(index)).astype(float)
     var = (share * (1.0 - share) * float((v ** 2).sum()) + share ** 2 * float(((S - mu * n) ** 2).sum())) / N ** 2
-    return int(math.ceil(N * z ** 2 * var / (share * mu) ** 2))
+    return max(1, int(math.ceil(N * z ** 2 * var / (share * mu) ** 2)))
 
 
 def _interval(values: list[float], objects: list[str], name: str, n_boot: int) -> dict[str, Any]:
@@ -340,11 +340,15 @@ def _counts(path: str) -> Counter:
 
 
 def run(cases_path: str, workers: int, out_dir: str, crossfit: str | None = None, limit: int | None = None) -> str:
-    """Run every case's rule runs (resuming: a case with all its rows is skipped); returns the rows path."""
+    """Run every case's rule runs (resuming: a case with all its rows is skipped; a directory that holds another cases
+    file is an error); returns the rows path."""
     from robots.mujoco_lab.calibrate import code_revision
     from robots.mujoco_lab.train_models import repo_path
 
     spec = json.load(open(cases_path))
+    held = os.path.join(out_dir, "cases.json")
+    if os.path.exists(held) and json.load(open(held)) != spec:
+        raise ValueError(f"{out_dir} holds another cases file ({held}); give a new directory")
     crossfit = crossfit or repo_path("robots/mujoco_lab/data/m2b2/folds")
     settings = grid()
     per = len(_plan(settings))
