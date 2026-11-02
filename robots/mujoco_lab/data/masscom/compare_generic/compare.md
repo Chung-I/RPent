@@ -1,0 +1,30 @@
+# Mass and CoM priors on held-out objects
+
+Accuracy (Part A's cells): posterior-mean error, median [95 % object-bootstrap CI]; coverage of the 80 % interval. Mass: relative error; μ: absolute; CoM: fraction of the pivot length (and cm).
+
+| prior | stage | mass error | mass coverage | μ error | μ coverage | CoM error | CoM error (cm) | CoM coverage |
+|---|---|---|---|---|---|---|---|---|
+| class | prior | 0.416 [0.408, 0.426] | 0.80 [0.79, 0.81] | 0.201 [0.196, 0.204] | 0.80 [0.79, 0.81] | 0.014 [0.007, 0.019] | 0.16 [0.08, 0.47] | 0.80 [0.78, 0.81] |
+| class | attempt | 0.050 [0.045, 0.057] | 0.80 [0.79, 0.81] | 0.153 [0.144, 0.162] | 0.78 [0.77, 0.80] | 0.014 [0.011, 0.017] | 0.18 [0.13, 0.27] | 0.81 [0.79, 0.83] |
+| class | weigh | 0.064 [0.055, 0.079] | 0.79 [0.78, 0.81] | 0.187 [0.175, 0.198] | 0.79 [0.77, 0.82] | 0.012 [0.009, 0.017] | 0.14 [0.09, 0.29] | 0.80 [0.77, 0.83] |
+| class | push | 0.356 [0.337, 0.373] | 0.77 [0.74, 0.79] | 0.127 [0.121, 0.133] | 0.83 [0.81, 0.85] | 0.011 [0.007, 0.016] | 0.15 [0.08, 0.31] | 0.80 [0.77, 0.82] |
+| generic | prior | 4.040 [2.563, 6.203] | 0.77 [0.71, 0.84] | 0.201 [0.196, 0.204] | 0.80 [0.79, 0.81] | 0.041 [0.021, 0.053] | 0.44 [0.21, 0.74] | 0.80 [0.75, 0.85] |
+| generic | attempt | 0.053 [0.047, 0.062] | 0.78 [0.76, 0.80] | 0.162 [0.153, 0.171] | 0.77 [0.76, 0.78] | 0.048 [0.040, 0.057] | 0.58 [0.41, 0.80] | 0.81 [0.77, 0.85] |
+| generic | weigh | 0.068 [0.058, 0.084] | 0.76 [0.72, 0.80] | 0.187 [0.178, 0.199] | 0.78 [0.76, 0.81] | 0.044 [0.033, 0.057] | 0.48 [0.34, 0.76] | 0.81 [0.76, 0.85] |
+| generic | push | 0.541 [0.494, 0.624] | 0.74 [0.72, 0.77] | 0.180 [0.173, 0.189] | 0.80 [0.78, 0.83] | 0.041 [0.024, 0.053] | 0.45 [0.23, 0.75] | 0.81 [0.76, 0.85] |
+
+Downstream: each attempt row's action predicted from the prior's particles, against its label.
+
+| prior | rows (objects) | Brier | ECE irreversible | ECE placed_stable | mean P(irreversible) | irreversible rate |
+|---|---|---|---|---|---|---|
+| class | 10137 (84) | 0.3994 [0.3514, 0.4448] | 0.0078 [0.0062, 0.0165] | 0.0189 [0.0136, 0.0338] | 0.1552 | 0.1596 |
+| generic | 10137 (84) | 0.5239 [0.4810, 0.5665] | 0.0136 [0.0102, 0.0238] | 0.0739 [0.0546, 0.1095] | 0.1532 | 0.1596 |
+
+First menus against the class prior's (same case, setting and menu stream). Regret: the prior's first choice priced on the class prior's menu, minus that menu's cheapest row (class own: the class rule's own).
+
+| setting | prior | n | recommendation changed | recommended row changed | regret on the class menu | class own | prior − class own | unmatched |
+|---|---|---|---|---|---|---|---|---|
+| k10_A10 | generic | 1045 | 0.245 [0.181, 0.314] | 0.279 [0.217, 0.347] | +0.223 [+0.121, +0.359] | +0.075 | +0.147 [+0.097, +0.210] | 0 |
+| k100_A3 | generic | 1045 | 0.077 [0.048, 0.111] | 0.084 [0.053, 0.118] | +0.036 [+0.020, +0.056] | +0.001 | +0.036 [+0.020, +0.054] | 0 |
+| k100_A10 | generic | 1045 | 0.199 [0.148, 0.254] | 0.211 [0.158, 0.265] | +0.414 [+0.248, +0.612] | +0.038 | +0.376 [+0.226, +0.549] | 0 |
+| k30_A3 | generic | 1045 | 0.174 [0.125, 0.229] | 0.183 [0.136, 0.240] | +0.130 [+0.079, +0.188] | +0.008 | +0.122 [+0.073, +0.179] | 0 |

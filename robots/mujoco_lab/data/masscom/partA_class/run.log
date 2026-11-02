@@ -1,0 +1,16 @@
+fold 2 attempt: 1922 cases
+fold 4 attempt: 1992 cases
+fold 1 attempt: 2008 cases
+fold 3 attempt: 1985 cases
+fold 2 weigh: 358 cases
+fold 4 weigh: 345 cases
+fold 1 weigh: 355 cases
+fold 3 weigh: 378 cases
+fold 2 push: 349 cases
+fold 0 attempt: 2230 cases
+fold 4 push: 351 cases
+fold 1 push: 356 cases
+fold 3 push: 378 cases
+fold 0 weigh: 398 cases
+fold 0 push: 398 cases
+done in 185 s: /home/chungyili/Codes/RPent-masscom/logs/masscom/partA_class/records.jsonl
