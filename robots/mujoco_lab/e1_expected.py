@@ -67,13 +67,15 @@ def choosable(a: dict[str, Any]) -> dict[str, float]:
 
 
 def score(a: dict[str, Any], choice: str) -> dict[str, Any] | None:
-    """``choice`` on menu ``a``: its expected cost, the cheapest row and the regret (the cost minus the cheapest row's); None
-    when the choice is not a row of the menu."""
+    """``choice`` on menu ``a``: its expected cost, the cheapest row, the regret (the cost minus the cheapest row's) and the
+    menu's guard flag (the novelty guard found the object unlike the training objects: the menu's probabilities are least
+    trusted there); None when the choice is not a row of the menu."""
     rows = choosable(a)
     if choice not in rows:
         return None
     best = min(rows, key=rows.get)
-    return {"choice": choice, "cost": rows[choice], "min": rows[best], "min_row": best, "regret": rows[choice] - rows[best]}
+    return {"choice": choice, "cost": rows[choice], "min": rows[best], "min_row": best, "regret": rows[choice] - rows[best],
+            "guard": bool((a.get("guard") or {}).get("flag"))}
 
 
 def miss_reason(a: dict[str, Any], choice: str) -> str | None:
@@ -244,18 +246,22 @@ def true_menu(prims: Any, store: dict[str, Any], destination: str, conf: dict[st
 
 def arm_score(choices: list[str], first_true: dict[str, Any], later_true: list[dict[str, Any]] | None) -> dict[str, Any]:
     """A run's regret: its first choice on the fresh true first menu, each later choice on the true menu from its own belief
-    (``later_true``, one per later point; None when the replay diverged). A case without a first menu (out of reach) scores 0
-    for every arm (no_menu); a first choice that is not a row of the true menu scores None."""
+    (``later_true``, one per later point; None when the replay diverged); regret_noguard leaves out the points whose true
+    menu has a guard flag (guard_points). A case without a first menu (out of reach) scores 0 for every arm (no_menu); a
+    first choice that is not a row of the true menu scores None."""
     if not choices and not first_true.get("assessed", False):
         return {"no_menu": True, "points": 0, "first": None, "later": [], "regret_first": 0.0, "regret_later": 0.0,
-                "regret_total": 0.0}
+                "regret_total": 0.0, "regret_noguard": 0.0, "guard_points": 0}
     first = score(first_true, choices[0]) if choices else None
     later = None if later_true is None else [score(m, c) for m, c in zip(later_true, choices[1:])]
     r1 = None if first is None else first["regret"]
     rl = (None if later is None or len(later) != len(choices) - 1 or any(x is None for x in later)
           else float(sum(x["regret"] for x in later)))
+    pts = [first] + list(later) if r1 is not None and rl is not None else []
     return {"no_menu": False, "points": len(choices), "first": first, "later": later, "regret_first": r1, "regret_later": rl,
-            "regret_total": None if r1 is None or rl is None else r1 + rl}
+            "regret_total": None if r1 is None or rl is None else r1 + rl,
+            "regret_noguard": float(sum(x["regret"] for x in pts if not x["guard"])) if pts else None,
+            "guard_points": sum(x["guard"] for x in pts) if pts else None}
 
 
 def score_run(row: dict[str, Any], arm: str, setting: str, first_true: dict[str, Any], rep: dict[str, Any],
@@ -275,7 +281,7 @@ def score_run(row: dict[str, Any], arm: str, setting: str, first_true: dict[str,
     m0_ok = first_ok if key is None else bool(m0_ok)
     s = arm_score(choices, first_true, later)
     if not m0_ok:
-        s.update(regret_first=None, regret_total=None)
+        s.update(regret_first=None, regret_total=None, regret_noguard=None)
     out = {"object": row["object"], "idx": int(row["idx"]), "seed": int(row["seed"]), "arm": arm, "setting": setting,
            "rec": row.get("recommendation"), "ended": row.get("ended"), "artifact": bool(row.get("artifact")),
            "choices": choices, **s, "mismatch": mismatch, "first_ok": first_ok, "m0_ok": m0_ok}
@@ -479,7 +485,7 @@ def gap_pairs(recs: list[dict[str, Any]]) -> list[dict[str, Any]]:
             drop = _drop(d, o)
             out.append({"object": c[0], "idx": c[1], "seed": c[2], "setting": s, "rec": d.get("rec"), "kept": drop is None,
                         "drop": drop, "first": _minus(d, o, "regret_first"), "total": _minus(d, o, "regret_total"),
-                        "later": _minus(d, o, "regret_later"), "default": d, "oracle": o})
+                        "later": _minus(d, o, "regret_later"), "noguard": _minus(d, o, "regret_noguard"), "default": d, "oracle": o})
     return out
 
 
@@ -494,7 +500,7 @@ def summarize_gap(prs: list[dict[str, Any]], n_boot: int = 2000) -> dict[str, An
         kept = [p for p in ps if p["kept"]]
         x: dict[str, Any] = {"n": len(kept), "objects": len({p["object"] for p in kept}),
                              "dropped": {k: sum(p["drop"] == k for p in ps) for k in ("artifact", "error")}}
-        for field in ("first", "total", "later"):
+        for field in ("first", "total", "later", "noguard"):
             x[field] = {"all": _iv(kept, field, f"{field}/{s}/all", n_boot)}
             for rec in e1_gap.RECS:
                 x[field][rec] = _iv([p for p in kept if p["rec"] == rec], field, f"{field}/{s}/{rec}", n_boot)
@@ -503,7 +509,8 @@ def summarize_gap(prs: list[dict[str, Any]], n_boot: int = 2000) -> dict[str, An
         x["power"] = {"n_half": e1_gap.power_n([p["first"] for p in f1], [p["object"] for p in f1], 0.5),
                       "n_full": e1_gap.power_n([p["first"] for p in f1], [p["object"] for p in f1], 1.0),
                       "n_half_total": e1_gap.power_n([p["total"] for p in ft], [p["object"] for p in ft], 0.5)}
-        x["arms"] = {arm: {k: _mean([p[arm].get(k) for p in kept]) for k in ("regret_first", "regret_later", "regret_total", "points")}
+        x["arms"] = {arm: {k: _mean([p[arm].get(k) for p in kept])
+                           for k in ("regret_first", "regret_later", "regret_total", "regret_noguard", "points", "guard_points")}
                      for arm in ("default", "oracle")}
         x["differ"] = {"oracle_better": sum(p["first"] is not None and p["first"] > TOL for p in kept),
                        "oracle_worse": sum(p["first"] is not None and p["first"] < -TOL for p in kept)}
@@ -529,7 +536,8 @@ def pilot_pairs(recs: list[dict[str, Any]], arm: str, base: str = "default_rule"
             continue
         drop = _drop(r, b)
         out.append({"object": c[0], "idx": c[1], "seed": c[2], "setting": s, "kept": drop is None, "drop": drop,
-                    "first": _minus(r, b, "regret_first"), "total": _minus(r, b, "regret_total")})
+                    "first": _minus(r, b, "regret_first"), "total": _minus(r, b, "regret_total"),
+                    "noguard": _minus(r, b, "regret_noguard")})
     return out
 
 
@@ -544,7 +552,7 @@ def summarize_pilot(recs: list[dict[str, Any]], n_boot: int = 2000) -> dict[str,
         prs = pilot_pairs(recs, arm)
         kept = [p for p in prs if p["kept"]]
         c: dict[str, Any] = {"dropped": len(prs) - len(kept), "unscored": {f: sum(p[f] is None for p in kept) for f in ("first", "total")}}
-        for field in ("first", "total"):
+        for field in ("first", "total", "noguard"):
             c[field] = {s: _iv([p for p in kept if s == "all" or p["setting"] == s], field, f"{arm}/{field}/{s}", n_boot)
                         for s in settings + ["all"]}
         out["contrasts"][arm] = c
@@ -552,7 +560,9 @@ def summarize_pilot(recs: list[dict[str, Any]], n_boot: int = 2000) -> dict[str,
         rows = [r for r in recs if r["arm"] == arm]
         out["arms"][arm] = {s: {"n": sum(s == "all" or r["setting"] == s for r in rows),
                                 "first": _mean([r["regret_first"] for r in rows if s == "all" or r["setting"] == s]),
-                                "total": _mean([r["regret_total"] for r in rows if s == "all" or r["setting"] == s])}
+                                "total": _mean([r["regret_total"] for r in rows if s == "all" or r["setting"] == s]),
+                                "noguard": _mean([r.get("regret_noguard") for r in rows if s == "all" or r["setting"] == s]),
+                                "guard_points": sum(r.get("guard_points") or 0 for r in rows if s == "all" or r["setting"] == s)}
                             for s in settings + ["all"]}
         out["unmatched"][arm] = sum(r["regret_first"] is None and not r.get("no_menu") for r in rows)
     orc = [r for r in recs if r["arm"] == "oracle_rule"]
@@ -608,12 +618,12 @@ def markdown_gap(summary: dict[str, Any]) -> str:
                      f"{x['differ']['oracle_worse']}) | {_n(x['power']['n_half'])} ({_n(x['power']['n_full'])}) |")
     lines += ["", "Every decision point (the regret summed over every point where the run saw a menu; later true menus from "
               "each run's own belief):", "",
-              "| setting | default | oracle | default - oracle | later points only | n50 | points per case (default / oracle) "
-              "| unscored |", "|---|---|---|---|---|---|---|---|"]
+              "| setting | default | oracle | default - oracle | later points only | guard points left out | n50 "
+              "| points per case (default / oracle) | unscored |", "|---|---|---|---|---|---|---|---|---|"]
     for s in summary["ranking"]:
         x = S[s]
         lines.append(f"| {s} | {_f(x['arms']['default']['regret_total'])} | {_f(x['arms']['oracle']['regret_total'])} | "
-                     f"{_ci(x['total']['all'])} | {_ci(x['later']['all'])} | {_n(x['power']['n_half_total'])} | "
+                     f"{_ci(x['total']['all'])} | {_ci(x['later']['all'])} | {_ci(x['noguard']['all'])} | {_n(x['power']['n_half_total'])} | "
                      f"{_f(x['arms']['default']['points'])} / {_f(x['arms']['oracle']['points'])} | {x['unscored']['total']} |")
     lines += ["", "The oracle's choice off the cheapest row of its own (true) menu, by reason (kept pairs):", "",
               "| setting | first decision | later points (of all later points) |", "|---|---|---|"]
@@ -635,7 +645,8 @@ def markdown_pilot(summary: dict[str, Any]) -> str:
              "true menu). Each arm - default_rule, per setting and pooled (below 0: the arm's choices are cheaper under the "
              f"true setting); kept pairs (no error and no artifact in either run); 95 % object-bootstrap intervals "
              f"({summary['n_boot']} draws).", "", "First decision:", "", head, rule]
-    for field, title in (("first", None), ("total", "Every decision point:")):
+    for field, title in (("first", None), ("total", "Every decision point:"),
+                         ("noguard", "Every decision point, the points whose true menu has a guard flag left out:")):
         if title:
             lines += ["", title, "", head, rule]
         for arm, c in summary["contrasts"].items():

@@ -197,10 +197,12 @@ def test_a_run_scores_its_first_choice_on_the_fresh_true_menu_and_later_ones_on_
     assert ex.arm_score(["slow_lift"], first, [])["regret_first"] is None
 
 
-def _rec(arm, setting, obj="mug", idx=0, first=0.0, total=0.0, rec="probe", ended="placed", artifact=False, miss=None):
+def _rec(arm, setting, obj="mug", idx=0, first=0.0, total=0.0, rec="probe", ended="placed", artifact=False, miss=None,
+         noguard=None):
     return {"object": obj, "idx": idx, "seed": 13, "arm": arm, "setting": setting, "rec": rec, "ended": ended,
             "artifact": artifact, "regret_first": first, "regret_later": None if total is None else total - first,
-            "regret_total": total, "miss": miss, "misses_later": [], "points": 1, "mismatch": []}
+            "regret_total": total, "regret_noguard": total if noguard is None else noguard, "miss": miss, "misses_later": [],
+            "points": 1, "mismatch": []}
 
 
 def test_the_gap_pairs_take_default_minus_oracle_and_drop_errors_and_artifacts():
@@ -287,3 +289,23 @@ def test_a_run_whose_reset_or_replay_differs_gets_no_later_score_and_a_bad_true_
     assert moved["regret_first"] == 0.0 and moved["regret_later"] is None and moved["regret_total"] is None
     bad = ex.score_run(row, "default", "s", first, rep, "s", m0_ok=False)
     assert bad["regret_first"] is None and bad["regret_total"] is None and not bad["m0_ok"]
+
+
+def test_the_regret_without_guard_points_leaves_out_the_points_whose_true_menu_flags():
+    first = _menu({"probe_weigh": 4.0, "firm_grip": 6.0})
+    flagged = _menu({"firm_grip": 2.0}, guard=True, rec="decline")
+    s = ex.arm_score(["probe_weigh", "decline"], first, [flagged])
+    assert s["first"]["guard"] is False and s["later"][0]["guard"] is True
+    assert s["regret_total"] == pytest.approx(8.0) and s["regret_noguard"] == 0.0 and s["guard_points"] == 1
+    assert ex.arm_score(["probe_weigh", "decline"], first, None)["regret_noguard"] is None
+
+
+def test_the_summaries_report_the_regret_without_guard_points():
+    recs = ([_rec("default", "k1_A3_abs", obj=f"o{k}", first=1.0, total=3.0, noguard=1.0) for k in range(4)]
+            + [_rec("oracle", "k1_A3_abs", obj=f"o{k}") for k in range(4)])
+    x = ex.summarize_gap(ex.gap_pairs(recs), n_boot=100)["settings"]["k1_A3_abs"]
+    assert x["noguard"]["all"]["mean"] == pytest.approx(1.0) and x["total"]["all"]["mean"] == pytest.approx(3.0)
+    recs = ([_rec("default_rule", "lo_rec", obj=f"o{k}", total=3.0, noguard=1.0) for k in range(4)]
+            + [_rec("menu_planner", "lo_rec", obj=f"o{k}", total=0.0) for k in range(4)])
+    c = ex.summarize_pilot(recs, n_boot=100)["contrasts"]["menu_planner"]
+    assert c["noguard"]["all"]["mean"] == pytest.approx(-1.0) and c["total"]["all"]["mean"] == pytest.approx(-3.0)
