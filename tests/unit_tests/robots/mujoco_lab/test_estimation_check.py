@@ -171,3 +171,56 @@ def test_case_truths_and_tuning_objects_for_a_fold():
     t = case_truths(rows, None)
     assert t == {"a": [(pytest.approx(3.0), pytest.approx(0.25))]}
     assert tuning_objects({"a": 0, "b": 1, "c": 1, "d": 2}, 1) == ["a", "d"]
+
+
+def test_job_prior_of_a_class_spec_is_the_bundle_prior():
+    """A class-prior spec (jobs_for gives it no "prior" key) keeps the bundle's prior: no table, no shape prior."""
+    from robots.mujoco_lab.estimation_check import job_prior
+
+    spec = {"bundle": "b", "source": "b", "fold": 0, "objects": ["a"], "stages": ["attempt"], "n": 10, "seed": 0}
+    assert job_prior(spec, {}) == (None, None)
+
+
+def _seed_spy(monkeypatch):
+    from robots.mujoco_lab import estimation_check as ec
+
+    seeds = []
+    monkeypatch.setattr(ec, "load_bundle", lambda b: {})
+    monkeypatch.setattr(ec, "attempt_rows", lambda s: [])
+    monkeypatch.setattr(ec, "probe_rows", lambda s: [])
+    monkeypatch.setattr(ec, "run_attempt", lambda rows, B, n, seed, prior=None: seeds.append(seed) or [])
+    monkeypatch.setattr(ec, "run_probes", lambda cases, stage, B, n, seed, prior=None: seeds.append(seed) or [])
+    return ec, seeds
+
+
+def test_a_single_bundle_job_seeds_every_stage_with_the_run_seed(monkeypatch):
+    """Without folds (fold -1), every stage takes the run's seed, as posterior_check's runs do."""
+    ec, seeds = _seed_spy(monkeypatch)
+    ec.job({"bundle": "b", "source": "b", "fold": -1, "objects": ["a"], "stages": ["attempt", "weigh", "push"], "n": 10, "seed": 3})
+    assert seeds == [3, 3, 3]
+
+
+def test_a_crossfit_job_seeds_each_stage_by_seed_fold_and_stage(monkeypatch):
+    ec, seeds = _seed_spy(monkeypatch)
+    ec.job({"bundle": "b", "source": "b", "fold": 2, "objects": ["a"], "stages": ["attempt", "weigh", "push"], "n": 10, "seed": 3})
+    assert seeds == [[3, 2, 0], [3, 2, 1], [3, 2, 2]]
+
+
+def test_summary_reports_the_downstream_scores(tmp_path, monkeypatch):
+    """summary.json and summary.md carry the prior predictive's Brier and ECE next to the accuracy table."""
+    import argparse
+    import json
+
+    from robots.mujoco_lab import estimation_check as ec
+    from rpent.skills.pick_place.protocol import OUTCOMES
+
+    p = {k: 0.0 for k in OUTCOMES}
+    p["placed_stable"] = 1.0
+    recs = [{"object": o, "stage": "attempt", "label": "placed_stable", "p_prior": p} for o in ("a", "b")]
+    (tmp_path / "records.jsonl").write_text("".join(json.dumps(r) + "\n" for r in recs))
+    monkeypatch.setattr(ec, "summarize", lambda recs, n_boot, seed: {})
+    out = ec.summary(argparse.Namespace(dir=str(tmp_path), n_boot=20, seed=0, wandb=False))
+    saved = json.load(open(tmp_path / "summary.json"))
+    assert saved["downstream"]["n"] == 2 and saved["downstream"]["brier"]["value"] == 0.0
+    assert out["downstream"] == saved["downstream"]
+    assert "Brier" in (tmp_path / "summary.md").read_text()

@@ -238,7 +238,7 @@ def tuning_objects(folds: dict[str, int], fold: int) -> list[str]:
 def job_prior(spec: dict[str, Any], B: dict[str, Any]) -> tuple[Any, dict[str, Any] | None]:
     """The job's prior: the bundle's (class), or ``shape_prior`` over it with the generic or VLM table of the job's objects,
     the spreads fitted on ``spec["tuning"]`` (every attempt and probe row of those objects)."""
-    if spec["prior"] == "class":
+    if spec.get("prior", "class") == "class":
         return None, None
     rows = attempt_rows(spec["source"]) + [r for r in probe_rows(spec["source"]) if r["key"].rsplit("__", 1)[1] in ("Apush", "Bweigh")]
     truths = case_truths(rows_of(rows, spec["tuning"]), B.get("classes"))   # the tuning objects' truths only
@@ -250,16 +250,15 @@ def job_prior(spec: dict[str, Any], B: dict[str, Any]) -> tuple[Any, dict[str, A
 
 def job(spec: dict[str, Any]) -> list[dict[str, Any]]:
     """One bundle's stages on its objects (a fold's, or the ``--objects``) under the job's prior; each stage seeded by
-    (seed, fold, stage), the same streams for every prior."""
+    (seed, fold, stage) (one bundle: the run's seed, as posterior_check), the same streams for every prior."""
     B = load_bundle(spec["bundle"])
     objs = spec["objects"]
     prior, info = job_prior(spec, B)
     out = [{"stage": "prior_table", **info}] if info else []
     for i, stage in enumerate(spec["stages"]):
-        rng_seed = [int(spec["seed"]), int(spec["fold"]), i]
+        rng_seed = [int(spec["seed"]), int(spec["fold"]), i] if spec["fold"] >= 0 else spec["seed"]   # one bundle: posterior_check's
         if stage == "attempt":
-            recs = run_attempt(rows_of(attempt_rows(spec["source"]), objs), B, spec["n"], rng_seed if spec["fold"] >= 0 else spec["seed"],
-                               prior)
+            recs = run_attempt(rows_of(attempt_rows(spec["source"]), objs), B, spec["n"], rng_seed, prior)
         else:
             recs = run_probes(stage_cases(rows_of(probe_rows(spec["source"]), objs), stage), stage, B, spec["n"], rng_seed, prior)
         for r in recs:
@@ -334,12 +333,21 @@ def markdown(s: dict[str, Any]) -> str:
 def summary(a: argparse.Namespace) -> dict[str, Any]:
     recs = [json.loads(line) for line in open(os.path.join(a.dir, "records.jsonl"))]
     s = summarize(recs, a.n_boot, a.seed)
-    out = {"n_records": len(recs), "n_boot": a.n_boot, "stages": s}
+    d = downstream(recs, a.n_boot, a.seed)
+    out = {"n_records": len(recs), "n_boot": a.n_boot, "stages": s, "downstream": d}
     with open(os.path.join(a.dir, "summary.json"), "w") as f:
         json.dump(out, f, indent=1)
+
+    def iv(x: dict[str, Any]) -> str:
+        return f"{x['value']:.4f} [{x['ci'][0]:.4f}, {x['ci'][1]:.4f}]"
+
     md = ("# Mass and CoM estimation check\n\nErrors: mass |m̂ − m| / m, friction |μ̂ − μ|, CoM along the pivot |ĉ − c| "
           "(fraction of the length; cm). Widths: the 80 % interval (mass relative to the posterior mean). 95 % object-bootstrap "
-          f"intervals ({a.n_boot} draws). The prior row is the attempt cases' prior.\n\n" + markdown(s))
+          f"intervals ({a.n_boot} draws). The prior row is the attempt cases' prior.\n\n" + markdown(s)
+          + "\n\nDownstream: each attempt row's own action, predicted from the prior's particles, against its label "
+          f"({d['n']} rows, {d['n_objects']} objects).\n\n| Brier | ECE irreversible | ECE placed_stable | mean P(irreversible) | "
+          f"irreversible rate |\n|---|---|---|---|---|\n| {iv(d['brier'])} | {iv(d['ece_irreversible'])} | {iv(d['ece_placed'])} | "
+          f"{d['mean_p_irreversible']:.4f} | {d['rate_irreversible']:.4f} |\n")
     with open(os.path.join(a.dir, "summary.md"), "w") as f:
         f.write(md)
     print(md, flush=True)
@@ -347,6 +355,7 @@ def summary(a: argparse.Namespace) -> dict[str, Any]:
         cfg = json.load(open(os.path.join(a.dir, "run_config.json")))
         flat = {f"{st}/{p}/{m}": (c["coverage"] if m == "coverage" else c["median"])
                 for st, blk in s.items() for p, pb in blk.items() for m, c in pb.items() if isinstance(c, dict)}
+        flat.update({f"downstream/{k}": d[k]["value"] for k in ("brier", "ece_irreversible", "ece_placed")})
         out["wandb"] = tracking.log_run("estimation_check", cfg, flat)
     return out
 

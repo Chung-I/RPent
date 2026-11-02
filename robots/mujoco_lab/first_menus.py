@@ -39,6 +39,7 @@ from typing import Any
 
 import numpy as np
 
+from robots.mujoco_lab import tracking
 from rpent.skills.pick_place.evaluate import object_weights
 
 SETTINGS = (("k10_A10", 10.0, 10.0), ("k100_A3", 100.0, 3.0), ("k100_A10", 100.0, 10.0), ("k30_A3", 30.0, 3.0))
@@ -208,6 +209,13 @@ def summary(a: argparse.Namespace) -> dict[str, Any]:
     with open(os.path.join(a.dir, "summary.md"), "w") as f:
         f.write(md)
     print(md, flush=True)
+    if a.wandb:
+        cfg = {k: v for k, v in json.load(open(os.path.join(a.dir, "run_config.json"))).items() if k != "tables"}
+        flat = {f"{setting}/{p}/{m}": v[m]["rate"] for setting, block in out["rates"].items() for p, v in block.items()
+                for m in ("recommendation", "option")}
+        out["wandb"] = tracking.log_run("first_menus", cfg, flat)
+        with open(os.path.join(a.dir, "summary.json"), "w") as f:
+            json.dump(out, f, indent=1)
     return out
 
 
@@ -228,6 +236,7 @@ def main(argv: list[str] | None = None) -> Any:
     s.add_argument("--dir", required=True)
     s.add_argument("--n-boot", type=int, default=N_BOOT)
     s.add_argument("--seed", type=int, default=0)
+    s.add_argument("--wandb", action="store_true")
     a = ap.parse_args(argv)
     return run(a) if a.cmd == "run" else summary(a)
 
