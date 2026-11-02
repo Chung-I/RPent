@@ -142,3 +142,32 @@ def test_run_attempt_and_run_probes_repeat_the_posterior_checks_hits():
     ours = run_probes(cases, "push_weigh", B, 300, 0)
     theirs = pc.check_probe_cases(cases, B, [1.0], 300, 0)
     assert [{k: r["post"][k]["hit"] for k in ("mass", "mu", "com")} for r in ours] == [c["post"][1.0] for c in theirs]
+
+
+def test_downstream_scores_the_prior_predictive_against_the_labels():
+    from robots.mujoco_lab.estimation_check import downstream
+    from rpent.skills.pick_place.protocol import OUTCOMES
+
+    def p(**kw):
+        v = {k: 0.0 for k in OUTCOMES}
+        v.update(kw)
+        return v
+
+    recs = [{"object": "a", "stage": "attempt", "label": "placed_stable", "p_prior": p(placed_stable=1.0)},
+            {"object": "b", "stage": "attempt", "label": "rolled_off", "p_prior": p(placed_stable=0.5, rolled_off=0.5)},
+            {"object": "c", "stage": "weigh", "label": "light", "p_prior": None}]
+    d = downstream(recs, n_boot=50, seed=0)
+    assert d["n"] == 2 and d["brier"]["value"] == pytest.approx((0.0 + 0.5) / 2)      # b: 0.25 + 0.25
+    assert d["ece_irreversible"]["value"] == pytest.approx(0.25)                       # bins: p 0 vs y 0; p 0.5 vs y 1
+    assert len(d["brier"]["ci"]) == 2
+
+
+def test_case_truths_and_tuning_objects_for_a_fold():
+    from robots.mujoco_lab.estimation_check import case_truths, tuning_objects
+
+    rows = [{"object": "a", "key": "a__0", "pose": {"pivot": {"centre": [0, 0, 0], "axis": [1, 0, 0], "lo": 0.0, "L": 1.0},
+                                                     "com_obj_nominal": [0.25, 0, 0], "nominal_mass": 2.0},
+             "theta": {"mass_scale": 1.5, "mu": 0.3, "com_s": None}, "com_end": 1}]
+    t = case_truths(rows, None)
+    assert t == {"a": [(pytest.approx(3.0), pytest.approx(0.25))]}
+    assert tuning_objects({"a": 0, "b": 1, "c": 1, "d": 2}, 1) == ["a", "d"]

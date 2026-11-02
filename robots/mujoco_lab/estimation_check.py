@@ -50,9 +50,11 @@ from robots.mujoco_lab.posterior_check import generator_truth
 from robots.mujoco_lab.prior import lab_prior
 from robots.mujoco_lab.robot_spec import load_bundle
 from robots.mujoco_lab.train_models import load_rows, repo_path
+from robots.mujoco_lab.vision_prior import prior_table, shape_prior
 from rpent.skills.pick_place.belief import ParticleBelief
-from rpent.skills.pick_place.evaluate import object_weights, row_base, row_pose, rows_of
+from rpent.skills.pick_place.evaluate import _ece, ece_ci, object_weights, row_base, row_pose, rows_of
 from rpent.skills.pick_place.features import model_names, particle_matrix, particle_sides
+from rpent.skills.pick_place.protocol import IRREVERSIBLE, OUTCOMES
 
 STAGES = ("prior", "attempt", "weigh", "push")
 PROPS = (("mass", "mass"), ("mu", "mu"), ("com", "com_frac"))
@@ -136,6 +138,28 @@ def summarize(records: list[dict[str, Any]], n_boot: int = N_BOOT, seed: int = 0
     return out
 
 
+def downstream(records: list[dict[str, Any]], n_boot: int = N_BOOT, seed: int = 0) -> dict[str, Any]:
+    """The prior predictive of each attempt row's own action (the success model over the prior's particles) against the
+    row's label: the Brier over OUTCOMES, the ECE of P(irreversible) and of P(placed_stable), with 95 % object-bootstrap
+    intervals. This is what the first menu's numbers rest on."""
+    att = [r for r in records if r["stage"] == "attempt" and r.get("p_prior")]
+    rng = np.random.default_rng(seed)
+    P = np.array([[float(r["p_prior"].get(k, 0.0)) for k in OUTCOMES] for r in att])
+    Y = np.array([[1.0 if r["label"] == k else 0.0 for k in OUTCOMES] for r in att])
+    objects = [r["object"] for r in att]
+    objs, inv = np.unique(np.asarray(objects), return_inverse=True)
+    b = np.sum((P - Y) ** 2, axis=1)
+    W = object_weights(len(objs), n_boot, rng)
+    boot = (W @ np.bincount(inv, weights=b, minlength=len(objs))) / (W @ np.bincount(inv, minlength=len(objs)))
+    irr = [OUTCOMES.index(k) for k in IRREVERSIBLE]
+    p_irr, y_irr = P[:, irr].sum(axis=1), Y[:, irr].sum(axis=1)
+    return {"n": len(att), "n_objects": len(objs),
+            "brier": {"value": float(b.mean()), "ci": [float(np.percentile(boot, 2.5)), float(np.percentile(boot, 97.5))]},
+            "ece_irreversible": {"value": _ece(p_irr, y_irr), "ci": ece_ci(p_irr, y_irr, objects, rng, n_boot)},
+            "ece_placed": {"value": _ece(P[:, 0], Y[:, 0]), "ci": ece_ci(P[:, 0], Y[:, 0], objects, rng, n_boot)},
+            "mean_p_irreversible": float(p_irr.mean()), "rate_irreversible": float(y_irr.mean())}
+
+
 def attempt_rows(bundle_dir: str) -> list[dict[str, Any]]:
     """The bundle's corpus rows that carry readouts (posterior_check's filter)."""
     man = json.load(open(os.path.join(bundle_dir, "manifest.json")))
@@ -171,7 +195,9 @@ def run_attempt(rows: list[dict[str, Any]], B: dict[str, Any], n: int, seed: int
         P = model.predict_matrix(X, r.get("planned"))[0]
         obs = {"label": r["label"], "readouts": r["readouts"], "force": r["force"]}
         comp, _ = readout.components(obs, P, X, a, particle_sides(a, r["pose"]))
-        out.append(_record("attempt", r, b, b.reweight(readout.combine(comp)), B.get("classes"), r["label"]))
+        rec = _record("attempt", r, b, b.reweight(readout.combine(comp)), B.get("classes"), r["label"])
+        rec["p_prior"] = dict(zip(OUTCOMES, (b.weights @ P).tolist()))     # the prior predictive of the row's action
+        out.append(rec)
     return out
 
 
@@ -195,17 +221,47 @@ def run_probes(cases: list[list[dict[str, Any]]], stage: str, B: dict[str, Any],
     return out
 
 
+def case_truths(rows: list[dict[str, Any]], classes) -> dict[str, list[tuple[float, float]]]:
+    """Per object the (mass, CoM fraction) truth of every row (the prior's space, posterior_check.generator_truth)."""
+    out: dict[str, list[tuple[float, float]]] = defaultdict(list)
+    for r in rows:
+        t = generator_truth(r, classes)
+        out[r["object"]].append((t["mass"], t["com"]))
+    return dict(out)
+
+
+def tuning_objects(folds: dict[str, int], fold: int) -> list[str]:
+    """The objects of every other fold: the only ones a fold's generic or VLM spreads are fitted on."""
+    return sorted(o for o, k in folds.items() if k != fold)
+
+
+def job_prior(spec: dict[str, Any], B: dict[str, Any]) -> tuple[Any, dict[str, Any] | None]:
+    """The job's prior: the bundle's (class), or ``shape_prior`` over it with the generic or VLM table of the job's objects,
+    the spreads fitted on ``spec["tuning"]`` (every attempt and probe row of those objects)."""
+    if spec["prior"] == "class":
+        return None, None
+    rows = attempt_rows(spec["source"]) + [r for r in probe_rows(spec["source"]) if r["key"].rsplit("__", 1)[1] in ("Apush", "Bweigh")]
+    truths = case_truths(rows_of(rows, spec["tuning"]), B.get("classes"))   # the tuning objects' truths only
+    flat = {o: bool(v["flat"]) for o, v in json.load(open(spec["scenes"])).items()}
+    records = [json.loads(line) for line in open(spec["vlm"])] if spec["prior"] == "vlm" else None
+    table, spreads = prior_table(spec["prior"], spec["objects"], spec["tuning"], truths, flat, records)
+    return shape_prior(B.get("prior") or lab_prior, table), {"fold": spec["fold"], "spreads": spreads, "table": table}
+
+
 def job(spec: dict[str, Any]) -> list[dict[str, Any]]:
-    """One bundle's stages on its objects (a fold's, or the ``--objects``); each stage seeded by (seed, fold, stage)."""
+    """One bundle's stages on its objects (a fold's, or the ``--objects``) under the job's prior; each stage seeded by
+    (seed, fold, stage), the same streams for every prior."""
     B = load_bundle(spec["bundle"])
     objs = spec["objects"]
-    out = []
+    prior, info = job_prior(spec, B)
+    out = [{"stage": "prior_table", **info}] if info else []
     for i, stage in enumerate(spec["stages"]):
         rng_seed = [int(spec["seed"]), int(spec["fold"]), i]
         if stage == "attempt":
-            recs = run_attempt(rows_of(attempt_rows(spec["source"]), objs), B, spec["n"], rng_seed if spec["fold"] >= 0 else spec["seed"])
+            recs = run_attempt(rows_of(attempt_rows(spec["source"]), objs), B, spec["n"], rng_seed if spec["fold"] >= 0 else spec["seed"],
+                               prior)
         else:
-            recs = run_probes(stage_cases(rows_of(probe_rows(spec["source"]), objs), stage), stage, B, spec["n"], rng_seed)
+            recs = run_probes(stage_cases(rows_of(probe_rows(spec["source"]), objs), stage), stage, B, spec["n"], rng_seed, prior)
         for r in recs:
             r["fold"] = spec["fold"]
         out += recs
@@ -213,12 +269,19 @@ def job(spec: dict[str, Any]) -> list[dict[str, Any]]:
     return out
 
 
-def jobs_for(bundle_dir: str, crossfit: bool, objects: list[str] | None, stages: list[str], n: int, seed: int) -> list[dict[str, Any]]:
+def jobs_for(bundle_dir: str, crossfit: bool, objects: list[str] | None, stages: list[str], n: int, seed: int,
+             prior: str = "class", scenes: str | None = None, vlm: str | None = None) -> list[dict[str, Any]]:
+    extra = {} if prior == "class" else {"prior": prior, "scenes": scenes, "vlm": vlm}
     if not crossfit:
-        return [{"bundle": bundle_dir, "source": bundle_dir, "fold": -1, "objects": objects, "stages": stages, "n": n, "seed": seed}]
+        spec = {"bundle": bundle_dir, "source": bundle_dir, "fold": -1, "objects": objects, "stages": stages, "n": n, "seed": seed}
+        if extra:
+            folds = json.load(open(os.path.join(bundle_dir, "folds", "folds.json")))
+            extra["tuning"] = sorted(set(folds) - set(objects))
+        return [{**spec, "prior": prior, **extra}] if extra else [spec]
     folds = json.load(open(os.path.join(bundle_dir, "folds", "folds.json")))
     return [{"bundle": os.path.join(bundle_dir, "folds", f"fold_{k}"), "source": bundle_dir, "fold": k,
-             "objects": sorted(o for o, f in folds.items() if f == k), "stages": stages, "n": n, "seed": seed}
+             "objects": sorted(o for o, f in folds.items() if f == k), "stages": stages, "n": n, "seed": seed,
+             **({"prior": prior, **extra, "tuning": tuning_objects(folds, k)} if extra else {})}
             for k in sorted(set(folds.values()))]
 
 
@@ -235,9 +298,10 @@ def run(a: argparse.Namespace) -> str:
     if os.path.exists(path):
         raise SystemExit(f"{path} exists: pick a new --out")
     objects = a.objects.split(",") if a.objects else None
-    specs = jobs_for(a.bundle, a.crossfit, objects, a.stages.split(","), a.n_particles, a.seed)
+    specs = jobs_for(a.bundle, a.crossfit, objects, a.stages.split(","), a.n_particles, a.seed, a.prior, a.scenes, a.vlm)
     with open(os.path.join(a.out, "run_config.json"), "w") as f:
-        json.dump({**vars(a), **_revision(), "jobs": [{k: v for k, v in s.items() if k != "objects"} | {"n_objects": len(s["objects"] or [])}
+        json.dump({**vars(a), **_revision(), "jobs": [{k: v for k, v in s.items() if k not in ("objects", "tuning")}
+                                                      | {"n_objects": len(s["objects"] or []), "n_tuning": len(s.get("tuning") or [])}
                                                       for s in specs]}, f, indent=1)
     t0 = time.time()
     with ProcessPoolExecutor(max_workers=min(a.workers, len(specs))) as ex, open(path, "w") as out:
@@ -298,6 +362,9 @@ def main(argv: list[str] | None = None) -> Any:
     r.add_argument("--n-particles", type=int, default=2000)
     r.add_argument("--seed", type=int, default=0)
     r.add_argument("--workers", type=int, default=5)
+    r.add_argument("--prior", default="class", choices=("class", "generic", "vlm"))
+    r.add_argument("--scenes", default=None, help="the renders' scenes.json (flat or upright per object): generic and vlm")
+    r.add_argument("--vlm", default=None, help="the model's query records (vlm_query.py output): vlm")
     r.add_argument("--out", required=True)
     s = sub.add_parser("summary")
     s.add_argument("--dir", required=True)
@@ -307,6 +374,8 @@ def main(argv: list[str] | None = None) -> Any:
     a = ap.parse_args(argv)
     if a.cmd == "run" and not a.crossfit and not a.objects:
         raise SystemExit("--objects is needed without --crossfit")
+    if a.cmd == "run" and a.prior != "class" and not a.scenes or a.cmd == "run" and a.prior == "vlm" and not a.vlm:
+        raise SystemExit("--prior generic needs --scenes; --prior vlm needs --scenes and --vlm")
     return run(a) if a.cmd == "run" else summary(a)
 
 
