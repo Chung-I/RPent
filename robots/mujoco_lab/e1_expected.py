@@ -121,26 +121,31 @@ def actions(case: dict[str, Any], arm: str) -> list[str]:
 
 def menu_fields(a: dict[str, Any]) -> dict[str, Any]:
     """The menu fields a record keeps: the recommendation, its row, the best row, the guard flag, the recommendation
-    without probes, the best and recommended rows' costs, and each row's cost (cost:<id>)."""
+    without probes, the best and recommended rows' costs, and each row's cost, action and probabilities (cost:<id>,
+    action:<id>, p:<id>)."""
     cost = {o["id"]: o.get("expected_cost") for o in a.get("options") or []}
     out = {"recommendation": a.get("recommendation"), "recommended_option": a.get("recommended_option"),
            "best_option": a.get("best_option"), "guard_flag": bool((a.get("guard") or {}).get("flag")),
            "without_probe": a.get("without_probe"), "best_cost": cost.get(a.get("best_option")),
            "recommended_cost": cost.get(a.get("recommended_option"))}
-    out.update({f"cost:{k}": v for k, v in cost.items()})
+    for o in a.get("options") or []:
+        out.update({f"cost:{o['id']}": o.get("expected_cost"), f"action:{o['id']}": o.get("action"), f"p:{o['id']}": o.get("p")})
     return out
 
 
 def outcome_fields(d: dict[str, Any]) -> dict[str, Any]:
-    """The result fields a record keeps: a probe's name, kind, throw and reading, or an attempt's outcome."""
+    """The result fields a record keeps: a probe's name, kind, throw, reading and declared numbers, or an attempt's
+    outcome; the artifact flag of either."""
     if "probed" in d:
-        return {"probed": d["probed"], "kind": d.get("kind"), "thrown": bool(d.get("thrown")), "reading": d.get("reading")}
-    return {"outcome": d.get("outcome")}
+        return {"probed": d["probed"], "kind": d.get("kind"), "thrown": bool(d.get("thrown")), "reading": d.get("reading"),
+                "declared": d.get("declared"), "artifact": bool(d.get("artifact", False))}
+    return {"outcome": d.get("outcome"), "artifact": bool(d.get("artifact", False))}
 
 
 def expectations(case: dict[str, Any], arm: str) -> list[dict[str, Any]]:
     """Per decision point of a recorded run: the choice, the menu fields the record kept for that point ("menu") and the
-    action's result ("outcome"; None for decline)."""
+    action's result ("outcome"; None for decline). A planner decision whose action ended the case in an error has no
+    recorded result, and the points end before it."""
     probes, attempts = list(case.get("probes") or []), list(case.get("attempts") or [])
     decisions = case.get("decisions") or []
     pts = []
@@ -149,11 +154,14 @@ def expectations(case: dict[str, Any], arm: str) -> list[dict[str, Any]]:
         if not is_rule(arm) and k < len(decisions):
             menu = {f: decisions[k][f] for f in ("recommendation", "recommended_option", "best_option", "guard_flag")}
         outcome = None
+        if c != "decline" and not (probes if c.startswith("probe_") else attempts):
+            break
         if c.startswith("probe_"):
             p = probes.pop(0)
             if p.get("option", c) != c:
                 raise ValueError(f"point {k}: the choice {c} ran the probe row {p.get('option')}")
             outcome = {"probed": p["probe"], "kind": p["kind"], "thrown": bool(p["thrown"]), "reading": p.get("reading")}
+            outcome.update({k: p[k] for k in ("artifact", "declared") if k in p})
         elif c != "decline":
             t = attempts.pop(0)
             if t["option"] != c:
@@ -161,7 +169,10 @@ def expectations(case: dict[str, Any], arm: str) -> list[dict[str, Any]]:
             if is_rule(arm):
                 menu["recommendation"] = t["recommendation"]
             menu[f"cost:{c}"] = t["declared"]["expected_cost"]
+            menu.update({f"{k}:{c}": v for k, v in (("action", t.get("action")), ("p", t["declared"].get("p"))) if v is not None})
             outcome = {"outcome": t["outcome"]}
+            if "artifact" in t:
+                outcome["artifact"] = bool(t["artifact"])
         pts.append({"choice": c, "menu": menu, "outcome": outcome})
     if pts and is_rule(arm):
         fm = case.get("first_menu") or {}
@@ -248,21 +259,26 @@ def arm_score(choices: list[str], first_true: dict[str, Any], later_true: list[d
 
 
 def score_run(row: dict[str, Any], arm: str, setting: str, first_true: dict[str, Any], rep: dict[str, Any],
-              key: str | None = None, start: list[str] = ()) -> dict[str, Any]:
+              key: str | None = None, start: list[str] = (), m0_ok: bool = True) -> dict[str, Any]:
     """The output record of one replayed run: its regret (``key``: its true menus' name in rep["true"]; None: its own menus
-    are the true menus, as for the oracle), its checks (``start``: the reset against the record) and, for the oracle, why a
-    choice is not the cheapest row of its menu."""
+    are the true menus, as for the oracle), its checks (``start``: the reset against the record; any mismatch voids the
+    later score) and, for the oracle, why a choice is not the cheapest row of its menu. ``m0_ok`` False (the true first
+    menu did not match the oracle's record) voids the first-decision score; the oracle's own is its first_ok."""
     choices = actions(row, arm)
     mismatch = list(start) + rep["mismatch"]
     if not choices and row.get("ended") == "unreachable" and (rep["first"] or {}).get("assessed", False):
         mismatch.append("first menu: recorded out of reach, replayed a menu")
     later = None
-    if not rep["mismatch"] and len(rep["menus"]) == len(choices):
+    if not mismatch and len(rep["menus"]) == len(choices):
         later = rep["menus"][1:] if key is None else [t[key] for t in rep["true"][1:]]
+    first_ok = not start and not any(m.startswith(("point 0 menu", "point 0:", "first menu")) for m in mismatch)
+    m0_ok = first_ok if key is None else bool(m0_ok)
+    s = arm_score(choices, first_true, later)
+    if not m0_ok:
+        s.update(regret_first=None, regret_total=None)
     out = {"object": row["object"], "idx": int(row["idx"]), "seed": int(row["seed"]), "arm": arm, "setting": setting,
            "rec": row.get("recommendation"), "ended": row.get("ended"), "artifact": bool(row.get("artifact")),
-           "choices": choices, **arm_score(choices, first_true, later), "mismatch": mismatch,
-           "first_ok": not start and not any(m.startswith(("point 0 menu", "point 0:", "first menu")) for m in mismatch)}
+           "choices": choices, **s, "mismatch": mismatch, "first_ok": first_ok, "m0_ok": m0_ok}
     if arm in OWN_TRUE:
         out["miss"] = miss_reason(first_true, choices[0]) if choices and first_true.get("assessed", False) else None
         out["misses_later"] = [miss_reason(m, c) for m, c in zip(rep["menus"][1:], choices[1:])]
@@ -306,19 +322,20 @@ def gap_job(item: tuple[dict[str, Any], dict[str, Any]]) -> list[dict[str, Any]]
     case, cfg = item
     t0 = time.time()
     prims, settings = _prims(cfg, case["object"]), cfg["settings"]
-    out, first = [], {}
+    out, first, m0_ok = [], {}, {}
     for name, s in settings.items():
         row = case["oracle"][name]
         tools, start = _start(prims, e1_gap.rule_config("oracle", s), row)
         rep = replay(tools, expectations(row, "oracle"))
         first[name] = rep["first"]
         out.append(score_run(row, "oracle", name, rep["first"], rep, None, start))
+        m0_ok[name] = out[-1]["m0_ok"]
     for recovery, row in case["default"].items():
         names = [n for n, s in settings.items() if s["recovery"] == recovery]
         tools, start = _start(prims, e1_gap.rule_config("default", settings[names[0]]), row)
         build = _builder(prims, {n: e1_gap.rule_config("oracle", settings[n]) for n in names})
         rep = replay(tools, expectations(row, "default"), build)
-        out += [score_run(row, "default", n, first[n], rep, n, start) for n in names]
+        out += [score_run(row, "default", n, first[n], rep, n, start, m0_ok[n]) for n in names]
     prims.menu_recovery = None
     print(f"{case['object']} {case['idx']}: {len(out)} records, {time.time() - t0:.0f}s", file=sys.stderr, flush=True)
     return out
@@ -342,7 +359,7 @@ def pilot_job(item: tuple[dict[str, Any], dict[str, Any]]) -> list[dict[str, Any
             continue
         tools, start = _start(prims, e1_gap.rule_config("default", s), row)
         rep = replay(tools, expectations(row, arm), build)
-        out.append(score_run(row, arm, job["setting"], first, rep, "true", start))
+        out.append(score_run(row, arm, job["setting"], first, rep, "true", start, out[0]["m0_ok"]))
     prims.menu_recovery = None
     print(f"{job['object']} {job['idx']} {job['setting']}: {len(out)} records, {time.time() - t0:.0f}s", file=sys.stderr, flush=True)
     return out
@@ -553,7 +570,7 @@ def checks(recs: list[dict[str, Any]]) -> dict[str, Any]:
         bad = [r for r in rs if r["mismatch"]]
         out[arm] = {"records": len(rs), "first_mismatch": sum(not r["first_ok"] for r in rs),
                     "later_mismatch": sum(r["first_ok"] and bool(r["mismatch"]) for r in rs),
-                    "no_menu": sum(bool(r.get("no_menu")) for r in rs),
+                    "no_menu": sum(bool(r.get("no_menu")) for r in rs), "m0_bad": sum(not r.get("m0_ok", True) for r in rs),
                     "examples": [f"{r['object']}/{r['idx']}/{r['setting']}: {r['mismatch'][0]}" for r in bad[:3]]}
     return out
 

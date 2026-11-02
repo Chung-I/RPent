@@ -241,3 +241,49 @@ def test_the_pilot_contrasts_pair_each_arm_with_the_default_rule_per_setting_and
     assert m["total"]["all"]["mean"] == pytest.approx(-1.0)
     assert s["contrasts"]["oracle_rule"]["first"]["all"]["n"] == 3 and s["contrasts"]["oracle_rule"]["dropped"] == 1
     assert s["arms"]["default_rule"]["hi_abs"]["first"] == pytest.approx(1.0)
+
+
+def test_a_planner_run_that_ended_in_an_error_lists_only_the_points_with_a_result():
+    dec = {"recommendation": "commit", "recommended_option": "commit_std", "best_option": "commit_std", "guard_flag": False}
+    run = {"ended": "error", "first_menu": {"without_probe": "commit"},
+           "decisions": [dict(dec, choice="probe_weigh"), dict(dec, choice="commit_std")],
+           "probes": [{"probe": "weigh", "option": "probe_weigh", "kind": "measured", "thrown": False, "reading": 0.3}], "attempts": []}
+    assert [p["choice"] for p in ex.expectations(run, "menu_planner")] == ["probe_weigh"]
+
+
+def test_the_record_checks_the_attempted_rows_action_probabilities_and_artifact_flags():
+    action = {"force": 10.0, "destination": "bin"}
+    run = {"ended": "placed", "recommendation": "commit", "best_option": "light_grip", "guard": {"flag": False},
+           "first_menu": {"best_cost": 1.2, "recommended_cost": 1.2},
+           "probes": [], "attempts": [{"option": "light_grip", "recommendation": "commit", "action": action,
+                                       "declared": {"p": {"placed_stable": 0.9}, "expected_cost": 1.2}, "outcome": "placed_stable",
+                                       "artifact": False}]}
+    pt = ex.expectations(run, "default")[0]
+    assert pt["menu"]["action:light_grip"] == action and pt["menu"]["p:light_grip"] == {"placed_stable": 0.9}
+    assert pt["outcome"] == {"outcome": "placed_stable", "artifact": False}
+    menu = _menu({"light_grip": 1.2})
+    menu["options"][0].update(action=dict(action, force=20.0), p={"placed_stable": 0.9})
+    lab = FakeLab([menu], [{"outcome": "placed_stable", "artifact": False}])
+    pts = [{"choice": "light_grip", "menu": {"action:light_grip": action}, "outcome": {"outcome": "placed_stable"}}]
+    assert ex.replay(lab, pts)["mismatch"] == ['point 0 menu action:light_grip: recorded {"destination": "bin", "force": 10.0}, '
+                                              'replayed {"destination": "bin", "force": 20.0}']
+    lab = FakeLab([_menu({"light_grip": 1.2})], [{"outcome": "placed_stable", "artifact": True}])
+    pts = [{"choice": "light_grip", "menu": {}, "outcome": {"outcome": "placed_stable", "artifact": False}}]
+    assert ex.replay(lab, pts)["mismatch"] == ["point 0 outcome artifact: recorded false, replayed true"]
+    probe = {"probe": "weigh", "option": "probe_weigh", "kind": "measured", "thrown": False, "reading": 0.3, "artifact": False,
+             "declared": {"evoi": 1.5}, "after_attempts": 0}
+    assert ex.expectations({"ended": "abstained", "probes": [probe], "attempts": []}, "default")[0]["outcome"] == {
+        "probed": "weigh", "kind": "measured", "thrown": False, "reading": 0.3, "artifact": False, "declared": {"evoi": 1.5}}
+
+
+def test_a_run_whose_reset_or_replay_differs_gets_no_later_score_and_a_bad_true_first_menu_no_first_score():
+    first = _menu({"probe_weigh": 4.0, "firm_grip": 6.0})
+    row = {"object": "mug", "idx": 0, "seed": 13, "ended": "placed", "recommendation": "probe",
+           "probes": [{"probe": "weigh", "after_attempts": 0}], "attempts": [{"option": "firm_grip"}]}
+    rep = {"first": first, "menus": [first, _menu({"firm_grip": 5.0})], "true": [None, {"s": _menu({"firm_grip": 5.0})}], "mismatch": []}
+    ok = ex.score_run(row, "default", "s", first, rep, "s")
+    assert ok["regret_first"] == 0.0 and ok["regret_total"] == 0.0 and ok["first_ok"]
+    moved = ex.score_run(row, "default", "s", first, rep, "s", start=["reset truth: recorded 1, replayed 2"])
+    assert moved["regret_first"] == 0.0 and moved["regret_later"] is None and moved["regret_total"] is None
+    bad = ex.score_run(row, "default", "s", first, rep, "s", m0_ok=False)
+    assert bad["regret_first"] is None and bad["regret_total"] is None and not bad["m0_ok"]
