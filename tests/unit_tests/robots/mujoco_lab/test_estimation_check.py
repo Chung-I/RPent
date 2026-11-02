@@ -1,0 +1,144 @@
+# Copyright 2026 The RPent Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+
+"""The mass and CoM estimation check: per case the posterior mean, the 80 % interval and its hit; per stage the
+error's median and IQR, the width, the coverage, each with a 95 % object-bootstrap interval."""
+
+import os
+
+import numpy as np
+import pytest
+
+from rpent.skills.pick_place.belief import ParticleBelief
+
+
+def _belief(mass, mu, frac, w=None):
+    parts = [{"mass": m, "mu": u, "com_obj": [0.0, 0.0, 0.0], "com_frac": c} for m, u, c in zip(mass, mu, frac)]
+    return ParticleBelief(parts, np.ones(len(parts)) if w is None else np.asarray(w, dtype=float))
+
+
+def test_estimates_give_the_mean_the_interval_the_hit_and_the_errors():
+    from robots.mujoco_lab.estimation_check import estimates
+
+    b = _belief([1.0, 2.0, 3.0, 4.0], [0.2, 0.4, 0.6, 0.8], [0.4, 0.5, 0.5, 0.6])
+    e = estimates(b, {"mass": 2.0, "mu": 0.5, "com": 0.45}, length=0.2)
+    assert e["mass"]["mean"] == pytest.approx(2.5)
+    assert e["mass"]["err"] == pytest.approx(0.25)                      # |2.5 - 2| / 2
+    assert (e["mass"]["lo"], e["mass"]["hi"], e["mass"]["hit"]) == (1.0, 4.0, True)
+    assert e["mass"]["width"] == pytest.approx(3.0 / 2.5)               # relative to the posterior mean
+    assert e["mu"]["err"] == pytest.approx(0.0) and e["mu"]["width"] == pytest.approx(0.6)
+    assert e["com"]["err"] == pytest.approx(0.05)
+    assert e["com"]["err_cm"] == pytest.approx(0.05 * 0.2 * 100)
+    assert e["com"]["width"] == pytest.approx(0.2) and e["com"]["width_cm"] == pytest.approx(0.2 * 0.2 * 100)
+
+
+def test_estimates_use_the_weights_and_report_a_miss():
+    from robots.mujoco_lab.estimation_check import estimates
+
+    b = _belief([1.0, 3.0], [0.2, 0.6], [0.3, 0.7], w=[3, 1])
+    e = estimates(b, {"mass": 5.0, "mu": 0.2, "com": 0.3}, length=0.1)
+    assert e["mass"]["mean"] == pytest.approx(1.5) and e["com"]["mean"] == pytest.approx(0.4)
+    assert e["mass"]["hit"] is False and e["mass"]["err"] == pytest.approx(0.7)
+
+
+def test_stage_cases_take_the_push_alone_and_the_weigh_alone():
+    from robots.mujoco_lab.estimation_check import stage_cases
+
+    rows = [{"key": "o__d0__Apush", "object": "o", "draw": 0}, {"key": "o__d0__Aweigh", "object": "o", "draw": 0},
+            {"key": "o__d0__Bweigh", "object": "o", "draw": 0}, {"key": "o__d1__Csqueeze", "object": "o", "draw": 1},
+            {"key": "p__d3__Apush", "object": "p", "draw": 3}]
+    assert [[r["key"] for r in c] for c in stage_cases(rows, "push")] == [["o__d0__Apush"], ["p__d3__Apush"]]
+    assert [[r["key"] for r in c] for c in stage_cases(rows, "weigh")] == [["o__d0__Bweigh"]]
+    with pytest.raises(KeyError):
+        stage_cases(rows, "attempt")
+
+
+def test_cell_reports_median_iqr_and_an_object_bootstrap_interval():
+    from robots.mujoco_lab.estimation_check import cell
+
+    values = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]
+    objects = ["a", "a", "b", "b", "c", "c", "d", "d"]
+    c = cell(values, objects, np.random.default_rng(0), n_boot=500)
+    assert (c["n"], c["n_objects"]) == (8, 4)
+    assert c["median"] == pytest.approx(4.5)
+    assert (c["q25"], c["q75"]) == (pytest.approx(2.75), pytest.approx(6.25))
+    assert c["ci"][0] < c["median"] < c["ci"][1] and c["ci"][0] >= 1.0 and c["ci"][1] <= 8.0
+    same = cell([2.0] * 6, ["a", "a", "b", "b", "c", "c"], np.random.default_rng(0), n_boot=200)
+    assert same["ci"] == [2.0, 2.0]
+
+
+def test_coverage_cell_reports_the_rate_and_an_object_bootstrap_interval():
+    from robots.mujoco_lab.estimation_check import coverage_cell
+
+    hits = [True, True, False, True, True, True, False, True]
+    c = coverage_cell(hits, ["a", "a", "b", "b", "c", "c", "d", "d"], np.random.default_rng(0), n_boot=500)
+    assert c["coverage"] == pytest.approx(0.75) and c["n"] == 8 and c["n_objects"] == 4
+    assert c["ci"][0] <= 0.75 <= c["ci"][1]
+
+
+def test_summarize_takes_the_prior_row_from_the_attempt_cases_and_the_stages_from_their_posteriors():
+    from robots.mujoco_lab.estimation_check import summarize
+
+    def est(err, hit):
+        return {"mass": {"err": err, "width": 1.0, "hit": hit}, "mu": {"err": err, "width": 0.5, "hit": hit},
+                "com": {"err": err, "err_cm": 10 * err, "width": 0.2, "width_cm": 2.0, "hit": hit}}
+
+    recs = [{"object": o, "stage": "attempt", "prior": est(1.0, True), "post": est(0.5, False)} for o in "abcd"]
+    recs += [{"object": o, "stage": "weigh", "prior": est(1.0, True), "post": est(0.1, True)} for o in "abcd"]
+    s = summarize(recs, n_boot=100, seed=0)
+    assert s["prior"]["mass"]["err"]["median"] == 1.0 and s["prior"]["mass"]["coverage"]["coverage"] == 1.0
+    assert s["attempt"]["mass"]["err"]["median"] == 0.5 and s["attempt"]["mass"]["coverage"]["coverage"] == 0.0
+    assert s["weigh"]["com"]["err_cm"]["median"] == pytest.approx(1.0)
+    assert "push" not in s and s["weigh"]["mass"]["n"] == 4
+
+
+def test_jobs_for_crossfit_gives_each_fold_its_bundle_and_objects(tmp_path):
+    import json
+
+    from robots.mujoco_lab.estimation_check import jobs_for
+
+    (tmp_path / "folds").mkdir()
+    json.dump({"a": 0, "b": 1, "c": 0, "d": 1}, open(tmp_path / "folds" / "folds.json", "w"))
+    specs = jobs_for(str(tmp_path), True, None, ["attempt"], 100, 3)
+    assert [(s["fold"], s["objects"], os.path.basename(s["bundle"])) for s in specs] == [(0, ["a", "c"], "fold_0"), (1, ["b", "d"], "fold_1")]
+    assert all(s["source"] == str(tmp_path) for s in specs)
+    one = jobs_for(str(tmp_path), False, ["a"], ["attempt"], 100, 3)
+    assert one == [{"bundle": str(tmp_path), "source": str(tmp_path), "fold": -1, "objects": ["a"], "stages": ["attempt"], "n": 100, "seed": 3}]
+
+
+M2B2 = os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "robots", "mujoco_lab", "data", "m2b2")
+
+
+@pytest.mark.skipif(not os.path.exists(os.path.join(M2B2, "success_model.joblib")), reason="the m2b2 bundle's models are not here")
+def test_run_attempt_and_run_probes_repeat_the_posterior_checks_hits():
+    """Same rows, same seed: the attempt stage's and the push-then-weigh stage's hits equal posterior_check's at temper 1."""
+    import json
+
+    from robots.mujoco_lab import posterior_check as pc
+    from robots.mujoco_lab.estimation_check import attempt_rows, probe_rows, run_attempt, run_probes
+    from robots.mujoco_lab.robot_spec import load_bundle
+    from rpent.skills.pick_place.evaluate import rows_of
+
+    B = load_bundle(M2B2)
+    val = json.load(open(os.path.join(M2B2, json.load(open(os.path.join(M2B2, "manifest.json")))["metrics"])))["split"]["val"]
+    rows = rows_of(attempt_rows(M2B2), val)[:3]
+    ours = run_attempt(rows, B, 300, 0)
+    theirs = pc.check_rows(rows, B, [1.0], 300, 0)
+    assert [{k: r["post"][k]["hit"] for k in ("mass", "mu", "com")} for r in ours] == [c["post"][1.0] for c in theirs]
+    assert [{k: r["prior"][k]["hit"] for k in ("mass", "mu", "com")} for r in ours] == [c["prior"] for c in theirs]
+    cases = pc.probe_cases(rows_of(probe_rows(M2B2), val), "A")[:3]
+    ours = run_probes(cases, "push_weigh", B, 300, 0)
+    theirs = pc.check_probe_cases(cases, B, [1.0], 300, 0)
+    assert [{k: r["post"][k]["hit"] for k in ("mass", "mu", "com")} for r in ours] == [c["post"][1.0] for c in theirs]
