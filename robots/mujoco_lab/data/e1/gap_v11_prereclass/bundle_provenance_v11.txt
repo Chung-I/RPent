@@ -1,0 +1,19 @@
+bundle /home/chungyili/Codes/RPent-real/robots/mujoco_lab/data/m2b2_v11
+regen EXIT 0, code 7d64a8b7e97b93d1d1e283e1e47d5d8a8a6dc907
+branch 1cfed3d3d2b71d3415b4f9d9acfa2a432e5c7473, dirty files 0
+simulator 5199d0da4e2847068d91e9cf9baff76668ed6846, dirty files 0
+corpora (the regeneration's corpora.sha256):
+6dd7652c4e01810b52e8393cdba9af07460cbda9865ddb8d7aa3867be92ec3c0  /home/chungyili/Codes/RPent-real/robots/mujoco_lab/data/corpus_v11.jsonl
+ae5b1328ba19d722f3fe1a1d19aeb7195ab4b7b98609f387c8ff1ccd7eb12f03  /home/chungyili/Codes/RPent-real/robots/mujoco_lab/data/corpus_fixtures_v11.jsonl
+ae560befae3e1a3c9171661110d82c2be6d4b7ece00a61061c8b6aa55c2eaf01  /home/chungyili/Codes/RPent-real/robots/mujoco_lab/data/corpus_v11_control.jsonl
+54037a93fbf017f8c1754dd847a0500c4fe9c97a508c4217be362774d832bbd2  /home/chungyili/Codes/RPent-real/robots/mujoco_lab/data/probe_corpus_v10.jsonl
+bundle files:
+72f7c2169f7603a80da79cc117b876633581677896bbc3063328a3b1bdc3313e  manifest.json
+e9856c2649d139e6866ab4f481a17741c79ca63960696d887e81265d6fdf31c0  folds/folds.json
+a48429552a2bd03e821eb8e010e5144e1641bfb5549aec96e5f3852477be9981  folds/crossfit.json
+77a2a0fb4620fbc15635070b1bc03d1fe5e63574f224ae5781a9be063fa0321d  folds/fold_0/manifest.json
+e5e9a063d15163e74020cbef31e2f0ef5137e956d9a4ba2ee3ec6e0cf2c8b358  folds/fold_1/manifest.json
+6c70361f5264794cea784e819ea707ad066db5115bc77c39c40746b72132d11e  folds/fold_2/manifest.json
+0fa79999616b092dd15f3f965022cdc8d566ebf981c877343a98e2739d9e5877  folds/fold_3/manifest.json
+453be6b39ef1a4bfcbd9d91e371a337b7a1a6164a0a365cd33430299cd75cffe  folds/fold_4/manifest.json
+simulator folder last commit 89aa86351d73ffb35de0de0a0c41bdb05b92a222 (the line above names the daily-logs HEAD; calibrate's code record uses this one)
