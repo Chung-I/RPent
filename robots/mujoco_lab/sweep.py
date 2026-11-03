@@ -50,7 +50,7 @@ from scipy.stats import poisson
 
 from robots.mujoco_lab import tracking
 from robots.mujoco_lab.calibrate import _counted
-from robots.mujoco_lab.corpus import FILLED_MASS_SCALE_RANGE, MASS_SCALE_RANGE
+from robots.mujoco_lab.corpus import FILLED_MASS_SCALE_RANGE, mass_scale_range
 from rpent.skills.pick_place.evaluate import object_weights
 from rpent.skills.pick_place.protocol import IRREVERSIBLE
 
@@ -460,14 +460,14 @@ def arm_metrics(run: dict[str, Any], W: np.ndarray, objects: list[str]) -> dict[
 
 def subgroup(case: dict[str, Any], classes: dict[str, dict[str, Any]]) -> tuple[str, str]:
     """(public class, prior-draw tercile): container (fillable), crushable, bruisable, breakable or rigid (class none);
-    the draw's quantile within its own generator range (log-uniform on MASS_SCALE_RANGE, or FILLED_MASS_SCALE_RANGE for
-    a filled container) in thirds: low, mid, high."""
+    the draw's quantile within its own generator range (log-uniform on the case generator's mass_scale_range, v10 for a
+    case without the field, or FILLED_MASS_SCALE_RANGE for a filled container) in thirds: low, mid, high."""
     from robots.mujoco_lab.fragility import entry_of
 
     entry = entry_of(case["object"], classes)[0]
     cls = "container" if entry.get("fillable") else (entry.get("class") if entry.get("class") in ("crushable", "bruisable", "breakable")
                                                     else "rigid")
-    lo, hi = FILLED_MASS_SCALE_RANGE if float(case.get("fill") or 0.0) > 0.0 else MASS_SCALE_RANGE
+    lo, hi = FILLED_MASS_SCALE_RANGE if float(case.get("fill") or 0.0) > 0.0 else mass_scale_range(case.get("generator", "v10"))
     q = math.log(float(case["theta"]["mass_scale"]) / lo) / math.log(hi / lo)
     return cls, "low" if q < 1 / 3 else ("mid" if q < 2 / 3 else "high")
 

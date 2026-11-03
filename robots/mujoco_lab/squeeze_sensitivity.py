@@ -108,6 +108,12 @@ def reading_model(pm: Any, rows: list[dict[str, Any]], split: dict[str, list[str
     return replace(pm, reading={**pm.reading, "measured": law})
 
 
+def law_prior(bundle: dict[str, Any], law: Thresholds) -> Any:
+    """The bundle's lab prior under a law: make_prior on the bundle's fragility classes and ``law``, under the bundle's
+    generator."""
+    return make_prior(fragility_world(bundle["manifest"])[0], law, generator=bundle["generator"])
+
+
 def case_value(row: dict[str, Any], bundle: dict[str, Any], prior: Any, pm: Any, n: int, seed: int,
                estimator: str = "plugin") -> dict[str, Any]:
     """The squeeze row's value against the menu continuations at the recorded middle pinch, with its reading value."""
@@ -190,7 +196,7 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
         ap.error("no trainable squeeze rows in the probe corpus")
     cells = []
     for rho, law in laws:
-        prior = make_prior(world[0], law)
+        prior = law_prior(bundle, law)
         for sigma in sigmas:
             replay = recompute_readings(rows, law, sigma)
             pm = reading_model(bundle["probe_models"]["squeeze"], replay, split, a.seed)

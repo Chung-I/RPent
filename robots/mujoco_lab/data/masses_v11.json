@@ -1,0 +1,768 @@
+{
+ "version": "v11",
+ "created": "2026-11-03",
+ "unit": "kg",
+ "rule": "own published mass of the object; otherwise a matched real product of the same kind (see README)",
+ "objects": {
+  "fruits_veggies__avocado": {
+   "mass_kg": 0.203,
+   "basis": "rule",
+   "nominal_kg_v10": 0.1488,
+   "scale": 1.0,
+   "source": "NDB 09038 'Avocados, raw, California', '1 fruit, without skin and seed' 136 g, refuse 33 % (seed and skin); no size class; whole = portion / (1 - refuse) = 203.0 g (USDA National Nutrient Database for Standard Reference, Release 28 (SR28): WEIGHT.txt portion and FOOD_DES.txt refuse)",
+   "note": "no size class, not scaled"
+  },
+  "fruits_veggies__lemon1": {
+   "mass_kg": 0.0877,
+   "basis": "rule",
+   "nominal_kg_v10": 0.0824,
+   "scale": 0.801,
+   "source": "NDB 09150 'Lemons, raw, without peel', '1 fruit (2-1/8\" dia)' 58 g, refuse 47 % (45 % peel, 2 % seeds); whole = portion / (1 - refuse) = 109.4 g (USDA National Nutrient Database for Standard Reference, Release 28 (SR28): WEIGHT.txt portion and FOOD_DES.txt refuse)",
+   "note": "scaled by (diameter / class diameter)^3"
+  },
+  "fruits_veggies__lime": {
+   "mass_kg": 0.1357,
+   "basis": "rule",
+   "nominal_kg_v10": 0.1215,
+   "scale": 1.702,
+   "source": "NDB 09159 'Limes, raw', '1 fruit (2\" dia)' 67 g, refuse 16 % (peel and seeds); whole = portion / (1 - refuse) = 79.8 g (USDA National Nutrient Database for Standard Reference, Release 28 (SR28): WEIGHT.txt portion and FOOD_DES.txt refuse)",
+   "note": "scaled by (diameter / class diameter)^3"
+  },
+  "fruits_veggies__orange1": {
+   "mass_kg": 0.2017,
+   "basis": "rule",
+   "nominal_kg_v10": 0.1732,
+   "scale": 0.98,
+   "source": "NDB 09202 'Oranges, raw, navels', '1 fruit (2-7/8\" dia)' 140 g, refuse 32 % (peel and navel); whole = portion / (1 - refuse) = 205.9 g (USDA National Nutrient Database for Standard Reference, Release 28 (SR28): WEIGHT.txt portion and FOOD_DES.txt refuse)",
+   "note": "scaled by (diameter / class diameter)^3"
+  },
+  "fruits_veggies__red_onion": {
+   "mass_kg": 0.1008,
+   "basis": "rule",
+   "nominal_kg_v10": 0.0991,
+   "scale": 0.825,
+   "source": "NDB 11282 'Onions, raw', '1 medium (2-1/2\" dia)' 110 g, refuse 10 % (stem ends, sprouts, defects); whole = portion / (1 - refuse) = 122.2 g (USDA National Nutrient Database for Standard Reference, Release 28 (SR28): WEIGHT.txt portion and FOOD_DES.txt refuse)",
+   "note": "scaled by (diameter / class diameter)^3"
+  },
+  "handal__green_serving_spoon": {
+   "mass_kg": 0.08,
+   "basis": "rule",
+   "nominal_kg_v10": 0.098,
+   "scale": 1.0,
+   "source": "Le Creuset Bijou Jumbo Slotted Spoon, silicone and wood, 80 g, 30 cm; maker page, https://www.lecreuset.com.hk/en_HK/pdp/bb209-jum-slotted-spoon-cerise/SI4210530.html",
+   "note": "matched by kind and size class, not scaled"
+  },
+  "handal__hammer": {
+   "mass_kg": 0.837,
+   "basis": "own",
+   "nominal_kg_v10": 4.1763,
+   "scale": 1.0,
+   "source": "Milwaukee 48-22-9419 19 oz hickory framing hammer, 1.845 lb, 16.063 x 5.74 x 1.496 in; Tiger Supplies, https://tigersupplies.com/products/milwaukee-48-22-9419-19oz-milled-face-hickory-handle-framing-hammer",
+   "note": ""
+  },
+  "handal__hammer_1": {
+   "mass_kg": 0.875,
+   "basis": "rule",
+   "nominal_kg_v10": 2.8471,
+   "scale": 1.0,
+   "source": "Milwaukee 48-22-9017 17 oz one-piece steel framing hammer, 1.93 lb, 5.83 x 16.18 x 1.5 in; Benefast, https://benefast.com/product/milwaukee-48-22-9017-17oz-smooth-face-framing-hammer/ (object: Husky 17 oz one-piece steel, SKU 1000834721, no item weight found)",
+   "note": "matched by kind and size class, not scaled"
+  },
+  "handal__hammer_2": {
+   "mass_kg": 0.699,
+   "basis": "rule",
+   "nominal_kg_v10": 1.0488,
+   "scale": 1.0,
+   "source": "Dynamic Tools D041010 16 oz claw hammer, hickory handle, 1.54 lb, 13 x 5.07 x 1 in; staples.ca, https://www.staples.ca/products/1570240-en-dynamic-tools-16oz-claw-hammer-hickory-handle (object: Anvil 16 oz, wood handle)",
+   "note": "matched by kind and size class, not scaled"
+  },
+  "handal__hammer_3": {
+   "mass_kg": 0.85,
+   "basis": "rule",
+   "nominal_kg_v10": 1.3773,
+   "scale": 1.0,
+   "source": "Crescent CHFGP20 20 oz fiberglass hammer, 1.874 lb, 14.0 in; maker page, https://www.crescenttool.com/all-tools/striking-struck/hammers/chfgp20-20-oz-fiberglass-general-purpose-hammer (object: Milwaukee 19 oz fiberglass, very likely 48-22-9316; its 1.85 lb was seen only in search text)",
+   "note": "matched by kind and size class, not scaled"
+  },
+  "handal__hammer_4": {
+   "mass_kg": 0.78,
+   "basis": "rule",
+   "nominal_kg_v10": 2.6907,
+   "scale": 1.0,
+   "source": "Dynamic Tools D041011 16 oz claw hammer, fiberglass handle, 1.72 lb, 12.95 x 5.07 x 1 in; staples.ca, https://www.staples.ca/products/1570241-en-dynamic-tools-16oz-claw-hammer-fiberglass-handle (object: Anvil 16 oz, fiberglass handle)",
+   "note": "matched by kind and size class, not scaled"
+  },
+  "handal__hammer_5": {
+   "mass_kg": 0.925,
+   "basis": "own",
+   "nominal_kg_v10": 0.9008,
+   "scale": 1.0,
+   "source": "DEWALT DWHT51003 16 oz one-piece steel hammer, 2.04 lb (0.925 kg); The Power Tool Store, https://thepowertoolstore.com/products/dewalt-dwht51003",
+   "note": ""
+  },
+  "handal__hammer_6": {
+   "mass_kg": 1.1,
+   "basis": "rule",
+   "nominal_kg_v10": 2.9212,
+   "scale": 1.0,
+   "source": "Crescent CHSFRM22 22 oz steel framing hammer, 2.425 lb, 16.0 in; maker page, https://www.crescenttool.com/all-tools/striking-struck/hammers/chsfrm22-22-oz-steel-milled-face-framing-hammer (object: Estwing E3-22S; two pages disagree, 2.20 lb and 0.75 kg)",
+   "note": "matched by kind and size class, not scaled"
+  },
+  "handal__hammer_7": {
+   "mass_kg": 0.898,
+   "basis": "own",
+   "nominal_kg_v10": 1.169,
+   "scale": 1.0,
+   "source": "Milwaukee 48-22-9020 20 oz one-piece steel hammer, 1.98 lb; Tool Nut, https://www.toolnut.com/products/milwaukee-48-22-9020-20oz-smooth-face-rip-claw-hammer",
+   "note": ""
+  },
+  "handal__hammer_8": {
+   "mass_kg": 0.794,
+   "basis": "rule",
+   "nominal_kg_v10": 2.8225,
+   "scale": 1.0,
+   "source": "Crescent 11418C-06 20 oz rip-claw hammer, fiberglass handle, 1.750 lb, 13.0 in; maker page, https://www.crescenttool.com/products/striking-and-struck/11418c-06-20-oz-rip-claw-hammer-fiberglass-handle (object: Husky 20 oz, SKU 1000300256, no item weight found)",
+   "note": "matched by kind and size class, not scaled"
+  },
+  "handal__ladle": {
+   "mass_kg": 0.105,
+   "basis": "rule",
+   "nominal_kg_v10": 0.1423,
+   "scale": 1.0,
+   "source": "Staub soup ladle 40503-104, silicone and acacia wood, net weight 0.105 kg, 31 x 9.9 x 7.4 cm; maker page (Zwilling), https://www.zwilling.com/ca/staub-soup-ladle-31-cm-silicone-40503-104/40503-104-0.html",
+   "note": "matched by kind and size class, not scaled"
+  },
+  "handal__measuring_cups": {
+   "mass_kg": 0.028,
+   "basis": "rule",
+   "nominal_kg_v10": 0.0479,
+   "scale": 1.0,
+   "source": "YCB 065 stacking cup 85 x 72 mm, 28 g (Calli et al., IEEE Robotics & Automation Magazine 22(3):36-52, 2015, Table 2); nearest diameter to the cup's 83 mm",
+   "note": "plastic open cup of the nearest size, not scaled"
+  },
+  "handal__measuring_cups_1": {
+   "mass_kg": 0.035,
+   "basis": "rule",
+   "nominal_kg_v10": 0.0759,
+   "scale": 1.0,
+   "source": "YCB 065 stacking cup 95 x 76 mm, 35 g (Calli et al., IEEE Robotics & Automation Magazine 22(3):36-52, 2015, Table 2); nearest diameter to the cup's 95 mm",
+   "note": "plastic open cup of the nearest size, not scaled"
+  },
+  "handal__measuring_spoon": {
+   "mass_kg": 0.014,
+   "basis": "rule",
+   "nominal_kg_v10": 0.0287,
+   "scale": 1.0,
+   "source": "YCB 065 stacking cup 60 x 62 mm, 14 g (Calli et al., IEEE Robotics & Automation Magazine 22(3):36-52, 2015, Table 2); nearest diameter to the cup's 62 mm",
+   "note": "plastic open cup of the nearest size, not scaled"
+  },
+  "handal__pink_spaghetti_spoon": {
+   "mass_kg": 0.08,
+   "basis": "rule",
+   "nominal_kg_v10": 0.0224,
+   "scale": 1.0,
+   "source": "nearest construction (silicone head, wood handle, 30 cm): Le Creuset Bijou Jumbo Slotted Spoon, 80 g; maker page, https://www.lecreuset.com.hk/en_HK/pdp/bb209-jum-slotted-spoon-cerise/SI4210530.html (no spaghetti server with a stated weight found)",
+   "note": "weak kind match; matched by kind and size class, not scaled"
+  },
+  "handal__red_serving_spoon": {
+   "mass_kg": 0.08,
+   "basis": "rule",
+   "nominal_kg_v10": 0.0804,
+   "scale": 1.0,
+   "source": "Le Creuset Bijou Jumbo Spatula Spoon, silicone and wood, 80 g, 30 cm; maker page, https://www.lecreuset.com.hk/en_HK/pdp/bb210-jum-spat-spoon-flame/93000808090300.html",
+   "note": "matched by kind and size class, not scaled"
+  },
+  "hope__bbq_sauce_bottle": {
+   "mass_kg": 0.2675,
+   "basis": "rule",
+   "nominal_kg_v10": 0.0197,
+   "scale": 0.423,
+   "source": "ASOS item 16 'BBQ sauce', 632 g, 225 x 68 mm, height x diameter (Cosgun, Chumbley, Meyer, Australian Supermarket Object Set (ASOS), arXiv 2509.09720v1, Table 2)",
+   "note": "toy replica (Melissa & Doug); scaled by box volume"
+  },
+  "hope__butter": {
+   "mass_kg": 0.097,
+   "basis": "rule",
+   "nominal_kg_v10": 0.1238,
+   "scale": 0.411,
+   "source": "Kerrygold Unsalted Butter Sticks 8 oz/2 ct, 0.52 lb gross, 1.54 x 2.6 x 5.12 in; Target product page, 'Estimated ship weight' and 'Estimated ship dimensions' (fetched 2026-11-03), https://www.target.com/p/kerrygold-grass-fed-pure-irish-unsalted-butter-sticks-8oz-2ct/-/A-49110709",
+   "note": "toy replica (Melissa & Doug); scaled by box volume"
+  },
+  "hope__canned_mushrooms": {
+   "mass_kg": 0.1161,
+   "basis": "rule",
+   "nominal_kg_v10": 0.0208,
+   "scale": 0.333,
+   "source": "YCB 005 tomato soup can, 349 g, 66 x 101 mm (Calli et al., IEEE Robotics & Automation Magazine 22(3):36-52, 2015, Table 2)",
+   "note": "toy replica (Melissa & Doug); scaled by box volume"
+  },
+  "hope__canned_peaches": {
+   "mass_kg": 0.2013,
+   "basis": "rule",
+   "nominal_kg_v10": 0.0444,
+   "scale": 0.577,
+   "source": "YCB 005 tomato soup can, 349 g, 66 x 101 mm (Calli et al., IEEE Robotics & Automation Magazine 22(3):36-52, 2015, Table 2)",
+   "note": "toy replica (Melissa & Doug); scaled by box volume"
+  },
+  "hope__canned_tuna": {
+   "mass_kg": 0.1045,
+   "basis": "rule",
+   "nominal_kg_v10": 0.0198,
+   "scale": 0.611,
+   "source": "YCB 007 tuna fish can, 171 g, 85 x 33 mm (Calli et al., IEEE Robotics & Automation Magazine 22(3):36-52, 2015, Table 2)",
+   "note": "toy replica (Melissa & Doug); scaled by box volume"
+  },
+  "hope__chocolate_pudding_mix": {
+   "mass_kg": 0.0697,
+   "basis": "rule",
+   "nominal_kg_v10": 0.0071,
+   "scale": 0.373,
+   "source": "YCB 008 pudding box, 187 g, 35 x 110 x 89 mm (Calli et al., IEEE Robotics & Automation Magazine 22(3):36-52, 2015, Table 2)",
+   "note": "toy replica (Melissa & Doug); scaled by box volume"
+  },
+  "hope__corn_can": {
+   "mass_kg": 0.2062,
+   "basis": "rule",
+   "nominal_kg_v10": 0.0403,
+   "scale": 0.591,
+   "source": "YCB 005 tomato soup can, 349 g, 66 x 101 mm (Calli et al., IEEE Robotics & Automation Magazine 22(3):36-52, 2015, Table 2)",
+   "note": "toy replica (Melissa & Doug); scaled by box volume"
+  },
+  "hope__cream_cheese": {
+   "mass_kg": 0.1198,
+   "basis": "rule",
+   "nominal_kg_v10": 0.1281,
+   "scale": 0.528,
+   "source": "Philadelphia Original Cream Cheese 8 oz brick, 8 oz net, 1.38 x 4.803 x 2.44 in; Target product page, 'Estimated ship weight' and 'Estimated ship dimensions' (fetched 2026-11-03), https://www.target.com/p/philadelphia-original-cream-cheese-8oz/-/A-12958523",
+   "note": "toy replica (Melissa & Doug); net contents only, package left out; scaled by box volume"
+  },
+  "hope__granola_bars": {
+   "mass_kg": 0.1733,
+   "basis": "rule",
+   "nominal_kg_v10": 0.0484,
+   "scale": 0.422,
+   "source": "YCB 003 cracker box, 411 g, 60 x 158 x 210 mm (Calli et al., IEEE Robotics & Automation Magazine 22(3):36-52, 2015, Table 2)",
+   "note": "toy replica (Melissa & Doug); scaled by box volume"
+  },
+  "hope__green_beans_can": {
+   "mass_kg": 0.2029,
+   "basis": "rule",
+   "nominal_kg_v10": 0.0428,
+   "scale": 0.581,
+   "source": "YCB 005 tomato soup can, 349 g, 66 x 101 mm (Calli et al., IEEE Robotics & Automation Magazine 22(3):36-52, 2015, Table 2)",
+   "note": "toy replica (Melissa & Doug); scaled by box volume"
+  },
+  "hope__ketchup_bottle": {
+   "mass_kg": 0.2489,
+   "basis": "rule",
+   "nominal_kg_v10": 0.0196,
+   "scale": 0.413,
+   "source": "YCB 006 mustard bottle, 603 g, 58 x 95 x 190 mm (Calli et al., IEEE Robotics & Automation Magazine 22(3):36-52, 2015, Table 2)",
+   "note": "toy replica (Melissa & Doug); scaled by box volume"
+  },
+  "hope__macaroni_and_cheese": {
+   "mass_kg": 0.274,
+   "basis": "rule",
+   "nominal_kg_v10": 0.0493,
+   "scale": 1.337,
+   "source": "Kraft Original Mac and Cheese Dinner 7.25 oz, 7.248 oz net, 1.58 x 3.52 x 7.147 in; Target product page, 'Estimated ship weight' and 'Estimated ship dimensions' (fetched 2026-11-03), https://www.target.com/p/kraft-original-mac-and-cheese-dinner-7-25oz/-/A-12954218",
+   "note": "toy replica (Melissa & Doug); net contents only, package left out; scaled by box volume"
+  },
+  "hope__mayonnaise_bottle": {
+   "mass_kg": 0.2429,
+   "basis": "rule",
+   "nominal_kg_v10": 0.0758,
+   "scale": 0.403,
+   "source": "YCB 006 mustard bottle, 603 g, 58 x 95 x 190 mm (Calli et al., IEEE Robotics & Automation Magazine 22(3):36-52, 2015, Table 2)",
+   "note": "toy replica (Melissa & Doug); scaled by box volume"
+  },
+  "hope__milk_carton": {
+   "mass_kg": 1.0802,
+   "basis": "rule",
+   "nominal_kg_v10": 0.2127,
+   "scale": 1.006,
+   "source": "ASOS item 26 'Milk', 1074 g, 92 x 197 x 58 mm (Cosgun, Chumbley, Meyer, Australian Supermarket Object Set (ASOS), arXiv 2509.09720v1, Table 2)",
+   "note": "toy replica (Melissa & Doug); scaled by box volume"
+  },
+  "hope__mustard_bottle": {
+   "mass_kg": 0.2995,
+   "basis": "rule",
+   "nominal_kg_v10": 0.0216,
+   "scale": 0.497,
+   "source": "YCB 006 mustard bottle, 603 g, 58 x 95 x 190 mm (Calli et al., IEEE Robotics & Automation Magazine 22(3):36-52, 2015, Table 2)",
+   "note": "toy replica (Melissa & Doug); scaled by box volume"
+  },
+  "hope__oatmeal_raisin_cookies": {
+   "mass_kg": 0.1925,
+   "basis": "rule",
+   "nominal_kg_v10": 0.0498,
+   "scale": 0.406,
+   "source": "ASOS item 22 'Cookies', 474 g, 149 x 211 x 68 mm (Cosgun, Chumbley, Meyer, Australian Supermarket Object Set (ASOS), arXiv 2509.09720v1, Table 2)",
+   "note": "toy replica (Melissa & Doug); scaled by box volume"
+  },
+  "hope__orange_juice_carton": {
+   "mass_kg": 1.0868,
+   "basis": "rule",
+   "nominal_kg_v10": 0.2031,
+   "scale": 1.012,
+   "source": "ASOS item 26 'Milk', 1074 g, 92 x 197 x 58 mm (Cosgun, Chumbley, Meyer, Australian Supermarket Object Set (ASOS), arXiv 2509.09720v1, Table 2)",
+   "note": "toy replica (Melissa & Doug); scaled by box volume"
+  },
+  "hope__parmesan_cheese_canister": {
+   "mass_kg": 0.1279,
+   "basis": "rule",
+   "nominal_kg_v10": 0.0783,
+   "scale": 0.564,
+   "source": "Kraft 100% Grated Parmesan 8 oz canister, 0.5 lb net, 2.872 x 2.872 x 6.108 in; Target product page, 'Estimated ship weight' and 'Estimated ship dimensions' (fetched 2026-11-03), https://www.target.com/p/kraft-100-grated-parmesan-cheese-8-oz/-/A-12958582",
+   "note": "toy replica (Melissa & Doug); net contents only, package left out; scaled by box volume"
+  },
+  "hope__peas_and_carrots": {
+   "mass_kg": 0.2049,
+   "basis": "rule",
+   "nominal_kg_v10": 0.1829,
+   "scale": 0.587,
+   "source": "YCB 005 tomato soup can, 349 g, 66 x 101 mm (Calli et al., IEEE Robotics & Automation Magazine 22(3):36-52, 2015, Table 2)",
+   "note": "toy replica (Melissa & Doug); scaled by box volume"
+  },
+  "hope__pineapple_slices_can": {
+   "mass_kg": 0.202,
+   "basis": "rule",
+   "nominal_kg_v10": 0.0434,
+   "scale": 0.579,
+   "source": "YCB 005 tomato soup can, 349 g, 66 x 101 mm (Calli et al., IEEE Robotics & Automation Magazine 22(3):36-52, 2015, Table 2)",
+   "note": "toy replica (Melissa & Doug); scaled by box volume"
+  },
+  "hope__pitted_cherries": {
+   "mass_kg": 0.2046,
+   "basis": "rule",
+   "nominal_kg_v10": 0.1741,
+   "scale": 0.586,
+   "source": "YCB 005 tomato soup can, 349 g, 66 x 101 mm (Calli et al., IEEE Robotics & Automation Magazine 22(3):36-52, 2015, Table 2)",
+   "note": "toy replica (Melissa & Doug); scaled by box volume"
+  },
+  "hope__popcorn_box": {
+   "mass_kg": 0.0883,
+   "basis": "rule",
+   "nominal_kg_v10": 0.0248,
+   "scale": 0.215,
+   "source": "YCB 003 cracker box, 411 g, 60 x 158 x 210 mm (Calli et al., IEEE Robotics & Automation Magazine 22(3):36-52, 2015, Table 2)",
+   "note": "toy replica (Melissa & Doug); scaled by box volume"
+  },
+  "hope__raisin_box": {
+   "mass_kg": 0.193,
+   "basis": "rule",
+   "nominal_kg_v10": 0.0245,
+   "scale": 0.53,
+   "source": "Sun-Maid Golden Raisins 12 oz, 12.83 oz gross, 1.95 x 4.12 x 6.06 in; Target product page, 'Estimated ship weight' and 'Estimated ship dimensions' (fetched 2026-11-03), https://www.target.com/p/sun-maid-california-golden-raisins-bag-in-a-box-12oz/-/A-95279333",
+   "note": "toy replica (Melissa & Doug); scaled by box volume"
+  },
+  "hope__ranch_dressing": {
+   "mass_kg": 0.2508,
+   "basis": "rule",
+   "nominal_kg_v10": 0.0704,
+   "scale": 0.416,
+   "source": "YCB 006 mustard bottle, 603 g, 58 x 95 x 190 mm (Calli et al., IEEE Robotics & Automation Magazine 22(3):36-52, 2015, Table 2)",
+   "note": "toy replica (Melissa & Doug); scaled by box volume"
+  },
+  "hope__spaghetti": {
+   "mass_kg": 0.2929,
+   "basis": "rule",
+   "nominal_kg_v10": 0.023,
+   "scale": 0.62,
+   "source": "Barilla Spaghetti 16 oz, 1.04 lb gross, 1.34 x 2.81 x 10.67 in; Target product page, 'Estimated ship weight' and 'Estimated ship dimensions' (fetched 2026-11-03), https://www.target.com/p/barilla-spaghetti-pasta-16oz/-/A-13156213",
+   "note": "toy replica (Melissa & Doug); scaled by box volume"
+  },
+  "hope__tomato_sauce_can": {
+   "mass_kg": 0.2912,
+   "basis": "rule",
+   "nominal_kg_v10": 0.0706,
+   "scale": 0.834,
+   "source": "YCB 005 tomato soup can, 349 g, 66 x 101 mm (Calli et al., IEEE Robotics & Automation Magazine 22(3):36-52, 2015, Table 2)",
+   "note": "toy replica (Melissa & Doug); scaled by box volume"
+  },
+  "hope__yogurt_cup": {
+   "mass_kg": 0.1212,
+   "basis": "rule",
+   "nominal_kg_v10": 0.0107,
+   "scale": 0.705,
+   "source": "Yoplait Original Strawberry 6 oz cup, 0.38 lb, 2.38 x 2.5 x 3.7 in; Target product page, 'Estimated ship weight' and 'Estimated ship dimensions' (fetched 2026-11-03), https://www.target.com/p/yoplait-original-strawberry-yogurt-6oz/-/A-13016477",
+   "note": "toy replica (Melissa & Doug); scaled by box volume"
+  },
+  "hot3d__bbq_sauce_bottle": {
+   "mass_kg": 0.2574,
+   "basis": "rule",
+   "nominal_kg_v10": 0.019,
+   "scale": 0.407,
+   "source": "ASOS item 16 'BBQ sauce', 632 g, 225 x 68 mm, height x diameter (Cosgun, Chumbley, Meyer, Australian Supermarket Object Set (ASOS), arXiv 2509.09720v1, Table 2)",
+   "note": "toy replica (very likely Melissa & Doug 4317, plastic); no toy mass published; scaled by box volume"
+  },
+  "hot3d__birdhouse": {
+   "mass_kg": 0.9,
+   "basis": "rule",
+   "nominal_kg_v10": 3.9171,
+   "scale": 1.0,
+   "source": "Esschert Design NK05 blue tit nesting box, pine with copper roof, 'Weight: 0.9 kg', L 13.8 x W 16.7 x H 25.8 cm; Bloomling, https://www.bloomling.ch/en-CH/esschert-design/blue-tit-nesting-box-with-a-copper-roof",
+   "note": "nearest size of two wooden birdhouses (Glitzhome GH90096: 0.80 kg, 30.5 cm); matched by kind and size class, not scaled"
+  },
+  "hot3d__ceramic_mug": {
+   "mass_kg": 0.31,
+   "basis": "rule",
+   "nominal_kg_v10": 0.118,
+   "scale": 1.0,
+   "source": "IKEA DINERA mug 30 cl, stoneware, 'Weight net 0,31 kg', height 9 cm; https://www.islas.ikea.es/tenerife/en/pd/dinera-mug-beige-art-60350646",
+   "note": "empty mug; matched by kind and size class, not scaled"
+  },
+  "hot3d__clay_plates": {
+   "mass_kg": 0.1815,
+   "basis": "rule",
+   "nominal_kg_v10": 2.2301,
+   "scale": 1.0,
+   "source": "LEXA 12 in spun-bamboo round serving tray, set of 2, 'Item Weight' '12.8 ounces' (363 g), 12 x 12 x 1 in; Amazon, https://www.amazon.com/LEXA-Serving-2-Piece-Handcrafted-Charcuterie/dp/B0FJC6QZWS",
+   "note": "weak: the page does not say whether 12.8 oz is one tray or the set; I use half (set reading); the texture is spun bamboo, not clay; not scaled"
+  },
+  "hot3d__coffee_pot": {
+   "mass_kg": 0.38,
+   "basis": "own",
+   "nominal_kg_v10": 0.3587,
+   "scale": 1.0,
+   "source": "BUTLERS ESPERTO stovetop coffee maker 0,15 l (stamped 'BUTLERS' on the base), 'Gewicht: 0,38 kg'; https://www.butlers.com/products/kaffeebereiter-esperto",
+   "note": "net or gross not stated"
+  },
+  "hot3d__computer_mouse": {
+   "mass_kg": 0.135,
+   "basis": "own",
+   "nominal_kg_v10": 0.2151,
+   "scale": 1.0,
+   "source": "Logitech M705, 'Weight (with batteries): 4.76 oz (135 g)', 109 x 71 x 42 mm; iFixit, https://www.ifixit.com/Device/Logitech_M705",
+   "note": "likely model match, not confirmed by a mark"
+  },
+  "hot3d__dumbbell": {
+   "mass_kg": 2.268,
+   "basis": "own",
+   "nominal_kg_v10": 3.2609,
+   "scale": 1.0,
+   "source": "'5LB' printed on both hex ends (texture obj_000022.png; HOT3D name dumbbell_5lb); 5 lb = 2.268 kg",
+   "note": "printed nominal rating"
+  },
+  "hot3d__foam_roller": {
+   "mass_kg": 0.117,
+   "basis": "rule",
+   "nominal_kg_v10": 0.0287,
+   "scale": 1.0,
+   "source": "Legamaster whiteboard eraser 7-120300, 45 x 140 x 35 mm, 'Weight (gross/net) 130 g / 117 g'; data sheet, https://docs.rs-online.com/1ce7/A700000015929654.pdf",
+   "note": "the object is a whiteboard eraser (RoboLab whiteboard_eraser); the reference holds a magnet; not scaled"
+  },
+  "hot3d__frozen_vegetable_block": {
+   "mass_kg": 0.0708,
+   "basis": "rule",
+   "nominal_kg_v10": 0.0918,
+   "scale": 0.24,
+   "source": "Birds Eye Frozen Chopped Spinach 10 oz, ship weight 0.65 lb (295 g), 1.54 x 4.15 x 5.5 in; Target product page, 'Estimated ship weight' and 'Estimated ship dimensions' (fetched 2026-11-03), https://www.target.com/p/-/A-13187564",
+   "note": "toy replica (Melissa & Doug 4076, solid wood); frozen vegetable block (the page calls the package a bag); scaled by box volume"
+  },
+  "hot3d__frozen_waffles": {
+   "mass_kg": 0.0326,
+   "basis": "rule",
+   "nominal_kg_v10": 0.191,
+   "scale": 0.084,
+   "source": "Eggo Waffles Blueberry 12.3 oz/10 ct box, ship weight 0.86 lb (390 g), 3.31 x 4.73 x 9.4 in; Target product page, 'Estimated ship weight' and 'Estimated ship dimensions' (fetched 2026-11-03), https://www.target.com/p/-/A-13190247",
+   "note": "toy replica (Melissa & Doug 4076, solid wood); scaled by box volume"
+  },
+  "hot3d__glasses": {
+   "mass_kg": 0.075,
+   "basis": "own",
+   "nominal_kg_v10": 0.0889,
+   "scale": 1.0,
+   "source": "Project Aria Gen 1, '75g in two sizes 147mm and 152mm frame width'; https://facebookresearch.github.io/projectaria_tools/docs/tech_spec/hardware_spec; HOT3D paper arXiv 2411.19167, App. A.1",
+   "note": ""
+  },
+  "hot3d__keyboard": {
+   "mass_kg": 0.81,
+   "basis": "own",
+   "nominal_kg_v10": 0.9866,
+   "scale": 1.0,
+   "source": "Logitech MX Keys, 'Weight: 28.57 oz (810 g)', 430 x 132 x 21 mm; https://hub.sync.logitech.com/mx-keys/post/specifications---mx-keys-for-business-qjUHaWTJQ8yKapL",
+   "note": ""
+  },
+  "hot3d__lizard_figurine": {
+   "mass_kg": 0.275,
+   "basis": "rule",
+   "nominal_kg_v10": 0.388,
+   "scale": 1.0,
+   "source": "Schleich Allosaurus 15043, 'Gewicht: 275 Gramm', 75 x 135 x 270 mm; alternate.de, https://www.alternate.de/Schleich/Dinosaurs-Allosaurus-Spielfigur/html/product/100016863",
+   "note": "nearest size of two dinosaur figures (Papo Ceratosaurus 120 g, 215 mm); not scaled"
+  },
+  "hot3d__megaphone": {
+   "mass_kg": 0.9,
+   "basis": "rule",
+   "nominal_kg_v10": 0.6043,
+   "scale": 1.0,
+   "source": "Stelton EM77 vacuum jug 1 l, 'Weight: 0.9kg', height 30 cm; AmbienteDirect, https://www.ambientedirect.com/en/stelton/em77-vacuum-jug-1l_pid_2454.html",
+   "note": "weak: the object is a vacuum jug (RoboLab flask), not a megaphone; its wall construction is unknown; not scaled"
+  },
+  "hot3d__mug": {
+   "mass_kg": 0.26,
+   "basis": "own",
+   "nominal_kg_v10": 0.1286,
+   "scale": 1.0,
+   "source": "IKEA OFANTLIGT mug 31 cl: net 0.28 kg (https://www.ikea.cn/cn/en/p/ofantligt-mug-white-20319021/) and net 0,24 kg (https://www.islas.ikea.es/lagomera/en/pd/ofantligt-mug-white-art-00319022); mean of the two",
+   "note": "likely model match, not confirmed by a mark; empty mug"
+  },
+  "hot3d__pitcher": {
+   "mass_kg": 0.31,
+   "basis": "own",
+   "nominal_kg_v10": 0.2107,
+   "scale": 1.0,
+   "source": "IKEA SOCKERÄRT vase/jug 16 cm, enamelled steel, 'Net weight 0,31 kg'; https://www.islas.ikea.es/tenerife/en/pd/sockerart-vase-white-art-10148464",
+   "note": "likely model match, not confirmed by a mark; empty jug"
+  },
+  "hot3d__potato_masher": {
+   "mass_kg": 0.1361,
+   "basis": "rule",
+   "nominal_kg_v10": 0.746,
+   "scale": 1.0,
+   "source": "Chef Craft 11.5 in nylon masher, 'Weight: .3 pounds', 11.5 x 3.75 in; Target, https://www.target.com/p/chef-craft-11-5-select-nylon-sturdy-masher-for-mashed-potatoes-beans-avocado-and-more/-/A-1008949923",
+   "note": "one decimal of a pound (113-159 g); not scaled"
+  },
+  "hot3d__remote_control": {
+   "mass_kg": 0.0676,
+   "basis": "rule",
+   "nominal_kg_v10": 0.1132,
+   "scale": 1.0,
+   "source": "Samsung SolarCell Remote VG-TM2180ES, weight 'Product 67.6' (no unit shown, grams by context), 163.7 x 38.7 x 15.8 mm; https://www.samsung.com/ca/tv-accessories/solar-remote-vg-tm2180es-za/",
+   "note": "weak: the object is a Samsung 2016 Smart Control (thicker, with batteries); not scaled"
+  },
+  "hot3d__rubiks_cube": {
+   "mass_kg": 0.1,
+   "basis": "rule",
+   "nominal_kg_v10": 0.1948,
+   "scale": 1.0,
+   "source": "Rubik's Cube 3x3 Retro 50th Anniversary, 'Item Weight' '100.0g', 57 mm; TheCubicle, https://www.thecubicle.com/products/rubiks-cube-3x3-special-retro-50th-anniversary-edition",
+   "note": "brand of the object unknown; not scaled"
+  },
+  "hot3d__smartphone": {
+   "mass_kg": 0.168,
+   "basis": "rule",
+   "nominal_kg_v10": 0.2841,
+   "scale": 1.0,
+   "source": "Google Pixel 4a (5G), '168g', 153.9 x 74 x 8.2 mm; https://support.google.com/pixelphone/answer/16043605?hl=en",
+   "note": "model of the object unknown; phones of this footprint weigh 162-197 g; not scaled"
+  },
+  "hot3d__soup_can": {
+   "mass_kg": 0.2886,
+   "basis": "rule",
+   "nominal_kg_v10": 0.0591,
+   "scale": 0.827,
+   "source": "YCB 005 tomato soup can, 349 g, 66 x 101 mm (Calli et al., IEEE Robotics & Automation Magazine 22(3):36-52, 2015, Table 2)",
+   "note": "toy replica (Melissa & Doug 4088, cardboard; the set of 10 weighs 272 g); scaled by box volume"
+  },
+  "hot3d__spatula": {
+   "mass_kg": 0.142,
+   "basis": "rule",
+   "nominal_kg_v10": 0.5828,
+   "scale": 1.0,
+   "source": "KitchenAid DX240 Core Slotted Turner, '142g', 353 x 85 mm; https://www.catering-appliance.com/kitchenaid-dx240-core-slotted-turner-empire-red-353mm",
+   "note": "nearest size of two nylon turners (Chef Craft 11.5 in: 68 g); the object is 332 mm long; not scaled"
+  },
+  "hot3d__storage_box": {
+   "mass_kg": 0.16,
+   "basis": "own",
+   "nominal_kg_v10": 0.0174,
+   "scale": 1.0,
+   "source": "IKEA DRAGAN toothbrush holder, bamboo, 'Net weight 0.16 kg', height 12 cm; https://www.ikea.cn/cn/en/p/dragan-toothbrush-holder-10271492/",
+   "note": "likely model match, not confirmed by a mark"
+  },
+  "hot3d__wooden_bowl": {
+   "mass_kg": 0.86,
+   "basis": "own",
+   "nominal_kg_v10": 0.4352,
+   "scale": 1.0,
+   "source": "IKEA BLANDA MATT serving bowl 28 cm, bamboo, net weight 0,86 kg; https://www.ikea.is/en/products/cookware-tableware/serveware/serving/blanda-matt-skal-art-60214343",
+   "note": "likely model match, not confirmed by a mark; empty bowl"
+  },
+  "hot3d__wooden_spoons": {
+   "mass_kg": 0.08,
+   "basis": "own",
+   "nominal_kg_v10": 0.0855,
+   "scale": 1.0,
+   "source": "IKEA RÖRT spoon, solid beech, 'Net weight 0,08 kg', 31 cm; https://islas.ikea.es/tenerife/en/pd/rort-spoon-art-10278460",
+   "note": "likely model match, not confirmed by a mark; IKEA rounds to 0.01 kg"
+  },
+  "ycb__banana": {
+   "mass_kg": 0.1844,
+   "basis": "rule",
+   "nominal_kg_v10": 0.1767,
+   "scale": 1.0,
+   "source": "NDB 09040 'Bananas, raw', 'medium (7\" to 7-7/8\" long)' 118 g, refuse 36 % (skin); the YCB banana is 190 mm (7.5 in) long, in this class; whole = portion / (1 - refuse) = 184.4 g (USDA National Nutrient Database for Standard Reference, Release 28 (SR28): WEIGHT.txt portion and FOOD_DES.txt refuse)",
+   "note": "plastic replica in YCB (own 66 g); no size class, not scaled"
+  },
+  "ycb__bowl": {
+   "mass_kg": 0.147,
+   "basis": "own",
+   "nominal_kg_v10": 0.1398,
+   "scale": 1.0,
+   "source": "YCB 024 Bowl, 147 g (Calli et al., IEEE RAM 22(3):36-52, 2015, Table 2)",
+   "note": "enamel-coated metal (RAM 2015 Fig. 2)"
+  },
+  "ycb__bowl2": {
+   "mass_kg": 0.147,
+   "basis": "own",
+   "nominal_kg_v10": 0.1398,
+   "scale": 1.0,
+   "source": "YCB 024 Bowl, 147 g (Calli et al., IEEE RAM 22(3):36-52, 2015, Table 2)",
+   "note": "same mesh as ycb__bowl"
+  },
+  "ycb__brick": {
+   "mass_kg": 0.028,
+   "basis": "own",
+   "nominal_kg_v10": 0.1999,
+   "scale": 1.0,
+   "source": "YCB 061 Foam brick, 28 g (Calli et al., IEEE RAM 22(3):36-52, 2015, Table 2)",
+   "note": "IJRR 2017 Table 1 prints 59 g (column error)"
+  },
+  "ycb__cheez_it": {
+   "mass_kg": 0.411,
+   "basis": "own",
+   "nominal_kg_v10": 0.141,
+   "scale": 1.0,
+   "source": "YCB 003 Cracker box, 411 g (Calli et al., IEEE RAM 22(3):36-52, 2015, Table 2)",
+   "note": ""
+  },
+  "ycb__chocolate_pudding": {
+   "mass_kg": 0.187,
+   "basis": "own",
+   "nominal_kg_v10": 0.0214,
+   "scale": 1.0,
+   "source": "YCB 008 Pudding box, 187 g (Calli et al., IEEE RAM 22(3):36-52, 2015, Table 2)",
+   "note": ""
+  },
+  "ycb__clamp": {
+   "mass_kg": 0.125,
+   "basis": "own",
+   "nominal_kg_v10": 0.247,
+   "scale": 1.0,
+   "source": "YCB 051 Large clamp, 125 g (Calli et al., IEEE RAM 22(3):36-52, 2015, Table 2)",
+   "note": "125x165x32 mm matches the mesh"
+  },
+  "ycb__coffee_can": {
+   "mass_kg": 0.414,
+   "basis": "own",
+   "nominal_kg_v10": 0.2548,
+   "scale": 1.0,
+   "source": "YCB 002 Master chef can, 414 g (Calli et al., IEEE RAM 22(3):36-52, 2015, Table 2)",
+   "note": ""
+  },
+  "ycb__cordless_drill": {
+   "mass_kg": 0.895,
+   "basis": "own",
+   "nominal_kg_v10": 1.0626,
+   "scale": 1.0,
+   "source": "YCB 035 Power drill, 895 g (Calli et al., IEEE RAM 22(3):36-52, 2015, Table 2)",
+   "note": ""
+  },
+  "ycb__dry_erase_marker": {
+   "mass_kg": 0.0158,
+   "basis": "own",
+   "nominal_kg_v10": 0.0188,
+   "scale": 1.0,
+   "source": "YCB 040 Large marker, 15.8 g (Calli et al., IEEE RAM 22(3):36-52, 2015, Table 2)",
+   "note": ""
+  },
+  "ycb__jello": {
+   "mass_kg": 0.097,
+   "basis": "own",
+   "nominal_kg_v10": 0.0452,
+   "scale": 1.0,
+   "source": "YCB 009 Gelatin box, 97 g (Calli et al., IEEE RAM 22(3):36-52, 2015, Table 2)",
+   "note": ""
+  },
+  "ycb__mug": {
+   "mass_kg": 0.118,
+   "basis": "own",
+   "nominal_kg_v10": 0.157,
+   "scale": 1.0,
+   "source": "YCB 025 Mug, 118 g (Calli et al., IEEE RAM 22(3):36-52, 2015, Table 2)",
+   "note": "metal (RAM 2015 Fig. 2)"
+  },
+  "ycb__mustard": {
+   "mass_kg": 0.603,
+   "basis": "own",
+   "nominal_kg_v10": 0.1955,
+   "scale": 1.0,
+   "source": "YCB 006 Mustard bottle, 603 g (Calli et al., IEEE RAM 22(3):36-52, 2015, Table 2)",
+   "note": ""
+  },
+  "ycb__pitcher": {
+   "mass_kg": 0.178,
+   "basis": "own",
+   "nominal_kg_v10": 0.2844,
+   "scale": 1.0,
+   "source": "YCB 019 Pitcher base, 178 g (Calli et al., IEEE RAM 22(3):36-52, 2015, Table 2)",
+   "note": ""
+  },
+  "ycb__scissors": {
+   "mass_kg": 0.082,
+   "basis": "own",
+   "nominal_kg_v10": 0.2345,
+   "scale": 1.0,
+   "source": "YCB 037 Scissors, 82 g (Calli et al., IEEE RAM 22(3):36-52, 2015, Table 2)",
+   "note": ""
+  },
+  "ycb__soft_scrub": {
+   "mass_kg": 1.131,
+   "basis": "own",
+   "nominal_kg_v10": 0.3083,
+   "scale": 1.0,
+   "source": "YCB 021 Bleach cleanser, 1131 g (Calli et al., IEEE RAM 22(3):36-52, 2015, Table 2)",
+   "note": ""
+  },
+  "ycb__spam_can": {
+   "mass_kg": 0.37,
+   "basis": "own",
+   "nominal_kg_v10": 0.35,
+   "scale": 1.0,
+   "source": "YCB 010 Potted meat can, 370 g (Calli et al., IEEE RAM 22(3):36-52, 2015, Table 2)",
+   "note": ""
+  },
+  "ycb__spring_clamp": {
+   "mass_kg": 0.202,
+   "basis": "own",
+   "nominal_kg_v10": 2.1196,
+   "scale": 1.0,
+   "source": "YCB 052 Extra-large clamp, 202 g (Calli et al., IEEE RAM 22(3):36-52, 2015, Table 2)",
+   "note": "165x213x37 mm matches the mesh"
+  },
+  "ycb__sugar_box": {
+   "mass_kg": 0.514,
+   "basis": "own",
+   "nominal_kg_v10": 0.0413,
+   "scale": 1.0,
+   "source": "YCB 004 Sugar box, 514 g (Calli et al., IEEE RAM 22(3):36-52, 2015, Table 2)",
+   "note": ""
+  },
+  "ycb__tomato_soup_can": {
+   "mass_kg": 0.349,
+   "basis": "own",
+   "nominal_kg_v10": 0.3168,
+   "scale": 1.0,
+   "source": "YCB 005 Tomato soup can, 349 g (Calli et al., IEEE RAM 22(3):36-52, 2015, Table 2)",
+   "note": ""
+  },
+  "ycb__tuna_can": {
+   "mass_kg": 0.171,
+   "basis": "own",
+   "nominal_kg_v10": 0.1542,
+   "scale": 1.0,
+   "source": "YCB 007 Tuna fish can, 171 g (Calli et al., IEEE RAM 22(3):36-52, 2015, Table 2)",
+   "note": ""
+  },
+  "ycb__wood_block": {
+   "mass_kg": 0.729,
+   "basis": "own",
+   "nominal_kg_v10": 1.149,
+   "scale": 1.0,
+   "source": "YCB 036 Wood block, 729 g (Calli et al., IEEE RAM 22(3):36-52, 2015, Table 2)",
+   "note": ""
+  }
+ }
+}

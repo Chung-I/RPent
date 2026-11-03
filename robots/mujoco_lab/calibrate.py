@@ -84,7 +84,7 @@ from typing import Any
 import numpy as np
 
 from robots.mujoco_lab import tracking
-from robots.mujoco_lab.corpus import apply_damage, case_rng, damage_rng, draw_damage, draw_theta, trainable
+from robots.mujoco_lab.corpus import apply_damage, case_rng, damage_rng, draw_damage, draw_theta, lab_generator, trainable
 from rpent.skills.pick_place.costs import COST, TIME_COST_PER_S, care_scale, probe_time_scale
 from rpent.skills.pick_place.destinations import MESH_IDS, PRIMITIVE_IDS
 from rpent.skills.pick_place.evaluate import (_ece, coverage_design, ece_ci, ece_from_sums, ece_iid_floor,
@@ -344,7 +344,8 @@ def run_case(prims: Any, object_id: str, idx: int, seed: int, protocol: str = "c
     env = prims.env
     env.force_noise = getattr(prims, "force_noise", None)       # the job's sensor (job_force_noise); None: the lab default
     world = fragility_world(getattr(prims, "manifest", None))
-    theta, com_end, destination, hidden = case_draw(seed, object_id, idx, object_props(object_id)["mass"], use_fixtures,
+    generator = lab_generator()                                  # a bundle's job runs under its generator (load_bundle)
+    theta, com_end, destination, hidden = case_draw(seed, object_id, idx, object_props(object_id, generator)["mass"], use_fixtures,
                                                     fragility=world)
     if world is not None:
         env.slosh_zeta = world[1].slosh_zeta
@@ -365,7 +366,7 @@ def run_case(prims: Any, object_id: str, idx: int, seed: int, protocol: str = "c
                         follow=follow)
     case["artifact"] = case_artifact(case, reset_info)
     row = {"object": object_id, "idx": idx, "destination": destination, "theta": theta, "com_end": com_end,
-           "fill": hidden["fill"], "theta_frag": hidden["frag"], "force_noise": env.force_noise,
+           "fill": hidden["fill"], "theta_frag": hidden["frag"], "force_noise": env.force_noise, "generator": generator,
            "evoi": getattr(prims, "evoi", "plugin"), "probe_time_scale": getattr(prims, "probe_time_scale", 1.0),
            "truth": {k: truth[k] for k in ("mass", "mu", "com_s")}, "reset": reset_info, **case}
     first = case["attempts"][0] if case["attempts"] else None
@@ -417,6 +418,11 @@ def run_evoi(rows: list[dict[str, Any]]) -> str | list[str] | None:
 def run_force_noise(rows: list[dict[str, Any]]) -> float | list[float] | None:
     """The force noise a run's cases read with."""
     return _run_value(rows, "force_noise", float)
+
+
+def run_generator(rows: list[dict[str, Any]]) -> str | list[str] | None:
+    """The lab generator a run's cases were drawn and simulated under."""
+    return _run_value(rows, "generator")
 
 
 def run_probe_time_scale(rows: list[dict[str, Any]]) -> float | list[float] | None:
@@ -973,7 +979,7 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
     out = summarize(rows, a.protocol, rng, a.coverage_sims, nested=bool(a.crossfit))
     out.update(kind=plan["kind"], objects=plan["objects"], folds=plan["folds"], seed=a.seed, repeats=a.repeats,
                care=a.care, care_scale=care_scale(a.care), abstain_cost=run_abstain_cost(a, plan), force_noise=run_force_noise(rows),
-               evoi=run_evoi(rows), probe_time_scale=run_probe_time_scale(rows),
+               evoi=run_evoi(rows), probe_time_scale=run_probe_time_scale(rows), generator=run_generator(rows),
                source={"crossfit": a.crossfit, "bundle": a.bundle, "metrics": a.metrics}, seconds=round(time.time() - t0, 1),
                cases=None if not a.cases else {"path": a.cases, "n": len(rows)},
                code=dict(code, changed_during_run=code_revision() != code))

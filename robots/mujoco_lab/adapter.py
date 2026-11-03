@@ -42,8 +42,10 @@ from typing import Any
 import numpy as np
 
 from rpent.skills.pick_place.destinations import DESTINATIONS, OBJECT_REST_XY, PRIMITIVE_IDS, has_surface, is_mesh, release_height
+from robots.mujoco_lab.corpus import lab_generator
 from robots.mujoco_lab.fragility import FLAGS, THRESHOLDS_V0, Thresholds, damage_event, entry_of, liquid, load_classes, spill_angle
 from robots.mujoco_lab.labels import Final, final_label, first_lifted, label_rollout, lifted
+from robots.mujoco_lab.masses import real_props
 from robots.mujoco_lab.meter import DamageMeter
 from robots.mujoco_lab.readouts import RISEN_M, slide_force, summarize
 from rpent.skills.pick_place.features import G, Geometry
@@ -182,11 +184,14 @@ def _props_path(s: dict[str, Any], object_id: str) -> str:
     return os.path.join(s["scene"].MESHES, object_id, "props.json")
 
 
-def object_props(object_id: str) -> dict[str, Any]:
+def object_props(object_id: str, generator: str | None = None) -> dict[str, Any]:
+    """props.json of the object; under generator v11 (``generator``, default corpus.lab_generator()) at its real mass
+    (masses.real_props)."""
     import json
 
     s = load_sim()
-    return json.load(open(_props_path(s, object_id)))
+    props = json.load(open(_props_path(s, object_id)))
+    return real_props(object_id, props) if lab_generator(generator) == "v11" else props
 
 
 def object_length(object_id: str) -> float:
@@ -310,6 +315,7 @@ class MuJoCoLabEnv:
         self.com_end = +1
         self.up0 = np.array([0.0, 0.0, 1.0])
         self.rest_low_z = 0.0
+        self.generator = lab_generator()
         self.fixtures_in_scene: list[str] = [f["name"] for f in PRIMITIVE_FIXTURES]
         self.fixture: str | None = None
 
@@ -350,7 +356,8 @@ class MuJoCoLabEnv:
         fragility (fragility.map_latent's keys; None: nothing can damage it)."""
         sc, gr, ob, t3 = self.s["scene"], self.s["grasp"], self.s["objects"], self.s["t3_make"]
         o = ob.BY_ID[object_id]
-        props = object_props(object_id)
+        generator = lab_generator()
+        props = object_props(object_id, generator)
         entry, _ = entry_of(object_id, self.fragility_classes())
         fill = float(fill or 0.0)
         if not 0.0 <= fill <= 1.0:
@@ -363,14 +370,17 @@ class MuJoCoLabEnv:
         shift = (0.0, 0.0, 0.0, 0.0)
         if th.get("com_s") is not None:
             shift = t3.com_shift_for(o, props, float(th["com_s"]), end=com_end)
+        # the sim's mass scale: under v10 the case's (the CoM point mass adds f x the mass); under v11 the point mass is
+        # inside the total, so the hulls and the point mass both take 1 / (1 + f) and the object weighs nominal x scale
+        sim_scale = float(th["mass_scale"]) * (1.0 if generator == "v10" else 1.0 / (1.0 + float(shift[3])))
         flat = not (o["hollow"] or o["liquid"])
         # the rest pose under the case's own friction, mass and CoM (the default drop's pose rolls or tips
         # when the CoM moves); the drop's sideways drift is not kept: the object starts at the rest xy
-        pos, quat = gr.rest_pose(o, props, mu=th["mu"], mass_scale=th["mass_scale"], com_shift=shift, flat=flat)
+        pos, quat = gr.rest_pose(o, props, mu=th["mu"], mass_scale=sim_scale, com_shift=shift, flat=flat)
         specs, names = self._fixture_specs(fixture)
         rest_xy = tuple(DESTINATIONS[fixture]["object_rest_xy"]) if fixture is not None else OBJECT_REST_XY
         pos = np.array([rest_xy[0], rest_xy[1], pos[2]])
-        xml = sc.build_xml(o, props, mu=th["mu"], mass_scale=th["mass_scale"], com_shift=shift, obj_pos=pos,
+        xml = sc.build_xml(o, props, mu=th["mu"], mass_scale=sim_scale, com_shift=shift, obj_pos=pos,
                            obj_quat=quat, cam_k=1.0, fixtures=specs)
         if liq is not None:          # the rest pose above is the empty container's: the reset settles the filled one
             xml = _with_liquid(xml, liq)
@@ -383,7 +393,7 @@ class MuJoCoLabEnv:
         self.fixture = fixture
         self._onto_table()
         self.reset_info = self._settle_to_rest()
-        self.obj, self.props, self.theta, self.com_end = o, props, th, com_end
+        self.obj, self.props, self.theta, self.com_end, self.generator = o, props, th, com_end, generator
         # the reset's stream (the squeeze noise) is per seed and object: every object of a draw is reset with one seed
         self.rng = np.random.default_rng([int(seed), zlib.crc32(object_id.encode())])
         # the force readings' own stream, so the squeeze's stays as it was
@@ -640,7 +650,8 @@ class MuJoCoLabEnv:
         return zone == "table" or zone in self.fixtures_in_scene
 
     def nominal_mass(self, object_id: str | None = None) -> float:
-        """The object's mass at mass_scale 1 (mesh volume times the material density)."""
+        """The object's mass at mass_scale 1: the mesh volume times the material density (generator v10), the real
+        object's mass (v11)."""
         props = self.props if object_id is None or (self.obj and self.obj["id"] == object_id) else object_props(object_id)
         return float(props["mass"])
 

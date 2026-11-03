@@ -28,6 +28,13 @@ the damage meter (``meter``), the motion label of the rules (``motion_label``), 
 crossing (``damage``) and the label, which the damage replaces. ``--mode control`` reruns v8's draws and actions
 (a_transport 2.0, no liquid) with the fragility drawn, to check that nothing else changed the motion;
 ``--mode m2`` is milestone 2a's world (v8's draws and actions, no liquid, no fragility: v8's rows and labels).
+Corpus v11 (generator v11, set once per process by ``RPENT_LAB_GENERATOR=v11``; v10 is the default) runs the same
+draws and actions on the real object masses (masses.real_props scales every hull mass by real / nominal, so the CoM
+does not move), with ``mass_scale`` log-uniform on [1/sqrt(6), sqrt(6)] (``V11_MASS_SCALE_RANGE``): from the same
+stream the v11 scale is the v10 scale x 2/sqrt(6), and every other draw is equal. The CoM point mass sits inside the
+drawn total (adapter.reset), so the object weighs real x mass_scale; under v10 it is added on top. A v11 row carries
+``generator`` and the key ``<object>__v11d<idx>`` (a row without the field is v10), and ``--resume`` refuses a file
+of another generator.
 A drawn pinch the skill never offers (menu.unusable_reason: wider than the
 gripper opening, or off the object) does not run: its row says why
 ("declined") and carries no outcome. Each rollout row carries the contact
@@ -40,6 +47,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import multiprocessing as mp
 import os
 import sys
@@ -52,6 +60,7 @@ from robots.mujoco_lab.fragility import CLASSES, FLAGS, THRESHOLDS_V0, Threshold
 from rpent.skills.pick_place.destinations import DESTINATIONS, MESH_IDS, PRIMITIVE_IDS, release_height
 
 MASS_SCALE_RANGE = (0.5, 3.0)
+V11_MASS_SCALE_RANGE = (1.0 / math.sqrt(6.0), math.sqrt(6.0))   # generator v11: median 1 on the real mass, still 6x wide
 MU_RANGE = (0.1, 0.9)
 COM_S_RANGE = (0.3, 0.8)
 V_LIFT_CHOICES = (0.05, 0.15, 0.4, 0.8)
@@ -69,6 +78,36 @@ A_TRANSPORT_CHOICES = (0.5, 1.0, 2.0)  # m/s^2
 MODES = ("v9", "control", "m2")
 A_TRANSPORT_V8 = 2.0                   # adapter.A_TRANSPORT, the carry acceleration of every v8 row
 _WORLDS: dict[tuple[str, str], tuple[dict[str, Any], Thresholds]] = {}
+GENERATOR_ENV = "RPENT_LAB_GENERATOR"
+GENERATORS = ("v10", "v11")             # v10: corpus v10's nominal masses and draws; v11: real masses (masses.py)
+
+
+def lab_generator(value: str | None = None) -> str:
+    """The lab's generator: ``value``, else RPENT_LAB_GENERATOR, else v10. Under v11 the nominal masses are real-object
+    masses, the mass scale is log-uniform on V11_MASS_SCALE_RANGE and the CoM point mass stays inside the total."""
+    g = os.environ.get(GENERATOR_ENV, "v10") if value is None else value
+    if g not in GENERATORS:
+        raise ValueError(f"unknown lab generator {g!r}; known: {GENERATORS}")
+    return g
+
+
+def key_tag(generator: str | None = None) -> str:
+    """The row keys' generator tag: none under v10 (corpus v10's keys), "v11" under v11, so no v11 key repeats the key
+    of an earlier rollout."""
+    g = lab_generator(generator)
+    return "" if g == "v10" else g
+
+
+def check_resume_generator(path: str, row: dict[str, Any], generator: str) -> None:
+    """A resumed file holds rows of the run's generator only (a row without the field is v10)."""
+    if row.get("generator", "v10") != generator:
+        raise ValueError(f"{path} holds generator {row.get('generator', 'v10')} rows; this run is generator {generator} "
+                         f"({GENERATOR_ENV})")
+
+
+def mass_scale_range(generator: str) -> tuple[float, float]:
+    """The empty draw's mass-scale range of a generator (a filled container's is FILLED_MASS_SCALE_RANGE in both)."""
+    return MASS_SCALE_RANGE if lab_generator(generator) == "v10" else V11_MASS_SCALE_RANGE
 
 
 def trainable(row: dict[str, Any]) -> bool:
@@ -82,9 +121,10 @@ def case_rng(seed: int, object_id: str, idx: int) -> np.random.Generator:
     return np.random.default_rng([int(seed), zlib.crc32(object_id.encode()), int(idx)])
 
 
-def draw_theta(rng: np.random.Generator, nominal_mass: float) -> tuple[dict[str, Any], int]:
-    """Hidden properties for one rollout and the end the CoM mass sits at (±1)."""
-    lo, hi = MASS_SCALE_RANGE
+def draw_theta(rng: np.random.Generator, nominal_mass: float, generator: str | None = None) -> tuple[dict[str, Any], int]:
+    """Hidden properties for one rollout and the end the CoM mass sits at (±1); ``generator`` (default: lab_generator())
+    sets the mass-scale range, and a stream draws the same values under v10 and v11 but the scale."""
+    lo, hi = mass_scale_range(lab_generator(generator))
     theta = {
         "mass_scale": float(np.exp(rng.uniform(np.log(lo), np.log(hi)))),
         "mu": float(rng.uniform(*MU_RANGE)),
@@ -178,9 +218,10 @@ def rollout_row(env, object_id: str, idx: int, seed: int, use_fixtures: bool = F
 
     if mode not in MODES:
         raise ValueError(f"unknown corpus mode {mode!r}; known: {MODES}")
+    generator = lab_generator()
     rng = case_rng(seed, object_id, idx)
-    props = object_props(object_id)
-    theta, com_end = draw_theta(rng, props["mass"])
+    props = object_props(object_id, generator)
+    theta, com_end = draw_theta(rng, props["mass"], generator)
     f_std = env.s["t3_make"].std_force(props["mass"])
     act = draw_action(rng, f_std, use_fixtures)
     C, th = world(classes, thresholds)
@@ -206,8 +247,9 @@ def rollout_row(env, object_id: str, idx: int, seed: int, use_fixtures: bool = F
                     act["v_transport"], act["destination"], act["release_height"])
     dest = DESTINATIONS[act["destination"]]
     row = {
-        "key": f"{object_id}__d{idx}",
+        "key": f"{object_id}__{key_tag(generator)}d{idx}",
         "object": object_id,
+        "generator": generator,
         "theta": theta,
         "com_end": com_end,
         "truth": {k: truth[k] for k in ("mass", "mu", "com_s")},
@@ -272,7 +314,8 @@ def _worker(args: tuple[str, int, int, list[int], bool, str, str, str]) -> list[
         try:
             rows.append(rollout_row(env, object_id, idx, seed, use_fixtures, mode, classes, thresholds))
         except Exception as exc:  # noqa: BLE001  one bad rollout must not kill the object's batch
-            rows.append({"key": f"{object_id}__d{idx}", "object": object_id, "error": str(exc)[:200]})
+            rows.append({"key": f"{object_id}__{key_tag()}d{idx}", "object": object_id, "generator": lab_generator(),
+                         "error": str(exc)[:200]})
     return rows
 
 
@@ -293,6 +336,7 @@ def main(argv: list[str] | None = None) -> int:
     from robots.mujoco_lab.adapter import object_ids
 
     objects = a.objects.split(",") if a.objects else object_ids()
+    generator = lab_generator()
     done: dict[str, set[int]] = {}
     if a.resume and os.path.exists(a.out):
         for line in open(a.out):
@@ -300,6 +344,7 @@ def main(argv: list[str] | None = None) -> int:
                 row = json.loads(line)
             except json.JSONDecodeError:
                 continue
+            check_resume_generator(a.out, row, generator)
             if "error" in row:
                 continue
             done.setdefault(row["object"], set()).add(int(row["key"].rsplit("d", 1)[1]))

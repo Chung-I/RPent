@@ -52,6 +52,7 @@ from typing import Any
 import numpy as np
 
 from robots.mujoco_lab import tracking
+from robots.mujoco_lab.corpus import lab_generator
 from robots.mujoco_lab.prior import com_hypothesis, joint_hidden, lab_prior
 from robots.mujoco_lab.robot_spec import load_bundle
 from robots.mujoco_lab.train_models import load_rows, repo_path, write_manifest
@@ -84,21 +85,23 @@ def sim_truth(row: dict[str, Any]) -> dict[str, float]:
 
 
 def generator_truth(row: dict[str, Any], classes: dict[str, dict[str, Any]] | None = None) -> dict[str, float]:
-    """The row's theta as a point of the prior's space: mass nominal x scale x (1 + f), the friction drawn,
-    the CoM fraction of ``com_hypothesis`` (the particles' arithmetic). A filled row adds its liquid as the m2b
-    particles do (prior.joint_hidden: the joint mass and CoM), from the object's cavity in ``classes``."""
+    """The row's theta as a point of the prior's space: mass nominal x scale x (1 + f) (nominal x scale when the row's
+    "generator" is v11: the CoM point mass is inside the total), the friction drawn, the CoM fraction of
+    ``com_hypothesis`` (the particles' arithmetic). A filled row adds its liquid as the m2b particles do
+    (prior.joint_hidden: the joint mass and CoM), from the object's cavity in ``classes``."""
     pose, th = row["pose"], row["theta"]
+    generator = lab_generator(row.get("generator", "v10"))
     pv = pose["pivot"]
     fill = float(row.get("fill") or 0.0)
     if fill > 0.0:
         entry = (classes or {}).get(row.get("object")) or {}
         if not entry.get("cavity"):
             raise ValueError(f"{row.get('object')}: a filled row's truth needs the object's cavity (the fragility classes)")
-        joint = joint_hidden(pose, entry, th, int(row["com_end"]), fill)
+        joint = joint_hidden(pose, entry, th, int(row["com_end"]), fill, generator=generator)
         mass, com = float(joint["mass"]), joint["com_obj"]
     else:
         com, f = com_hypothesis(pv, pose["com_obj_nominal"], th["com_s"], int(row["com_end"]))
-        mass = float(pose["nominal_mass"]) * float(th["mass_scale"]) * (1.0 + f)
+        mass = float(pose["nominal_mass"]) * float(th["mass_scale"]) * ((1.0 + f) if generator == "v10" else 1.0)
     frac = ((np.asarray(com) - np.asarray(pv["centre"], dtype=float)) @ np.asarray(pv["axis"], dtype=float) - float(pv["lo"])) / float(pv["L"])
     return {"mass": mass, "mu": float(th["mu"]), "com": float(frac)}
 
