@@ -142,6 +142,7 @@ def run_object(job: tuple[str, list[int], dict[str, Any]]) -> list[dict[str, Any
             theta, com_end, destination, hidden = cal.case_draw(s["seed"], o, idx, object_props(o)["mass"], False, fragility=world)
             if world is not None:
                 env.slosh_zeta, env.slosh_scale = world[1].slosh_zeta, world[1].slosh_scale
+            env.classes = None if world is None else world[0]        # the reset's flags and damage law: the bundle's classes
             env.reset(o, theta, seed=s["seed"] * 1000 + idx, com_end=com_end,
                       fixture=destination if destination in cal.MESH_IDS else None, fill=hidden["fill"], frag=hidden["frag"])
             reset = dict(getattr(env, "reset_info", None) or {})

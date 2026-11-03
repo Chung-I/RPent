@@ -224,3 +224,14 @@ def test_summary_reports_the_downstream_scores(tmp_path, monkeypatch):
     assert saved["downstream"]["n"] == 2 and saved["downstream"]["brier"]["value"] == 0.0
     assert out["downstream"] == saved["downstream"]
     assert "Brier" in (tmp_path / "summary.md").read_text()
+
+
+def test_the_run_config_records_the_generator(monkeypatch):
+    """masscom-v11: the provenance in both run configs (estimation_check and first_menus share _revision) names the lab's
+    generator, so a v11 run says which corpus version its truth came from."""
+    from robots.mujoco_lab.estimation_check import _revision
+
+    monkeypatch.setenv("RPENT_LAB_GENERATOR", "v11")
+    assert _revision()["generator"] == "v11"
+    monkeypatch.delenv("RPENT_LAB_GENERATOR")
+    assert _revision()["generator"] == "v10"

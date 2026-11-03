@@ -70,3 +70,35 @@ def test_class_menus_repeat_the_recorded_crossfit_policy_run():
         m, c = r["menus"]["class"], recorded[r["idx"]]
         assert (m["recommendation"], m["best_option"]) == (c["recommendation"], c["best_option"])
         assert r["destination"] == c["destination"]
+
+
+@pytest.mark.skipif(not os.environ.get("RPENT_MUJOCO_SIM_DIR"), reason="sim dir not set")
+def test_a_case_resets_with_the_bundles_classes(monkeypatch):
+    """masscom-v11: run_object resets as calibrate.run_case does: the env takes the bundle's classes (its manifest's
+    fragility world), the ones the case's hidden fragility is drawn from; with no fragility world the env reads the
+    generator's file."""
+    from types import SimpleNamespace
+
+    import robots.mujoco_lab.calibrate as cal
+    import robots.mujoco_lab.prior as prior
+    from robots.mujoco_lab import first_menus
+    from robots.mujoco_lab.fragility import CLASSES, THRESHOLDS_V0, Thresholds, load_classes
+
+    class Stop(Exception):
+        pass
+
+    class Env:
+        classes = "unset"
+
+        def reset(self, *a, **kw):
+            raise Stop
+
+    C = load_classes(CLASSES)
+    for world, want in (((C, Thresholds.from_json(THRESHOLDS_V0)), C), (None, None)):
+        prims = SimpleNamespace(env=Env(), manifest={}, prior=None)
+        monkeypatch.setattr(cal, "_primitives", lambda *a, p=prims: p)
+        monkeypatch.setattr(cal, "job_force_noise", lambda *a: None)
+        monkeypatch.setattr(prior, "fragility_world", lambda manifest, w=world: w)
+        with pytest.raises(Stop):
+            first_menus.run_object(("ycb__mug", [0], {"bundle": "b", "tables": {}, "seed": 11, "settings": [], "fold": 0}))
+        assert prims.env.classes is want

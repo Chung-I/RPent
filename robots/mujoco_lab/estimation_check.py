@@ -288,7 +288,9 @@ def _revision() -> dict[str, Any]:
     root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     rev = subprocess.run(["git", "-C", root, "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
     dirty = bool(subprocess.run(["git", "-C", root, "status", "--porcelain", "--untracked-files=no"], capture_output=True, text=True).stdout.strip())
-    return {"code_revision": rev, "dirty": dirty}
+    from robots.mujoco_lab.corpus import lab_generator
+
+    return {"code_revision": rev, "dirty": dirty, "generator": lab_generator()}
 
 
 def run(a: argparse.Namespace) -> str:
