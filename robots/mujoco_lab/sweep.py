@@ -50,7 +50,7 @@ from scipy.stats import poisson
 
 from robots.mujoco_lab import tracking
 from robots.mujoco_lab.calibrate import _counted
-from robots.mujoco_lab.corpus import FILLED_MASS_SCALE_RANGE, mass_scale_range
+from robots.mujoco_lab.corpus import FILLED_MASS_SCALE_RANGE, lab_generator, mass_scale_range
 from rpent.skills.pick_place.evaluate import object_weights
 from rpent.skills.pick_place.protocol import IRREVERSIBLE
 
@@ -127,8 +127,9 @@ def valid(path: str, expect: dict[str, Any]) -> list[str]:
     """Why the output at ``path`` cannot be reused (empty when it can): it loads, it comes from ``expect["revision"]`` on
     a tree without uncommitted changes and from the simulator at ``expect["sim_revision"]`` without uncommitted changes,
     neither changed during the run, and its protocol, care, abstain cost, probe time scale, seed and number of cases match
-    ``expect`` (keys revision, sim_revision, protocol, care, abstain, scale, seed, n); for a subset run, its cases are the
-    (object, idx) set ``expect["cases"]``."""
+    ``expect`` (keys revision, sim_revision, protocol, care, abstain, scale, seed, n); it ran the generator
+    ``expect["generator"]`` (default: this process's; an output without the field ran v10); for a subset run, its cases
+    are the (object, idx) set ``expect["cases"]``."""
     try:
         run = load_run(path)
     except FileNotFoundError:
@@ -151,6 +152,8 @@ def valid(path: str, expect: dict[str, Any]) -> list[str]:
         why.append(f"the code or the simulator changed during the run (changed_during_run: {code.get('changed_during_run')})")
     if run.get("protocol") != expect["protocol"]:
         why.append(f"protocol {run.get('protocol')} is not {expect['protocol']}")
+    if (run.get("generator") or "v10") != (expect.get("generator") or lab_generator()):
+        why.append(f"generator {run.get('generator') or 'v10'} is not {expect.get('generator') or lab_generator()}")
     try:
         care, A, s = cell(run)
     except (KeyError, TypeError, ValueError) as exc:
@@ -255,7 +258,7 @@ def declared_saving(first_menu: dict[str, Any] | None, A: float | None) -> float
 
 
 def pairs(a: dict[str, Any], b: dict[str, Any], subset: bool = False) -> dict[str, Any]:
-    """The cases of run ``a`` paired with run ``b`` (same seed, care, abstain cost and force noise): arrays ``object``,
+    """The cases of run ``a`` paired with run ``b`` (same seed, care, abstain cost, force noise and generator): arrays ``object``,
     ``idx``, ``probe`` (a's first recommendation is a probe), ``cost_a``, ``cost_b``, ``d`` = cost_b − cost_a,
     ``declared`` (a's declared saving on probe cases, else 0), ``counted`` (no error, no artifact in either row) and
     ``no_error``; ``n`` counted pairs, ``dropped`` the others. ``b`` at another probe time scale must have run no probe.
@@ -267,6 +270,9 @@ def pairs(a: dict[str, Any], b: dict[str, Any], subset: bool = False) -> dict[st
                          f"{b['protocol']} at care {cb[0]}, A {cb[1]}, force noise {b.get('force_noise')}")
     if int(a["seed"]) != int(b["seed"]):
         raise ValueError(f"different seeds: {a['seed']} and {b['seed']}")
+    if (a.get("generator") or "v10") != (b.get("generator") or "v10"):
+        raise ValueError(f"different generators: {a['protocol']} ran {a.get('generator') or 'v10'}, {b['protocol']} ran "
+                         f"{b.get('generator') or 'v10'}")
     if not _num(ca[2], cb[2]) and any(r.get("probes") for r in b["rows"]):
         raise ValueError(f"{b['protocol']} at s = {cb[2]} ran a probe, so it cannot pair with {a['protocol']} at s = {ca[2]}")
     rb = {_key(r): r for r in b["rows"]}

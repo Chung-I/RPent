@@ -177,7 +177,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--objects", default=None, help="comma-separated object ids (default: all)")
     ap.add_argument("--seed", type=int, default=7)
     ap.add_argument("--resume", action="store_true", help="skip the draws that already have rows in --out")
-    ap.add_argument("--classes", default=None, help="the fragility class file (default: data/fragility_classes.json)")
+    ap.add_argument("--classes", default=None, help="the fragility class file (default: the generator's, fragility.classes_for)")
     ap.add_argument("--thresholds", default=None, help="the thresholds file (default: data/thresholds_v0.json)")
     ap.add_argument("--mode", default="v8", choices=MODES, help="v8: the damage draws and scene C; m2: v7's world")
     a = ap.parse_args(argv)

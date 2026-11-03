@@ -175,16 +175,16 @@ def write_manifest(out_dir: str, **fields) -> dict:
 def m2b_world(classes: str | None, thresholds: str | None, generator: str = "v10") -> tuple[Any, str, dict[str, Any]]:
     """The m2b prior on a fragility world under ``generator``: (prior_fn, the manifest's prior name: lab_generator_m2b
     under v10, lab_generator_v11 under v11, the manifest's ``classes`` and ``thresholds`` entries {path, sha256}). The
-    files default to data/fragility_classes.json and data/thresholds_v0.json; a path under robots/mujoco_lab/data is
-    stored relative to it."""
-    from robots.mujoco_lab.fragility import CLASSES, DATA, THRESHOLDS_V0, Thresholds, load_classes
+    files default to the generator's classes (fragility.classes_for) and data/thresholds_v0.json; a path under
+    robots/mujoco_lab/data is stored relative to it."""
+    from robots.mujoco_lab.fragility import DATA, THRESHOLDS_V0, Thresholds, classes_for, load_classes
     from robots.mujoco_lab.prior import M2B_PRIOR, V11_PRIOR, make_prior, sha256_of
 
     def entry(path: str) -> dict[str, str]:
         rel = os.path.relpath(os.path.abspath(path), DATA)
         return {"path": os.path.abspath(path) if rel.startswith("..") else rel, "sha256": sha256_of(path)}
 
-    cpath, tpath = classes or CLASSES, thresholds or THRESHOLDS_V0
+    cpath, tpath = classes or classes_for(generator), thresholds or THRESHOLDS_V0
     return (make_prior(load_classes(cpath), Thresholds.from_json(tpath), generator=generator),
             M2B_PRIOR if generator == "v10" else V11_PRIOR, {"classes": entry(cpath), "thresholds": entry(tpath)})
 
@@ -305,7 +305,7 @@ def main(argv: list[str] | None = None) -> dict:
     ap.add_argument("--guard", action="store_true", help="alone: fit the novelty guard into the existing bundle or folds directory")
     ap.add_argument("--feature-schema", choices=tuple(FEATURE_SCHEMAS), default=None,
                     help="the models' features: m2 (default) or m2b (with the damage features); probes follow the bundle's")
-    ap.add_argument("--classes", default=None, help="m2b: the fragility classes file (default data/fragility_classes.json)")
+    ap.add_argument("--classes", default=None, help="m2b: the fragility classes file (default: the generator's, fragility.classes_for)")
     ap.add_argument("--thresholds", default=None, help="m2b: the damage thresholds file (default data/thresholds_v0.json)")
     ap.add_argument("--evoi", choices=ESTIMATORS, default=None,
                     help="the probe-value estimator the bundle declares (plan 2b2 decision 2); default: none, the plug-in")
@@ -406,6 +406,10 @@ def train_bundle(a: argparse.Namespace, split: dict | None = None, rows: list[di
     if generator != lab_generator():
         raise SystemExit(f"the corpus rows are generator {generator}, but this process runs {lab_generator()}: train under "
                          f"RPENT_LAB_GENERATOR={generator}")
+    held = os.path.join(a.out_dir, MANIFEST)
+    if os.path.exists(held) and json.load(open(held)).get("generator", "v10") != generator:
+        raise SystemExit(f"{a.out_dir} holds a generator {json.load(open(held)).get('generator', 'v10')} bundle, whose probe models "
+                         f"and fields would stay: train generator {generator} into a new directory")
     prior_fn, prior, world = None, "m1_parametric", {}
     if a.features == "true" and schema == "m2b":
         prior_fn, prior, world = m2b_world(getattr(a, "classes", None), getattr(a, "thresholds", None), generator)

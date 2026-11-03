@@ -29,8 +29,8 @@ crossing (``damage``) and the label, which the damage replaces. ``--mode control
 (a_transport 2.0, no liquid) with the fragility drawn, to check that nothing else changed the motion;
 ``--mode m2`` is milestone 2a's world (v8's draws and actions, no liquid, no fragility: v8's rows and labels).
 Corpus v11 (generator v11, set once per process by ``RPENT_LAB_GENERATOR=v11``; v10 is the default) runs the same
-draws and actions on the real object masses (masses.real_props scales every hull mass by real / nominal, so the CoM
-does not move), with ``mass_scale`` log-uniform on [1/sqrt(6), sqrt(6)] (``V11_MASS_SCALE_RANGE``): from the same
+draws and actions on the real object masses (masses.real_props scales every hull mass by real / nominal, and the CoM is
+the sim's: the hulls' volume centroids, not prepare.py's surface centroids), with ``mass_scale`` log-uniform on [1/sqrt(6), sqrt(6)] (``V11_MASS_SCALE_RANGE``): from the same
 stream the v11 scale is the v10 scale x 2/sqrt(6), and every other draw is equal. The CoM point mass sits inside the
 drawn total (adapter.reset), so the object weighs real x mass_scale; under v10 it is added on top. A v11 row carries
 ``generator`` and the key ``<object>__v11d<idx>`` (a row without the field is v10), and ``--resume`` refuses a file
@@ -56,7 +56,7 @@ from typing import Any
 
 import numpy as np
 
-from robots.mujoco_lab.fragility import CLASSES, FLAGS, THRESHOLDS_V0, Thresholds, draw_fragility, entry_of, load_classes, spill_angle
+from robots.mujoco_lab.fragility import FLAGS, classes_for, THRESHOLDS_V0, Thresholds, draw_fragility, entry_of, load_classes, spill_angle
 from rpent.skills.pick_place.destinations import DESTINATIONS, MESH_IDS, PRIMITIVE_IDS, release_height
 
 MASS_SCALE_RANGE = (0.5, 3.0)
@@ -191,7 +191,7 @@ def world(classes: str | dict[str, Any] | None = None, thresholds: str | Thresho
     """The fragility entries and the thresholds (paths or loaded; default: the class file and thresholds v0), cached."""
     if isinstance(classes, dict) and isinstance(thresholds, Thresholds):
         return classes, thresholds
-    cp = classes if isinstance(classes, str) else CLASSES
+    cp = classes if isinstance(classes, str) else classes_for(lab_generator())
     tp = thresholds if isinstance(thresholds, str) else THRESHOLDS_V0
     if (cp, tp) not in _WORLDS:
         _WORLDS[(cp, tp)] = (load_classes(cp), Thresholds.from_json(tp))
@@ -330,7 +330,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--fixtures", action="store_true", help="draw half the destinations from the inspected mesh fixtures")
     ap.add_argument("--mode", default="v9", choices=MODES,
                     help="v9: the damage draws; control: v8's draws and actions with the fragility; m2: v8's world (no damage)")
-    ap.add_argument("--classes", default=CLASSES, help="the fragility classes (fragility_classes.json)")
+    ap.add_argument("--classes", default=None, help="the fragility classes (default: the generator's, fragility.classes_for)")
     ap.add_argument("--thresholds", default=THRESHOLDS_V0, help="the damage thresholds (thresholds_v0.json)")
     a = ap.parse_args(argv)
     from robots.mujoco_lab.adapter import object_ids

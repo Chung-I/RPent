@@ -811,11 +811,13 @@ def compare(A: dict[str, Any], B: dict[str, Any], rng: np.random.Generator, n_bo
     """A − B over the paired cases (same object and idx, counted in both: no error, no artifact): the mean
     realized cost and the first attempts' ECE on P(placed_stable), each with a 95 % interval that resamples
     objects jointly for both. The two runs must use the same costs (care scale, abstain cost, probe time scale; files
-    from before these fields read as care normal, no abstain cost and scale 1)."""
+    from before these fields read as care normal, no abstain cost and scale 1) and the same generator (no field: v10)."""
     costs_a, costs_b = ((R.get("care_scale", 1.0), R.get("abstain_cost"),
                          1.0 if R.get("probe_time_scale") is None else R["probe_time_scale"]) for R in (A, B))
     if costs_a != costs_b:
         raise ValueError(f"the runs use different costs (care_scale, abstain_cost, probe_time_scale): a {costs_a}, b {costs_b}")
+    if (A.get("generator") or "v10") != (B.get("generator") or "v10"):
+        raise ValueError(f"the runs use different generators: a {A.get('generator') or 'v10'}, b {B.get('generator') or 'v10'}")
     ka = {(r["object"], r["idx"]): r for r in _counted(A["rows"])}
     kb = {(r["object"], r["idx"]): r for r in _counted(B["rows"])}
     keys = sorted(set(ka) & set(kb))

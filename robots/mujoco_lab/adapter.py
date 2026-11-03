@@ -45,7 +45,8 @@ from rpent.skills.pick_place.destinations import DESTINATIONS, OBJECT_REST_XY, P
 from robots.mujoco_lab.corpus import lab_generator
 from robots.mujoco_lab.fragility import FLAGS, THRESHOLDS_V0, Thresholds, damage_event, entry_of, liquid, load_classes, spill_angle
 from robots.mujoco_lab.labels import Final, final_label, first_lifted, label_rollout, lifted
-from robots.mujoco_lab.masses import real_props
+from robots.mujoco_lab.masses import real_props, volume_centroid
+from robots.mujoco_lab.names import agent_names
 from robots.mujoco_lab.meter import DamageMeter
 from robots.mujoco_lab.readouts import RISEN_M, slide_force, summarize
 from rpent.skills.pick_place.features import G, Geometry
@@ -185,13 +186,25 @@ def _props_path(s: dict[str, Any], object_id: str) -> str:
 
 
 def object_props(object_id: str, generator: str | None = None) -> dict[str, Any]:
-    """props.json of the object; under generator v11 (``generator``, default corpus.lab_generator()) at its real mass
-    (masses.real_props)."""
+    """props.json of the object; under generator v11 (``generator``, default corpus.lab_generator()) at its real mass,
+    with the CoM of the hulls' volume centroids (masses.real_props)."""
     import json
 
     s = load_sim()
     props = json.load(open(_props_path(s, object_id)))
-    return real_props(object_id, props) if lab_generator(generator) == "v11" else props
+    return real_props(object_id, props, hull_centroids(object_id)) if lab_generator(generator) == "v11" else props
+
+
+_HULL_CENTROIDS: dict[str, np.ndarray] = {}
+
+
+def hull_centroids(object_id: str) -> np.ndarray:
+    """The volume centroid of each hull as the sim builds it (scene.build_xml writes its vertices to 5 decimals, and
+    MuJoCo takes their convex hull), cached; (n_hulls, 3) in the object frame."""
+    if object_id not in _HULL_CENTROIDS:
+        z = np.load(os.path.join(load_sim()["scene"].MESHES, object_id, "hulls.npz"))
+        _HULL_CENTROIDS[object_id] = np.array([volume_centroid(np.round(z[f"v{k}"], 5)) for k in range(int(z["n"]))])
+    return _HULL_CENTROIDS[object_id]
 
 
 def object_length(object_id: str) -> float:
@@ -630,7 +643,7 @@ class MuJoCoLabEnv:
         self._need()
         o, props = self.obj, self.props
         p = prompt.strip().lower()
-        names = {o["id"].lower(), o["name"].lower(), "object", o["name"].lower().replace("_", " ")}
+        names = {o["id"].lower(), o["name"].lower(), "object", o["name"].lower().replace("_", " ")} | agent_names(o, lab_generator())
         if p not in names:
             return None
         return {
