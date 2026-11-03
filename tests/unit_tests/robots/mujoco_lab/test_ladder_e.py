@@ -14,6 +14,9 @@
 
 """E, the receding-horizon reference planner (ladder_e): the attempt recursion, the held-out choice and the probe value."""
 
+import operator
+import os
+
 import numpy as np
 import pytest
 
@@ -246,6 +249,15 @@ def test_the_planner_runs_the_lowest_score_and_counts_its_attempts():
     first = next(i for i in entry["menu"] if i in table and table[i] == lo)      # ties: the menu's order
     assert r["args"]["option_id"] == first
     assert e.attempts == (0 if first.startswith("probe_") or first == "decline" else 1)
+
+
+# ---------------------------------------------------------------- the run
+
+def test_a_pool_that_recycles_after_one_job_runs_each_job_in_a_new_process():
+    # stdlib callables only: a spawned worker cannot import this module under --import-mode=importlib
+    with ladder_e._pool(2, max_tasks=1) as pool:
+        pids = list(pool.imap_unordered(operator.call, [os.getpid] * 4))
+    assert len(set(pids)) == 4
 
 
 # ---------------------------------------------------------------- the summary

@@ -423,10 +423,17 @@ def _key(r: dict[str, Any]) -> tuple[str, int, int, str]:
     return r["object"], int(r["idx"]), int(r["seed"]), r["setting"]
 
 
+def _pool(workers: int, max_tasks: int | None = None) -> Any:
+    """The run's worker pool (spawn). ``max_tasks``: a worker is replaced after that many jobs, so its memory cannot grow
+    without bound (a worker's caches grow by about 0.07 GB per job; a job's results do not depend on the worker's earlier
+    jobs, so the replacement changes no result); None keeps each worker for the whole run."""
+    return mp.get_context("spawn").Pool(workers, maxtasksperchild=max_tasks)
+
+
 def run(cases: list[dict[str, Any]], settings: dict[str, dict[str, Any]], crossfit: str, horizons: tuple[int, ...], workers: int,
-        out_dir: str, cases_path: str) -> str:
+        out_dir: str, cases_path: str, max_tasks: int | None = None) -> str:
     """Every (case, setting) job into ``out_dir``/rows.jsonl (resuming: a job with every horizon's row is skipped; a directory
-    of another bundle, generator, setting list or horizon list is an error); returns the path."""
+    of another bundle, generator, setting list or horizon list is an error); returns the path. ``max_tasks``: ``_pool``."""
     from robots.mujoco_lab.calibrate import code_revision
     from robots.mujoco_lab.corpus import lab_generator
 
@@ -439,7 +446,8 @@ def run(cases: list[dict[str, Any]], settings: dict[str, dict[str, Any]], crossf
     os.makedirs(out_dir, exist_ok=True)
     with open(os.path.join(out_dir, f"run_config_{time.strftime('%Y%m%dT%H%M%S')}.json"), "w") as f:
         json.dump({"cases": cases_path, "n_cases": len(cases), "settings": settings, "horizons": list(horizons), "crossfit": crossfit,
-                   "generator": lab_generator(), "workers": workers, "code": code_revision()}, f, indent=1)
+                   "generator": lab_generator(), "workers": workers, "max_tasks_per_worker": max_tasks, "code": code_revision()},
+                  f, indent=1)
     path = os.path.join(out_dir, "rows.jsonl")
     done: Counter = Counter()
     if os.path.exists(path):
@@ -460,7 +468,7 @@ def run(cases: list[dict[str, Any]], settings: dict[str, dict[str, Any]], crossf
         if workers <= 1:
             write(map(e_job, todo))
         else:
-            with mp.get_context("spawn").Pool(workers) as pool:
+            with _pool(workers, max_tasks) as pool:
                 write(pool.imap_unordered(e_job, todo))
     return path
 
@@ -650,6 +658,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--crossfit", required=True)
     p.add_argument("--horizons", default="1,2,3")
     p.add_argument("--workers", type=int, default=8)
+    p.add_argument("--max-tasks-per-worker", type=int, default=None, help="replace a worker after this many jobs (memory)")
     p.add_argument("--out", required=True)
     p = sub.add_parser("summary", help="the report")
     p.add_argument("--dir", required=True)
@@ -660,7 +669,8 @@ def main(argv: list[str] | None = None) -> int:
         horizons = tuple(int(x) for x in a.horizons.split(",") if x)
         if not horizons or min(horizons) < 1 or 1 not in horizons:
             ap.error("horizons: positive integers, 1 among them")
-        print(run(ladder.load_cases(a.cases), ladder.parse_settings(a.settings), a.crossfit, horizons, a.workers, a.out, a.cases))
+        print(run(ladder.load_cases(a.cases), ladder.parse_settings(a.settings), a.crossfit, horizons, a.workers, a.out, a.cases,
+                  a.max_tasks_per_worker))
         return 0
     with open(os.path.join(a.dir, "rows.jsonl")) as f:
         rows = [json.loads(line) for line in f if line.strip()]
