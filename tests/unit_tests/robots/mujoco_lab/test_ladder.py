@@ -161,3 +161,107 @@ def test_smoke_cases_leave_out_the_excluded_cases_and_cycle_the_settings():
     assert len({c["object"] for c in picked}) == 6 and all(c["seed"] == 13 for c in picked)
     assert [c["setting"] for c in picked] == ["k100_A3_abs", "k30_A3_abs", "k100_A10_abs"] * 2
     assert picked == ladder.pick_smoke(never, 6, 4, exclude, ("k100_A3_abs", "k30_A3_abs", "k100_A10_abs"))
+
+
+TPL = {"system": "System: at most {max_calls} turns and {max_attempts} attempts.",
+       "rungs": {r: f"Rung {r} text." for r in ladder.RUNGS}, "task": "Task: move the {object} to `{destination}`.",
+       "settings": {"k100_A3_abs": "User: {object} to the {destination}; irreversible 500, task 3."}}
+
+
+class FakeLab:
+    """A scripted lab for the ladder loop: every menu is _a(); an attempt ends with ``outcome``."""
+
+    def __init__(self, outcome="placed_stable"):
+        self.outcome, self.calls = outcome, []
+        self.store = {"beliefs": {"obj": {"belief": _belief()}}}
+
+    def assess(self):
+        return _a()
+
+    def act(self, option_id):
+        self.calls.append(option_id)
+        if option_id.startswith("probe_"):
+            return {"probed": option_id.split("_", 1)[1], "kind": "measured", "reading": {"mass_kg": 0.5}, "thrown": False,
+                    "displacement_m": 0.0, "tilt_deg": 0.0, "damage": None, "assessment": _a()}
+        return {"outcome": self.outcome, "placed": self.outcome == "placed_stable", "option": option_id, "damage": None,
+                "readouts": {"rose": True, "fz_hold_n": 4.9}, "diagnosis": ["a diagnosis line"], "artifact": False,
+                "assessment": _a()}
+
+
+class Scripted:
+    """A model stand-in that replies with the given option ids in turn (None: a reply with no tool call)."""
+
+    def __init__(self, ids):
+        self.ids, self.seen = list(ids), []
+
+    def __call__(self, messages, tools):
+        self.seen.append(json.loads(json.dumps(messages)))
+        oid = self.ids.pop(0)
+        if oid is None:
+            return {"tool": None, "args": None, "content": "I will not choose.", "reasoning": "", "seconds": 0.1,
+                    "finish_reason": "stop", "usage": {"prompt": 100, "completion": 5}, "error": None}
+        return {"tool": "choose", "args": {"option_id": oid, "reason": "r"}, "content": "", "reasoning": "x", "seconds": 0.2,
+                "finish_reason": "tool_calls", "usage": {"prompt": 120, "completion": 30}, "error": None}
+
+
+def _loop(lab, model, rung="D", max_calls=6):
+    return ladder.ladder_loop(lab, model, rung, TPL, "k100_A3_abs", "mustard bottle", "table_edge", np.random.default_rng(0),
+                              max_calls=max_calls)
+
+
+def test_the_ladder_loop_shows_the_rung_view_and_ends_when_placed():
+    lab, model = FakeLab(), Scripted(["light_grip"])
+    case = _loop(lab, model)
+    assert case["ended"] == "placed" and lab.calls == ["light_grip"] and len(case["calls"]) == 1
+    first = model.seen[0]
+    assert first[0]["role"] == "system" and "at most 6 turns and 3 attempts" in first[0]["content"] and "Rung D text." in first[0]["content"]
+    assert first[1]["content"].startswith("User: mustard bottle to the table edge; irreversible 500, task 3.")
+    assert "expected cost 2.50" in first[1]["content"] and "Task: move the mustard bottle to `table_edge`." in first[1]["content"]
+    assert case["rung"] == "D" and case["attempts"][0]["option"] == "light_grip"
+
+
+def test_the_raw_result_follows_an_action_at_every_rung_and_the_next_view_its_rung():
+    lab, model = FakeLab(outcome="tipped"), Scripted(["probe_weigh", "light_grip", "decline"])
+    case = _loop(lab, model, rung="A")
+    assert case["ended"] == "abstained" and lab.calls == ["probe_weigh", "light_grip"]
+    tool_msgs = [m["content"] for m in model.seen[-1] if m["role"] == "tool"]
+    assert "reading: mass_kg 0.5" in tool_msgs[0] and "Pad readouts: rose True, fz_hold_n 4.9" in tool_msgs[1]
+    assert "diagnosis" not in " ".join(tool_msgs) and all("belief" not in t and "expected cost" not in t for t in tool_msgs)
+    case_b = _loop(FakeLab(outcome="tipped"), Scripted(["light_grip", "decline"]), rung="B")
+    assert case_b["ended"] == "abstained"
+
+
+def test_a_reply_without_a_valid_choice_is_counted_and_corrected():
+    lab, model = FakeLab(), Scripted([None, "slow_lift", "light_grip"])
+    case = _loop(lab, model)
+    assert case["malformed"] == 2 and case["no_tool_call"] == 1 and case["ended"] == "placed" and len(case["calls"]) == 3
+    assert any("Nothing ran" in (m.get("content") or "") for m in model.seen[-1])
+
+
+def test_the_call_cap_ends_the_case_unplaced():
+    case = _loop(FakeLab(), Scripted([None] * 6), max_calls=3)
+    assert case["ended"] == "call_cap" and len(case["calls"]) == 3
+
+
+def test_ops_reads_only_the_operational_fields():
+    rows = [{"object": "o", "idx": 0, "seed": 13, "setting": "k100_A3_abs", "rung": "A", "ended": "placed", "seconds": 60.0,
+             "malformed": 1, "no_tool_call": 1, "failed_calls": 0, "refusals": 0,
+             "calls": [{"usage": {"prompt": 1000, "completion": 300}, "seconds": 10.0, "finish_reason": "tool_calls", "error": None},
+                       {"usage": {"prompt": 1500, "completion": 200}, "seconds": 12.0, "finish_reason": "length", "error": None}],
+             "decisions": [{"choice": "light_grip"}], "attempts": [{"option": "light_grip", "outcome": "placed_stable"}]},
+            {"object": "p", "idx": 1, "seed": 13, "setting": "k30_A3_abs", "rung": "A", "ended": "error", "seconds": 30.0,
+             "malformed": 0, "no_tool_call": 0, "failed_calls": 1, "refusals": 0, "calls": []}]
+    ops = ladder.ops(rows)
+    a = ops["rungs"]["A"]
+    assert a["runs"] == 2 and a["errors"] == 1 and a["call_cap"] == 0 and a["malformed"] == 1 and a["length_finishes"] == 1
+    assert a["tokens_in"]["sum"] == 2500 and a["tokens_out"]["sum"] == 500 and a["calls"]["mean"] == 1.0
+    assert a["minutes_per_run"]["mean"] == pytest.approx(0.75)
+    text = json.dumps(ops)
+    assert "light_grip" not in text and "placed" not in text and "cost" not in text
+
+
+def test_ops_counts_resets_not_at_rest():
+    rows = [{"rung": "B", "ended": "abstained", "calls": [], "seconds": 6.0, "reset": {"at_rest": False}},
+            {"rung": "B", "ended": "abstained", "calls": [], "seconds": 6.0, "reset": {"at_rest": True}},
+            {"rung": "B", "ended": "abstained", "calls": [], "seconds": 6.0}]
+    assert ladder.ops(rows)["rungs"]["B"]["reset_not_at_rest"] == 1

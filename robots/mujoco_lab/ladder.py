@@ -34,6 +34,13 @@ mismatch ("other") is a ladder bug. No language model runs in ``inputs``, ``chec
         --crossfit robots/mujoco_lab/data/m2b2_v11c/folds --workers 8 --out DIR
     python -P -m robots.mujoco_lab.ladder check --dir DIR [--expected GAP_EXPECTED_DIR] [--wandb]
     python -P -m robots.mujoco_lab.ladder render --dir DIR --object OBJ --idx N --setting S
+
+The pilot (smoke test, not in the paper): ``run`` plays rungs A to D on each smoke case with a served model (its own
+setting's true menu at every decision point; at most e1.MAX_CALLS calls and e1.MAX_ATTEMPTS attempts), and ``ops``
+reports only the operational numbers (format failures, refusals, tokens, minutes), never a choice, an outcome or a cost.
+
+    python -P -m robots.mujoco_lab.ladder run --cases SMOKE.json --templates T.json --crossfit C --base-url URL --model NAME --out DIR
+    python -P -m robots.mujoco_lab.ladder ops --dir DIR
 """
 
 from __future__ import annotations
@@ -42,9 +49,12 @@ import argparse
 import gzip
 import json
 import multiprocessing as mp
+import hashlib
 import os
+import re
 import sys
 import time
+import zlib
 from collections import Counter
 from typing import Any
 
@@ -446,6 +456,294 @@ def check_markdown(c: dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
+# ---------------------------------------------------------------- the pilot loop
+
+REFUSAL = re.compile(r"\b(I can(?:no|')t|I cannot|I won't|I will not|unable to|refuse)\b", re.I)
+FULL_RUNS = 4 * (96 + 145 + 185)       # rungs A-D at the n50 sizes of the three settings (e1_gap_v11_v11c.md)
+
+
+def load_templates(path: str) -> dict[str, Any]:
+    """A templates file: system (with {max_calls} and {max_attempts}), rungs (A to D), task and one instruction per
+    setting (with {object} and {destination})."""
+    t = json.load(open(path))
+    missing = [k for k in ("system", "rungs", "task", "settings") if k not in t] + [r for r in RUNGS if r not in t.get("rungs", {})]
+    if missing:
+        raise ValueError(f"{path}: missing {missing}")
+    return t
+
+
+def system_text(tpl: dict[str, Any], rung: str, max_calls: int, max_attempts: int) -> str:
+    return tpl["system"].format(max_calls=max_calls, max_attempts=max_attempts) + "\n\n" + tpl["rungs"][rung]
+
+
+def user_head(tpl: dict[str, Any], setting: str, object_name: str, destination: str) -> str:
+    return (tpl["settings"][setting].format(object=object_name, destination=e1.display_destination(destination)) + "\n\n"
+            + tpl["task"].format(object=object_name, destination=destination))
+
+
+def view_inputs(a: dict[str, Any], store: dict[str, Any]) -> dict[str, Any]:
+    return {"B": posterior(belief_of(store)), "C": predictions(a), "D": values(a)}
+
+
+def ladder_loop(tools: Any, model: Any, rung: str, tpl: dict[str, Any], setting: str, object_name: str, destination: str,
+                rng: np.random.Generator, max_calls: int = e1.MAX_CALLS, max_attempts: int = e1.MAX_ATTEMPTS) -> dict[str, Any]:
+    """One pilot case at one rung: ``tools.assess()`` gives the true menu and ``tools.act(option_id)`` runs a row (as
+    e1.planner_loop); each decision point shows render_state at ``rung``, each action's result its raw reading
+    (e1.render_result as the no-menu planner reads it). The record: e1's probe and attempt fields, calls, decisions,
+    malformed (no valid option id), no_tool_call, refusals (a reply with no tool call whose text reads as a refusal,
+    REFUSAL), failed_calls and the transcript."""
+    case: dict[str, Any] = {"rung": rung, "probes": [], "attempts": [], "restores": [], "ended": None, "calls": [], "decisions": [],
+                            "malformed": 0, "no_tool_call": 0, "refusals": 0, "failed_calls": 0, "transcript": []}
+
+    def end(reason: str, error: str | None = None) -> dict[str, Any]:
+        case["ended"] = reason
+        if error is not None:
+            case["error"] = error
+        return case
+
+    a = tools.assess()
+    if "error" in a:
+        return end("error", a["error"])
+    if not a.get("assessed", True):
+        return end("unreachable")
+    text, ids = render_state(rung, view_inputs(a, tools.store), destination, rng)
+    messages: list[dict[str, Any]] = [{"role": "system", "content": system_text(tpl, rung, max_calls, max_attempts)},
+                                      {"role": "user", "content": user_head(tpl, setting, object_name, destination) + "\n\n" + text}]
+    case["transcript"] = list(messages)
+    rows = {o["id"]: o for o in a["options"]}
+    while True:
+        if len(case["calls"]) >= max_calls:
+            return end("call_cap")
+        r = model(messages, e1.tool_schema(ids))
+        case["calls"].append({k: r.get(k) for k in ("tool", "args", "content", "reasoning", "seconds", "usage", "error", "finish_reason")})
+        if r.get("error"):
+            case["failed_calls"] += 1
+        choice = e1.parse_choice(r, ids)
+        call_id = f"call_{len(case['calls'])}"
+        if choice is None:
+            case["malformed"] += 1
+            if r.get("tool") == "choose":
+                fix = [{"role": "assistant", "content": r.get("content") or "", "tool_calls": [
+                           {"id": call_id, "type": "function", "function": {"name": "choose", "arguments": json.dumps(r.get("args") or {})}}]},
+                       {"role": "tool", "tool_call_id": call_id,
+                        "content": f"Error: option_id must be one of {ids}. Nothing ran. Call `choose` again."}]
+            else:
+                case["no_tool_call"] += 1
+                case["refusals"] += bool(REFUSAL.search(r.get("content") or ""))
+                fix = [{"role": "assistant", "content": r.get("content") or "(no tool call)"},
+                       {"role": "user", "content": f"Nothing ran: call the tool `choose` once, with option_id one of {ids}."}]
+            messages += fix
+            case["transcript"] += fix
+            continue
+        reason = (r.get("args") or {}).get("reason") if isinstance(r.get("args"), dict) else None
+        case["decisions"].append({"step": len(case["decisions"]), "choice": choice, "reason": reason})
+        call = {"role": "assistant", "content": r.get("content") or "", "tool_calls": [
+            {"id": call_id, "type": "function", "function": {"name": "choose", "arguments": json.dumps({"option_id": choice, "reason": reason})}}]}
+        if choice == "decline":
+            case["transcript"].append(call)
+            return end("abstained")
+        row = rows[choice]
+        d = tools.act(choice)
+        if "error" in d and "outcome" not in d and "probed" not in d:
+            case["transcript"].append(call)
+            return end("error", str(d["error"]))
+        ended = None
+        if row["kind"] == "probe":
+            case["probes"].append(e1._probe_record(d, row, len(case["probes"]), len(case["attempts"])))
+            if d.get("restored") is not None:
+                case["restores"].append(dict(d["restored"], probe=d["probed"]))
+            elif d.get("kind") == e1.DAMAGED or d.get("damage"):
+                ended = "damaged"
+            elif d.get("thrown"):
+                ended = "thrown"
+        else:
+            case["attempts"].append(e1._attempt_record(d, row, a))
+            restored = d.get("restored") is not None
+            if restored:
+                case["restores"].append(dict(d["restored"], option=row["id"]))
+            if d["outcome"] == "placed_stable":
+                ended = "placed"
+            elif (d["outcome"] not in RECOVERABLE and not restored) or len(case["attempts"]) >= max_attempts:
+                ended = "failed"
+        result = e1.render_result(d, row, "nomenu_planner")
+        if ended is not None:
+            case["transcript"] += [call, {"role": "tool", "tool_call_id": call_id, "content": result + " The task is over."}]
+            return end(ended)
+        a = d.get("assessment") or {}
+        if "error" in a:
+            return end("error", a["error"])
+        if not a.get("assessed", False):
+            case["transcript"] += [call, {"role": "tool", "tool_call_id": call_id, "content": result + f" {a.get('reason')}."}]
+            return end("unreachable")
+        text, ids = render_state(rung, view_inputs(a, tools.store), destination, rng)
+        rows = {o["id"]: o for o in a["options"]}
+        step = [call, {"role": "tool", "tool_call_id": call_id, "content": result + "\n\n" + text}]
+        messages += step
+        case["transcript"] += step
+
+
+_WORKER: dict[str, Any] = {}
+
+
+def _pilot_model(cfg: dict[str, Any]) -> Any:
+    if "model" not in _WORKER:
+        _WORKER["model"] = (e1.StubPlanner(os.getpid()) if cfg.get("stub")
+                            else e1.GemmaPlanner(cfg["base_url"], cfg["model"], max_tokens=cfg["max_tokens"], thinking=True))
+    return _WORKER["model"]
+
+
+def pilot_job(item: tuple[dict[str, Any], dict[str, Any]]) -> list[dict[str, Any]]:
+    """One smoke case at every rung of the run, in turn on one lab: a reset to the case, the lab and menu at the case's own
+    setting (e1_gap.rule_config("oracle", ...)), the ladder loop; the row order's rng is the same at every rung."""
+    from robots.mujoco_lab import calibrate
+
+    case, cfg = item
+    prims = e1_expected._prims(cfg, case["object"])
+    conf = e1_gap.rule_config("oracle", cfg["settings"][case["setting"]])
+    out = []
+    for rung in cfg["rungs"]:
+        t0 = time.time()
+        prims.abstain_cost, prims.menu_recovery = conf["abstain_cost"], conf["menu_recovery"]
+        prims.reset_s, prims.reset_price = conf["lab_recovery"]
+        destination, reset_info, truth = e1.reset_case(prims, case["object"], int(case["idx"]), int(case["seed"]))
+        rng = np.random.default_rng([int(case["seed"]), zlib.crc32(case["object"].encode()), int(case["idx"]), 11])
+        try:
+            rec = ladder_loop(e1.LabTools(prims, destination, conf["care"]), _pilot_model(cfg), rung, cfg["templates"],
+                              case["setting"], e1.display_object(case["object"]), destination, rng, max_calls=cfg["max_calls"])
+        except Exception as exc:  # noqa: BLE001  one bad case must not stop the run
+            rec = {"rung": rung, "ended": "error", "error": f"{type(exc).__name__}: {exc}"[:300], "probes": [], "attempts": [],
+                   "calls": [], "decisions": [], "malformed": 0, "no_tool_call": 0, "refusals": 0, "failed_calls": 0}
+        rec["artifact"] = calibrate.case_artifact(rec, reset_info)
+        out.append(dict(case, destination=destination, truth=truth, reset=reset_info, **rec, seconds=round(time.time() - t0, 2)))
+        print(f"{case['object']} {case['idx']} {case['setting']} rung {rung}: {len(rec.get('calls') or [])} calls, "
+              f"{out[-1]['seconds']:.0f} s", file=sys.stderr, flush=True)
+    prims.menu_recovery = None
+    return out
+
+
+def run_pilot(cases_path: str, rungs: list[str], templates_path: str, crossfit: str, base_url: str | None, model: str,
+              stub: bool, workers: int, out_dir: str, max_calls: int = e1.MAX_CALLS, max_tokens: int = 6144) -> str:
+    """Every smoke case at every rung (resuming: a (case, rung) in rows.jsonl is skipped; a directory of another
+    bundle, generator, templates file or model is an error); each run segment's start and end in run_times.jsonl."""
+    from robots.mujoco_lab.calibrate import code_revision
+    from robots.mujoco_lab.corpus import lab_generator
+
+    cases = load_cases(cases_path)
+    if any(not c.get("setting") for c in cases):
+        raise ValueError(f"{cases_path}: every smoke case needs its setting")
+    tpl = load_templates(templates_path)
+    sha = hashlib.sha256(open(templates_path, "rb").read()).hexdigest()
+    generator = e1.run_generator(out_dir)
+    e1.check_bundle(out_dir, crossfit, generator)
+    if os.path.isdir(out_dir):
+        for held in sorted(p for p in os.listdir(out_dir) if p.startswith("run_config_")):
+            c = json.load(open(os.path.join(out_dir, held)))
+            if (c.get("templates_sha256"), c.get("model"), c.get("stub")) != (sha, model, stub):
+                raise ValueError(f"{out_dir} holds a run of other templates, another model or stub mode ({held})")
+    os.makedirs(out_dir, exist_ok=True)
+    settings = {c["setting"]: e1_gap.grid()[c["setting"]] for c in cases}
+    with open(os.path.join(out_dir, f"run_config_{time.strftime('%Y%m%dT%H%M%S')}.json"), "w") as f:
+        json.dump({"cases": os.path.abspath(cases_path), "rungs": rungs, "templates": os.path.abspath(templates_path),
+                   "templates_sha256": sha, "templates_version": tpl.get("version"), "crossfit": crossfit, "generator": lab_generator(),
+                   "base_url": base_url, "model": model, "stub": stub, "workers": workers, "max_calls": max_calls,
+                   "max_attempts": e1.MAX_ATTEMPTS, "planner": {"temperature": 0.0, "max_tokens": max_tokens, "thinking": True},
+                   "settings": settings, "code": code_revision()}, f, indent=1)
+    path = os.path.join(out_dir, "rows.jsonl")
+    done = set()
+    if os.path.exists(path):
+        with open(path) as f:
+            done = {(r["object"], r["idx"], r["seed"], r["setting"], r["rung"]) for r in map(json.loads, filter(str.strip, f))}
+    cfg = {"crossfit": crossfit, "folds": json.load(open(os.path.join(crossfit, "folds.json"))), "settings": settings,
+           "templates": tpl, "base_url": base_url, "model": model, "stub": stub, "max_calls": max_calls, "max_tokens": max_tokens}
+    todo = []
+    for c in cases:
+        left = [r for r in rungs if (c["object"], c["idx"], c["seed"], c["setting"], r) not in done]
+        if left:
+            todo.append((c, dict(cfg, rungs=left)))
+    print(f"ladder pilot: {len(todo)} of {len(cases)} cases to run, rungs {rungs}", file=sys.stderr, flush=True)
+    t0 = time.time()
+    with open(path, "a") as f:
+        def write(parts) -> None:
+            for part in parts:
+                for r in part:
+                    f.write(json.dumps(r, default=str) + "\n")
+                f.flush()
+
+        if workers <= 1:
+            write(map(pilot_job, todo))
+        else:
+            with mp.get_context("spawn").Pool(workers) as pool:
+                write(pool.imap_unordered(pilot_job, todo))
+    with open(os.path.join(out_dir, "run_times.jsonl"), "a") as f:
+        f.write(json.dumps({"started": t0, "ended": time.time(), "jobs": len(todo), "runs": sum(len(c["rungs"]) for _, c in todo),
+                            "workers": workers}) + "\n")
+    return path
+
+
+def _stats(v: list[float]) -> dict[str, Any]:
+    if not v:
+        return {"n": 0, "sum": 0, "mean": None, "p90": None, "max": None}
+    a = np.asarray(v, dtype=float)
+    return {"n": len(v), "sum": float(a.sum()), "mean": float(a.mean()), "p90": float(np.percentile(a, 90)), "max": float(a.max())}
+
+
+def ops(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """The pilot's operational numbers per rung and pooled ("all"): runs, errors, call-cap endings, malformed replies,
+    replies with no tool call, refusals, failed calls, length finishes, calls per run, tokens per call and per run (in and
+    out), model seconds per call, minutes per run and the resets that did not reach rest (the lab's, not the model's). It
+    reads no choice, outcome or cost."""
+    out: dict[str, Any] = {"rungs": {}}
+    for rung in RUNGS + ("all",):
+        rs = [r for r in rows if rung == "all" or r.get("rung") == rung]
+        if not rs:
+            continue
+        calls = [c for r in rs for c in r.get("calls") or []]
+        use = lambda c, k: int((c.get("usage") or {}).get(k) or 0)  # noqa: E731
+        out["rungs"][rung] = {
+            "runs": len(rs), "errors": sum(r.get("ended") == "error" for r in rs), "call_cap": sum(r.get("ended") == "call_cap" for r in rs),
+            "malformed": sum(int(r.get("malformed") or 0) for r in rs), "no_tool_call": sum(int(r.get("no_tool_call") or 0) for r in rs),
+            "refusals": sum(int(r.get("refusals") or 0) for r in rs), "failed_calls": sum(int(r.get("failed_calls") or 0) for r in rs),
+            "length_finishes": sum(c.get("finish_reason") == "length" for c in calls),
+            "reset_not_at_rest": sum(not (r.get("reset") or {}).get("at_rest", True) for r in rs),
+            "calls": _stats([len(r.get("calls") or []) for r in rs]),
+            "tokens_in": _stats([use(c, "prompt") for c in calls]), "tokens_out": _stats([use(c, "completion") for c in calls]),
+            "tokens_in_per_run": _stats([sum(use(c, "prompt") for c in r.get("calls") or []) for r in rs]),
+            "tokens_out_per_run": _stats([sum(use(c, "completion") for c in r.get("calls") or []) for r in rs]),
+            "model_seconds_per_call": _stats([float(c.get("seconds") or 0.0) for c in calls]),
+            "minutes_per_run": _stats([float(r.get("seconds") or 0.0) / 60.0 for r in rs])}
+    return out
+
+
+def ops_markdown(o: dict[str, Any], times: list[dict[str, Any]], server_start_min: float | None, title: str) -> str:
+    f = lambda x, nd=1: "-" if x is None else f"{x:.{nd}f}"  # noqa: E731
+    lines = [f"# {title}: operational numbers only", "",
+             "No choice, outcome or cost is read here. Malformed: a reply with no valid option id (no tool call, or an id "
+             "not on the list); refusal: a reply with no tool call whose text reads as a refusal (a keyword match).", "",
+             "| rung | runs | errors | call cap | malformed | no tool call | refusals | failed calls | length finishes | resets not at rest | "
+             "calls per run (mean, max) | tokens in per call (mean, max) | tokens out per call (mean, max) | tokens in per run "
+             "(mean) | tokens out per run (mean) | model s per call (mean, p90) | minutes per run (mean, p90) |",
+             "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
+    for rung, x in o["rungs"].items():
+        lines.append(f"| {rung} | {x['runs']} | {x['errors']} | {x['call_cap']} | {x['malformed']} | {x['no_tool_call']} | "
+                     f"{x['refusals']} | {x['failed_calls']} | {x['length_finishes']} | {x['reset_not_at_rest']} | {f(x['calls']['mean'], 2)}, {f(x['calls']['max'], 0)} | "
+                     f"{f(x['tokens_in']['mean'], 0)}, {f(x['tokens_in']['max'], 0)} | {f(x['tokens_out']['mean'], 0)}, "
+                     f"{f(x['tokens_out']['max'], 0)} | {f(x['tokens_in_per_run']['mean'], 0)} | {f(x['tokens_out_per_run']['mean'], 0)} | "
+                     f"{f(x['model_seconds_per_call']['mean'])}, {f(x['model_seconds_per_call']['p90'])} | "
+                     f"{f(x['minutes_per_run']['mean'], 2)}, {f(x['minutes_per_run']['p90'], 2)} |")
+    if times:
+        wall = sum(t["ended"] - t["started"] for t in times) / 60.0
+        runs = sum(t["runs"] for t in times)
+        per = wall / runs if runs else None
+        workers = sorted({t["workers"] for t in times})
+        lines += ["", f"Wall time: {wall:.1f} min for {runs} rung runs at {workers} workers on one GPU: "
+                  f"{f(per, 3)} min per rung run." + ("" if server_start_min is None else f" Server start: {server_start_min:.1f} min.")]
+        if per is not None:
+            est = FULL_RUNS * per / 60.0 + (server_start_min or 0.0) / 60.0
+            lines.append(f"Full ladder at the n50 sizes (rungs A-D x 426 cases = {FULL_RUNS} rung runs, the same workers): "
+                         f"about {est:.1f} GPU-hours for this model.")
+    return "\n".join(lines) + "\n"
+
+
 # ---------------------------------------------------------------- the CLI
 
 def main(argv: list[str] | None = None) -> int:
@@ -468,6 +766,23 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("check", help="the lowest-value policy against the one-step rule at the true setting")
     p.add_argument("--dir", required=True)
     p.add_argument("--expected", default=None, help="an e1_expected gap directory: its oracle records")
+    p.add_argument("--wandb", action="store_true")
+    p = sub.add_parser("run", help="the pilot: rungs A to D on the smoke cases with a served model")
+    p.add_argument("--cases", required=True)
+    p.add_argument("--rungs", default=",".join(RUNGS))
+    p.add_argument("--templates", required=True)
+    p.add_argument("--crossfit", required=True)
+    p.add_argument("--base-url", default=None)
+    p.add_argument("--model", default=e1.MODEL, help="the served model name")
+    p.add_argument("--stub", action="store_true")
+    p.add_argument("--workers", type=int, default=8)
+    p.add_argument("--max-calls", type=int, default=e1.MAX_CALLS)
+    p.add_argument("--max-tokens", type=int, default=6144)
+    p.add_argument("--out", required=True)
+    p = sub.add_parser("ops", help="the pilot's operational numbers (no choice, outcome or cost)")
+    p.add_argument("--dir", required=True)
+    p.add_argument("--server-start-min", type=float, default=None)
+    p.add_argument("--title", default="Ladder pilot")
     p.add_argument("--wandb", action="store_true")
     p = sub.add_parser("render", help="one case's B, C and D blocks at its first decision")
     p.add_argument("--dir", required=True)
@@ -494,6 +809,41 @@ def main(argv: list[str] | None = None) -> int:
             json.dump(cases, f, indent=1)
         print(f"{len(cases)} smoke cases over {len({c['object'] for c in cases})} objects at seed {cases[0]['seed']} "
               f"({len(exclude)} cases excluded) -> {a.out}")
+        return 0
+    if a.cmd == "run":
+        if not a.stub and not a.base_url:
+            ap.error("give --base-url or --stub")
+        rungs = [x for x in a.rungs.split(",") if x]
+        if any(r not in RUNGS for r in rungs):
+            ap.error(f"rungs must be among {RUNGS}")
+        print(run_pilot(a.cases, rungs, a.templates, a.crossfit, a.base_url, a.model, a.stub, a.workers, a.out, a.max_calls,
+                        a.max_tokens))
+        return 0
+    if a.cmd == "ops":
+        with open(os.path.join(a.dir, "rows.jsonl")) as f:
+            rows = [json.loads(line) for line in f if line.strip()]
+        o = ops(rows)
+        tp = os.path.join(a.dir, "run_times.jsonl")
+        times = [json.loads(line) for line in open(tp) if line.strip()] if os.path.exists(tp) else []
+        md = ops_markdown(o, times, a.server_start_min, a.title)
+        with open(os.path.join(a.dir, "ops.json"), "w") as f:
+            json.dump({"ops": o, "times": times, "server_start_min": a.server_start_min}, f, indent=1)
+        with open(os.path.join(a.dir, "ops.md"), "w") as f:
+            f.write(md)
+        print(md)
+        if a.wandb:
+            import wandb
+
+            run = wandb.init(project="rpent-pick-place", job_type="ladder_pilot_ops", config={"dir": a.dir, "title": a.title})
+            for rung, x in o["rungs"].items():
+                for k in ("runs", "errors", "call_cap", "malformed", "no_tool_call", "refusals", "failed_calls", "length_finishes",
+                          "reset_not_at_rest"):
+                    run.summary[f"{rung}/{k}"] = x[k]
+                run.summary[f"{rung}/tokens_in_mean"] = x["tokens_in"]["mean"]
+                run.summary[f"{rung}/tokens_out_mean"] = x["tokens_out"]["mean"]
+                run.summary[f"{rung}/minutes_per_run_mean"] = x["minutes_per_run"]["mean"]
+            print(f"wandb: {run.url}")
+            run.finish()
         return 0
     if a.cmd == "check":
         c = check(load_inputs(a.dir), expected_oracle(a.expected) if a.expected else None)
