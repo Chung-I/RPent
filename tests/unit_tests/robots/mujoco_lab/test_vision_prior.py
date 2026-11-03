@@ -162,3 +162,54 @@ def test_prior_table_real_centres_on_the_real_masses_and_fits_its_spread():
     assert s["mass"] == pytest.approx(np.sqrt((0.0 + 1.0) / 2))                 # log residuals 0 (t1) and 1 (t2)
     with pytest.raises(ValueError):
         prior_table("real", ["h"], ["t1", "t2"], truths, flat, real={"t1": 2.0, "t2": 1.0})   # h has no real mass
+
+
+TRUTH = {"mass": 2.0, "com_obj": [0.03, 0.004, -0.002], "com_frac": 0.65}
+GENERIC = {"o": {"mass": 0.4, "com": 0.5, "sigma_mass": 0.8, "sigma_com": 0.2}}
+
+
+def test_exact_prior_centres_the_mass_and_the_com_on_the_case_truth():
+    """W0: both exact: the mass log-normal around the truth (log-sd 0.01), the CoM fraction normal around the truth's
+    (sd 0.005), the point moved along the pivot axis from the true CoM, so its off-axis part stays."""
+    from robots.mujoco_lab.vision_prior import EXACT_SD, shape_prior
+
+    assert EXACT_SD == {"mass": 0.01, "com": 0.005}
+    prior = shape_prior(_base, GENERIC, truth=TRUTH, exact=("mass", "com"))
+    a = prior({"object_id": "o", "pivot": PIVOT}, 4000, np.random.default_rng(0)).arrays()
+    lm = np.log(a["mass"] / 2.0)
+    assert abs(lm.mean()) < 0.001 and lm.std() == pytest.approx(0.01, rel=0.05)
+    assert a["com_frac"].mean() == pytest.approx(0.65, abs=0.0005) and a["com_frac"].std() == pytest.approx(0.005, rel=0.05)
+    com = np.asarray(a["com_obj"])
+    assert np.allclose(com[:, 1:], [0.004, -0.002])                                   # the off-axis part of the truth
+    assert np.allclose(com[:, 0], 0.03 + (a["com_frac"] - 0.65) * 0.2)                # moved along the axis (L 0.2)
+    assert not a["com_branch"].any() and np.allclose(a["f"], 0.0) and np.allclose(a["fill"], 0.5)
+
+
+def test_exact_prior_takes_the_generic_draws_of_the_key_it_does_not_fix():
+    """Same stream as the generic shape prior: an exact CoM keeps the generic mass draws, an exact mass the generic CoM
+    draws, and no exact key is the generic shape prior itself."""
+    from robots.mujoco_lab.vision_prior import shape_prior
+
+    pose = {"object_id": "o", "pivot": PIVOT}
+
+    def draw(**kw):
+        return shape_prior(_base, GENERIC, **kw)(pose, 200, np.random.default_rng(3)).arrays()
+
+    g = draw()
+    com_only, mass_only, none = draw(truth=TRUTH, exact=("com",)), draw(truth=TRUTH, exact=("mass",)), draw(truth=TRUTH, exact=())
+    assert np.array_equal(com_only["mass"], g["mass"]) and not np.allclose(com_only["com_frac"], g["com_frac"])
+    assert np.array_equal(mass_only["com_frac"], g["com_frac"]) and np.array_equal(mass_only["com_obj"], g["com_obj"])
+    assert np.allclose(np.log(mass_only["mass"] / 2.0), 0.0, atol=0.05)
+    for k in ("mass", "com_frac", "com_obj", "mu"):
+        assert np.array_equal(none[k], g[k])
+
+
+def test_exact_prior_refuses_an_exact_com_with_mass_only_a_missing_truth_and_an_unknown_key():
+    from robots.mujoco_lab.vision_prior import shape_prior
+
+    with pytest.raises(ValueError):
+        shape_prior(_base, GENERIC, mass_only=True, truth=TRUTH, exact=("com",))
+    with pytest.raises(ValueError):
+        shape_prior(_base, GENERIC, exact=("mass",))
+    with pytest.raises(ValueError):
+        shape_prior(_base, GENERIC, truth=TRUTH, exact=("mu",))

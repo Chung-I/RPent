@@ -134,3 +134,71 @@ def test_run_object_swaps_the_mass_alone_when_asked(monkeypatch):
     with pytest.raises(Stop):
         first_menus.run_object(("o", [0], s))
     assert seen == [True, True]
+
+
+def test_change_rates_count_against_the_named_reference_prior():
+    """W0: the change rates against the generic prior (ref), every other prior (class too) compared with it."""
+    from robots.mujoco_lab.first_menus import change_rates
+
+    recs = [{"object": "a", "idx": 0, "setting": "s",
+             "menus": {"class": _m("commit", "x"), "generic": _m("probe", "p"), "exact_com": _m("commit", "x")}},
+            {"object": "b", "idx": 0, "setting": "s",
+             "menus": {"class": _m("probe", "p"), "generic": _m("probe", "p"), "exact_com": _m("probe", "q")}}]
+    r = change_rates(recs, n_boot=20, seed=0, ref="generic")["s"]
+    assert set(r) == {"class", "exact_com"} and r["class"]["recommendation"]["rate"] == 0.5
+    assert r["exact_com"]["transitions"] == {"probe->commit": 1} and r["exact_com"]["option"]["rate"] == 1.0
+    assert r["exact_com"]["generic_recommendations"] == {"probe": 2}
+
+
+def test_run_object_adds_the_exact_priors_on_each_case_truth(monkeypatch):
+    """--exact: per case three more priors over the generic table (the exact CoM, the exact mass, both), centred on the
+    case's generator truth (posterior_check.generator_truth of its pose, theta, CoM end and fill); the row records that
+    truth and the sim's."""
+    from types import SimpleNamespace
+
+    import robots.mujoco_lab.adapter as adapter
+    import robots.mujoco_lab.calibrate as cal
+    import robots.mujoco_lab.posterior_check as pc
+    import robots.mujoco_lab.prior as prior
+    import robots.mujoco_lab.vision_prior as vp
+    import rpent.skills.pick_place.tools as tools
+    from robots.mujoco_lab import first_menus
+
+    pose = {"object_id": "o", "pivot": {"centre": [0.0, 0.0, 0.0], "axis": [1.0, 0.0, 0.0], "lo": -0.1, "L": 0.2},
+            "com_obj_nominal": [0.0, 0.0, 0.0], "nominal_mass": 1.0}
+
+    class Env:
+        def reset(self, *a, **kw):
+            self.reset_info = {"at_rest": True}
+
+        def pose_info(self):
+            return pose
+
+        def truth(self):
+            return {"mass": 2.002, "com_s": 0.651}
+
+    monkeypatch.setattr(adapter, "object_props", lambda o: {"mass": 1.0})
+    calls, truth_rows = [], []
+    monkeypatch.setattr(vp, "shape_prior", lambda base, table, mass_only=False, truth=None, exact=():
+                        calls.append((table, truth, tuple(exact))) or base)
+    monkeypatch.setattr(pc, "generator_truth", lambda row, classes=None:
+                        truth_rows.append(row) or {"mass": 2.0, "mu": 0.3, "com": 0.65, "com_obj": [0.03, 0.0, 0.0]})
+    monkeypatch.setattr(tools, "assess_pick", lambda **kw: SimpleNamespace(data={"recommendation": "commit", "recommended_option": "x",
+                                                                                 "options": [{"id": "x", "expected_cost": 1.0}]}))
+    prims = SimpleNamespace(env=Env(), manifest={}, prior=None)
+    monkeypatch.setattr(cal, "_primitives", lambda *a: prims)
+    monkeypatch.setattr(cal, "job_force_noise", lambda *a: None)
+    monkeypatch.setattr(prior, "fragility_world", lambda manifest: None)
+    monkeypatch.setattr(cal, "case_draw", lambda *a, **kw: ({"mass_scale": 2.0}, -1, "bin", {"fill": 0.0, "frag": None}))
+    g = {"mass": 0.4, "com": 0.5, "sigma_mass": 0.8, "sigma_com": 0.2}
+    s = {"bundle": "b", "tables": {"generic": {"o": g}}, "seed": 11, "settings": [("k100_A3", 100.0, 3.0)], "fold": 0,
+         "exact": True}
+    rows = first_menus.run_object(("o", [0, 1], s))
+    want = {"mass": 2.0, "com_obj": [0.03, 0.0, 0.0], "com_frac": 0.65}
+    exact = [c for c in calls if c[2]]
+    assert [c[2] for c in exact] == [("com",), ("mass",), ("mass", "com")] * 2
+    assert all(c[0] == {"o": g} and c[1] == want for c in exact)
+    assert truth_rows[0]["theta"] == {"mass_scale": 2.0} and truth_rows[0]["com_end"] == -1 and truth_rows[0]["pose"] is pose
+    assert truth_rows[0]["fill"] == 0.0 and truth_rows[0]["object"] == "o" and "generator" in truth_rows[0]
+    assert [sorted(r["menus"]) for r in rows] == [["class", "exact_both", "exact_com", "exact_mass", "generic"]] * 2
+    assert rows[0]["truth"] == {"mass": 2.0, "com_frac": 0.65, "sim_mass": 2.002, "sim_com_frac": 0.651}

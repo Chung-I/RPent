@@ -66,27 +66,27 @@ def _rate(flags: list[bool], objects: list[str], rng: np.random.Generator, n_boo
     return {"rate": float(f.mean()), "ci": [float(np.percentile(boot, 2.5)), float(np.percentile(boot, 97.5))]}
 
 
-def change_rates(records: list[dict[str, Any]], n_boot: int = N_BOOT, seed: int = 0) -> dict[str, dict[str, Any]]:
-    """Per setting and prior other than class: the share of cases whose recommendation (commit, probe, decline) and whose
-    recommended row differ from the class prior's, with 95 % object-bootstrap intervals, and the transitions. A case with
-    an error under either prior is left out."""
+def change_rates(records: list[dict[str, Any]], n_boot: int = N_BOOT, seed: int = 0, ref: str = "class") -> dict[str, dict[str, Any]]:
+    """Per setting and prior other than ``ref`` (default the class prior): the share of cases whose recommendation
+    (commit, probe, decline) and whose recommended row differ from the ref prior's, with 95 % object-bootstrap intervals,
+    and the transitions. A case with an error under either prior is left out."""
     rng = np.random.default_rng(seed)
     by: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for r in records:
         by[r["setting"]].append(r)
     out: dict[str, dict[str, Any]] = {}
     for setting, recs in by.items():
-        priors = sorted({p for r in recs for p in r["menus"]} - {"class"})
+        priors = sorted({p for r in recs for p in r["menus"]} - {ref})
         block = {}
         for p in priors:
-            ok = [r for r in recs if "error" not in r["menus"]["class"] and p in r["menus"] and "error" not in r["menus"][p]]
+            ok = [r for r in recs if ref in r["menus"] and "error" not in r["menus"][ref] and p in r["menus"] and "error" not in r["menus"][p]]
             objs = [r["object"] for r in ok]
-            rec = [r["menus"][p]["recommendation"] != r["menus"]["class"]["recommendation"] for r in ok]
-            opt = [r["menus"][p]["recommended_option"] != r["menus"]["class"]["recommended_option"] for r in ok]
-            trans = Counter(f"{r['menus']['class']['recommendation']}->{r['menus'][p]['recommendation']}" for r, c in zip(ok, rec) if c)
+            rec = [r["menus"][p]["recommendation"] != r["menus"][ref]["recommendation"] for r in ok]
+            opt = [r["menus"][p]["recommended_option"] != r["menus"][ref]["recommended_option"] for r in ok]
+            trans = Counter(f"{r['menus'][ref]['recommendation']}->{r['menus'][p]['recommendation']}" for r, c in zip(ok, rec) if c)
             block[p] = {"n": len(ok), "n_left_out": len(recs) - len(ok), "recommendation": _rate(rec, objs, rng, n_boot),
                         "option": _rate(opt, objs, rng, n_boot), "transitions": dict(trans),
-                        "class_recommendations": dict(Counter(r["menus"]["class"]["recommendation"] for r in ok)),
+                        f"{ref}_recommendations": dict(Counter(r["menus"][ref]["recommendation"] for r in ok)),
                         "prior_recommendations": dict(Counter(r["menus"][p]["recommendation"] for r in ok))}
         out[setting] = block
     return out
@@ -125,9 +125,30 @@ def prior_tables(source: str, scenes: str, vlm: dict[str, str],
     return tables, spreads
 
 
+EXACT_PRIORS = (("exact_com", ("com",)), ("exact_mass", ("mass",)), ("exact_both", ("mass", "com")))   # W0
+
+
+def exact_priors(o: str, base: Any, generic: dict[str, Any], env: Any, theta: dict[str, Any], com_end: int,
+                 hidden: dict[str, Any], world: Any) -> tuple[dict[str, Any], dict[str, Any]]:
+    """W0: the case's generator truth (posterior_check.generator_truth of the reset's pose and the case's theta, CoM end and
+    fill; the prior's own space) with the sim's mass and CoM fraction beside it, and the EXACT_PRIORS over the object's
+    generic table entry ``generic``, centred on that truth (vision_prior.shape_prior's exact keys)."""
+    from robots.mujoco_lab.corpus import lab_generator
+    from robots.mujoco_lab.posterior_check import generator_truth
+    from robots.mujoco_lab.vision_prior import shape_prior
+
+    g = generator_truth({"object": o, "pose": env.pose_info(), "theta": theta, "com_end": com_end, "fill": hidden["fill"],
+                         "generator": lab_generator()}, None if world is None else world[0])
+    centre = {"mass": g["mass"], "com_obj": g["com_obj"], "com_frac": g["com"]}
+    sim = env.truth()
+    priors = {name: shape_prior(base, {o: generic}, truth=centre, exact=keys) for name, keys in EXACT_PRIORS}
+    return {"mass": g["mass"], "com_frac": g["com"], "sim_mass": float(sim["mass"]), "sim_com_frac": float(sim["com_s"])}, priors
+
+
 def run_object(job: tuple[str, list[int], dict[str, Any]]) -> list[dict[str, Any]]:
     """One object's cases: one reset per case (calibrate.run_case's), then one first menu per setting and prior, each with a
-    fresh store and the case's menu stream (calibrate._stream k 1)."""
+    fresh store and the case's menu stream (calibrate._stream k 1). ``exact`` adds the case's exact priors (exact_priors)
+    and records its truth."""
     from robots.mujoco_lab import calibrate as cal
     from robots.mujoco_lab.adapter import object_props
     from robots.mujoco_lab.prior import fragility_world
@@ -153,9 +174,13 @@ def run_object(job: tuple[str, list[int], dict[str, Any]]) -> list[dict[str, Any
             env.reset(o, theta, seed=s["seed"] * 1000 + idx, com_end=com_end,
                       fixture=destination if destination in cal.MESH_IDS else None, fill=hidden["fill"], frag=hidden["frag"])
             reset = dict(getattr(env, "reset_info", None) or {})
+            truth, case_priors = None, priors
+            if s.get("exact"):
+                truth, extra = exact_priors(o, base, s["tables"]["generic"][o], env, theta, com_end, hidden, world)
+                case_priors = {**priors, **extra}
             for name, care, A in s["settings"]:
                 menus = {}
-                for pname, fn in priors.items():
+                for pname, fn in case_priors.items():
                     prims.prior, prims.abstain_cost, prims.rng = fn, A, cal._stream(s["seed"], o, idx, 1)
                     try:
                         menus[pname] = menu_fields(assess_pick(object="object", destination=destination, care=care, primitives=prims,
@@ -163,7 +188,8 @@ def run_object(job: tuple[str, list[int], dict[str, Any]]) -> list[dict[str, Any
                     except Exception as exc:  # noqa: BLE001  one bad case must not stop the run
                         menus[pname] = {"error": str(exc)[:200]}
                 rows.append({"object": o, "idx": idx, "fold": s["fold"], "setting": name, "care": care, "abstain_cost": A,
-                             "destination": destination, "at_rest": reset.get("at_rest", True), "menus": menus})
+                             "destination": destination, "at_rest": reset.get("at_rest", True), "menus": menus,
+                             **({"truth": truth} if truth is not None else {})})
             print(f"{o} {idx}: {time.time() - t0:.1f} s", file=sys.stderr, flush=True)
     finally:
         prims.prior = base
@@ -181,17 +207,21 @@ def run(a: argparse.Namespace) -> str:
     path = os.path.join(a.out, "records.jsonl")
     if os.path.exists(path):
         raise SystemExit(f"{path} exists: pick a new --out")
+    if a.exact and a.mass_only:
+        raise SystemExit("--exact takes the full shape priors: drop --mass-only")
     vlm = dict(v.split("=", 1) for v in a.vlm or [])
     tables, spreads = prior_tables(a.bundle, a.scenes, vlm, real=a.real)
     folds = json.load(open(os.path.join(a.bundle, "folds", "folds.json")))
     objects = a.objects.split(",") if a.objects else sorted(folds)
     settings = [_setting(t) for t in a.settings.split(",")] if a.settings else [(n, c, A) for n, c, A in SETTINGS]
     from robots.mujoco_lab.estimation_check import _revision
+    from robots.mujoco_lab.vision_prior import EXACT_SD
     with open(os.path.join(a.out, "run_config.json"), "w") as f:
-        json.dump({**vars(a), **_revision(), "settings_parsed": settings, "spreads": spreads, "tables": tables}, f, indent=1)
+        json.dump({**vars(a), **_revision(), "settings_parsed": settings, "spreads": spreads, "tables": tables,
+                   **({"exact_sd": EXACT_SD, "exact_priors": dict(EXACT_PRIORS)} if a.exact else {})}, f, indent=1)
     jobs = [(o, list(range(a.repeats)), {"bundle": os.path.join(a.bundle, "folds", f"fold_{folds[o]}"), "fold": folds[o], "seed": a.seed,
                                          "settings": settings, "tables": {n: {o: t[o]} for n, t in tables.items()},
-                                         "mass_only": a.mass_only}) for o in objects]
+                                         "mass_only": a.mass_only, "exact": a.exact}) for o in objects]
     t0 = time.time()
     with mp.get_context("spawn").Pool(a.workers) as pool, open(path, "w") as out:
         for rows in pool.imap_unordered(run_object, jobs):
@@ -238,6 +268,8 @@ def main(argv: list[str] | None = None) -> Any:
     r.add_argument("--settings", default=None, help="name:care:A,... (default SETTINGS)")
     r.add_argument("--real", action="store_true", help="add the exact-answer prior (the real mass as the centre)")
     r.add_argument("--mass-only", action="store_true", help="every shape prior swaps the mass alone (the class CoM stays)")
+    r.add_argument("--exact", action="store_true", help="W0: add the exact CoM, exact mass and both priors over the generic "
+                   "table, centred on each case's generator truth")
     r.add_argument("--objects", default=None)
     r.add_argument("--seed", type=int, default=11)
     r.add_argument("--repeats", type=int, default=11)

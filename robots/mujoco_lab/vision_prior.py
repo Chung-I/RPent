@@ -32,6 +32,11 @@ the residuals, each object weighted equally); the CoM spread separately for obje
 
 ``mass_only`` (2026-11-04) replaces the mass alone: the class prior's CoM draws stay, so a swap of the mass prior holds
 everything else fixed.
+
+Exact keys (W0, 2026-11-04): ``truth`` (the case's generator truth: mass, com_obj, com_frac) centres the keys in ``exact``
+instead of the table: the mass log-normal with log spread EXACT_SD["mass"], the CoM fraction normal with spread
+EXACT_SD["com"] (not truncated), the point moved along the pivot axis from the true CoM, so the truth's off-axis part
+stays. The draws are the table's (the same n normals, then n uniforms), so a key not in ``exact`` keeps the table's draws.
 """
 
 from __future__ import annotations
@@ -46,6 +51,8 @@ from rpent.skills.pick_place.belief import ParticleBelief
 FRACS = (0.1, 0.3, 0.5, 0.7, 0.9)
 COM_RANGE = (0.03, 0.97)
 MIDDLE = 0.5
+EXACT_SD = {"mass": 0.01, "com": 0.005}    # W0: the exact prior's log-sd of the mass and sd of the CoM fraction
+EXACT_KEYS = ("mass", "com")
 
 
 def _number(x: Any) -> float | None:
@@ -95,25 +102,39 @@ def generic_centres(truths: dict[str, list[tuple[float, float]]], objects: list[
     return {o: {"mass": m0, "com": MIDDLE} for o in objects}
 
 
-def shape_prior(base: Callable[..., ParticleBelief], table: dict[str, dict[str, float]],
-                mass_only: bool = False) -> Callable[..., ParticleBelief]:
+def shape_prior(base: Callable[..., ParticleBelief], table: dict[str, dict[str, float]], mass_only: bool = False,
+                truth: dict[str, Any] | None = None, exact: tuple[str, ...] = ()) -> Callable[..., ParticleBelief]:
     """``prior(pose, n, rng)``: the base prior's particles with the mass and the CoM of ``table[pose["object_id"]]``
     (keys mass, com, sigma_mass, sigma_com); the draws come after the base prior's, from the same stream. ``mass_only``
-    replaces the mass alone and keeps the base particles' CoM keys."""
+    replaces the mass alone and keeps the base particles' CoM keys. The keys in ``exact`` (mass, com) centre on ``truth``
+    instead (module doc); an exact CoM with ``mass_only``, an exact key without a truth or an unknown key is a ValueError."""
+    exact = tuple(exact)
+    if set(exact) - set(EXACT_KEYS):
+        raise ValueError(f"unknown exact keys {sorted(set(exact) - set(EXACT_KEYS))}")
+    if exact and truth is None:
+        raise ValueError("an exact key needs the case's truth")
+    if mass_only and "com" in exact:
+        raise ValueError("mass_only keeps the base CoM: no exact CoM")
 
     def prior_fn(pose: dict[str, Any], n: int = 2000, rng: np.random.Generator | None = None) -> ParticleBelief:
         rng = rng if rng is not None else np.random.default_rng(0)
         t = table[str(pose["object_id"])]
         b = base(pose, n, rng)
-        mass = float(t["mass"]) * np.exp(float(t["sigma_mass"]) * rng.standard_normal(n))
+        m0, sig_m = (float(truth["mass"]), EXACT_SD["mass"]) if "mass" in exact else (float(t["mass"]), float(t["sigma_mass"]))
+        mass = m0 * np.exp(sig_m * rng.standard_normal(n))
         if mass_only:
             parts = [{**p, "mass": float(mass[i]), "mass_scale": float("nan")} for i, p in enumerate(b.particles)]
             return ParticleBelief(parts, np.ones(n), flags=list(b.flags))
-        lo, hi = (ndtr((x - float(t["com"])) / float(t["sigma_com"])) for x in COM_RANGE)
-        frac = np.clip(float(t["com"]) + float(t["sigma_com"]) * ndtri(lo + (hi - lo) * rng.random(n)), *COM_RANGE)
         pv = pose["pivot"]
         c, ax = np.asarray(pv["centre"], dtype=float), np.asarray(pv["axis"], dtype=float)
-        com = c + np.outer(float(pv["lo"]) + frac * float(pv["L"]), ax)
+        if "com" in exact:
+            c0 = float(truth["com_frac"])
+            frac = c0 + EXACT_SD["com"] * ndtri(np.clip(rng.random(n), 1e-12, 1.0 - 1e-12))
+            com = np.asarray(truth["com_obj"], dtype=float) + np.outer((frac - c0) * float(pv["L"]), ax)
+        else:
+            lo, hi = (ndtr((x - float(t["com"])) / float(t["sigma_com"])) for x in COM_RANGE)
+            frac = np.clip(float(t["com"]) + float(t["sigma_com"]) * ndtri(lo + (hi - lo) * rng.random(n)), *COM_RANGE)
+            com = c + np.outer(float(pv["lo"]) + frac * float(pv["L"]), ax)
         parts = [{**p, "mass": float(mass[i]), "com_obj": com[i].tolist(), "com_frac": float(frac[i]), "mass_scale": float("nan"),
                   "com_branch": False, "com_s": None, "f": 0.0} for i, p in enumerate(b.particles)]
         return ParticleBelief(parts, np.ones(n), flags=list(b.flags))
