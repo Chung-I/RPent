@@ -17,7 +17,8 @@ daily-logs experiments/2026-11-03-real-masses, sources/hot3d.md): ``data/object_
 maps each to its old and its corrected name. The ids stay, because they seed the draws and name the asset folders and
 the splits, so v10 rows, the stored VLM answers and the E1 records still use them. Under generator v11 every text for
 an agent or a VLM uses the corrected name, and the id an agent sees carries it ("hot3d__whiteboard_eraser"); v10 text
-is unchanged."""
+is unchanged. Under v11 an agent also sees the material of the real object (``data/materials_v11.json``, pinned by its
+sha256), not the lab's, which was often guessed from the name, and every object's name in one format (spaces)."""
 
 from __future__ import annotations
 
@@ -29,7 +30,10 @@ from typing import Any
 
 NAMES_V11 = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "object_names_v11.json")
 NAMES_V11_SHA256 = "6559c899e65d8a44994c6b51819efa1dd0242a2730f660b1641b10632fdc7062"
+MATERIALS_V11 = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "materials_v11.json")
+MATERIALS_V11_SHA256 = "68efd51603df33f21f572e21b654684caa7b643be281b63aa93e6c37bb5736dd"
 _MAPS: dict[str, dict[str, Any]] = {}
+_MATERIALS: dict[str, dict[str, Any]] = {}
 
 
 def load_names(path: str | None = None) -> dict[str, dict[str, str]]:
@@ -42,6 +46,18 @@ def load_names(path: str | None = None) -> dict[str, dict[str, str]]:
             raise ValueError(f"{path}: its sha256 is not the pinned v11 names map's {NAMES_V11_SHA256}")
         _MAPS[path] = json.loads(raw)["objects"]
     return _MAPS[path]
+
+
+def load_materials(path: str | None = None) -> dict[str, dict[str, Any]]:
+    """The material an agent is told under v11, by id ({material, lab, changed, basis, evidence}, cached per path); a
+    file whose sha256 is not the pinned one is an error."""
+    path = path or MATERIALS_V11
+    if path not in _MATERIALS:
+        raw = open(path, "rb").read()
+        if hashlib.sha256(raw).hexdigest() != MATERIALS_V11_SHA256:
+            raise ValueError(f"{path}: its sha256 is not the pinned v11 materials table's {MATERIALS_V11_SHA256}")
+        _MATERIALS[path] = json.loads(raw)["objects"]
+    return _MATERIALS[path]
 
 
 def object_name(object_id: str, generator: str) -> str:
@@ -63,17 +79,25 @@ def agent_id(object_id: str, generator: str) -> str:
 
 
 def agent_object(obj: dict[str, Any], generator: str) -> dict[str, Any]:
-    """view_env_state's object entry ({name, id, material}): a renamed object's corrected name and agent id under v11,
-    the lab's name and id otherwise."""
-    if generator == "v11" and obj["id"] in load_names():
-        return {"name": object_name(obj["id"], generator), "id": agent_id(obj["id"], generator), "material": obj["material"]}
+    """view_env_state's object entry ({name, id, material}): under v11 the plain name (a renamed object's corrected
+    one), the agent id and the real material (data/materials_v11.json); the lab's record otherwise."""
+    if generator == "v11":
+        return {"name": object_name(obj["id"], generator), "id": agent_id(obj["id"], generator),
+                "material": load_materials()[obj["id"]]["material"]}
     return {"name": obj["name"], "id": obj["id"], "material": obj["material"]}
 
 
-def agent_names(obj: dict[str, Any], generator: str) -> set[str]:
-    """The extra names an agent may call a renamed object under v11 (lower case): its corrected name and agent id, with
-    spaces or underscores; none otherwise."""
-    if generator != "v11" or obj["id"] not in load_names():
-        return set()
-    out = {object_name(obj["id"], generator).lower(), agent_id(obj["id"], generator).lower()}
-    return out | {n.replace("_", " ") for n in out} | {n.replace(" ", "_") for n in out}
+def _words(name: str) -> str:
+    return " ".join(re.split(r"[\s_-]+", name.strip().lower()))
+
+
+def accepts(obj: dict[str, Any], prompt: str, generator: str) -> bool:
+    """locate's name check. Every generator takes the lab's names (the id, the name, the name with spaces, "object");
+    v11 also takes the names an agent sees (the plain name, the agent id) and the lab's, with any mix of spaces,
+    hyphens and underscores."""
+    p = prompt.strip().lower()
+    if p in {obj["id"].lower(), obj["name"].lower(), "object", obj["name"].lower().replace("_", " ")}:
+        return True
+    if generator != "v11":
+        return False
+    return _words(p) in {_words(n) for n in (object_name(obj["id"], generator), agent_id(obj["id"], generator), obj["name"], obj["id"])}

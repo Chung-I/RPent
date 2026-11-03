@@ -419,6 +419,9 @@ def train_bundle(a: argparse.Namespace, split: dict | None = None, rows: list[di
         if generator != "v10":
             raise SystemExit(f"the m2a lab prior mirrors generator v10, not the corpus's {generator}: use --feature-schema m2b")
         prior_fn, prior = lab_prior, "lab_generator"
+    if prior_fn is None and generator != "v10":
+        raise SystemExit(f"--features nominal scores the belief with the milestone 1 prior, which reads the lab's densities, "
+                         f"not generator {generator}'s masses: use --features true --feature-schema m2b")
     split = split if split is not None else split_objects([{"object": o} for o in corpus_objects(a.corpus)], seed=a.seed)
     tr, va = rows_of(rows, split["train"]), rows_of(rows, split["val"])
     os.makedirs(a.out_dir, exist_ok=True)

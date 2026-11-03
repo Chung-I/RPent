@@ -321,16 +321,24 @@ def test_corpus_generator():
 
 
 def test_training_records_the_generator(tmp_path, monkeypatch):
-    """A bundle declares its corpus's generator; training under another RPENT_LAB_GENERATOR is refused, and so is the
-    m2a lab prior (v10's) on v11 rows; the m2b world under v11 names the v11 prior."""
+    """A bundle declares its corpus's generator; training under another RPENT_LAB_GENERATOR is refused, and so are the
+    m2a lab prior (v10's) and the milestone 1 prior (the lab's densities) on v11 rows; the m2b world under v11 names the
+    v11 prior."""
+    from robots.mujoco_lab.prior import V11_PRIOR
     from robots.mujoco_lab.train_models import m2b_world, main
+    from tests.unit_tests.robots.mujoco_lab.test_train_models import _m2b_rows
     from tests.unit_tests.skills.synthetic import synthetic_rows, with_pose
 
+    m2b = tmp_path / "m2b.jsonl"
+    m2b.write_text("".join(json.dumps(dict(r, generator="v11")) + "\n" for r in _m2b_rows()))
     corpus = tmp_path / "c.jsonl"
     corpus.write_text("".join(json.dumps(dict(r, generator="v11")) + "\n" for r in with_pose(synthetic_rows(300))))
     monkeypatch.setenv("RPENT_LAB_GENERATOR", "v11")
-    main(["--corpus", str(corpus), "--out-dir", str(tmp_path / "b"), "--n-belief", "4", "--features", "nominal"])
-    assert json.load(open(tmp_path / "b" / "manifest.json"))["generator"] == "v11"
+    main(["--corpus", str(m2b), "--out-dir", str(tmp_path / "b"), "--n-belief", "4", "--feature-schema", "m2b"])
+    man = json.load(open(tmp_path / "b" / "manifest.json"))
+    assert man["generator"] == "v11" and man["prior"] == V11_PRIOR
+    with pytest.raises(SystemExit, match="milestone 1"):
+        main(["--corpus", str(corpus), "--out-dir", str(tmp_path / "n"), "--n-belief", "4", "--features", "nominal"])
     with pytest.raises(SystemExit, match="v10"):
         main(["--corpus", str(corpus), "--out-dir", str(tmp_path / "t"), "--n-belief", "4", "--features", "true"])
     monkeypatch.setenv("RPENT_LAB_GENERATOR", "v10")
@@ -423,14 +431,14 @@ def test_training_refuses_a_bundle_of_another_generator(tmp_path, monkeypatch):
     """Review (Codex 1, Opus 5): a retrain updates the manifest in place, so a v11 retrain into a v10 bundle would keep
     the v10 probe models under a v11 manifest; training refuses a bundle directory of another generator."""
     from robots.mujoco_lab.train_models import main, write_manifest
-    from tests.unit_tests.skills.synthetic import synthetic_rows, with_pose
+    from tests.unit_tests.robots.mujoco_lab.test_train_models import _m2b_rows
 
     corpus = tmp_path / "c.jsonl"
-    corpus.write_text("".join(json.dumps(dict(r, generator="v11")) + "\n" for r in with_pose(synthetic_rows(300))))
+    corpus.write_text("".join(json.dumps(dict(r, generator="v11")) + "\n" for r in _m2b_rows()))
     os.makedirs(tmp_path / "b")
     write_manifest(str(tmp_path / "b"), probe_models={"weigh": "probe_weigh.joblib"})        # a v10 bundle: no field
     monkeypatch.setenv("RPENT_LAB_GENERATOR", "v11")
-    args = ["--corpus", str(corpus), "--out-dir", str(tmp_path / "b"), "--n-belief", "4", "--features", "nominal"]
+    args = ["--corpus", str(corpus), "--out-dir", str(tmp_path / "b"), "--n-belief", "4", "--feature-schema", "m2b"]
     with pytest.raises(SystemExit, match="generator v10"):
         main(args)
     write_manifest(str(tmp_path / "b"), generator="v11")
@@ -664,7 +672,7 @@ def test_object_names_follow_the_generator():
     assert object_name("handal__hammer_6", "v11") == object_name("handal__hammer_6", "v10") == "hammer"
     obj = {"id": "hot3d__megaphone", "name": "megaphone", "material": "hard_plastic"}
     assert agent_object(obj, "v10") == {"name": "megaphone", "id": "hot3d__megaphone", "material": "hard_plastic"}
-    assert agent_object(obj, "v11") == {"name": "vacuum jug", "id": "hot3d__vacuum_jug", "material": "hard_plastic"}
+    assert agent_object(obj, "v11") == {"name": "vacuum jug", "id": "hot3d__vacuum_jug", "material": "plastic"}
     banana = {"id": "ycb__banana", "name": "banana", "material": "fruit"}
     assert agent_object(banana, "v11") == agent_object(banana, "v10") == {"name": "banana", "id": "ycb__banana", "material": "fruit"}
 

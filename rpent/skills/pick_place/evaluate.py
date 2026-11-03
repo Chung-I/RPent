@@ -90,6 +90,8 @@ def belief_features(row: dict[str, Any], rng: np.random.Generator, n: int = 64, 
         b = prior_fn(row["pose"], n, rng)
         base, pose = row_base(row), row_pose(row)
         return [particle_features(base, part, pose, row["force"]) for part in b.particles]
+    if row.get("generator") == "v11":
+        raise ValueError("a generator v11 row needs the bundle's prior (prior_fn): the milestone 1 prior reads the lab's densities")
     g = row["geometry"]
     belief = Belief.prior(g["volume"], g["material"], g.get("hollow", False), row["features"].get("visibility", 1.0),
                           length=g.get("length"))
