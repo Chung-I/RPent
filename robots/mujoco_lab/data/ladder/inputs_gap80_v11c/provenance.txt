@@ -1,0 +1,2 @@
+branch 6a38c38634bc3d59fd57c7cfab99454a0d542e48, dirty files 0
+bundle /home/chungyili/Codes/RPent-real/robots/mujoco_lab/data/m2b2_v11c

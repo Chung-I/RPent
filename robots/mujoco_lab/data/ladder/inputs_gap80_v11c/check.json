@@ -1,0 +1,68 @@
+{
+ "settings": {
+  "k100_A3_abs": {
+   "n": 80,
+   "no_menu": 0,
+   "match": 80,
+   "mismatch": {},
+   "cases": [],
+   "reset_artifact": 3,
+   "expected": {
+    "compared": 80,
+    "menu_differs": [],
+    "choice_differs": []
+   }
+  },
+  "k30_A3_abs": {
+   "n": 80,
+   "no_menu": 0,
+   "match": 79,
+   "mismatch": {
+    "probe_margin": 1
+   },
+   "cases": [
+    {
+     "case": "hope__butter/0",
+     "reason": "probe_margin",
+     "lowest": "probe_squeeze",
+     "rule": "light_grip",
+     "lowest_value": 2.901,
+     "rule_value": 2.916
+    }
+   ],
+   "reset_artifact": 3,
+   "expected": {
+    "compared": 80,
+    "menu_differs": [],
+    "choice_differs": []
+   }
+  },
+  "k100_A10_abs": {
+   "n": 80,
+   "no_menu": 0,
+   "match": 79,
+   "mismatch": {
+    "probe_margin": 1
+   },
+   "cases": [
+    {
+     "case": "hope__cream_cheese/0",
+     "reason": "probe_margin",
+     "lowest": "probe_squeeze",
+     "rule": "light_grip",
+     "lowest_value": 8.001,
+     "rule_value": 8.052
+    }
+   ],
+   "reset_artifact": 3,
+   "expected": {
+    "compared": 80,
+    "menu_differs": [],
+    "choice_differs": []
+   }
+  }
+ },
+ "cases": 80,
+ "bc_same_across_settings": 80,
+ "bc_differ": []
+}
