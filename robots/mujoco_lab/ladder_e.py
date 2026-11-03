@@ -546,7 +546,7 @@ def summarize(rows: list[dict[str, Any]], n_boot: int = 2000) -> dict[str, Any]:
                 h1["mismatch"][reason] += 1
                 h1["cases"].append({"case": tag, "reason": reason, "e": cE[1], "oracle": oc, "e_value": T[1][cE[1]],
                                     "oracle_value": T[1].get(oc)})
-        if full.get("reset_artifact") or not (full.get("default") or {}).get("reset_at_rest", True):
+        if any(runs[H].get("reset_artifact") for H in Hs) or not (full.get("default") or {}).get("reset_at_rest", True):
             s["artifact"] += 1
             continue
         for H in Hs:
@@ -597,7 +597,9 @@ def markdown(summ: dict[str, Any], title: str = "E: the receding-horizon referen
          "E scores every row the agents may choose with a lookahead of H attempts on the true menu, and replans at each real "
          "menu. H = 1 is the menu's own prices. The default rule's regret is its first choice's score on E's table minus the "
          "lowest score of that table (mean, object-bootstrap 95 % interval; n50: e1_gap.power_n, the cases that show half of "
-         "this gap at 80 % power). A case whose reset did not reach rest is left out of the metrics.", "",
+         "this gap at 80 % power). A case whose reset did not reach rest in any of its runs is left out of the regrets, the "
+         "horizon changes and the two lists in Checks; the H = 1 comparison, the table agreement and the wall times count "
+         "every case.", "",
          "## E at H = 1 against the oracle rule (first decision)", "",
          "| setting | compared | match | mismatch by reason |", "|---|---|---|---|"]
     for name, s in summ["settings"].items():

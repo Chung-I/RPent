@@ -336,3 +336,11 @@ def test_the_summary_checks_that_every_run_saw_the_same_first_tables():
     rows[1]["e_log"][0]["tables"]["2"]["commit_std"] = 1.1
     s = ladder_e.summarize(rows, n_boot=200)["settings"]["k100_A3_abs"]
     assert s["consistency"] == {"compared": 1, "differ": ["a/0"]}
+
+
+def test_the_summary_leaves_out_a_case_whose_reset_failed_in_any_run():
+    T = {1: {"commit_std": 2.0, "decline": 3.0}, 2: {"commit_std": 1.0, "decline": 3.0}, 3: {"commit_std": 1.0, "decline": 3.0}}
+    rows = _case("a", T, oracle="commit_std", default="commit_std") + _case("b", T, oracle="commit_std", default="decline")
+    rows[3]["reset_artifact"] = True          # case b: only its H = 1 run's reset did not reach rest
+    s = ladder_e.summarize(rows, n_boot=200)["settings"]["k100_A3_abs"]
+    assert s["artifact"] == 1 and s["regret"]["1"]["n"] == 1
