@@ -104,6 +104,17 @@ PAD_FORCE_NOISE = 0.05       # every force reading of the hand is x exp(0.05 eps
 FORCE_STREAM = 1             # the force readings' stream per reset: (seed, crc32(object), FORCE_STREAM)
 FORCE_NOISE_ENV = "RPENT_LAB_FORCE_NOISE"
 LIQUID_ANCHOR = '<freejoint name="obj_free"/>'
+# Joint-torque sensing (the arm port, daily-logs experiments/2026-11-04-arm-port; the sim's ident.py and excite.py)
+TORQUE_STREAM = 2            # the torque noise's stream per reset: (seed, crc32(object), TORQUE_STREAM)
+TORQUE_NOISE_ENV = "RPENT_LAB_TORQUE_NOISE"
+ROBOT_MODEL_ENV = "RPENT_ARM_ROBOT_MODEL"
+JOINT_RISE_M = 0.03          # an attempt's joint window: the lift once the hand rose 3 cm, the hold and the transport
+JOINT_MIN_S = 0.3            # no joint readout from a window shorter than this
+IDENT_V_LIFT = 0.10          # the identify probe: close, lift LIFT_H at 0.1 m/s, hold, excite, hold, set down, open
+IDENT_HOLD_S = 0.5
+IDENT_DURATION_S = 6.0       # the excitation's length; R1 compares 3, 6 and 12 s, the paper session picks one
+IDENT_CANDIDATES = 40        # best of 40 by the payload regressor's condition number (09-24 study)
+IDENT_SETTLE_S = 0.3
 
 def force_noise_level(value: float | None = None) -> float:
     """The lab's force noise: ``value``, else RPENT_LAB_FORCE_NOISE, else PAD_FORCE_NOISE; a finite number at least 0
@@ -173,6 +184,10 @@ def load_sim(explicit: str | None = None) -> dict[str, Any]:
         sys.path.insert(0, d)
     for name in ("scene", "grasp", "objects", "t3_make"):
         _SIM[name] = importlib.import_module(name)
+    for name in ("ident", "excite"):               # the arm port's joint sensing, when the sim has it
+        _SIM.pop(name, None)
+        if os.path.exists(os.path.join(d, name + ".py")):
+            _SIM[name] = importlib.import_module(name)
     _SIM["dir"] = d
     return _SIM
 
@@ -308,8 +323,10 @@ class MuJoCoLabEnv:
     """One object on the table with hidden properties, the pads, and the place fixtures."""
 
     def __init__(self, sim_dir: str | None = None, render: bool = False, damage_meter: bool = True,
-                 slosh_zeta: float | None = None, force_noise: float | None = None):
+                 slosh_zeta: float | None = None, force_noise: float | None = None, torque_noise: float | None = None):
         self.force_noise = force_noise
+        self._torque_noise = torque_noise
+        self._robot_model = None
         self.s = load_sim(sim_dir)
         self.render = render
         self.damage_meter = bool(damage_meter)
@@ -381,6 +398,8 @@ class MuJoCoLabEnv:
         self.rng = np.random.default_rng([int(seed), zlib.crc32(object_id.encode())])
         # the force readings' own stream, so the squeeze's stays as it was
         self.force_rng = np.random.default_rng([int(seed), zlib.crc32(object_id.encode()), FORCE_STREAM])
+        # the joint torque sensors' noise stream, its own (the force and squeeze streams stay as they were)
+        self.torque_rng = np.random.default_rng([int(seed), zlib.crc32(object_id.encode()), TORQUE_STREAM])
         self._refresh_baselines()
         self.episode += 1
         self._case = {"object_id": object_id, "theta": copy.deepcopy(theta), "com_end": com_end, "fixture": fixture, "fill": fill,
@@ -929,6 +948,7 @@ class MuJoCoLabEnv:
         self._refresh_baselines()
         planned = self.plan_trajectory(proposal, v_lift, v_transport, destination, release_height, a_transport)
         self._meter_begin()
+        self._log_begin()
         sim = self.sim
         hz = sc.CTRL_HZ
         pt = np.asarray(proposal.point, dtype=float)
@@ -963,7 +983,14 @@ class MuJoCoLabEnv:
             self._open_and_rise(pt[0], pt[1], gr.hand_start_z(pt) + LIFT_H, proposal.yaw, trace, on_step)
         self._metering = False
         meter, damage = self._meter_end()
-        return self._label(trace, rose, dest, release, planned, v_lift, meter, damage)
+        log = self._log_end()
+        r = self._label(trace, rose, dest, release, planned, v_lift, meter, damage)
+        if log is not None:
+            joint, rec = self._attempt_joint(log, trace) if rose else (None, {"torque_noise": self.torque_noise})
+            if joint is not None:
+                r.readouts["joint"] = joint
+            r.sensor.update(rec)
+        return r
 
     def _open_and_rise(self, x: float, y: float, z: float, yaw: float, trace: list[dict[str, Any]], on_step) -> dict[str, Any]:
         """Open the gripper with the hand at (x, y, z) for RELEASE_S, then rise RETREAT_M and settle; the release
@@ -1032,7 +1059,88 @@ class MuJoCoLabEnv:
                           "grip_dz": float((R @ grip[0] + pos)[2] - grip[1]) if grip else None,
                           "pitch_ey": float(pitch - pitch0[0]),
                           "t_meter": None if self._dmeter is None else round(self._dmeter.t, 4)})
+            if getattr(sim, "log", None) is not None:          # joint sensing: tag this step's substeps in the log
+                sim.log.tag_step(phase, len(trace) - 1, int(self.s["scene"].SUB), pose=self._obj_in_l7())
         return trace, on_step
+
+    # ------------------------------------------------------- joint sensing
+    @property
+    def joint_sensing(self) -> bool:
+        """True on the arm port's scene: joint positions and measured joint torques (the sim's ident.py)."""
+        return "ident" in self.s and self.sim is not None and getattr(self.sim, "arm", None) is not None
+
+    @property
+    def torque_noise(self) -> float:
+        """The joint torque sensors' noise (N m rms per joint and 2 ms sample): the constructor's, else
+        RPENT_LAB_TORQUE_NOISE, else ident.TORQUE_NOISE_NM (proposed; README "Joint torque noise")."""
+        if self._torque_noise is not None:
+            return float(self._torque_noise)
+        raw = os.environ.get(TORQUE_NOISE_ENV)
+        return float(raw) if raw is not None else float(self.s["ident"].TORQUE_NOISE_NM)
+
+    def robot_model(self):
+        """Step 1's identified robot (ident.RobotModel): RPENT_ARM_ROBOT_MODEL, else <sim>/../out/r1_robot.npz."""
+        if self._robot_model is None:
+            path = os.environ.get(ROBOT_MODEL_ENV) or os.path.join(os.path.dirname(self.s["dir"]), "out", "r1_robot.npz")
+            self._robot_model = self.s["ident"].RobotModel.load(path)
+        return self._robot_model
+
+    def _kinematics(self):
+        sim = self.sim
+        if getattr(sim, "_kin", None) is None:
+            sim._kin = self.s["ident"].Kinematics(sim.m, sim.arm)
+        return sim._kin
+
+    def _obj_in_l7(self) -> dict[str, Any]:
+        """The object's frame in link 7's frame now, and (hidden, for the checks) its ten parameters there."""
+        sim = self.sim
+        b = sim.m.body("link7").id
+        R7, p7 = sim.d.xmat[b].reshape(3, 3), sim.d.xpos[b]
+        return {"p": (R7.T @ (sim.d.xpos[sim.obj] - p7)).tolist(), "R": (R7.T @ sim.obj_mat()).ravel().tolist(),
+                "truth": self.s["ident"].payload_truth(sim.m, sim.d, sim.obj, b)}
+
+    def _log_begin(self) -> None:
+        if self.joint_sensing:
+            self.sim.log = self.s["ident"].Log()
+
+    def _log_end(self):
+        log = getattr(self.sim, "log", None)
+        if log is not None:
+            self.sim.log = None
+        return log
+
+    def _joint_fit(self, log, steps, params: int) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+        """Real2Sim's step 2 on the log's samples of the trace steps `steps` (ident.fit_payload): the readout {params,
+        phi (link 7's parameter change), info (of mass and mass x CoM, link 7's frame), cov, n, resid_rms, cond,
+        window_s, phases, obj_l7 (the object's frame in link 7's at the window's first step)} and the hidden record
+        {joint_truth_l7 (the mean over the window), torque_noise}; (None, record) for a window under JOINT_MIN_S."""
+        I = self.s["ident"]
+        fs = 1.0 / float(self.s["scene"].DT)
+        steps = set(int(i) for i in steps)
+        mask = np.isin(log.step_index(), sorted(steps))
+        rec = {"torque_noise": self.torque_noise}
+        if mask.sum() / fs < JOINT_MIN_S:
+            return None, rec
+        seg = I.segment(log, mask, fs, noise_nm=self.torque_noise, rng=self.torque_rng)
+        fit = I.fit_payload(self._kinematics(), self.robot_model(), [seg], params=params)
+        est, info = fit.mass_com_info()
+        tagged = [x for x in log.steps if x["i"] in steps]
+        first = tagged[0]["pose"]
+        rec["joint_truth_l7"] = np.mean([x["pose"]["truth"] for x in tagged], axis=0).tolist()
+        return ({"params": params, "phi": fit.phi.tolist(), "info": info.tolist(), "cov": fit.cov.tolist(), "n": int(fit.n),
+                 "resid_rms": fit.resid_rms.tolist(), "cond": fit.cond, "window_s": float(mask.sum() / fs),
+                 "phases": sorted({x["phase"] for x in tagged}), "obj_l7": {"p": first["p"], "R": first["R"]}}, rec)
+
+    def _attempt_joint(self, log, trace) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+        """The attempt's joint readout: mass and mass x CoM (params 4) over the lift once the hand rose JOINT_RISE_M
+        above where it closed, the hold and the transport."""
+        closes = [x["hand_z"] for x in trace if x["phase"] == "close"]
+        if not closes:
+            return None, {"torque_noise": self.torque_noise}
+        z0 = closes[-1]
+        steps = [i for i, x in enumerate(trace) if x["phase"] in ("hold", "transport")
+                 or (x["phase"] == "lift" and x["hand_z"] - z0 >= JOINT_RISE_M)]
+        return self._joint_fit(log, steps, 4)
 
     # ---------------------------------------------------------------- probes
     def _hand_geoms(self) -> set[int]:
@@ -1089,7 +1197,10 @@ class MuJoCoLabEnv:
     def _rise_hand(self, yaw: float, steps: list[int]) -> None:
         """The open hand rises RETREAT_M from where it is."""
         sim, hz = self.sim, self.s["scene"].CTRL_HZ
-        x, y, z0 = (float(v) for v in sim.d.mocap_pos[sim.mocap])
+        if getattr(sim, "arm", None) is not None:          # the arm: from the last commanded hand pose
+            x, y, z0 = (float(v) for v in sim.hand_target[0])
+        else:
+            x, y, z0 = (float(v) for v in sim.d.mocap_pos[sim.mocap])
         for frac in ramp_profile(RETREAT_M, V_LOWER, hz):
             sim.set_hand([x, y, z0 + RETREAT_M * frac], yaw)
             sim.step_ctrl()
@@ -1145,6 +1256,86 @@ class MuJoCoLabEnv:
         disp, tilt, thrown = self._probe_cost(p_start, R_start)
         return ProbeResult("weigh", "damaged" if damage else kind, reading, disp, tilt, thrown, steps[0] / hz, trace, **self._monitor(),
                            meter=meter, damage=damage, sensor=sensor)
+
+    def probe_identify(self, proposal: Proposal, force: float, duration: float = IDENT_DURATION_S,
+                       n_candidates: int = IDENT_CANDIDATES) -> ProbeResult:
+        """The identify probe (arm port): a free move to the pregrasp, close with ``force``, lift LIFT_H at 0.1 m/s,
+        hold IDENT_HOLD_S, run an excitation motion of ``duration`` s (excite.plan: the best of ``n_candidates``
+        windowed Fourier trajectories about the hold posture by the payload regressor's condition number, inside
+        the joint ranges, collision-free with the object moving with the hand, the object 3 cm clear of the table,
+        torques planned inside 0.9 of the limits for 1.25 x the hold's joint mass + 0.1 kg), hold
+        IDENT_SETTLE_S, set the object down, open, rise 10 cm, settle. Kinds: measured (reading: Real2Sim's step 2
+        on the hold and the excitation, all ten parameters; see _joint_fit), not_lifted, lost (no pad holds it at
+        the end of the hold or of the excitation), unplanned (no candidate passed). Its time counts the free move."""
+        self._need()
+        if not self.joint_sensing:
+            raise RuntimeError("the identify probe needs the arm port's joint sensing")
+        self._refresh_baselines()
+        sc, gr, X, sim, hz = self.s["scene"], self.s["grasp"], self.s["excite"], self.sim, self.s["scene"].CTRL_HZ
+        pt = np.asarray(proposal.point, dtype=float)
+        p_start, R_start = sim.obj_pos().copy(), sim.obj_mat().copy()
+        self._meter_begin()
+        self._log_begin()
+        trace, on_step = self._tracer(pt, proposal.yaw)
+        out, _, _ = gr.run_grasp(sim, pt, proposal.yaw, force=force, v_lift=IDENT_V_LIFT, lift_h=LIFT_H, hold_s=IDENT_HOLD_S,
+                                 on_step=on_step, lift_profile=ramp_profile(LIFT_H, IDENT_V_LIFT, hz))
+        steps = [len(trace) + int(out["free_steps"]) + int(0.3 * hz)]
+        kind, reading, rec, plan_info = None, {}, {"torque_noise": self.torque_noise}, None
+        rose = first_lifted(trace, ("lift", "hold")) is not None
+        if not rose:
+            kind = "not_lifted"
+        elif not all(trace[-1]["pads"]):
+            kind = "lost"
+        else:
+            hold = [i for i, x in enumerate(trace) if x["phase"] == "hold"]
+            pre, _ = self._joint_fit(sim.log, hold, 4)
+            m_plan = max(0.0, pre["phi"][0]) if pre is not None else self.nominal_mass()
+            plan = X.plan(sim, sim.arm.desired(), float(duration), n=int(n_candidates),
+                          seed=int(self.torque_rng.integers(2 ** 31)), held=True, payload_mass=1.25 * m_plan + 0.1,
+                          kin=self._kinematics())
+            if plan is None:
+                kind = "unplanned"
+            else:
+                plan_info = {"cond": plan.cond, "tried": plan.tried, "rejected": plan.rejected,
+                             "tau_frac_planned": plan.tau_frac_max, "clear_min_m": plan.clear_min_m}
+                i0 = len(trace)
+                steps[0] += X.run(sim, plan, on_step=on_step)
+                for _ in range(int(IDENT_SETTLE_S * hz)):
+                    sim.step_ctrl()
+                    on_step("hold")
+                    steps[0] += 1
+                if not all(trace[-1]["pads"]) or any(not any(x["pads"]) for x in trace[i0:]):
+                    kind = "lost"
+                else:
+                    kind = "measured"
+                    reading, rec = self._joint_fit(sim.log, hold + list(range(i0, len(trace))), 10)
+                    reading = dict(reading or {})
+                    reading["duration_s"] = float(duration)
+                    reading["plan"] = plan_info
+        self._metering = False
+        self._log_end()
+        # set it down where it was: the lowest point 1 cm above the table, then open, rise, settle
+        (x, y, z), yaw = sim.hand_target[0], sim.hand_target[1]
+        z_rel = float(sc.TABLE_TOP) + 0.01 - (sim.obj_low_z() - float(sim.d.xpos[sim.hand][2]))
+        if z_rel < z:
+            for frac in ramp_profile(z - z_rel, V_LOWER, hz):
+                sim.set_hand([x, y, z + (z_rel - z) * frac], yaw)
+                sim.step_ctrl()
+                steps[0] += 1
+        sim.grip(-20.0)
+        for _ in range(int(WEIGH_OPEN_S * hz)):
+            sim.step_ctrl()
+            steps[0] += 1
+        self._rise_hand(yaw, steps)
+        for _ in range(int(WEIGH_SETTLE_S * hz)):
+            sim.step_ctrl()
+            steps[0] += 1
+        meter, damage = self._meter_end()
+        disp, tilt, thrown = self._probe_cost(p_start, R_start)
+        if plan_info is not None:
+            rec["plan"] = plan_info
+        return ProbeResult("identify", "damaged" if damage else kind, reading, disp, tilt, thrown, steps[0] / hz, trace,
+                           **self._monitor(), meter=meter, damage=damage, sensor=rec)
 
     def probe_push(self) -> ProbeResult:
         """The t3_probes.push_probe motion: the open hand's leading pad, at a quarter of the object's
