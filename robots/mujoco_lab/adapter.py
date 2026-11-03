@@ -974,7 +974,8 @@ class MuJoCoLabEnv:
         target_low = self._release_target_low_z(dest, release_height)
         z_hand_rel = target_low - low_off
         segs = [
-            Segment("approach", _steps(APPROACH_M, V_DOWN, hz), z_rest, z_rest, True, V_DOWN),
+            Segment("approach", (len(self._approach_zs(0.0)) if hasattr(gr, "approach_profile") else _steps(APPROACH_M, V_DOWN, hz)),
+                    z_rest, z_rest, True, V_DOWN),
             Segment("close", int(CLOSE_S * hz), z_rest, z_rest, True, 0.0),
             Segment("lift", len(ramp_profile(LIFT_H, v_lift, hz)), z_rest, low_top - surf0, True, v_lift),
             Segment("hold", int(HOLD_S * hz), low_top - surf0, low_top - surf0, True, 0.0),
@@ -989,6 +990,20 @@ class MuJoCoLabEnv:
         ]
         return segs
 
+    def _approach_zs(self, z_low: float) -> list[float]:
+        """The hand z per control step of the descent from APPROACH_M above z_low to z_low: the sim's approach_profile
+        (the arm's braked descent), else the floating hand's constant V_DOWN loop (unchanged, so the hand sim
+        reproduces v11c)."""
+        hz = self.s["scene"].CTRL_HZ
+        prof = getattr(self.s["grasp"], "approach_profile", None)
+        if prof is not None:
+            return [z_low + APPROACH_M * (1.0 - f) for f in prof(APPROACH_M, V_DOWN, hz)]
+        z, out = z_low + APPROACH_M, []
+        while z > z_low:
+            z = max(z_low, z - V_DOWN / hz)
+            out.append(z)
+        return out
+
     def hand_path(self, proposal: Proposal, v_lift: float, v_transport: float, destination: str,
                   release_height: float | None = None, a_transport: float = A_TRANSPORT) -> list[tuple[str, np.ndarray, float]]:
         """The hand pose per control step of execute's planned path from the pregrasp on (the 0.3 s open wait, the
@@ -1002,8 +1017,7 @@ class MuJoCoLabEnv:
         hz0 = gr.hand_start_z(pt)
         z = hz0 + APPROACH_M
         out = [("wait", np.array([pt[0], pt[1], z]), yaw)] * int(0.3 * hz)
-        while z > hz0:
-            z = max(hz0, z - V_DOWN / hz)
+        for z in self._approach_zs(hz0):
             out.append(("approach", np.array([pt[0], pt[1], z]), yaw))
         out += [("close", np.array([pt[0], pt[1], z]), yaw)] * int(CLOSE_S * hz)
         for frac in ramp_profile(LIFT_H, v_lift, hz):
@@ -1706,9 +1720,7 @@ class MuJoCoLabEnv:
         if not plan["ok"]:
             return self._unreachable("push", plan)
         steps = [int(plan["steps"])]
-        z = float(start[2]) + APPROACH_M
-        while z > start[2]:
-            z = max(float(start[2]), z - V_DOWN / hz)
+        for z in self._approach_zs(float(start[2])):
             sim.set_hand([start[0], start[1], z], yaw)
             sim.step_ctrl()
             self._arm_bound()

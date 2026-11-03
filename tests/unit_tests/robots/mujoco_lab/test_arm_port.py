@@ -86,9 +86,19 @@ def test_the_attempt_reads_from_the_joints(env):
     assert abs(r.sensor["pad_readouts"]["fz_hold_n"] - r.readouts["fz_hold_n"]) / (m * 9.81) < 0.05
     sat = r.sensor["saturation"]
     assert sat["of"] > 0 and len(sat["per_joint"]) == 7
+    assert sat["substeps"] == 0                           # a light object: the braked approach stays in the limits
+    app = [x for x in r.trace if x["phase"] == "approach"]
+    assert len(app) == len(env.s["grasp"].approach_profile(0.12, 0.10))
     assert side["qd"].shape == (n, 7) and side["flange_hidden"].shape == (n, 6) and side["saturated"].dtype == bool
     held = side["step"] >= 0
     assert np.allclose(side["f_act"][held & (side["f_act"] > 0)], 15.0)
+
+
+def test_the_push_descent_brakes_inside_the_torque_limits(env):
+    res = env.probe_push()
+    assert res.kind != "unreachable"
+    sat = env._saturation
+    assert sat["substeps"] == 0 or res.kind == "no_breakaway"
 
 
 def test_the_weigh_reads_the_mass_from_the_joints(env):
