@@ -349,6 +349,7 @@ def run(cases_path: str, workers: int, out_dir: str, crossfit: str | None = None
     held = os.path.join(out_dir, "cases.json")
     if os.path.exists(held) and json.load(open(held)) != spec:
         raise ValueError(f"{out_dir} holds another cases file ({held}); give a new directory")
+    generator = e1.run_generator(out_dir)
     crossfit = crossfit or repo_path("robots/mujoco_lab/data/m2b2/folds")
     settings = grid()
     per = len(_plan(settings))
@@ -358,7 +359,7 @@ def run(cases_path: str, workers: int, out_dir: str, crossfit: str | None = None
         shutil.copyfile(cases_path, os.path.join(out_dir, "cases.json"))
     with open(os.path.join(out_dir, f"run_config_{time.strftime('%Y%m%dT%H%M%S')}.json"), "w") as f:
         json.dump({"cases": os.path.abspath(cases_path), "n_cases": spec["n"], "workers": workers, "crossfit": crossfit,
-                   "limit": limit, "default": e1.DEFAULT, "settings": settings, "runs_per_case": per,
+                   "generator": generator, "limit": limit, "default": e1.DEFAULT, "settings": settings, "runs_per_case": per,
                    "code": code_revision()}, f, indent=1)
     path = os.path.join(out_dir, "rows.jsonl")
     have = _counts(path)
@@ -397,6 +398,7 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--workers", type=int, default=8)
     r.add_argument("--limit", type=int, default=None)
     r.add_argument("--out", required=True)
+    r.add_argument("--crossfit", default=None, help="the bundle's crossfit folds (default: data/m2b2/folds)")
     s = sub.add_parser("summary")
     s.add_argument("--dir", required=True)
     s.add_argument("--n-boot", type=int, default=2000)
@@ -417,7 +419,7 @@ def main(argv: list[str] | None = None) -> int:
               f"recommendations {dict(Counter(spec['h3_recommendation'].values()))} -> {a.out}")
         return 0
     if a.cmd == "run":
-        print(run(a.cases, a.workers, a.out, limit=a.limit))
+        print(run(a.cases, a.workers, a.out, crossfit=a.crossfit, limit=a.limit))
         return 0
     path = os.path.join(a.dir, "rows.jsonl")
     rows = e1.load_rows(path if os.path.exists(path) else path + ".gz")

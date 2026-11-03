@@ -174,3 +174,42 @@ def test_the_cases_spread_over_the_cohort_and_leave_out_the_excluded_ones():
     only = {"seed": 13, "rows": [{"object": "o0", "idx": i, "recommendation": "commit"} for i in range(3)]}
     assert e1_gap.pick_cases(only, n=5, plan_seed=1, exclude={(13, "o0", 1)})["cases"] in ([["o0", 0], ["o0", 2]],
                                                                                          [["o0", 2], ["o0", 0]])
+
+
+def test_a_run_records_its_generator_and_refuses_a_directory_of_another(tmp_path, monkeypatch):
+    """e1-v11: the run config records the lab's generator, and a directory that holds a run of another generator (a run
+    config with no field is v10) is an error, so a resumed run never mixes generators."""
+    import glob
+
+    crossfit = tmp_path / "folds"
+    crossfit.mkdir()
+    (crossfit / "folds.json").write_text(json.dumps({"a": 0}))
+    cases = tmp_path / "cases.json"
+    cases.write_text(json.dumps({"seed": 13, "n": 1, "cases": [["a", 0]]}))
+    monkeypatch.setattr(e1_gap, "run_case", lambda item: [])
+    monkeypatch.setenv("RPENT_LAB_GENERATOR", "v11")
+    out = tmp_path / "v11"
+    e1_gap.run(str(cases), workers=1, out_dir=str(out), crossfit=str(crossfit))
+    [held] = glob.glob(str(out / "run_config_*.json"))
+    assert json.load(open(held))["generator"] == "v11"
+    e1_gap.run(str(cases), workers=1, out_dir=str(out), crossfit=str(crossfit))          # a resume under v11
+    old = tmp_path / "v10"
+    old.mkdir()
+    (old / "run_config_20261102T141816.json").write_text(json.dumps({"crossfit": str(crossfit)}))
+    with pytest.raises(ValueError, match="generator v10"):
+        e1_gap.run(str(cases), workers=1, out_dir=str(old), crossfit=str(crossfit))
+
+
+def test_the_run_command_takes_the_bundle(tmp_path, monkeypatch):
+    """e1-v11: `run --crossfit` names the bundle (the v11 check runs on data/m2b2_v11/folds); the run config records it."""
+    import glob
+
+    crossfit = tmp_path / "folds"
+    crossfit.mkdir()
+    (crossfit / "folds.json").write_text(json.dumps({"a": 0}))
+    cases = tmp_path / "cases.json"
+    cases.write_text(json.dumps({"seed": 13, "n": 1, "cases": [["a", 0]]}))
+    monkeypatch.setattr(e1_gap, "run_case", lambda item: [])
+    e1_gap.main(["run", "--cases", str(cases), "--workers", "1", "--out", str(tmp_path / "out"), "--crossfit", str(crossfit)])
+    [held] = glob.glob(str(tmp_path / "out" / "run_config_*.json"))
+    assert json.load(open(held))["crossfit"] == str(crossfit)

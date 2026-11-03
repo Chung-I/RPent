@@ -309,3 +309,33 @@ def test_the_summaries_report_the_regret_without_guard_points():
             + [_rec("menu_planner", "lo_rec", obj=f"o{k}", total=0.0) for k in range(4)])
     c = ex.summarize_pilot(recs, n_boot=100)["contrasts"]["menu_planner"]
     assert c["noguard"]["all"]["mean"] == pytest.approx(-1.0) and c["total"]["all"]["mean"] == pytest.approx(-3.0)
+
+
+def test_the_rescore_takes_the_bundle_and_generator_of_its_source_runs(tmp_path, monkeypatch):
+    """e1-v11: the rescore rebuilds the menus with the bundle its source runs used (their run configs' crossfit), under
+    their generator (no field: v10); sources that name two bundles, or a generator other than the process's, are an
+    error."""
+    import json
+
+    def source(name, **cfg):
+        d = tmp_path / name
+        d.mkdir()
+        for i, c in enumerate(cfg.get("configs", [{}])):
+            (d / f"run_config_{i}.json").write_text(json.dumps(c))
+        return str(d)
+
+    v11 = source("v11", configs=[{"crossfit": "data/m2b2_v11/folds", "generator": "v11"}] * 2)
+    v10 = source("v10", configs=[{"crossfit": "data/m2b2/folds"}])
+    two = source("two", configs=[{"crossfit": "data/m2b2/folds"}, {"crossfit": "data/other/folds"}])
+    monkeypatch.setenv("RPENT_LAB_GENERATOR", "v11")
+    assert ex.source_bundle([v11]) == ("data/m2b2_v11/folds", "v11")
+    with pytest.raises(ValueError, match="generator v10"):
+        ex.source_bundle([v10])
+    with pytest.raises(ValueError, match="2 "):
+        ex.source_bundle([v10, v11])
+    monkeypatch.setenv("RPENT_LAB_GENERATOR", "v10")
+    assert ex.source_bundle([v10]) == ("data/m2b2/folds", "v10")
+    with pytest.raises(ValueError, match="2 "):
+        ex.source_bundle([two])
+    with pytest.raises(ValueError, match="no run config"):
+        ex.source_bundle([source("empty", configs=[])])

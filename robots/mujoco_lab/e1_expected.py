@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+import glob
 import json
 import multiprocessing as mp
 import os
@@ -371,6 +372,24 @@ def pilot_job(item: tuple[dict[str, Any], dict[str, Any]]) -> list[dict[str, Any
     return out
 
 
+def source_bundle(dirs: list[str]) -> tuple[str, str]:
+    """The bundle (its crossfit folds) and the generator the source runs used, from their run configs (no generator field:
+    v10): the rescore rebuilds their menus with the same bundle under the same generator."""
+    from robots.mujoco_lab.corpus import lab_generator
+
+    configs = [json.load(open(p)) for d in dirs for p in sorted(glob.glob(os.path.join(d, "run_config_*.json")))]
+    if not configs:
+        raise ValueError(f"no run config in {dirs}: the source runs' bundle is unknown")
+    seen = sorted({(c["crossfit"], c.get("generator", "v10")) for c in configs})
+    if len(seen) != 1:
+        raise ValueError(f"the source runs name {len(seen)} (bundle, generator) pairs, not one: {seen}")
+    [(crossfit, generator)] = seen
+    if generator != lab_generator():
+        raise ValueError(f"the source runs are generator {generator}, but this process runs {lab_generator()}: rescore "
+                         f"under RPENT_LAB_GENERATOR={generator}")
+    return crossfit, generator
+
+
 def gap_items(src: str) -> list[dict[str, Any]]:
     """The gap check's cases with their runs: the oracle run of each setting and the default run of each recovery."""
     rows = e1.load_rows(_rows_path(src))
@@ -423,7 +442,8 @@ def run(kind: str, items: list[dict[str, Any]], cfg: dict[str, Any], source: dic
         json.dump(source, f, indent=1)
     with open(os.path.join(out_dir, f"run_config_{time.strftime('%Y%m%dT%H%M%S')}.json"), "w") as f:
         json.dump({"kind": kind, "source": source, "workers": workers, "limit": limit, "jobs": len(items),
-                   "crossfit": cfg["crossfit"], "settings": cfg["settings"], "code": code_revision()}, f, indent=1)
+                   "crossfit": cfg["crossfit"], "generator": cfg.get("generator"), "settings": cfg["settings"],
+                   "code": code_revision()}, f, indent=1)
     path = os.path.join(out_dir, "records.jsonl")
     done = set()
     if os.path.exists(path):
@@ -664,8 +684,6 @@ def markdown_pilot(summary: dict[str, Any]) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    from robots.mujoco_lab.train_models import repo_path
-
     ap = argparse.ArgumentParser(prog="e1_expected")
     sub = ap.add_subparsers(dest="cmd", required=True)
     g = sub.add_parser("gap")
@@ -684,8 +702,8 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--wandb", action="store_true")
     a = ap.parse_args(argv)
     if a.cmd in ("gap", "pilot"):
-        crossfit = repo_path("robots/mujoco_lab/data/m2b2/folds")
-        cfg = {"crossfit": crossfit, "folds": json.load(open(os.path.join(crossfit, "folds.json")))}
+        crossfit, generator = source_bundle([a.src] if a.cmd == "gap" else [d for d in (a.final, a.neutral) if d])
+        cfg = {"crossfit": crossfit, "generator": generator, "folds": json.load(open(os.path.join(crossfit, "folds.json")))}
         if a.cmd == "gap":
             items, cfg["settings"] = gap_items(a.src), e1_gap.grid()
             source = {"kind": "gap", "src": os.path.abspath(a.src)}

@@ -39,6 +39,7 @@ decline, on a skill error, or after ``MAX_CALLS`` model calls (then it ends unpl
 from __future__ import annotations
 
 import argparse
+import glob
 import gzip
 import json
 import multiprocessing as mp
@@ -77,10 +78,13 @@ READOUT_KEYS = ("rose", "max_rise_m", "fz_hold_n", "fz_slip_max_n", "fz_at_loss_
 # ---------------------------------------------------------------- names and the case plan
 
 def display_object(object_id: str) -> str:
-    """The object's plain name: the dataset prefix and a trailing number dropped ("hope__orange_juice_carton" -> "orange juice
-    carton", "handal__hammer_6" -> "hammer")."""
-    name = object_id.split("__", 1)[-1]
-    return re.sub(r"_?\d+$", "", name).replace("_", " ")
+    """The object's plain name under the lab's generator (names.object_name): the dataset prefix and a trailing number
+    dropped ("hope__orange_juice_carton" -> "orange juice carton", "handal__hammer_6" -> "hammer"); under v11 a renamed
+    object's corrected name ("hot3d__foam_roller" -> "whiteboard eraser")."""
+    from robots.mujoco_lab.corpus import lab_generator
+    from robots.mujoco_lab.names import object_name
+
+    return object_name(object_id, lab_generator())
 
 
 def display_destination(destination: str) -> str:
@@ -590,6 +594,7 @@ def reset_case(prims: Any, object_id: str, idx: int, seed: int) -> tuple[str, di
     if world is not None:
         env.slosh_zeta = world[1].slosh_zeta
         env.slosh_scale = world[1].slosh_scale
+    env.classes = None if world is None else world[0]            # the reset's flags and damage law: the bundle's classes
     env.reset(object_id, theta, seed=seed * 1000 + idx, com_end=com_end, fixture=None, fill=hidden["fill"], frag=hidden["frag"])
     prims.rng = calibrate._stream(seed, object_id, idx, 1)
     truth = env.truth()
@@ -649,6 +654,20 @@ def run_job(item: tuple[dict[str, Any], dict[str, Any]]) -> list[dict[str, Any]]
     return rows
 
 
+def run_generator(out_dir: str) -> str:
+    """The lab's generator for a run into ``out_dir``, after checking that the directory holds no run of another one (a
+    run config with no generator field is v10), so a resumed run never mixes generators."""
+    from robots.mujoco_lab.corpus import lab_generator
+
+    generator = lab_generator()
+    for held in sorted(glob.glob(os.path.join(out_dir, "run_config_*.json"))):
+        g = json.load(open(held)).get("generator", "v10")
+        if g != generator:
+            raise ValueError(f"{out_dir} holds a generator {g} run ({held}), but this process runs {generator}: give a new "
+                             "directory")
+    return generator
+
+
 def _done(path: str) -> set[tuple]:
     if not os.path.exists(path):
         return set()
@@ -670,13 +689,15 @@ def run(plan_path: str, split: str, arms: list[str], workers: int, out_dir: str,
     cfg = {"arms": arms, "settings": plan["settings"], "crossfit": crossfit,
            "folds": json.load(open(os.path.join(crossfit, "folds.json"))), "base_url": base_url, "stub": stub,
            "max_calls": max_calls, "task": task}
+    generator = run_generator(out_dir)
     os.makedirs(out_dir, exist_ok=True)
     path = os.path.join(out_dir, "rows.jsonl")
     from robots.mujoco_lab.calibrate import code_revision
 
     with open(os.path.join(out_dir, f"run_config_{time.strftime('%Y%m%dT%H%M%S')}.json"), "w") as f:
         json.dump({"plan": os.path.abspath(plan_path), "split": split, "arms": arms, "workers": workers, "base_url": base_url,
-                   "stub": stub, "limit": limit, "crossfit": crossfit, "max_calls": max_calls, "task": task, "model": MODEL,
+                   "stub": stub, "limit": limit, "crossfit": crossfit, "generator": generator, "max_calls": max_calls,
+                   "task": task, "model": MODEL,
                    "planner": {"temperature": 0.0, "max_tokens": 6144, "thinking": True}, "code": code_revision()}, f, indent=1)
     done = _done(path)
     jobs = [j for j in plan["jobs"] if j["split"] == split][: limit or None]

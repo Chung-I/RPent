@@ -46,6 +46,24 @@ def test_display_names_drop_the_dataset_and_the_number():
     assert e1.display_destination("mouse_pad") == "mouse pad"
 
 
+def test_display_names_follow_the_generator(monkeypatch):
+    """Under v11 the planner's text names a renamed object by its corrected name (names.object_name), in the instruction
+    too; under v10 every object keeps the pilot's name (the rule before v11, copied here)."""
+    import re
+
+    from robots.mujoco_lab.masses import load_masses
+
+    monkeypatch.setenv("RPENT_LAB_GENERATOR", "v11")
+    assert e1.display_object("hot3d__foam_roller") == "whiteboard eraser" and e1.display_object("hot3d__pitcher") == "vase"
+    assert e1.display_object("handal__hammer_6") == "hammer" and e1.display_object("fruits_veggies__lemon1") == "lemon"
+    job = {"template": "Put the {object} on the {destination}.", "object": "hot3d__clay_plates"}
+    assert e1.instruction(job, "table_edge") == "Put the spun-bamboo tray on the table edge."
+    monkeypatch.setenv("RPENT_LAB_GENERATOR", "v10")
+    assert e1.instruction(job, "table_edge") == "Put the clay plates on the table edge."
+    for oid in load_masses()["objects"]:
+        assert e1.display_object(oid) == re.sub(r"_?\d+$", "", oid.split("__", 1)[-1]).replace("_", " ")
+
+
 def test_spread_cases_cover_every_object_before_a_second_case():
     cases = {"a": [1, 2, 3, 4], "b": [5], "c": [6, 7]}
     picked = e1.spread_cases(cases, 4, seed=0)
@@ -243,3 +261,51 @@ def test_the_planner_loop_sends_the_chosen_task_text():
     tools, model = FakeTools(), RecordingModel(["decline"])
     e1.planner_loop(tools, model, "menu_planner", "Put it there.", "object", "table_edge", np.random.default_rng(0), task="neutral")
     assert "advice, not an order" in model.messages[1]["content"]
+
+
+@pytest.mark.skipif(not __import__("os").environ.get("RPENT_MUJOCO_SIM_DIR"), reason="sim dir not set")
+def test_a_case_resets_with_the_bundles_classes(monkeypatch):
+    """reset_case resets as calibrate.run_case does: the env takes the bundle's classes (its manifest's fragility world),
+    the ones the case's hidden fragility is drawn from; with no fragility world the env reads the generator's file."""
+    from types import SimpleNamespace
+
+    import robots.mujoco_lab.prior as prior
+    from robots.mujoco_lab.fragility import CLASSES, THRESHOLDS_V0, Thresholds, load_classes
+
+    class Stop(Exception):
+        pass
+
+    class Env:
+        classes = "unset"
+
+        def reset(self, *a, **kw):
+            raise Stop
+
+    C = load_classes(CLASSES)
+    for world, want in (((C, Thresholds.from_json(THRESHOLDS_V0)), C), (None, None)):
+        monkeypatch.setattr(prior, "fragility_world", lambda manifest, w=world: w)
+        prims = SimpleNamespace(env=Env(), manifest={})
+        with pytest.raises(Stop):
+            e1.reset_case(prims, "ycb__mug", 0, 0)
+        assert prims.env.classes is want
+
+
+def test_a_planner_run_records_its_generator_and_refuses_a_directory_of_another(tmp_path, monkeypatch):
+    """e1-v11: as e1_gap.run, the run config records the lab's generator and a directory that holds a run of another
+    generator is an error."""
+    import glob
+
+    crossfit = tmp_path / "folds"
+    crossfit.mkdir()
+    (crossfit / "folds.json").write_text(json.dumps({"a": 0}))
+    plan = tmp_path / "plan.json"
+    plan.write_text(json.dumps({"settings": {}, "jobs": []}))
+    monkeypatch.setattr(e1, "run_job", lambda item: [])
+    monkeypatch.setenv("RPENT_LAB_GENERATOR", "v11")
+    args = dict(split="final", arms=["default_rule"], workers=1, base_url=None, stub=True, crossfit=str(crossfit))
+    e1.run(str(plan), out_dir=str(tmp_path / "v11"), **args)
+    [held] = glob.glob(str(tmp_path / "v11" / "run_config_*.json"))
+    assert json.load(open(held))["generator"] == "v11"
+    monkeypatch.setenv("RPENT_LAB_GENERATOR", "v10")
+    with pytest.raises(ValueError, match="generator v11"):
+        e1.run(str(plan), out_dir=str(tmp_path / "v11"), **args)
