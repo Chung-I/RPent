@@ -20,7 +20,14 @@ needs: reset an object with hidden properties, locate it, propose pinches, measu
 geometry, plan the hand trajectory, execute pinch → lift → transport → set-down →
 release, and label the outcome. A contact monitor flags the runs whose pad contacts
 were not physical, and those after a reset that did not reach rest (``artifact``).
-A damaged run with a jam is an artifact too (JAM_N).
+A damaged run with a jam is an artifact too (JAM_N); on the arm port only when the jam's force is above what the
+arm's joint torque limits can push with (every jam is flagged in ``sensor["jam"]``).
+
+Arm port (the sim has ident.py): the readouts come from the joint torques (Real2Sim; ``sim.log``): the attempt's
+``readouts["joint"]`` and its fz readouts from the flange wrench (``fz_joint`` in the trace), the weigh's mass from its
+still hold, the push force from the flange wrench, the squeeze's actuator force. Pad contact forces stay in the trace
+for the labels and the damage meter (the simulator's truth), never in a reading. ``reach`` filters proposals the arm
+cannot run; a probe whose pose is out of reach has kind ``unreachable``.
 
 Milestone 2b: a fillable object may hold a liquid (``reset(fill=...)``: a point mass at the liquid's centroid,
 fragility.liquid), the object may carry a hidden fragility (``reset(frag=...)``), and the damage meter
@@ -115,6 +122,11 @@ IDENT_HOLD_S = 0.5
 IDENT_DURATION_S = 6.0       # the excitation's length; R1 compares 3, 6 and 12 s, the paper session picks one
 IDENT_CANDIDATES = 40        # best of 40 by the payload regressor's condition number (09-24 study)
 IDENT_SETTLE_S = 0.3
+ARM_SUB = 10                 # arm port: the sidecar samples every control step (50 Hz), the last physics substep of it
+REACH_TOL_M, REACH_TOL_RAD = 1e-3, 1e-2     # reach: a planned hand pose whose IK error is above these is out of reach
+REACH_CHECK_EVERY = 5        # reach: the arm-scene collision check every 5 control steps of the path and at phase changes
+UNREACHABLE = "unreachable"  # the decline reason of a proposal out of the arm's reach, and a probe's kind when its pose is
+ARM_PHASES = ("hold", "transport")   # an attempt's per-phase arm summaries (the weigh: its hold)
 
 def force_noise_level(value: float | None = None) -> float:
     """The lab's force noise: ``value``, else RPENT_LAB_FORCE_NOISE, else PAD_FORCE_NOISE; a finite number at least 0
@@ -269,6 +281,8 @@ class Rollout:
     motion_label: str | None = None                          # the motion rules' label; ``label`` is it unless damage
     damage: dict[str, Any] | None = None                     # the first threshold crossing: label, channel, t
     sensor: dict[str, Any] = field(default_factory=dict)     # the force noise, its eps and the clean readouts; no planner sees it
+    time_s: float | None = None                              # the motion's time: the free move to the pregrasp and the trace
+    arm: dict[str, Any] = field(default_factory=dict)        # arm port: the 50 Hz arm fields (the corpus sidecar, not the row)
 
 
 def _with_liquid(xml: str, liq: dict[str, Any]) -> str:
@@ -338,7 +352,8 @@ class MuJoCoLabEnv:
         self.entry: dict[str, Any] = {"class": "none", "law": None, "fillable": False, "cavity": None}
         self.fill, self.frag, self.liquid, self.spill_deg = 0.0, None, None, None
         self._dmeter: DamageMeter | None = None
-        self._jam = False
+        self._jam = self._jam_artifact = False
+        self._arm_fmax = 0.0
         self.episode = 0
         self.sim = None
         self.obj: dict[str, Any] | None = None
@@ -609,7 +624,12 @@ class MuJoCoLabEnv:
         """The contact monitor's record of the run since the last trace began, and the artifact flag."""
         w = self._watch
         return {"rev_steps": int(w["rev_steps"]), "deepest_mm": float(w["deepest_mm"]),
-                "artifact": artifact(w["rev_steps"], w["deepest_mm"], bool(self.reset_info["at_rest"])) or self._jam}
+                "artifact": artifact(w["rev_steps"], w["deepest_mm"], bool(self.reset_info["at_rest"])) or self._jam_artifact}
+
+    def _jam_record(self) -> dict[str, Any]:
+        """Every jam (the meter's pad force above the largest drive by more than JAM_N on a damaged run), flagged."""
+        return {"jam": bool(self._jam), "jam_n": float(getattr(self, "_jam_n", 0.0)), "arm_max_n": float(self._arm_fmax),
+                "artifact": bool(self._jam_artifact)}
 
     def _install_meter(self) -> None:
         """Wrap the sim's control step: while a trace records (``_metering``), each step also keeps the mean
@@ -643,7 +663,7 @@ class MuJoCoLabEnv:
             for _ in range(sub):
                 sim.substep()
                 acc += self._pad_hull_sums()
-                if sim.d.ctrl[0] > 0:
+                if self._finger_drive() > 0:
                     self._watch_contacts()
             self._step_forces = acc / sub
 
@@ -672,8 +692,8 @@ class MuJoCoLabEnv:
                 touch[k] = True
             else:
                 touching.add((h, other))
-        ctrl = float(sim.d.ctrl[0]) if sim.m.nu else 0.0
-        hi = float(sim.m.actuator_ctrlrange[0, 1]) if sim.m.nu and sim.m.actuator_ctrllimited[0] else np.inf
+        ctrl = self._finger_drive()
+        hi = self._finger_hi()
         self._squeezed = self._squeezed or ctrl > 0.0
         self._held = self._held or (touch[0] and touch[1] and not touching)
         if not self._armed and ((self._squeezed and ctrl <= 0.0) or (self._held and not (touch[0] or touch[1]))):
@@ -682,11 +702,29 @@ class MuJoCoLabEnv:
         axis = sim.obj_mat() @ self._cavity_axis if m.slosh is not None else None
         m.substep(pad_n, touching, sim.obj_vel()[0], axis, self._armed, drive=min(max(ctrl, 0.0), hi))
 
+    def _finger_act(self) -> int | None:
+        """The finger drive's actuator id: by name on a scene that names it (the arm port: arm motors come too), else
+        actuator 0 (the lab's floating hand has only the finger drive); None without actuators."""
+        sim = self.sim
+        acts = getattr(sim, "finger_act", None)
+        if acts:
+            return int(acts[0])
+        return 0 if sim.m.nu else None
+
+    def _finger_drive(self) -> float:
+        a = self._finger_act()
+        return 0.0 if a is None else float(self.sim.d.ctrl[a])
+
+    def _finger_hi(self) -> float:
+        a, m = self._finger_act(), self.sim.m
+        return float(m.actuator_ctrlrange[a, 1]) if a is not None and m.actuator_ctrllimited[a] else np.inf
+
     def _meter_begin(self) -> None:
         """Start the damage meter for an attempt or a probe (its times count from here); off: no meter."""
         from robots.mujoco_lab.slosh import Slosh, scale_at
 
-        self._squeezed = self._held = self._armed = self._jam = False
+        self._squeezed = self._held = self._armed = self._jam = self._jam_artifact = False
+        self._arm_fmax = 0.0
         self._dmeter = None
         if self.damage_meter:
             slosh = (Slosh(self.entry["cavity"], self.fill, self.slosh_zeta, scale=scale_at(self.slosh_scale, self.fill))
@@ -707,6 +745,10 @@ class MuJoCoLabEnv:
         data = m.to_data()
         ev = damage_event(data, self.frag or {}, self.entry, self.fill, spill_deg=self.spill_deg)
         self._jam = ev is not None and m.jam_n > JAM_N
+        self._jam_n = float(m.jam_n)
+        # the arm port: a jam is an artifact only above the largest force the arm's torque limits push with on the run's
+        # poses (ident.max_hand_force); the floating hand has no force limit, so every jam is one
+        self._jam_artifact = self._jam and (not self.joint_sensing or m.jam_n > self._arm_fmax)
         return data, (None if ev is None else {"label": ev[0], "channel": ev[1], "t": round(float(ev[2]), 4)})
 
     def locate(self, prompt: str) -> dict[str, Any] | None:
@@ -886,7 +928,7 @@ class MuJoCoLabEnv:
                     return float(dest["surface_z"]), True
         if abs(x) <= sc.TABLE_HALF[0] and abs(y) <= sc.TABLE_HALF[1]:
             return float(sc.TABLE_TOP), True
-        bx, by = sc.BIN_CENTRE
+        bx, by = DESTINATIONS["bin"]["xy"]             # the bin's place (the arm port moved it: README, gate A2)
         if abs(x - bx) <= sc.BIN_INNER and abs(y - by) <= sc.BIN_INNER:
             return float(DESTINATIONS["bin"]["surface_z"]), True
         return 0.0, False
@@ -939,6 +981,76 @@ class MuJoCoLabEnv:
         ]
         return segs
 
+    def hand_path(self, proposal: Proposal, v_lift: float, v_transport: float, destination: str,
+                  release_height: float | None = None, a_transport: float = A_TRANSPORT) -> list[tuple[str, np.ndarray, float]]:
+        """The hand pose per control step of execute's planned path from the pregrasp on (the 0.3 s open wait, the
+        approach, the close, the lift, the hold, the transport, the lower, the release, the retreat), the held object
+        taken as rigid in the hand: [(phase, hand position, yaw)]. The free move to the pregrasp is not in it."""
+        sc, gr = self.s["scene"], self.s["grasp"]
+        dest = self._dest(destination)
+        hz = sc.CTRL_HZ
+        pt = np.asarray(proposal.point, dtype=float)
+        yaw = float(proposal.yaw)
+        hz0 = gr.hand_start_z(pt)
+        z = hz0 + APPROACH_M
+        out = [("wait", np.array([pt[0], pt[1], z]), yaw)] * int(0.3 * hz)
+        while z > hz0:
+            z = max(hz0, z - V_DOWN / hz)
+            out.append(("approach", np.array([pt[0], pt[1], z]), yaw))
+        out += [("close", np.array([pt[0], pt[1], z]), yaw)] * int(CLOSE_S * hz)
+        for frac in ramp_profile(LIFT_H, v_lift, hz):
+            out.append(("lift", np.array([pt[0], pt[1], hz0 + LIFT_H * frac]), yaw))
+        z = hz0 + LIFT_H
+        out += [("hold", np.array([pt[0], pt[1], z]), yaw)] * int(HOLD_S * hz)
+        goal = np.asarray(dest["xy"], dtype=float)
+        for frac in transport_profile(float(np.linalg.norm(goal - pt[:2])), v_transport, hz, accel=a_transport):
+            c = pt[:2] + (goal - pt[:2]) * frac
+            out.append(("transport", np.array([c[0], c[1], z]), yaw))
+        z_rel = self._release_target_low_z(dest, release_height) - (self.sim.obj_low_z() - hz0)
+        z0 = z
+        for frac in ramp_profile(z0 - z_rel, V_LOWER, hz):
+            z = z0 + (z_rel - z0) * frac
+            out.append(("lower", np.array([goal[0], goal[1], z]), yaw))
+        out += [("release", np.array([goal[0], goal[1], z]), yaw)] * int(RELEASE_S * hz)
+        for frac in ramp_profile(RETREAT_M, V_LOWER, hz):
+            out.append(("retreat", np.array([goal[0], goal[1], z + RETREAT_M * frac]), yaw))
+        return out
+
+    def reach(self, proposal: Proposal, destination: str, v_lift: float = 0.1, v_transport: float = 0.5,
+              release_height: float | None = None, a_transport: float = A_TRANSPORT) -> dict[str, Any] | None:
+        """Can the arm run this proposal to this destination (the reachability rule, design "Reachability rule";
+        gate A2's check)? None if yes, else {"reason": free_ik / free_collision / ik / collision, "phase", ...}. On the
+        arm's scratch data, from its current joint targets, the object where it is now; nothing moves:
+          1. the free move to the pregrasp (plan_free: IK and the joint path's collision check);
+          2. every control step of hand_path by IK warm-started at the previous step: "ik" when the error is above
+             REACH_TOL_M or REACH_TOL_RAD;
+          3. the arm and pads against the scene every REACH_CHECK_EVERY steps and at each phase change; the pads may
+             touch the object, and from the lift on the object is left out (it moves with the hand).
+        The floating hand (no arm) reaches everything."""
+        sim = self.sim
+        arm = getattr(sim, "arm", None)
+        if arm is None:
+            return None
+        A = sys.modules[type(arm).__module__]
+        path = self.hand_path(proposal, v_lift, v_transport, destination, release_height, a_transport)
+        plan = sim.plan_free(path[0][1], path[0][2])
+        if not plan["ok"]:
+            return {"reason": "free_" + str(plan["reason"]), "phase": "free", "hit": plan.get("hit")}
+        hulls, pads = set(sim.hull_ids), {sim.pad_l, sim.pad_r}
+        q, prev, lifted_ = plan["q"], None, False
+        for k, (ph, p, y) in enumerate(path):
+            q, ep, er = arm.ik(p, A.fold_yaw(float(y), plan["yaw_rep"]), q_init=q)
+            if ep > REACH_TOL_M or er > REACH_TOL_RAD:
+                return {"reason": "ik", "phase": ph, "step": k, "ik_error": [float(ep), float(er)]}
+            lifted_ = lifted_ or ph == "lift"
+            if k % REACH_CHECK_EVERY == 0 or ph != prev or k == len(path) - 1:
+                hits = [h for h in arm.collisions(q, ignore=hulls if lifted_ else ()) if not (h[0] in pads and h[1] in hulls)]
+                if hits:
+                    r_, o_, dist = hits[0]
+                    return {"reason": "collision", "phase": ph, "step": k, "hit": [sim.m.geom(r_).name, sim.m.geom(o_).name, float(dist)]}
+            prev = ph
+        return None
+
     # -------------------------------------------------------------- execution
     def execute(self, proposal: Proposal, force: float, v_lift: float, v_transport: float = 0.5,
                 destination: str = "bin", release_height: float | None = None, a_transport: float = A_TRANSPORT) -> Rollout:
@@ -984,12 +1096,21 @@ class MuJoCoLabEnv:
         self._metering = False
         meter, damage = self._meter_end()
         log = self._log_end()
-        r = self._label(trace, rose, dest, release, planned, v_lift, meter, damage)
+        wrench = self._joint_wrench(log) if log is not None else {}
+        rtrace = self._with_joint_fz(trace, wrench) if log is not None else None
+        r = self._label(trace, rose, dest, release, planned, v_lift, meter, damage, readout_trace=rtrace)
+        r.time_s = (int(out.get("free_steps", 0)) + len(trace)) / hz
         if log is not None:
             joint, rec = self._attempt_joint(log, trace) if rose else (None, {"torque_noise": self.torque_noise})
             if joint is not None:
                 r.readouts["joint"] = joint
             r.sensor.update(rec)
+            r.arm, r.readouts["arm_phases"] = self._arm_record(log, trace, wrench)
+            r.sensor["jam"] = self._jam_record()
+            r.sensor["saturation"] = getattr(self, "_saturation", None)
+            # v11c's pad readouts, as hidden diagnostics (gate A3 compares them with the joint readouts)
+            r.sensor["pad_readouts"] = {k: v for k, v in summarize(trace, self._label_out, v_lift).items()
+                                        if k in ("fz_hold_n", "fz_slip_max_n", "fz_at_loss_n")}
         return r
 
     def _open_and_rise(self, x: float, y: float, z: float, yaw: float, trace: list[dict[str, Any]], on_step) -> dict[str, Any]:
@@ -1061,6 +1182,8 @@ class MuJoCoLabEnv:
                           "t_meter": None if self._dmeter is None else round(self._dmeter.t, 4)})
             if getattr(sim, "log", None) is not None:          # joint sensing: tag this step's substeps in the log
                 sim.log.tag_step(phase, len(trace) - 1, int(self.s["scene"].SUB), pose=self._obj_in_l7())
+            if self.joint_sensing:                              # the jam rule's bound: the arm's largest push here
+                self._arm_fmax = max(self._arm_fmax, self.s["ident"].max_hand_force(sim.m, sim.d, sim.arm, sim.hand, mid()))
         return trace, on_step
 
     # ------------------------------------------------------- joint sensing
@@ -1100,8 +1223,9 @@ class MuJoCoLabEnv:
                 "truth": self.s["ident"].payload_truth(sim.m, sim.d, sim.obj, b)}
 
     def _log_begin(self) -> None:
+        """Attach a joint log: the torque sensors' noise goes in once per sample (ident.Log), from the reset's stream."""
         if self.joint_sensing:
-            self.sim.log = self.s["ident"].Log()
+            self.sim.log = self.s["ident"].Log(self.torque_noise, self.torque_rng)
 
     def _log_end(self):
         log = getattr(self.sim, "log", None)
@@ -1121,15 +1245,84 @@ class MuJoCoLabEnv:
         rec = {"torque_noise": self.torque_noise}
         if mask.sum() / fs < JOINT_MIN_S:
             return None, rec
-        seg = I.segment(log, mask, fs, noise_nm=self.torque_noise, rng=self.torque_rng)
+        seg = I.segment(log, mask, fs, noise_nm=0.0)        # the log's torques carry the sensor noise already
         fit = I.fit_payload(self._kinematics(), self.robot_model(), [seg], params=params)
-        est, info = fit.mass_com_info()
+        cov = I.with_floor(fit.cov)                          # the model-error floor (ident.MODEL_FLOOR; README, R1)
+        info = np.linalg.inv(cov[:4, :4])
         tagged = [x for x in log.steps if x["i"] in steps]
         first = tagged[0]["pose"]
         rec["joint_truth_l7"] = np.mean([x["pose"]["truth"] for x in tagged], axis=0).tolist()
-        return ({"params": params, "phi": fit.phi.tolist(), "info": info.tolist(), "cov": fit.cov.tolist(), "n": int(fit.n),
+        return ({"params": params, "phi": fit.phi.tolist(), "info": info.tolist(), "cov": cov.tolist(), "n": int(fit.n),
+                 "floor": list(I.MODEL_FLOOR),
                  "resid_rms": fit.resid_rms.tolist(), "cond": fit.cond, "window_s": float(mask.sum() / fs),
                  "phases": sorted({x["phase"] for x in tagged}), "obj_l7": {"p": first["p"], "R": first["R"]}}, rec)
+
+    def _joint_wrench(self, log) -> dict[int, np.ndarray]:
+        """{trace step: the mean flange wrench over the step} (ident.flange_wrench on the whole log at FIT_HZ: the wrench
+        the hand applies beyond the robot's own dynamics, world frame); {} for a log too short to filter."""
+        I = self.s["ident"]
+        fs = 1.0 / float(self.s["scene"].DT)
+        n = len(log)
+        if n < 64:
+            return {}
+        seg = I.segment(log, slice(None), fs, noise_nm=0.0)
+        w = I.flange_wrench(self._kinematics(), self.robot_model(), seg)
+        idx = np.arange(n)[::max(1, int(round(fs / I.FIT_HZ)))]
+        step = log.step_index()[idx]
+        out: dict[int, list] = {}
+        for k, i in enumerate(step):
+            if i >= 0:
+                out.setdefault(int(i), []).append(w[k])
+        return {i: np.mean(v, axis=0) for i, v in out.items()}
+
+    @staticmethod
+    def _with_joint_fz(trace: list[dict[str, Any]], wrench: dict[int, np.ndarray]) -> list[dict[str, Any]]:
+        """Each step gets fz_joint (the hand's vertical force on what it holds: the flange wrench's z) and the readout
+        trace is a copy with fz := fz_joint (a step without a wrench gets 0)."""
+        out = []
+        for i, x in enumerate(trace):
+            w = wrench.get(i)
+            x["fz_joint"] = None if w is None else float(w[2])
+            out.append(dict(x, fz=0.0 if w is None else float(w[2])))
+        return out
+
+    def _arm_record(self, log, trace, wrench, phases=ARM_PHASES) -> tuple[dict[str, Any], dict[str, Any]]:
+        """(the 50 Hz sidecar fields, the per-phase summaries for the row). Sidecar: per control step (the last substep of
+        each ARM_SUB), t, q, tau (measured), fingers, the trace step (-1: not traced, e.g. the free move) and the step's
+        mean flange wrench (nan where none). Summaries: per phase in ``phases`` the mean measured joint torques and the
+        mean flange wrench over its samples."""
+        t, q, tau, fingers, _ = log.arrays()
+        if len(t) == 0:
+            return {}, {}
+        si = log.step_index()
+        idx = np.arange(ARM_SUB - 1, len(t), ARM_SUB)
+        st = si[idx]
+        W = np.full((len(idx), 6), np.nan)
+        for k, i in enumerate(st):
+            if int(i) in wrench:
+                W[k] = wrench[int(i)]
+        side = {"t": t[idx].astype(np.float32), "q": q[idx].astype(np.float32), "tau": tau[idx].astype(np.float32),
+                "fingers": fingers[idx].astype(np.float32), "step": st.astype(np.int32), "wrench": W.astype(np.float32)}
+        aux = log.aux_arrays() if hasattr(log, "aux_arrays") else {}
+        if aux:                 # qd, the finger drive, and the hidden flange sensor (a diagnostic no planner reads)
+            side["qd"] = aux["qd"][idx].astype(np.float32)
+            side["f_act"] = aux["f_act"][idx].astype(np.float32)
+            side["flange_hidden"] = aux["flange"][idx].astype(np.float32)
+            I = self.s["ident"]
+            sat = np.abs(aux["tau_raw"]) >= np.asarray(sys.modules[type(self.sim.arm).__module__].TAU_MAX)[None, :]
+            side["saturated"] = sat[idx].any(axis=1)
+            self._saturation = {"substeps": int(sat.any(axis=1).sum()), "per_joint": sat.sum(axis=0).astype(int).tolist(),
+                                "of": int(len(sat))}
+        summ = {}
+        for ph in phases:
+            steps = [i for i, x in enumerate(trace) if x["phase"] == ph]
+            if not steps:
+                continue
+            mask = np.isin(si, steps)
+            ws = [wrench[i] for i in steps if i in wrench]
+            summ[ph] = {"tau_mean": tau[mask].mean(axis=0).round(5).tolist(),
+                        "wrench_mean": None if not ws else np.mean(ws, axis=0).round(5).tolist(), "steps": len(steps)}
+        return side, summ
 
     def _attempt_joint(self, log, trace) -> tuple[dict[str, Any] | None, dict[str, Any]]:
         """The attempt's joint readout: mass and mass x CoM (params 4) over the lift once the hand rose JOINT_RISE_M
@@ -1143,6 +1336,22 @@ class MuJoCoLabEnv:
         return self._joint_fit(log, steps, 4)
 
     # ---------------------------------------------------------------- probes
+    def _unreachable(self, probe: str, plan: dict[str, Any] | None) -> ProbeResult:
+        """A probe whose pose the arm cannot reach (its free move failed: out of reach or colliding): kind
+        ``unreachable``, nothing moved, no time; the meter and the log stop. Counted per probe (README, A3)."""
+        self._metering = False
+        self._meter_end()
+        self._log_end()
+        why = {} if plan is None else {"reason": plan.get("reason"), "hit": plan.get("hit")}
+        return ProbeResult(probe, UNREACHABLE, {}, 0.0, 0.0, False, 0.0, [], **self._monitor(), sensor={"reach": why})
+
+    def _arm_bound(self) -> None:
+        """The jam rule's bound for steps outside a tracer (the push): the arm's largest push at the pads' midpoint."""
+        if self.joint_sensing:
+            sim = self.sim
+            mid = (sim.d.geom_xpos[sim.pad_l] + sim.d.geom_xpos[sim.pad_r]) / 2
+            self._arm_fmax = max(self._arm_fmax, self.s["ident"].max_hand_force(sim.m, sim.d, sim.arm, sim.hand, mid))
+
     def _hand_geoms(self) -> set[int]:
         """Every geom of the hand's body subtree (pads, fingers, palm)."""
         m = self.sim.m
@@ -1237,13 +1446,21 @@ class MuJoCoLabEnv:
         pt = np.asarray(proposal.point, dtype=float)
         p_start, R_start = sim.obj_pos().copy(), sim.obj_mat().copy()
         self._meter_begin()
+        self._log_begin()
         trace, on_step = self._tracer(pt, proposal.yaw)
-        gr.run_grasp(sim, pt, proposal.yaw, force=force, v_lift=WEIGH_V_LIFT, lift_h=WEIGH_LIFT_M, hold_s=WEIGH_HOLD_S,
-                     on_step=on_step)
+        try:
+            out = gr.run_grasp(sim, pt, proposal.yaw, force=force, v_lift=WEIGH_V_LIFT, lift_h=WEIGH_LIFT_M, hold_s=WEIGH_HOLD_S,
+                               on_step=on_step)[0]
+        except self._unreachable_error() as exc:
+            return self._unreachable("weigh", getattr(exc, "plan", None))
         self._metering = False
-        kind, reading = self.weigh_reading(trace, force)
-        reading, sensor = self._force_reading(reading)
-        steps = [len(trace)]
+        log = getattr(sim, "log", None)
+        if log is None:
+            kind, reading = self.weigh_reading(trace, force)
+            reading, sensor = self._force_reading(reading)
+        else:                   # the arm port: the joint torques (README "Readout keys")
+            kind, reading, sensor = self._weigh_joint(log, trace, force)
+        steps = [len(trace) + int(out.get("free_steps", 0))]
         sim.grip(-20.0)
         for _ in range(int(WEIGH_OPEN_S * hz)):
             sim.step_ctrl()
@@ -1253,9 +1470,48 @@ class MuJoCoLabEnv:
             sim.step_ctrl()
             steps[0] += 1
         meter, damage = self._meter_end()
+        arm = self._probe_arm(trace, sensor, ("hold",))
         disp, tilt, thrown = self._probe_cost(p_start, R_start)
         return ProbeResult("weigh", "damaged" if damage else kind, reading, disp, tilt, thrown, steps[0] / hz, trace, **self._monitor(),
-                           meter=meter, damage=damage, sensor=sensor)
+                           meter=meter, damage=damage, sensor=sensor, arm=arm)
+
+    def _unreachable_error(self):
+        return getattr(self.s["scene"], "Unreachable", ())
+
+    def _probe_arm(self, trace, sensor: dict[str, Any], phases) -> dict[str, Any]:
+        """Arm port, the end of a probe: stop the log; the sidecar fields, and the per-phase summaries and the jam
+        record into ``sensor``. {} without the arm."""
+        log = self._log_end()
+        if log is None:
+            return {}
+        wrench = self._wrench_cache if getattr(self, "_wrench_log", None) is log else self._joint_wrench(log)
+        side, summ = self._arm_record(log, trace, wrench, phases)
+        sensor["arm_phases"] = summ
+        sensor["jam"] = self._jam_record()
+        sensor["saturation"] = getattr(self, "_saturation", None)
+        return side
+
+    def _weigh_joint(self, log, trace, force: float) -> tuple[str, dict[str, Any], dict[str, Any]]:
+        """The weigh on the arm port: the kind and lower-bound reading from the readout trace (fz from the flange
+        wrench); a measured mass from Real2Sim's step 2 (mass and mass x CoM) on the still hold while lifted, its
+        readout in ``joint``. No pad force enters; the force noise sd is 0 (the torque noise is in the log)."""
+        wrench = self._joint_wrench(log)
+        self._wrench_log, self._wrench_cache = log, wrench
+        rtrace = self._with_joint_fz(trace, wrench)
+        kind, reading = self.weigh_reading(rtrace, force)
+        joint = None
+        if kind == "measured":
+            rest = float(trace[0]["low_z"])
+            hold = [i for i, x in enumerate(trace) if x["phase"] == "hold" and lifted(x, rest, RISEN_M)]
+            joint, rec = self._joint_fit(log, hold, 4)
+            if joint is not None:
+                reading["m_hat"] = float(joint["phi"][0])
+        reading, sensor = self._force_reading(reading, sd=0.0)
+        if joint is not None:
+            reading["joint"] = joint
+            sensor.update(rec)
+        sensor["source"] = "joint"
+        return kind, reading, sensor
 
     def probe_identify(self, proposal: Proposal, force: float, duration: float = IDENT_DURATION_S,
                        n_candidates: int = IDENT_CANDIDATES) -> ProbeResult:
@@ -1277,9 +1533,12 @@ class MuJoCoLabEnv:
         self._meter_begin()
         self._log_begin()
         trace, on_step = self._tracer(pt, proposal.yaw)
-        out, _, _ = gr.run_grasp(sim, pt, proposal.yaw, force=force, v_lift=IDENT_V_LIFT, lift_h=LIFT_H, hold_s=IDENT_HOLD_S,
-                                 on_step=on_step, lift_profile=ramp_profile(LIFT_H, IDENT_V_LIFT, hz))
-        steps = [len(trace) + int(out["free_steps"]) + int(0.3 * hz)]
+        try:
+            out, _, _ = gr.run_grasp(sim, pt, proposal.yaw, force=force, v_lift=IDENT_V_LIFT, lift_h=LIFT_H, hold_s=IDENT_HOLD_S,
+                                     on_step=on_step, lift_profile=ramp_profile(LIFT_H, IDENT_V_LIFT, hz))
+        except self._unreachable_error() as exc:
+            return self._unreachable("identify", getattr(exc, "plan", None))
+        steps = [len(trace) + int(out["free_steps"])]           # as every probe: the free move and the trace, not the wait
         kind, reading, rec, plan_info = None, {}, {"torque_noise": self.torque_noise}, None
         rose = first_lifted(trace, ("lift", "hold")) is not None
         if not rose:
@@ -1313,7 +1572,6 @@ class MuJoCoLabEnv:
                     reading["duration_s"] = float(duration)
                     reading["plan"] = plan_info
         self._metering = False
-        self._log_end()
         # set it down where it was: the lowest point 1 cm above the table, then open, rise, settle
         (x, y, z), yaw = sim.hand_target[0], sim.hand_target[1]
         z_rel = float(sc.TABLE_TOP) + 0.01 - (sim.obj_low_z() - float(sim.d.xpos[sim.hand][2]))
@@ -1331,11 +1589,12 @@ class MuJoCoLabEnv:
             sim.step_ctrl()
             steps[0] += 1
         meter, damage = self._meter_end()
-        disp, tilt, thrown = self._probe_cost(p_start, R_start)
         if plan_info is not None:
             rec["plan"] = plan_info
+        arm = self._probe_arm(trace, rec, ("hold", "identify"))
+        disp, tilt, thrown = self._probe_cost(p_start, R_start)
         return ProbeResult("identify", "damaged" if damage else kind, reading, disp, tilt, thrown, steps[0] / hz, trace,
-                           **self._monitor(), meter=meter, damage=damage, sensor=rec)
+                           **self._monitor(), meter=meter, damage=damage, sensor=rec, arm=arm)
 
     def probe_push(self) -> ProbeResult:
         """The t3_probes.push_probe motion: the open hand's leading pad, at a quarter of the object's
@@ -1345,6 +1604,8 @@ class MuJoCoLabEnv:
         and a tilt of at most 8 deg; reading f_break = the largest force over the 0.3 s before it),
         tipped, no_breakaway, no_contact (moved with no hand force above 0.05 N)."""
         self._need()
+        if self.joint_sensing:
+            return self._probe_push_arm()
         self._refresh_baselines()
         sc, sim, hz = self.s["scene"], self.sim, self.s["scene"].CTRL_HZ
         self._watch = {"rev_steps": 0, "deepest_mm": 0.0}             # the open hand never squeezes
@@ -1402,6 +1663,97 @@ class MuJoCoLabEnv:
         return ProbeResult("push", "damaged" if damage else kind, reading, disp, tilt, thrown, steps[0] / hz, rec, **self._monitor(),
                            meter=meter, damage=damage, sensor=sensor)
 
+    def _push_geometry(self):
+        """(yaw, ex, the hand's start, its height, the object's pose): as probe_push, the push across the long axis."""
+        sc, sim = self.s["scene"], self.sim
+        R, p = sim.obj_mat(), sim.obj_pos()
+        axis = R @ np.asarray(self.props["axis"], dtype=float)
+        yaw = float(np.arctan2(axis[1], axis[0]) + np.pi / 2)
+        ex = np.array([np.cos(yaw), np.sin(yaw), 0.0])
+        V = self._hull_vertices_world()
+        lo = float((V @ ex).min())
+        zlo, zhi = float(V[:, 2].min()), float(V[:, 2].max())
+        pad_z = max(zlo + 0.25 * (zhi - zlo), sc.TABLE_TOP + sc.PAD_HALF[2] + 0.002)
+        hand_z = pad_z + sc.PAD_DROP - sc.PAD_HALF[2]
+        start_s = lo - 0.01 - sc.MAX_OPEN
+        perp = p - ex * float(p @ ex)
+        perp[2] = 0.0
+        return yaw, ex, perp, start_s, hand_z, p.copy(), R.copy()
+
+    def _probe_push_arm(self) -> ProbeResult:
+        """probe_push on the arm port. The floating hand teleported to the low start pose; the arm makes a free move
+        to APPROACH_M above it, opens, descends at V_DOWN and waits 0.3 s (all counted in the time), then pushes as
+        probe_push. The push force is the hand's force along the push from the joint torques (the flange wrench,
+        ident.flange_wrench), the mean over each control step; the kinds and thresholds are probe_push's. A start
+        pose the free move cannot reach gives kind ``unreachable``."""
+        self._refresh_baselines()
+        sim, hz = self.sim, self.s["scene"].CTRL_HZ
+        self._watch = {"rev_steps": 0, "deepest_mm": 0.0}             # the open hand never squeezes
+        self._meter_begin()
+        self._log_begin()
+        yaw, ex, perp, start_s, hand_z, p_start, R_start = self._push_geometry()
+        start = perp + ex * start_s + np.array([0.0, 0.0, hand_z])
+        sim.grip(-20.0)
+        plan = sim.free_move(start + np.array([0.0, 0.0, APPROACH_M]), yaw)
+        if not plan["ok"]:
+            return self._unreachable("push", plan)
+        steps = [int(plan["steps"])]
+        z = float(start[2]) + APPROACH_M
+        while z > start[2]:
+            z = max(float(start[2]), z - V_DOWN / hz)
+            sim.set_hand([start[0], start[1], z], yaw)
+            sim.step_ctrl()
+            self._arm_bound()
+            steps[0] += 1
+        for _ in range(int(0.3 * hz)):
+            sim.step_ctrl()
+            steps[0] += 1
+        p0, R0 = sim.obj_pos().copy(), sim.obj_mat().copy()
+        rec: list[dict[str, Any]] = []
+        sub = int(self.s["scene"].SUB)
+        for k in range(int(PUSH_MAX_S * hz)):
+            sim.set_hand(start + ex * (PUSH_V * k / hz), yaw)
+            sim.step_ctrl()
+            sim.log.tag_step("push", k, sub)
+            self._arm_bound()
+            steps[0] += 1
+            disp = float((sim.obj_pos() - p0) @ ex)
+            tilt = self._tilt_from(R0)
+            rec.append({"t": k / hz, "phase": "push", "disp": disp, "tilt": tilt})
+            if disp > PUSH_STOP_M or tilt > PUSH_STOP_DEG:
+                break
+        self._rise_hand(yaw, steps)
+        for _ in range(int(RETREAT_SETTLE_S * hz)):
+            sim.step_ctrl()
+            steps[0] += 1
+        meter, damage = self._meter_end()
+        log = sim.log
+        wrench = self._joint_wrench(log)
+        self._wrench_log, self._wrench_cache = log, wrench
+        for k, x in enumerate(rec):                     # the hand's force on the object along the push
+            w = wrench.get(k)
+            x["f"] = 0.0 if w is None else float(w[:3] @ ex)
+        window = int(round(PUSH_WINDOW_S * hz))
+        breakaway = None
+        for k, x in enumerate(rec):
+            if x["disp"] > PUSH_BREAKAWAY_M:
+                breakaway = (max(r["f"] for r in rec[max(0, k + 1 - window):k + 1]), x["tilt"])
+                break
+        if breakaway is None:
+            kind, reading = "no_breakaway", {}
+        elif breakaway[0] <= PUSH_MIN_FORCE_N:
+            kind, reading = "no_contact", {}
+        elif breakaway[1] > PUSH_TIP_DEG:
+            kind, reading = "tipped", {}
+        else:
+            kind, reading = "slid", {"f_break": float(breakaway[0])}
+        disp, tilt, thrown = self._probe_cost(p_start, R_start)
+        reading, sensor = self._force_reading(reading, sd=0.0)
+        sensor["source"] = "joint"
+        arm = self._probe_arm(rec, sensor, ("push",))
+        return ProbeResult("push", "damaged" if damage else kind, reading, disp, tilt, thrown, steps[0] / hz, rec, **self._monitor(),
+                           meter=meter, damage=damage, sensor=sensor, arm=arm)
+
     @property
     def force_noise(self) -> float:
         """The sd of the force readings' error (see force_noise_level). A job sets its bundle's before a case
@@ -1412,13 +1764,15 @@ class MuJoCoLabEnv:
     def force_noise(self, value: float | None) -> None:
         self._force_noise = force_noise_level(value)
 
-    def _force_reading(self, reading: dict[str, float]) -> tuple[dict[str, float], dict[str, Any]]:
+    def _force_reading(self, reading: dict[str, float], sd: float | None = None) -> tuple[dict[str, float], dict[str, Any]]:
         """A probe's force reading with the declared error: one eps from the force stream scales every value (the
         weigh's m_hat, or its mu_hat and m_lower from one slide force; the push's f_break), drawn also when the
-        reading is empty, so the stream stays aligned. Returns the reading and the sensor record."""
+        reading is empty, so the stream stays aligned. Returns the reading and the sensor record. ``sd`` 0: the arm
+        port's joint readings (their error is the torque noise in them)."""
+        sd = self.force_noise if sd is None else float(sd)
         eps = float(self.force_rng.standard_normal())
-        noisy = {k: noisy_force(v, eps, self.force_noise) for k, v in reading.items()}
-        return noisy, {"force_noise": self.force_noise, "eps": eps, "clean": dict(reading)}
+        noisy = {k: (noisy_force(v, eps, sd) if isinstance(v, (int, float)) else v) for k, v in reading.items()}
+        return noisy, {"force_noise": sd, "eps": eps, "clean": {k: v for k, v in reading.items() if isinstance(v, (int, float))}}
 
     @staticmethod
     def squeeze_reading(k: float | None, rng: np.random.Generator) -> dict[str, float]:
@@ -1449,18 +1803,26 @@ class MuJoCoLabEnv:
             on_step(phase)
             trace[-1]["f_cmd"] = f_cmd[0]
 
-        gr.run_grasp(sim, pt, proposal.yaw, force=SQUEEZE_F0, v_lift=WEIGH_V_LIFT, lift_h=0.0, hold_s=0.0, on_step=on)
+        self._log_begin()
+        try:
+            out = gr.run_grasp(sim, pt, proposal.yaw, force=SQUEEZE_F0, v_lift=WEIGH_V_LIFT, lift_h=0.0, hold_s=0.0, on_step=on)[0]
+        except self._unreachable_error() as exc:
+            return self._unreachable("squeeze", getattr(exc, "plan", None))
         n = int(round(SQUEEZE_RAMP_S * hz))
+        f_act: list[float] = []
         for k in range(1, n + 1):
             f_cmd[0] = SQUEEZE_F0 + (f_max - SQUEEZE_F0) * k / n
             sim.grip(f_cmd[0])
             sim.step_ctrl()
             on("ramp")
+        a = self._finger_act()
         for _ in range(int(round(SQUEEZE_HOLD_S * hz))):
             sim.step_ctrl()
             on("hold")
+            if a is not None:
+                f_act.append(float(sim.d.actuator_force[a]))
         self._metering = False
-        steps = [len(trace)]
+        steps = [len(trace) + int(out.get("free_steps", 0))]
         sim.grip(-20.0)
         for _ in range(int(WEIGH_OPEN_S * hz)):
             sim.step_ctrl()
@@ -1471,9 +1833,13 @@ class MuJoCoLabEnv:
             steps[0] += 1
         meter, damage = self._meter_end()
         reading = self.squeeze_reading((self.frag or {}).get("k_n_per_mm"), self.rng)
+        sensor: dict[str, Any] = {}
+        if self.joint_sensing and f_act:     # the squeeze force from the finger actuator's force (not the pad contacts)
+            reading["f_act_n"] = float(np.mean(f_act))
+        arm = self._probe_arm(trace, sensor, ("hold",))
         disp, tilt, thrown = self._probe_cost(p_start, R_start)
         return ProbeResult("squeeze", "damaged" if damage else "measured", reading, disp, tilt, thrown, steps[0] / hz, trace,
-                           **self._monitor(), meter=meter, damage=damage)
+                           **self._monitor(), meter=meter, damage=damage, sensor=sensor, arm=arm)
 
     def _pitch_meter(self, pt: np.ndarray, yaw: float):
         """A function giving (z+ - z-) / 0.10 for the object-fixed points pt ± 0.05 ey (ey: the hand's
@@ -1500,7 +1866,9 @@ class MuJoCoLabEnv:
         return abs(com_h - self.rest_com_height) > 0.2 * max(self.rest_com_height, 1e-3)
 
     def _label(self, trace, rose, dest, release, planned, v_lift: float = 0.0, meter: dict[str, Any] | None = None,
-               damage: dict[str, Any] | None = None) -> Rollout:
+               damage: dict[str, Any] | None = None, readout_trace: list[dict[str, Any]] | None = None) -> Rollout:
+        """The label from the trace (the simulator's truth: pad contacts, poses); the readouts from ``readout_trace``
+        when given (the arm port: fz from the joint torques), else from the trace's pad forces."""
         sim = self.sim
         touching, pads = sim.contacts()
         low = sim.obj_low_z()
@@ -1508,17 +1876,22 @@ class MuJoCoLabEnv:
                       tipped=bool(release is not None and self._tipped(release, low)), held=bool(any(pads)),
                       com_xy=sim.d.subtree_com[sim.obj][:2].tolist())
         out = label_rollout(trace, dest, release, final)
-        readouts, sensor = self._force_readouts(summarize(trace, out, v_lift))
+        self._label_out = out
+        readouts, sensor = self._force_readouts(summarize(readout_trace if readout_trace is not None else trace, out, v_lift),
+                                                sd=0.0 if readout_trace is not None else None)
         return Rollout(final_label(out["label"], damage), out["max_z"], out["drop_z"], out["loss_phase"], out["loss_step"],
                        out["loss_t"], out["loss_speed"], final.zone, release, planned, trace, readouts,
                        **self._monitor(), meter=meter or {}, motion_label=out["label"], damage=damage, sensor=sensor)
 
-    def _force_readouts(self, readouts: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    def _force_readouts(self, readouts: dict[str, Any], sd: float | None = None) -> tuple[dict[str, Any], dict[str, Any]]:
         """The attempt's force readouts with the declared error: three eps from the force stream, in the order hold,
-        slip, loss, drawn also for a reading that does not exist. Returns the readouts and the sensor record."""
+        slip, loss, drawn also for a reading that does not exist. Returns the readouts and the sensor record. ``sd``
+        0: the arm port's joint readouts, whose error is the torque noise already in them (the eps are still drawn,
+        so the stream stays aligned)."""
+        sd = self.force_noise if sd is None else float(sd)
         eps, clean, out = {}, {}, dict(readouts)
         for term, key in (("hold", "fz_hold_n"), ("slip", "fz_slip_max_n"), ("loss", "fz_at_loss_n")):
             eps[term] = float(self.force_rng.standard_normal())
             clean[key] = readouts.get(key)
-            out[key] = noisy_force(clean[key], eps[term], self.force_noise)
-        return out, {"force_noise": self.force_noise, "eps": eps, "clean": clean}
+            out[key] = noisy_force(clean[key], eps[term], sd)
+        return out, {"force_noise": sd, "eps": eps, "clean": clean, "source": "joint" if sd == 0.0 and self.joint_sensing else "pads"}

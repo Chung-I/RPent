@@ -322,6 +322,13 @@ def rollout_row(env, object_id: str, idx: int, seed: int, use_fixtures: bool = F
     declined = unusable_reason(prop.width, pinch_limit(env))
     if declined is not None:                            # the menu never offers this pinch: no rollout
         return {**row, "declined": declined}
+    reach = getattr(env, "reach", None)                 # the arm port's reachability rule: a declined row, never an error
+    why = None if reach is None else reach(prop, act["destination"], theta["v_lift"], act["v_transport"],
+                                           act["release_height"], act["a_transport"])
+    if why is not None:
+        from robots.mujoco_lab.adapter import UNREACHABLE
+
+        return {**row, "declined": UNREACHABLE, "reach": why}
     r = env.execute(prop, act["force"], theta["v_lift"], act["v_transport"], act["destination"], act["release_height"],
                     a_transport=act["a_transport"])
     return {
@@ -344,7 +351,32 @@ def rollout_row(env, object_id: str, idx: int, seed: int, use_fixtures: bool = F
         "rev_steps": r.rev_steps,
         "deepest_mm": r.deepest_mm,
         "artifact": r.artifact,
+        "time_s": r.time_s,
+        **({"_arm": r.arm} if r.arm else {}),
     }
+
+
+def sidecar_path(out: str) -> str:
+    """The arm sidecar of a corpus file: <out without .jsonl>_arm.npz (gitignored; joined by (file, key))."""
+    return (out[:-6] if out.endswith(".jsonl") else out) + "_arm.npz"
+
+
+def pop_arm(row: dict[str, Any], store: dict[str, np.ndarray], file_tag: str) -> dict[str, Any]:
+    """Move a row's 50 Hz arm fields ("_arm") into the sidecar store under "<file>|<key>|<field>"; returns the row."""
+    arm = row.pop("_arm", None)
+    if arm:
+        for k, v in arm.items():
+            store[f"{file_tag}|{row['key']}|{k}"] = np.asarray(v)
+    return row
+
+
+def save_sidecar(path: str, store: dict[str, np.ndarray], resume: bool = False) -> None:
+    """Write the sidecar (np.savez_compressed); on a resume the existing arrays stay and new keys add to them."""
+    if resume and os.path.exists(path):
+        with np.load(path) as old:
+            store = {**{k: old[k] for k in old.files}, **store}
+    if store:
+        np.savez_compressed(path, **store)
 
 
 def _worker(args: tuple[str, int, int, list[int], bool, str, str, str]) -> list[dict[str, Any]]:
@@ -396,6 +428,8 @@ def main(argv: list[str] | None = None) -> int:
     jobs = [(oid, a.draws, a.seed, sorted(done.get(oid, set())), a.fixtures, a.mode, a.classes, a.thresholds) for oid in objects]
     written = 0
     mode = "a" if a.resume and os.path.exists(a.out) else "w"
+    side: dict[str, np.ndarray] = {}
+    tag = os.path.basename(a.out)
     with open(a.out, mode) as f:
         if a.workers <= 1:
             results = map(_worker, jobs)
@@ -405,13 +439,14 @@ def main(argv: list[str] | None = None) -> int:
             results = pool.imap_unordered(_worker, jobs)
         for rows in results:
             for row in rows:
-                f.write(json.dumps(row) + "\n")
+                f.write(json.dumps(pop_arm(row, side, tag)) + "\n")
                 written += "error" not in row
             f.flush()
             print(f"{rows[0]['object'] if rows else '-'}: {len(rows)} rows", file=sys.stderr, flush=True)
         if a.workers > 1:
             pool.close()
             pool.join()
+    save_sidecar(sidecar_path(a.out), side, resume=a.resume)
     return written
 
 

@@ -121,7 +121,7 @@ def probe_rows(env, object_id: str, idx: int, seed: int, classes: str | dict[str
     def row(tag: str, order: int, st: tuple[Any, dict[str, Any], dict[str, float]], res) -> dict[str, Any]:
         prop, pose, base = st
         return {"key": f"{key}__{tag}", **common, "scene": tag[0], "order": order, "s": prop.s,
-                "pose": pose, "base": base, **res.to_data(), "reset": start}
+                "pose": pose, "base": base, **res.to_data(), "reset": start, **({"_arm": res.arm} if res.arm else {})}
 
     def declined(tag: str, order: int, why: str) -> dict[str, Any]:
         return {"key": f"{key}__{tag}", **common, "scene": tag[0], "order": order, "declined": why,
@@ -197,8 +197,12 @@ def main(argv: list[str] | None = None) -> int:
             if "error" not in r:
                 done.setdefault(r["object"], set()).add(int(r["draw"]))
     jobs = [(oid, a.draws, a.seed, sorted(done.get(oid, set())), a.classes, a.thresholds, a.mode) for oid in objects]
+    from robots.mujoco_lab.corpus import pop_arm, save_sidecar, sidecar_path
+
     written = 0
     mode = "a" if a.resume and os.path.exists(a.out) else "w"
+    side: dict = {}
+    tag = os.path.basename(a.out)
     with open(a.out, mode) as f:
         if a.workers <= 1:
             results = map(_worker, jobs)
@@ -207,13 +211,14 @@ def main(argv: list[str] | None = None) -> int:
             results = pool.imap_unordered(_worker, jobs)
         for rows in results:
             for r in rows:
-                f.write(json.dumps(r) + "\n")
+                f.write(json.dumps(pop_arm(r, side, tag)) + "\n")
                 written += "error" not in r
             f.flush()
             print(f"{rows[0]['object'] if rows else '-'}: {len(rows)} rows", file=sys.stderr, flush=True)
         if a.workers > 1:
             pool.close()
             pool.join()
+    save_sidecar(sidecar_path(a.out), side, resume=a.resume)
     return written
 
 

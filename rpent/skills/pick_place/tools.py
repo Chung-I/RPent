@@ -71,6 +71,7 @@ AFTER_RESTORE = "no probe after a restore: the probe models cover probes from re
 REFRESH_ESS = MIN_ESS             # update_belief refreshes when the effective particles fall below this
 FLOOR_P = 1e-4                    # the outcome term's floor without a readout model
 OUT_OF_REACH = {"assessed": False, "reason": "object is out of reach (floor or bin)", "next": "report it; the skill cannot reach it"}
+UNREACHABLE_ALL = {"assessed": False, "reason": "unreachable", "next": "report it; the arm cannot run any pinch of it to this destination"}
 DAMAGED_NEXT = "report it; the skill does not move a damaged object again"
 HIDDEN_READING = ("eps",)         # the substrate's record of a reading's noise: for its own checks, never the planner's
 
@@ -248,6 +249,14 @@ def _assess(object: str, destination: str, care: str | float, primitives: Any,
         return None, cache[key]["assessment"]
     geometry = env.geometry()
     proposals = env.proposals()
+    reach = getattr(env, "reach", None)              # the arm port's reachability rule (a floating hand reaches all)
+    n_out = 0
+    if reach is not None:
+        ok = [p for p in proposals if reach(p, destination) is None]
+        n_out = len(proposals) - len(ok)
+        if not ok:
+            return dict(UNREACHABLE_ALL), None
+        proposals = ok
     pose_fn = getattr(env, "proposal_pose", None) or (lambda prop: geometry_pose(geometry, prop))
     belief = _belief_record(loc, env, primitives, store)["belief"]
     rec = _belief_record(loc, env, primitives, store)
@@ -262,6 +271,8 @@ def _assess(object: str, destination: str, care: str | float, primitives: Any,
                                          evoi=getattr(primitives, "evoi", "plugin"), probe_time_scale=time_scale, reset_s=reset_s,
                                          reset_price=price)
     evidence = belief.summary() + [f"standard squeeze {f_std:.0f} N per pad", f"{len(proposals)} pinch proposals along the long axis"]
+    if n_out:
+        evidence.append(f"{n_out} more pinch proposals out of the arm's reach for {destination}")
     if rec["probes_run"]:
         evidence.append(f"probes run this episode: {', '.join(sorted(rec['probes_run']))}")
     if rec.get("attempted") and getattr(primitives, "probe_models", None):

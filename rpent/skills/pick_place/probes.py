@@ -97,10 +97,13 @@ class ProbeResult:
     damage: dict[str, Any] | None = None                      # first threshold crossing; kind "damaged" when there is one
     sensor: dict[str, Any] = field(default_factory=dict)      # a substrate's record of its reading's noise (mujoco_lab: the
                                                               # force noise, its eps, the clean reading); never a planner's
+    arm: dict[str, Any] = field(default_factory=dict, repr=False)   # a substrate's arm signals at the control rate
+                                                              # (mujoco_lab arm port: the corpus sidecar, never in a row)
 
     def to_data(self) -> dict[str, Any]:
         d = asdict(self)
         d.pop("trace")
+        d.pop("arm")
         return d
 
 
