@@ -43,7 +43,7 @@ import numpy as np
 
 from rpent.skills.pick_place.destinations import DESTINATIONS, OBJECT_REST_XY, PRIMITIVE_IDS, has_surface, is_mesh, release_height
 from robots.mujoco_lab.corpus import lab_generator
-from robots.mujoco_lab.fragility import FLAGS, THRESHOLDS_V0, Thresholds, damage_event, entry_of, liquid, load_classes, spill_angle
+from robots.mujoco_lab.fragility import FLAGS, THRESHOLDS_V0, Thresholds, classes_for, damage_event, entry_of, liquid, load_classes, spill_angle
 from robots.mujoco_lab.labels import Final, final_label, first_lifted, label_rollout, lifted
 from robots.mujoco_lab.masses import real_props, volume_centroid
 from robots.mujoco_lab.names import agent_names
@@ -315,7 +315,8 @@ class MuJoCoLabEnv:
         th0 = Thresholds.from_json(THRESHOLDS_V0)
         self.slosh_zeta = float(th0.slosh_zeta if slosh_zeta is None else slosh_zeta)
         self.slosh_scale = th0.slosh_scale          # the thresholds' forcing factors per profile class and fill
-        self._classes: dict[str, Any] | None = None
+        self.classes: dict[str, Any] | None = None     # the corpus's fragility classes; None: the generator's file
+        self._classes: dict[str, dict[str, Any]] = {}
         self.entry: dict[str, Any] = {"class": "none", "law": None, "fillable": False, "cavity": None}
         self.fill, self.frag, self.liquid, self.spill_deg = 0.0, None, None, None
         self._dmeter: DamageMeter | None = None
@@ -359,9 +360,14 @@ class MuJoCoLabEnv:
         return out, names
 
     def fragility_classes(self) -> dict[str, Any]:
-        if self._classes is None:
-            self._classes = load_classes()
-        return self._classes
+        """The classes a reset reads (the fill check, the damage law, pose_info's flags): the corpus's (``classes``, set
+        by corpus.rollout_row and probe_corpus.probe_rows), else the generator's file (fragility.classes_for)."""
+        if self.classes is not None:
+            return self.classes
+        path = classes_for(lab_generator())
+        if path not in self._classes:
+            self._classes[path] = load_classes(path)
+        return self._classes[path]
 
     def reset(self, object_id: str, theta: dict[str, Any] | None = None, seed: int = 0, com_end: int = +1,
               fixture: str | None = None, fill: float = 0.0, frag: dict[str, Any] | None = None) -> None:

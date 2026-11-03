@@ -258,14 +258,18 @@ def _add_cli_args(parser: argparse.ArgumentParser, use_dashboard: bool) -> None:
 
 
 def _parse_config(args: argparse.Namespace) -> RunConfig:
+    from robots.mujoco_lab.corpus import lab_generator
+    from robots.mujoco_lab.names import agent_id
+
     if not args.object:
         raise ValueError("--object is required")
-    recipe_tag = f"{args.object}_{args.destination}_s{args.seed}"
+    shown = agent_id(args.object, lab_generator())     # the agent's name for the object (v11: the corrected name)
+    recipe_tag = f"{shown}_{args.destination}_s{args.seed}"
     output_dir = getattr(args, "output_dir", None)
     if output_dir is None:
         output_dir = get_repo_root() / "logs" / f"{datetime.now().strftime('%Y%m%d-%H:%M:%S')}_mujoco_lab_{recipe_tag}"
     memory_dir = Path(args.memory_dir) if getattr(args, "memory_dir", None) else get_memory_dir("mujoco_lab")
-    prompt_vars = {"object": args.object, "destination": args.destination, "care": args.care, "seed": args.seed,
+    prompt_vars = {"object": shown, "destination": args.destination, "care": args.care, "seed": args.seed,
                    "recipe_tag": recipe_tag, "mode": "eval", "memory_dir": str(memory_dir)}
     return RunConfig(recipe_tag=recipe_tag, output_dir=Path(output_dir), prompt_vars=prompt_vars,
                      task_desc={"object": args.object, "destination": args.destination, "seed": args.seed, "care": args.care})

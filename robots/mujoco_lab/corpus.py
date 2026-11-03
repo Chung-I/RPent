@@ -226,6 +226,7 @@ def rollout_row(env, object_id: str, idx: int, seed: int, use_fixtures: bool = F
     act = draw_action(rng, f_std, use_fixtures)
     C, th = world(classes, thresholds)
     entry, _ = entry_of(object_id, C)
+    env.classes = C                        # the reset's flags and damage law are this world's
     d = draw_damage(damage_rng(seed, object_id, idx), entry, th, f_std)
     if mode == "control":                  # v8's draws and action, the fragility drawn, no liquid
         d = {"fill": 0.0, "theta_frag": d["theta_frag"], "spill_angle_deg": None, "force": act["force"], "a_transport": A_TRANSPORT_V8}

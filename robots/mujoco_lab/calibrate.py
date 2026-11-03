@@ -350,6 +350,7 @@ def run_case(prims: Any, object_id: str, idx: int, seed: int, protocol: str = "c
     if world is not None:
         env.slosh_zeta = world[1].slosh_zeta
         env.slosh_scale = world[1].slosh_scale
+    env.classes = None if world is None else world[0]            # the reset's flags and damage law: the bundle's classes
     env.reset(object_id, theta, seed=seed * 1000 + idx, com_end=com_end, fixture=destination if destination in MESH_IDS else None,
               fill=hidden["fill"], frag=hidden["frag"])
     reset_info = dict(getattr(env, "reset_info", None) or {})

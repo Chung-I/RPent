@@ -716,3 +716,77 @@ def test_v11_props_com_is_the_sim_com(monkeypatch):
         monkeypatch.setenv("RPENT_LAB_GENERATOR", "v10")
         env.reset(oid, th, seed=0)
         assert np.linalg.norm(np.asarray(env.truth()["com_obj"]) - np.asarray(object_props(oid)["com"])) > 0.01
+
+
+@SIM
+def test_the_pose_carries_the_corpus_classes(tmp_path, monkeypatch):
+    """The flags in a row's pose (the features and the menu read them) are the corpus's classes, as in the row: under v11
+    the mug is class none in both. A classes file given to the corpus reaches the pose too, and with no corpus an agent's
+    env reads the generator's file."""
+    from robots.mujoco_lab.adapter import MuJoCoLabEnv
+    from robots.mujoco_lab.corpus import main as corpus_main
+    from robots.mujoco_lab.fragility import CLASSES
+    from robots.mujoco_lab.probe_corpus import main as probe_main
+
+    monkeypatch.setenv("RPENT_LAB_GENERATOR", "v11")
+    none = {"class": "none", "law": None, "fillable": True}
+    for name, run in (("c.jsonl", corpus_main), ("p.jsonl", probe_main)):
+        run(["--out", str(tmp_path / name), "--draws", "1", "--workers", "1", "--objects", "ycb__mug"])
+        rows = [json.loads(x) for x in (tmp_path / name).open()]
+        assert rows and all(r["entry"] == r["pose"]["entry"] == none for r in rows), name
+    corpus_main(["--out", str(tmp_path / "c10.jsonl"), "--draws", "1", "--workers", "1", "--objects", "ycb__mug", "--classes", CLASSES])
+    r = json.loads((tmp_path / "c10.jsonl").read_text().splitlines()[0])
+    assert r["entry"] == r["pose"]["entry"] == {"class": "breakable", "law": "ceramic", "fillable": True}
+    env = MuJoCoLabEnv()
+    env.reset("ycb__mug", seed=0)
+    assert env.pose_info()["entry"] == none
+    monkeypatch.setenv("RPENT_LAB_GENERATOR", "v10")
+    env.reset("ycb__mug", seed=0)
+    assert env.pose_info()["entry"]["class"] == "breakable"
+
+
+@SIM
+def test_a_case_resets_with_the_bundles_classes(monkeypatch):
+    """calibrate.run_case gives the env the bundle's classes (its manifest's fragility world), the ones its hidden
+    fragility is drawn from; with no fragility world the env reads the generator's file."""
+    import robots.mujoco_lab.prior as prior
+    from robots.mujoco_lab.calibrate import run_case
+    from robots.mujoco_lab.fragility import CLASSES, THRESHOLDS_V0, Thresholds, load_classes
+
+    class Stop(Exception):
+        pass
+
+    class Env:
+        classes = "unset"
+
+        def reset(self, *a, **kw):
+            raise Stop
+
+    C = load_classes(CLASSES)
+    for world, want in (((C, Thresholds.from_json(THRESHOLDS_V0)), C), (None, None)):
+        monkeypatch.setattr(prior, "fragility_world", lambda manifest, w=world: w)
+        prims = SimpleNamespace(env=Env(), manifest={})
+        with pytest.raises(Stop):
+            run_case(prims, "ycb__mug", 0, 0)
+        assert prims.env.classes is want
+
+
+def test_v11_agent_prompt_uses_the_corrected_name(tmp_path, monkeypatch):
+    """The run's task text and recipe tag (the audit file name the agent sees) carry the agent id under v11; the record
+    keeps the internal id; v10 is unchanged."""
+    import argparse
+
+    from robots.mujoco_lab.prompts.user import TASK
+    from robots.mujoco_lab.robot_spec import _parse_config
+
+    args = argparse.Namespace(object="hot3d__foam_roller", destination="bin", care="normal", seed=0, output_dir=str(tmp_path),
+                              memory_dir=str(tmp_path))
+    monkeypatch.setenv("RPENT_LAB_GENERATOR", "v11")
+    cfg = _parse_config(args)
+    assert cfg.prompt_vars["object"] == "hot3d__whiteboard_eraser" and cfg.recipe_tag == "hot3d__whiteboard_eraser_bin_s0"
+    assert cfg.task_desc["object"] == "hot3d__foam_roller"
+    text = TASK.format(**cfg.prompt_vars)
+    assert "foam" not in text and "whiteboard eraser" in text.replace("_", " ")
+    monkeypatch.setenv("RPENT_LAB_GENERATOR", "v10")
+    cfg = _parse_config(args)
+    assert cfg.prompt_vars["object"] == "hot3d__foam_roller" and cfg.recipe_tag == "hot3d__foam_roller_bin_s0"

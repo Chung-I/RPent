@@ -98,6 +98,7 @@ def probe_rows(env, object_id: str, idx: int, seed: int, classes: str | dict[str
     f_std = float(env.s["t3_make"].std_force(props["mass"]))
     C, th = world(classes, thresholds)
     entry, _ = entry_of(object_id, C)
+    env.classes = C                           # the reset's flags and damage law are this world's
     if mode not in MODES:
         raise ValueError(f"unknown probe corpus mode {mode!r}; known: {MODES}")
     d = draw_damage(damage_rng(seed, object_id, idx), entry, th, f_std)
