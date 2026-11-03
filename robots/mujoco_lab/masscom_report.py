@@ -131,9 +131,12 @@ def _attempt_brier(records: list[dict[str, Any]]) -> dict[tuple[str, Any, int], 
 
 def paired_brier(a: list[dict[str, Any]], b: list[dict[str, Any]], n_boot: int = N_BOOT, seed: int = 0) -> dict[str, Any]:
     """Run a's Brier minus run b's on the same attempt rows (paired by object, key and occurrence), with a 95 %
-    object-bootstrap interval. Raises ValueError when a pair's label or true mass differs (the rows do not pair)."""
+    object-bootstrap interval. Raises ValueError when a pair's label or true mass differs (the rows do not pair) or when
+    no row pairs."""
     A, B = _attempt_brier(a), _attempt_brier(b)
     common = sorted(set(A) & set(B), key=str)
+    if not common:
+        raise ValueError(f"no attempt rows pair ({len(A)} against {len(B)} rows): runs of different generators or corpora")
     for k in common:
         if A[k][1] != B[k][1] or not np.isclose(A[k][2], B[k][2]):
             raise ValueError(f"rows do not pair at {k}: {A[k][1:]} against {B[k][1:]}")
@@ -154,14 +157,26 @@ def _iv(x: dict[str, Any], k: str = "value", d: int = 4) -> str:
     return f"{x[k]:.{d}f} [{x['ci'][0]:.{d}f}, {x['ci'][1]:.{d}f}]"
 
 
+def _provenance(d: str) -> tuple[str, str | None]:
+    """A run directory's generator (a run config without the field, or no run config, ran v10) and bundle path."""
+    path = os.path.join(d, "run_config.json")
+    cfg = json.load(open(path)) if os.path.exists(path) else {}
+    return cfg.get("generator") or "v10", None if cfg.get("bundle") is None else os.path.normpath(cfg["bundle"])
+
+
 def compare(part_a: dict[str, str], menus: str | None, n_boot: int = N_BOOT, seed: int = 0) -> tuple[dict[str, Any], str]:
     """The priors side by side: Part A's cells and the downstream scores from each prior's summary, and, with ``menus``,
-    the first-menu change rates and the regret on the class menu."""
+    the first-menu change rates and the regret on the class menu. Raises ValueError when the runs name more than one
+    generator or more than one bundle."""
+    seen = {name: _provenance(d) for name, d in {**part_a, **({"(menus)": menus} if menus is not None else {})}.items()}
+    for i, what in enumerate(("generator", "bundle")):
+        if len({v[i] for v in seen.values()}) > 1:
+            raise ValueError(f"the runs name more than one {what}: " + ", ".join(f"{n} {v[i]}" for n, v in seen.items()))
     priors = {}
     for name, d in part_a.items():
         s = json.load(open(os.path.join(d, "summary.json")))
         priors[name] = {"stages": s["stages"], "downstream": s["downstream"], "dir": d}
-    out: dict[str, Any] = {"priors": priors, "menus": None}
+    out: dict[str, Any] = {"priors": priors, "menus": None, "generator": next(iter(seen.values()))[0]}
     lines = ["# Mass and CoM priors on held-out objects", "",
              "Accuracy (Part A's cells): posterior-mean error, median [95 % object-bootstrap CI]; coverage of the 80 % interval. "
              "Mass: relative error; μ: absolute; CoM: fraction of the pivot length (and cm).", "",
@@ -239,7 +254,8 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
                 for k in ("brier", "ece_irreversible")}
         for setting, block in ((out["menus"] or {}).get("regret") or {}).items():
             flat.update({f"{setting}/{p}/regret": g["mean"] for p, g in block.items() if g.get("n")})
-        out["wandb"] = tracking.log_run("masscom_report", {"part_a": a.part_a, "menus": a.menus, "n_boot": a.n_boot}, flat)
+        out["wandb"] = tracking.log_run("masscom_report", {"part_a": a.part_a, "menus": a.menus, "n_boot": a.n_boot,
+                                                            "generator": out["generator"]}, flat)
     with open(os.path.join(a.out, "compare.json"), "w") as f:
         json.dump(out, f, indent=1)
     with open(os.path.join(a.out, "compare.md"), "w") as f:

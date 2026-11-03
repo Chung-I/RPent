@@ -158,3 +158,32 @@ def test_compare_pairs_each_prior_with_the_generic_one(tmp_path):
     v = out["vs_generic"]["vlm"]["brier"]
     assert v["n"] == 2 and v["mean"] == pytest.approx(0.25)          # (0.5 + 0) / 2
     assert set(out["vs_generic"]) == {"vlm"} and "Paired against the generic prior" in md
+
+
+def test_compare_refuses_runs_of_two_generators_or_bundles(tmp_path):
+    """masscom-v11 review: compare reads each input's run_config.json and refuses a mix of generators (a config without
+    the field, or no config, ran v10) or of bundles, so a v10 row never sits beside v11 rows unlabelled; paired_brier
+    refuses runs whose attempt rows do not pair at all (v10 keys o__d0 against v11 keys o__v11d0 gave n 0 and nan)."""
+    from robots.mujoco_lab.masscom_report import compare, paired_brier
+
+    down = {"n": 10, "n_objects": 2, "brier": {"value": 0.3, "ci": [0.2, 0.4]}, "ece_irreversible": {"value": 0.05, "ci": [0.01, 0.1]},
+            "ece_placed": {"value": 0.1, "ci": [0.05, 0.2]}, "mean_p_irreversible": 0.1, "rate_irreversible": 0.09}
+
+    def run(name, generator, bundle="robots/mujoco_lab/data/m2b2_v11"):
+        d = tmp_path / name
+        d.mkdir()
+        (d / "summary.json").write_text(json.dumps({"stages": {}, "downstream": down}))
+        (d / "run_config.json").write_text(json.dumps({"bundle": bundle} | ({} if generator is None else {"generator": generator})))
+        return str(d)
+
+    v11 = {"class": run("c11", "v11"), "generic": run("g11", "v11")}
+    out, _ = compare(v11, None, n_boot=20, seed=0)
+    assert out["generator"] == "v11"
+    with pytest.raises(ValueError, match="more than one generator"):
+        compare({"class": run("c10", None, "robots/mujoco_lab/data/m2b2"), "generic": v11["generic"]}, None, n_boot=20, seed=0)
+    with pytest.raises(ValueError, match="more than one bundle"):
+        compare({"class": v11["class"], "generic": run("g11b", "v11", "robots/mujoco_lab/data/other")}, None, n_boot=20, seed=0)
+    with pytest.raises(ValueError, match="more than one generator"):
+        compare(v11, run("m10", "v10", "robots/mujoco_lab/data/m2b2"), n_boot=20, seed=0)
+    with pytest.raises(ValueError, match="no attempt rows pair"):
+        paired_brier([_att("x", "x__v11d0", 1.0)], [_att("x", "x__d0", 1.0)], n_boot=20, seed=0)
