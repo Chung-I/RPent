@@ -1,0 +1,676 @@
+{
+ "version": "materials_v11",
+ "created": "2026-11-03",
+ "rule": "the material an agent is told under v11: the object's visible body in plain words, from its v11 mass product, RoboLab's object catalog, the render corrections, the names map or the YCB paper; 'likely' marks a match no mark or page confirms; 'lab' is the sim's objects.py material, which v10 shows (build/build_materials_v11.py)",
+ "parent": {
+  "file": "masses_v11b.json",
+  "sha256": "fcfab59ef2ee9168f83f93f9b2017dd1ca6f663a954fbc4b5b5a869a44287ade"
+ },
+ "objects": {
+  "fruits_veggies__avocado": {
+   "material": "fruit",
+   "lab": "fruit",
+   "changed": false,
+   "basis": "product",
+   "evidence": "NDB 09038 avocado"
+  },
+  "fruits_veggies__lemon1": {
+   "material": "fruit",
+   "lab": "fruit",
+   "changed": false,
+   "basis": "product",
+   "evidence": "NDB 09150 lemon"
+  },
+  "fruits_veggies__lime": {
+   "material": "fruit",
+   "lab": "fruit",
+   "changed": false,
+   "basis": "product",
+   "evidence": "NDB 09159 lime"
+  },
+  "fruits_veggies__orange1": {
+   "material": "fruit",
+   "lab": "fruit",
+   "changed": false,
+   "basis": "product",
+   "evidence": "NDB 09202 navel orange"
+  },
+  "fruits_veggies__red_onion": {
+   "material": "vegetable",
+   "lab": "fruit",
+   "changed": true,
+   "basis": "product",
+   "evidence": "NDB 11282 onion"
+  },
+  "handal__green_serving_spoon": {
+   "material": "silicone head, wood handle",
+   "lab": "wood",
+   "changed": true,
+   "basis": "product",
+   "evidence": "Le Creuset Bijou slotted spoon, silicone and wood; RoboLab object catalog: green slotted bowl, wooden handle"
+  },
+  "handal__hammer": {
+   "material": "steel head, hickory handle",
+   "lab": "steel",
+   "changed": true,
+   "basis": "product",
+   "evidence": "Milwaukee 48-22-9419 hickory framing hammer; RoboLab object catalog: metallic head, long wooden handle"
+  },
+  "handal__hammer_1": {
+   "material": "steel, rubber grip",
+   "lab": "steel",
+   "changed": true,
+   "basis": "product",
+   "evidence": "one-piece steel (Husky 17 oz; table: Milwaukee 48-22-9017); RoboLab object catalog: black textured grip"
+  },
+  "handal__hammer_2": {
+   "material": "steel head, wood handle",
+   "lab": "wood",
+   "changed": true,
+   "basis": "product",
+   "evidence": "Anvil 16 oz, wood handle; RoboLab object catalog: wooden handle"
+  },
+  "handal__hammer_3": {
+   "material": "steel head, fiberglass handle",
+   "lab": "hard_plastic",
+   "changed": true,
+   "basis": "product",
+   "evidence": "Crescent CHFGP20 fiberglass hammer; RoboLab object catalog: black and red ergonomic handle"
+  },
+  "handal__hammer_4": {
+   "material": "steel head, fiberglass handle",
+   "lab": "steel",
+   "changed": true,
+   "basis": "product",
+   "evidence": "Anvil 16 oz, fiberglass handle; RoboLab object catalog: dark handle, blue grip"
+  },
+  "handal__hammer_5": {
+   "material": "steel, rubber grip",
+   "lab": "hard_plastic",
+   "changed": true,
+   "basis": "product",
+   "evidence": "DEWALT DWHT51003 one-piece steel; RoboLab object catalog: orange rubber grip"
+  },
+  "handal__hammer_6": {
+   "material": "steel, rubber grip",
+   "lab": "steel",
+   "changed": true,
+   "basis": "product",
+   "evidence": "Estwing E3-22S solid steel; RoboLab object catalog: blue rubber handle"
+  },
+  "handal__hammer_7": {
+   "material": "steel, rubber grip",
+   "lab": "hard_plastic",
+   "changed": true,
+   "basis": "product",
+   "evidence": "Milwaukee 48-22-9020 one-piece steel; RoboLab object catalog: red handle"
+  },
+  "handal__hammer_8": {
+   "material": "steel head, fiberglass handle",
+   "lab": "steel",
+   "changed": true,
+   "basis": "product",
+   "evidence": "Crescent 11418C-06 fiberglass handle; RoboLab object catalog: black rubberized handle"
+  },
+  "handal__ladle": {
+   "material": "silicone head, wood handle",
+   "lab": "wood",
+   "changed": true,
+   "basis": "product",
+   "evidence": "Staub soup ladle, silicone and acacia wood; RoboLab object catalog: green head, wooden handle"
+  },
+  "handal__measuring_cups": {
+   "material": "plastic",
+   "lab": "ceramic",
+   "changed": true,
+   "basis": "render",
+   "evidence": "render correction in RPent fragility.py OVERRIDES; RoboLab object catalog: soft green plastic"
+  },
+  "handal__measuring_cups_1": {
+   "material": "plastic",
+   "lab": "ceramic",
+   "changed": true,
+   "basis": "render",
+   "evidence": "render correction in RPent fragility.py OVERRIDES"
+  },
+  "handal__measuring_spoon": {
+   "material": "plastic",
+   "lab": "wood",
+   "changed": true,
+   "basis": "catalog",
+   "evidence": "RoboLab object catalog: bright yellow glossy measuring spoons"
+  },
+  "handal__pink_spaghetti_spoon": {
+   "material": "silicone head, wood handle",
+   "lab": "wood",
+   "changed": true,
+   "basis": "product",
+   "evidence": "the table's nearest construction"
+  },
+  "handal__red_serving_spoon": {
+   "material": "silicone head, wood handle",
+   "lab": "wood",
+   "changed": true,
+   "basis": "product",
+   "evidence": "Le Creuset Bijou spatula spoon, silicone and wood; RoboLab object catalog: red silicone heads, wood handles"
+  },
+  "hope__bbq_sauce_bottle": {
+   "material": "plastic bottle",
+   "lab": "thin_plastic",
+   "changed": false,
+   "basis": "lab",
+   "evidence": "ASOS BBQ sauce bottle"
+  },
+  "hope__butter": {
+   "material": "cardboard box",
+   "lab": "hard_plastic",
+   "changed": true,
+   "basis": "catalog",
+   "evidence": "RoboLab object catalog: rectangular butter package"
+  },
+  "hope__canned_mushrooms": {
+   "material": "metal can",
+   "lab": "metal_can",
+   "changed": false,
+   "basis": "lab",
+   "evidence": "a can by name and mesh"
+  },
+  "hope__canned_peaches": {
+   "material": "metal can",
+   "lab": "fruit",
+   "changed": true,
+   "basis": "render",
+   "evidence": "render correction in RPent fragility.py OVERRIDES"
+  },
+  "hope__canned_tuna": {
+   "material": "metal can",
+   "lab": "metal_can",
+   "changed": false,
+   "basis": "lab",
+   "evidence": "YCB tuna fish can match"
+  },
+  "hope__chocolate_pudding_mix": {
+   "material": "cardboard box",
+   "lab": "cardboard",
+   "changed": false,
+   "basis": "lab",
+   "evidence": "YCB pudding box match"
+  },
+  "hope__corn_can": {
+   "material": "metal can",
+   "lab": "metal_can",
+   "changed": false,
+   "basis": "lab",
+   "evidence": "a can by name and mesh"
+  },
+  "hope__cream_cheese": {
+   "material": "cardboard box",
+   "lab": "hard_plastic",
+   "changed": true,
+   "basis": "catalog",
+   "evidence": "Philadelphia brick; RoboLab object catalog: rectangular package"
+  },
+  "hope__granola_bars": {
+   "material": "cardboard box",
+   "lab": "cardboard",
+   "changed": false,
+   "basis": "catalog",
+   "evidence": "RoboLab object catalog: yellow box"
+  },
+  "hope__green_beans_can": {
+   "material": "metal can",
+   "lab": "metal_can",
+   "changed": false,
+   "basis": "lab",
+   "evidence": "a can by name and mesh"
+  },
+  "hope__ketchup_bottle": {
+   "material": "plastic bottle",
+   "lab": "thin_plastic",
+   "changed": false,
+   "basis": "catalog",
+   "evidence": "RoboLab object catalog: made of plastic, squeeze top"
+  },
+  "hope__macaroni_and_cheese": {
+   "material": "cardboard box",
+   "lab": "cardboard",
+   "changed": false,
+   "basis": "product",
+   "evidence": "Kraft Mac and Cheese box"
+  },
+  "hope__mayonnaise_bottle": {
+   "material": "plastic bottle",
+   "lab": "thin_plastic",
+   "changed": false,
+   "basis": "catalog",
+   "evidence": "RoboLab object catalog: squeeze-type bottle"
+  },
+  "hope__milk_carton": {
+   "material": "paperboard carton",
+   "lab": "cardboard",
+   "changed": false,
+   "basis": "catalog",
+   "evidence": "RoboLab object catalog: carton"
+  },
+  "hope__mustard_bottle": {
+   "material": "plastic bottle",
+   "lab": "thin_plastic",
+   "changed": false,
+   "basis": "lab",
+   "evidence": "YCB mustard bottle match"
+  },
+  "hope__oatmeal_raisin_cookies": {
+   "material": "cardboard box",
+   "lab": "cardboard",
+   "changed": false,
+   "basis": "catalog",
+   "evidence": "RoboLab object catalog: box"
+  },
+  "hope__orange_juice_carton": {
+   "material": "paperboard carton",
+   "lab": "fruit",
+   "changed": true,
+   "basis": "render",
+   "evidence": "render correction in RPent fragility.py OVERRIDES; RoboLab object catalog: carton"
+  },
+  "hope__parmesan_cheese_canister": {
+   "material": "plastic canister",
+   "lab": "metal_can",
+   "changed": true,
+   "basis": "likely",
+   "evidence": "Kraft grated parmesan canister; RoboLab object catalog: cylindrical canister with a lid"
+  },
+  "hope__peas_and_carrots": {
+   "material": "metal can",
+   "lab": "hard_plastic",
+   "changed": true,
+   "basis": "catalog",
+   "evidence": "RoboLab object catalog: cylindrical can"
+  },
+  "hope__pineapple_slices_can": {
+   "material": "metal can",
+   "lab": "fruit",
+   "changed": true,
+   "basis": "render",
+   "evidence": "render correction in RPent fragility.py OVERRIDES"
+  },
+  "hope__pitted_cherries": {
+   "material": "metal can",
+   "lab": "hard_plastic",
+   "changed": true,
+   "basis": "catalog",
+   "evidence": "RoboLab object catalog: cylindrical can, metallic lid"
+  },
+  "hope__popcorn_box": {
+   "material": "cardboard box",
+   "lab": "cardboard",
+   "changed": false,
+   "basis": "catalog",
+   "evidence": "RoboLab object catalog: box"
+  },
+  "hope__raisin_box": {
+   "material": "cardboard box",
+   "lab": "cardboard",
+   "changed": false,
+   "basis": "catalog",
+   "evidence": "Sun-Maid box; RoboLab object catalog: box"
+  },
+  "hope__ranch_dressing": {
+   "material": "plastic bottle",
+   "lab": "thin_plastic",
+   "changed": false,
+   "basis": "catalog",
+   "evidence": "RoboLab object catalog: bottle, green cap"
+  },
+  "hope__spaghetti": {
+   "material": "cardboard box",
+   "lab": "cardboard",
+   "changed": false,
+   "basis": "catalog",
+   "evidence": "Barilla box; RoboLab object catalog: rectangular box"
+  },
+  "hope__tomato_sauce_can": {
+   "material": "metal can",
+   "lab": "fruit",
+   "changed": true,
+   "basis": "render",
+   "evidence": "render correction in RPent fragility.py OVERRIDES"
+  },
+  "hope__yogurt_cup": {
+   "material": "plastic cup",
+   "lab": "thin_plastic",
+   "changed": false,
+   "basis": "catalog",
+   "evidence": "Yoplait cup; RoboLab object catalog: plastic lid"
+  },
+  "hot3d__bbq_sauce_bottle": {
+   "material": "plastic bottle",
+   "lab": "thin_plastic",
+   "changed": false,
+   "basis": "lab",
+   "evidence": "ASOS BBQ sauce bottle"
+  },
+  "hot3d__birdhouse": {
+   "material": "painted wood",
+   "lab": "hard_plastic",
+   "changed": true,
+   "basis": "likely",
+   "evidence": "Esschert Design nesting box, pine; RoboLab object catalog: blue roof, yellow body, decorated like a toy"
+  },
+  "hot3d__ceramic_mug": {
+   "material": "ceramic",
+   "lab": "ceramic",
+   "changed": false,
+   "basis": "product",
+   "evidence": "IKEA DINERA mug, stoneware"
+  },
+  "hot3d__clay_plates": {
+   "material": "spun bamboo",
+   "lab": "ceramic",
+   "changed": true,
+   "basis": "product",
+   "evidence": "texture shows spun-bamboo layers (names map); LEXA spun-bamboo tray"
+  },
+  "hot3d__coffee_pot": {
+   "material": "metal",
+   "lab": "ceramic",
+   "changed": true,
+   "basis": "render",
+   "evidence": "render correction in RPent fragility.py OVERRIDES (a moka pot); BUTLERS ESPERTO stovetop coffee maker"
+  },
+  "hot3d__computer_mouse": {
+   "material": "electronics",
+   "lab": "electronics",
+   "changed": false,
+   "basis": "product",
+   "evidence": "Logitech M705"
+  },
+  "hot3d__dumbbell": {
+   "material": "coated iron",
+   "lab": "steel",
+   "changed": true,
+   "basis": "likely",
+   "evidence": "'5LB' hex dumbbell; RoboLab object catalog: matte green hexagonal ends"
+  },
+  "hot3d__foam_roller": {
+   "material": "plastic, felt pad",
+   "lab": "foam",
+   "changed": true,
+   "basis": "product",
+   "evidence": "a felt face (names map); Legamaster whiteboard eraser 7-120300"
+  },
+  "hot3d__frozen_vegetable_block": {
+   "material": "cardboard box",
+   "lab": "wood",
+   "changed": true,
+   "basis": "catalog",
+   "evidence": "Birds Eye box; RoboLab object catalog: rectangular package"
+  },
+  "hot3d__frozen_waffles": {
+   "material": "cardboard box",
+   "lab": "hard_plastic",
+   "changed": true,
+   "basis": "catalog",
+   "evidence": "Eggo box; RoboLab object catalog: rectangular package"
+  },
+  "hot3d__glasses": {
+   "material": "electronics",
+   "lab": "hard_plastic",
+   "changed": true,
+   "basis": "product",
+   "evidence": "Project Aria Gen 1 glasses"
+  },
+  "hot3d__keyboard": {
+   "material": "electronics",
+   "lab": "electronics",
+   "changed": false,
+   "basis": "product",
+   "evidence": "Logitech MX Keys"
+  },
+  "hot3d__lizard_figurine": {
+   "material": "plastic",
+   "lab": "hard_plastic",
+   "changed": false,
+   "basis": "product",
+   "evidence": "a toy dinosaur (names map); Schleich figure"
+  },
+  "hot3d__megaphone": {
+   "material": "plastic",
+   "lab": "hard_plastic",
+   "changed": false,
+   "basis": "likely",
+   "evidence": "Stelton EM77 vacuum jug, a different model (names map); RoboLab object catalog: subdued green body"
+  },
+  "hot3d__mug": {
+   "material": "ceramic",
+   "lab": "ceramic",
+   "changed": false,
+   "basis": "product",
+   "evidence": "IKEA OFANTLIGT mug; RoboLab object catalog: unglazed ceramic look"
+  },
+  "hot3d__pitcher": {
+   "material": "enamelled steel",
+   "lab": "ceramic",
+   "changed": true,
+   "basis": "likely",
+   "evidence": "IKEA SOCKERART vase, not confirmed by a mark (names map)"
+  },
+  "hot3d__potato_masher": {
+   "material": "nylon",
+   "lab": "wood",
+   "changed": true,
+   "basis": "product",
+   "evidence": "Chef Craft nylon masher; RoboLab object catalog: black"
+  },
+  "hot3d__remote_control": {
+   "material": "electronics",
+   "lab": "electronics",
+   "changed": false,
+   "basis": "product",
+   "evidence": "Samsung SolarCell remote"
+  },
+  "hot3d__rubiks_cube": {
+   "material": "plastic",
+   "lab": "hard_plastic",
+   "changed": false,
+   "basis": "product",
+   "evidence": "Rubik's Cube 3x3"
+  },
+  "hot3d__smartphone": {
+   "material": "electronics",
+   "lab": "glass",
+   "changed": true,
+   "basis": "product",
+   "evidence": "Google Pixel 4a (5G)"
+  },
+  "hot3d__soup_can": {
+   "material": "metal can",
+   "lab": "metal_can",
+   "changed": false,
+   "basis": "catalog",
+   "evidence": "RoboLab object catalog: cylindrical can"
+  },
+  "hot3d__spatula": {
+   "material": "nylon",
+   "lab": "wood",
+   "changed": true,
+   "basis": "product",
+   "evidence": "KitchenAid Core slotted turner; RoboLab object catalog: deep red"
+  },
+  "hot3d__storage_box": {
+   "material": "bamboo",
+   "lab": "cardboard",
+   "changed": true,
+   "basis": "render",
+   "evidence": "render correction in RPent fragility.py OVERRIDES; IKEA DRAGAN toothbrush holder, bamboo (likely, names map)"
+  },
+  "hot3d__wooden_bowl": {
+   "material": "bamboo",
+   "lab": "wood",
+   "changed": true,
+   "basis": "product",
+   "evidence": "IKEA BLANDA MATT serving bowl, bamboo"
+  },
+  "hot3d__wooden_spoons": {
+   "material": "wood",
+   "lab": "wood",
+   "changed": false,
+   "basis": "product",
+   "evidence": "IKEA RORT spoon, solid beech"
+  },
+  "ycb__banana": {
+   "material": "fruit",
+   "lab": "fruit",
+   "changed": false,
+   "basis": "product",
+   "evidence": "NDB 09040 banana"
+  },
+  "ycb__bowl": {
+   "material": "enamelled metal",
+   "lab": "ceramic",
+   "changed": true,
+   "basis": "paper",
+   "evidence": "metal (YCB, Calli et al., IEEE RAM 22(3):36-52, 2015, Fig. 2); RoboLab object catalog: red speckled glossy bowl"
+  },
+  "ycb__bowl2": {
+   "material": "enamelled metal",
+   "lab": "ceramic",
+   "changed": true,
+   "basis": "paper",
+   "evidence": "metal (YCB, Calli et al., IEEE RAM 22(3):36-52, 2015, Fig. 2); RoboLab object catalog: red speckled glossy bowl"
+  },
+  "ycb__brick": {
+   "material": "foam",
+   "lab": "hard_plastic",
+   "changed": true,
+   "basis": "product",
+   "evidence": "YCB 061 foam brick (YCB, Calli et al., IEEE RAM 22(3):36-52, 2015)"
+  },
+  "ycb__cheez_it": {
+   "material": "cardboard box",
+   "lab": "cardboard",
+   "changed": false,
+   "basis": "product",
+   "evidence": "YCB 003 cracker box"
+  },
+  "ycb__chocolate_pudding": {
+   "material": "cardboard box",
+   "lab": "cardboard",
+   "changed": false,
+   "basis": "product",
+   "evidence": "YCB 008 pudding box"
+  },
+  "ycb__clamp": {
+   "material": "plastic",
+   "lab": "hard_plastic",
+   "changed": false,
+   "basis": "catalog",
+   "evidence": "YCB 051 large clamp; RoboLab object catalog: black body, orange tip"
+  },
+  "ycb__coffee_can": {
+   "material": "metal can",
+   "lab": "metal_can",
+   "changed": false,
+   "basis": "product",
+   "evidence": "YCB 002 master chef can"
+  },
+  "ycb__cordless_drill": {
+   "material": "plastic, metal parts",
+   "lab": "hard_plastic",
+   "changed": true,
+   "basis": "product",
+   "evidence": "YCB 035 power drill; RoboLab object catalog: orange body, battery pack"
+  },
+  "ycb__dry_erase_marker": {
+   "material": "plastic",
+   "lab": "hard_plastic",
+   "changed": false,
+   "basis": "product",
+   "evidence": "YCB 040 large marker"
+  },
+  "ycb__jello": {
+   "material": "cardboard box",
+   "lab": "cardboard",
+   "changed": false,
+   "basis": "product",
+   "evidence": "YCB 009 gelatin box"
+  },
+  "ycb__mug": {
+   "material": "enamelled metal",
+   "lab": "ceramic",
+   "changed": true,
+   "basis": "paper",
+   "evidence": "metal (YCB, Calli et al., IEEE RAM 22(3):36-52, 2015, Fig. 2); RoboLab object catalog: red glossy mug"
+  },
+  "ycb__mustard": {
+   "material": "plastic bottle",
+   "lab": "thin_plastic",
+   "changed": false,
+   "basis": "product",
+   "evidence": "YCB 006 mustard bottle"
+  },
+  "ycb__pitcher": {
+   "material": "plastic",
+   "lab": "hard_plastic",
+   "changed": false,
+   "basis": "product",
+   "evidence": "YCB 019 pitcher base; RoboLab object catalog: deep blue"
+  },
+  "ycb__scissors": {
+   "material": "steel blades, plastic handles",
+   "lab": "steel",
+   "changed": true,
+   "basis": "catalog",
+   "evidence": "YCB 037 scissors; RoboLab object catalog: plastic handle, metal blades"
+  },
+  "ycb__soft_scrub": {
+   "material": "plastic bottle",
+   "lab": "thin_plastic",
+   "changed": false,
+   "basis": "product",
+   "evidence": "YCB 021 bleach cleanser"
+  },
+  "ycb__spam_can": {
+   "material": "metal can",
+   "lab": "metal_can",
+   "changed": false,
+   "basis": "product",
+   "evidence": "YCB 010 potted meat can"
+  },
+  "ycb__spring_clamp": {
+   "material": "plastic",
+   "lab": "steel",
+   "changed": true,
+   "basis": "catalog",
+   "evidence": "YCB 052 extra-large clamp; RoboLab object catalog: black plastic, orange tips"
+  },
+  "ycb__sugar_box": {
+   "material": "cardboard box",
+   "lab": "cardboard",
+   "changed": false,
+   "basis": "product",
+   "evidence": "YCB 004 sugar box"
+  },
+  "ycb__tomato_soup_can": {
+   "material": "metal can",
+   "lab": "metal_can",
+   "changed": false,
+   "basis": "product",
+   "evidence": "YCB 005 tomato soup can; RoboLab object catalog: made of metal"
+  },
+  "ycb__tuna_can": {
+   "material": "metal can",
+   "lab": "metal_can",
+   "changed": false,
+   "basis": "product",
+   "evidence": "YCB 007 tuna fish can"
+  },
+  "ycb__wood_block": {
+   "material": "wood",
+   "lab": "wood",
+   "changed": false,
+   "basis": "product",
+   "evidence": "YCB 036 wood block"
+  }
+ }
+}

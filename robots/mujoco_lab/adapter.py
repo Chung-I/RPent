@@ -46,7 +46,7 @@ from robots.mujoco_lab.corpus import lab_generator
 from robots.mujoco_lab.fragility import FLAGS, THRESHOLDS_V0, Thresholds, classes_for, damage_event, entry_of, liquid, load_classes, spill_angle
 from robots.mujoco_lab.labels import Final, final_label, first_lifted, label_rollout, lifted
 from robots.mujoco_lab.masses import real_props, volume_centroid
-from robots.mujoco_lab.names import agent_names
+from robots.mujoco_lab.names import accepts
 from robots.mujoco_lab.meter import DamageMeter
 from robots.mujoco_lab.readouts import RISEN_M, slide_force, summarize
 from rpent.skills.pick_place.features import G, Geometry
@@ -648,9 +648,7 @@ class MuJoCoLabEnv:
     def locate(self, prompt: str) -> dict[str, Any] | None:
         self._need()
         o, props = self.obj, self.props
-        p = prompt.strip().lower()
-        names = {o["id"].lower(), o["name"].lower(), "object", o["name"].lower().replace("_", " ")} | agent_names(o, lab_generator())
-        if p not in names:
+        if not accepts(o, prompt, lab_generator()):
             return None
         return {
             "object_id": o["id"],

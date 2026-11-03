@@ -47,6 +47,11 @@ class MuJoCoLabPrimitives:
                  readout_model: Any = None, probe_models: dict[str, Any] | None = None, threshold: float | None = None,
                  manifest: dict[str, Any] | None = None, guard: Any = None, abstain_cost: float | None = None,
                  force_noise: float | None = None, evoi: str = "plugin", probe_time_scale: float = 1.0):
+        from robots.mujoco_lab.corpus import lab_generator
+
+        if prior is None and lab_generator() == "v11":
+            raise ValueError("generator v11 needs the bundle's prior (make_prior: the v11 classes and masses); the "
+                             "milestone 1 prior reads the lab's densities")
         self.env = env
         self.model = model
         self.rng = rng if rng is not None else np.random.default_rng(0)
