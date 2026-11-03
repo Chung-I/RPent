@@ -67,3 +67,13 @@ robots/mujoco_lab/data/m2b2_v11/folds/*
 !robots/mujoco_lab/data/m2b2_v11/folds/fold_*/
 robots/mujoco_lab/data/m2b2_v11/folds/fold_*/*
 !robots/mujoco_lab/data/m2b2_v11/folds/fold_*/*.json
+# the classes v11c bundle m2b2_v11c and its folds: as milestone 2b2's
+!robots/mujoco_lab/data/m2b2_v11c/
+robots/mujoco_lab/data/m2b2_v11c/*
+!robots/mujoco_lab/data/m2b2_v11c/*.json
+!robots/mujoco_lab/data/m2b2_v11c/folds/
+robots/mujoco_lab/data/m2b2_v11c/folds/*
+!robots/mujoco_lab/data/m2b2_v11c/folds/*.json
+!robots/mujoco_lab/data/m2b2_v11c/folds/fold_*/
+robots/mujoco_lab/data/m2b2_v11c/folds/fold_*/*
+!robots/mujoco_lab/data/m2b2_v11c/folds/fold_*/*.json

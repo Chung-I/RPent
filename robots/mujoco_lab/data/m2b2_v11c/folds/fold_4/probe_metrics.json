@@ -1,0 +1,250 @@
+{
+ "probe_corpus": "robots/mujoco_lab/data/probe_corpus_v10c.jsonl",
+ "split": {
+  "train": [
+   "fruits_veggies__avocado",
+   "fruits_veggies__orange1",
+   "handal__hammer",
+   "handal__hammer_2",
+   "handal__hammer_3",
+   "handal__hammer_4",
+   "handal__hammer_5",
+   "handal__hammer_6",
+   "handal__hammer_7",
+   "handal__hammer_8",
+   "handal__ladle",
+   "handal__measuring_cups",
+   "handal__measuring_cups_1",
+   "handal__measuring_spoon",
+   "handal__red_serving_spoon",
+   "hope__bbq_sauce_bottle",
+   "hope__canned_mushrooms",
+   "hope__canned_peaches",
+   "hope__canned_tuna",
+   "hope__granola_bars",
+   "hope__green_beans_can",
+   "hope__macaroni_and_cheese",
+   "hope__mayonnaise_bottle",
+   "hope__milk_carton",
+   "hope__mustard_bottle",
+   "hope__oatmeal_raisin_cookies",
+   "hope__orange_juice_carton",
+   "hope__parmesan_cheese_canister",
+   "hope__pineapple_slices_can",
+   "hope__pitted_cherries",
+   "hope__popcorn_box",
+   "hope__raisin_box",
+   "hope__ranch_dressing",
+   "hope__spaghetti",
+   "hot3d__bbq_sauce_bottle",
+   "hot3d__ceramic_mug",
+   "hot3d__clay_plates",
+   "hot3d__foam_roller",
+   "hot3d__frozen_vegetable_block",
+   "hot3d__frozen_waffles",
+   "hot3d__lizard_figurine",
+   "hot3d__pitcher",
+   "hot3d__potato_masher",
+   "hot3d__remote_control",
+   "hot3d__spatula",
+   "hot3d__storage_box",
+   "hot3d__wooden_bowl",
+   "hot3d__wooden_spoons",
+   "ycb__banana",
+   "ycb__bowl",
+   "ycb__bowl2",
+   "ycb__brick",
+   "ycb__cheez_it",
+   "ycb__chocolate_pudding",
+   "ycb__cordless_drill",
+   "ycb__mug",
+   "ycb__mustard",
+   "ycb__pitcher",
+   "ycb__scissors",
+   "ycb__soft_scrub",
+   "ycb__spam_can",
+   "ycb__sugar_box",
+   "ycb__tomato_soup_can"
+  ],
+  "val": [
+   "fruits_veggies__red_onion",
+   "handal__green_serving_spoon",
+   "hope__chocolate_pudding_mix",
+   "hope__tomato_sauce_can",
+   "hot3d__computer_mouse",
+   "hot3d__keyboard",
+   "hot3d__smartphone",
+   "hot3d__soup_can",
+   "ycb__dry_erase_marker",
+   "ycb__jello",
+   "ycb__spring_clamp",
+   "ycb__tuna_can",
+   "ycb__wood_block"
+  ],
+  "test": [
+   "fruits_veggies__lemon1",
+   "fruits_veggies__lime",
+   "handal__hammer_1",
+   "handal__pink_spaghetti_spoon",
+   "hope__butter",
+   "hope__corn_can",
+   "hope__cream_cheese",
+   "hope__ketchup_bottle",
+   "hope__peas_and_carrots",
+   "hope__yogurt_cup",
+   "hot3d__birdhouse",
+   "hot3d__coffee_pot",
+   "hot3d__dumbbell",
+   "hot3d__glasses",
+   "hot3d__megaphone",
+   "hot3d__mug",
+   "hot3d__rubiks_cube",
+   "ycb__clamp",
+   "ycb__coffee_can"
+  ]
+ },
+ "law_val_objects": [
+  "fruits_veggies__avocado",
+  "handal__hammer_4",
+  "handal__hammer_8",
+  "handal__measuring_spoon",
+  "hope__green_beans_can",
+  "hope__milk_carton",
+  "hope__parmesan_cheese_canister",
+  "hope__pineapple_slices_can",
+  "hot3d__wooden_spoons",
+  "ycb__bowl",
+  "ycb__tomato_soup_can"
+ ],
+ "probes": {
+  "weigh": {
+   "n": 3610,
+   "n_train": 2404,
+   "kind_rates": {
+    "measured": 0.6227146814404432,
+    "lower_bound": 0.192797783933518,
+    "lost": 0.0002770083102493075,
+    "damaged": 0.18421052631578946
+   },
+   "thrown_rate": 0.002770083102493075,
+   "reading": {
+    "measured": [
+     0.0011359095363921707,
+     0.05
+    ],
+    "lower_bound": [
+     -0.06982817872704263,
+     0.1519418291273466
+    ]
+   },
+   "stats": {
+    "n": 2412,
+    "n_not_thrown": 2404,
+    "kinds": {
+     "measured": 1327,
+     "lower_bound": 599,
+     "lost": 1,
+     "damaged": 477
+    },
+    "n_reading": {
+     "measured": 1327,
+     "lower_bound": 28,
+     "lost": 0,
+     "damaged": 0
+    },
+    "reading_rate": {
+     "measured": 1.0,
+     "lower_bound": 0.04674457429048414
+    },
+    "thrown": 8
+   },
+   "val": {
+    "n": 515,
+    "brier": 0.09560013510155492,
+    "brier_const": 0.4206119253774283
+   }
+  },
+  "push": {
+   "n": 1829,
+   "n_train": 1194,
+   "kind_rates": {
+    "slid": 0.9234554401312193,
+    "tipped": 0.04975396391470749,
+    "no_breakaway": 0.005467468562055768,
+    "no_contact": 0.013121924548933843,
+    "damaged": 0.008201202843083653
+   },
+   "thrown_rate": 0.015855658829961726,
+   "reading": {
+    "slid": {
+     "kind": "mix2",
+     "w": 0.48724785167255247,
+     "b1": 0.255955979534261,
+     "sd1": 0.19336067394381515,
+     "b2": 0.21453142847785162,
+     "sd2": 0.5339062715455622
+    }
+   },
+   "stats": {
+    "n": 1219,
+    "n_not_thrown": 1194,
+    "kinds": {
+     "slid": 1124,
+     "tipped": 39,
+     "no_breakaway": 5,
+     "no_contact": 21,
+     "damaged": 5
+    },
+    "n_reading": {
+     "slid": 1124,
+     "tipped": 0,
+     "no_breakaway": 0,
+     "no_contact": 0,
+     "damaged": 0
+    },
+    "reading_rate": {
+     "slid": 1.0
+    },
+    "thrown": 25
+   },
+   "val": {
+    "n": 259,
+    "brier": 0.33712347188583314,
+    "brier_const": 0.37008509951112417
+   }
+  },
+  "squeeze": {
+   "n": 614,
+   "n_train": 430,
+   "kind_rates": {
+    "measured": 1.0
+   },
+   "thrown_rate": 0.0,
+   "reading": {
+    "measured": [
+     0.0017392655219782673,
+     0.09276233223173808
+    ]
+   },
+   "stats": {
+    "n": 430,
+    "n_not_thrown": 430,
+    "kinds": {
+     "measured": 430
+    },
+    "n_reading": {
+     "measured": 430
+    },
+    "reading_rate": {
+     "measured": 1.0
+    },
+    "thrown": 0
+   },
+   "val": {
+    "n": 67,
+    "brier": 0.0,
+    "brier_const": 0.0
+   }
+  }
+ }
+}
