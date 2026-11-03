@@ -30,7 +30,7 @@ from typing import Any
 
 TABLE_TOP = 0.75
 TABLE_HALF = (0.35, 0.25)
-BIN_FLOOR_Z = 0.0
+BIN_FLOOR_Z = 0.45           # arm port gate A2: the bin stands on a 0.45 m stand (its rim at the table top)
 BIN_H = 0.30
 OBJECT_REST_XY = (-0.12, 0.0)
 
@@ -69,7 +69,7 @@ DESTINATIONS: dict[str, dict[str, Any]] = {
                     rim_height=0.015, opening_half_width=0.11, fragile=True),
     "box": _entry("box", "cavity", (0.22, -0.14), surface_z=TABLE_TOP + 0.005, mu=0.6,
                   rim_height=0.12, opening_half_width=0.08),
-    "bin": _entry("bin", "open_bin", (-0.62, 0.0), surface_z=BIN_FLOOR_Z, mu=0.6,
+    "bin": _entry("bin", "open_bin", (-0.60, 0.45), surface_z=BIN_FLOOR_Z, mu=0.6,
                   rim_height=BIN_H, opening_half_width=0.15),
 }
 

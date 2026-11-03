@@ -114,7 +114,8 @@ def mass_scale_range(generator: str) -> tuple[float, float]:
 def trainable(row: dict[str, Any]) -> bool:
     """A row the models may learn from: it ran (no error), the skill would have offered its pinch, and its
     contacts were physical (no artifact flag)."""
-    return "error" not in row and "declined" not in row and not row.get("artifact")
+    return ("error" not in row and "declined" not in row and not row.get("artifact")
+            and row.get("kind") != "unreachable")             # a probe the arm could not reach: no motion, nothing to learn
 
 
 def case_rng(seed: int, object_id: str, idx: int) -> np.random.Generator:
@@ -370,13 +371,24 @@ def pop_arm(row: dict[str, Any], store: dict[str, np.ndarray], file_tag: str) ->
     return row
 
 
+def load_sidecar(path: str) -> dict[str, np.ndarray]:
+    """The sidecar's arrays ({} when there is none): a resumed run starts from them."""
+    if not os.path.exists(path):
+        return {}
+    with np.load(path) as old:
+        return {k: old[k] for k in old.files}
+
+
 def save_sidecar(path: str, store: dict[str, np.ndarray], resume: bool = False) -> None:
-    """Write the sidecar (np.savez_compressed); on a resume the existing arrays stay and new keys add to them."""
-    if resume and os.path.exists(path):
-        with np.load(path) as old:
-            store = {**{k: old[k] for k in old.files}, **store}
+    """Write the sidecar (np.savez_compressed, through a temporary file and a rename, so a stop mid-write keeps the
+    last one); ``resume``: the existing arrays stay and the store's keys add to them. The generators call it after
+    each flushed batch, so the sidecar always holds the arm fields of every row in the JSONL."""
+    if resume:
+        store = {**load_sidecar(path), **store}
     if store:
-        np.savez_compressed(path, **store)
+        tmp = path + ".tmp.npz"
+        np.savez_compressed(tmp, **store)
+        os.replace(tmp, path)
 
 
 def _worker(args: tuple[str, int, int, list[int], bool, str, str, str]) -> list[dict[str, Any]]:
@@ -428,7 +440,7 @@ def main(argv: list[str] | None = None) -> int:
     jobs = [(oid, a.draws, a.seed, sorted(done.get(oid, set())), a.fixtures, a.mode, a.classes, a.thresholds) for oid in objects]
     written = 0
     mode = "a" if a.resume and os.path.exists(a.out) else "w"
-    side: dict[str, np.ndarray] = {}
+    side: dict[str, np.ndarray] = load_sidecar(sidecar_path(a.out)) if a.resume else {}
     tag = os.path.basename(a.out)
     with open(a.out, mode) as f:
         if a.workers <= 1:
@@ -442,11 +454,11 @@ def main(argv: list[str] | None = None) -> int:
                 f.write(json.dumps(pop_arm(row, side, tag)) + "\n")
                 written += "error" not in row
             f.flush()
+            save_sidecar(sidecar_path(a.out), side)
             print(f"{rows[0]['object'] if rows else '-'}: {len(rows)} rows", file=sys.stderr, flush=True)
         if a.workers > 1:
             pool.close()
             pool.join()
-    save_sidecar(sidecar_path(a.out), side, resume=a.resume)
     return written
 
 

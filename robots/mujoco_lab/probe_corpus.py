@@ -197,11 +197,11 @@ def main(argv: list[str] | None = None) -> int:
             if "error" not in r:
                 done.setdefault(r["object"], set()).add(int(r["draw"]))
     jobs = [(oid, a.draws, a.seed, sorted(done.get(oid, set())), a.classes, a.thresholds, a.mode) for oid in objects]
-    from robots.mujoco_lab.corpus import pop_arm, save_sidecar, sidecar_path
+    from robots.mujoco_lab.corpus import load_sidecar, pop_arm, save_sidecar, sidecar_path
 
     written = 0
     mode = "a" if a.resume and os.path.exists(a.out) else "w"
-    side: dict = {}
+    side: dict = load_sidecar(sidecar_path(a.out)) if a.resume else {}
     tag = os.path.basename(a.out)
     with open(a.out, mode) as f:
         if a.workers <= 1:
@@ -214,11 +214,11 @@ def main(argv: list[str] | None = None) -> int:
                 f.write(json.dumps(pop_arm(r, side, tag)) + "\n")
                 written += "error" not in r
             f.flush()
+            save_sidecar(sidecar_path(a.out), side)
             print(f"{rows[0]['object'] if rows else '-'}: {len(rows)} rows", file=sys.stderr, flush=True)
         if a.workers > 1:
             pool.close()
             pool.join()
-    save_sidecar(sidecar_path(a.out), side, resume=a.resume)
     return written
 
 

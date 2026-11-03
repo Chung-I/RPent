@@ -201,7 +201,15 @@ def load_sim(explicit: str | None = None) -> dict[str, Any]:
         if os.path.exists(os.path.join(d, name + ".py")):
             _SIM[name] = importlib.import_module(name)
     _SIM["dir"] = d
+    sync_bin(_SIM["scene"])
     return _SIM
+
+
+def sync_bin(scene) -> None:
+    """The bin destination where the scene puts it: the arm port moved it onto a stand (gate A2), the floating hand's
+    lab keeps the floor bin. DESTINATIONS["bin"] takes the scene's BIN_CENTRE and BIN_FLOOR_Z (0 when it has none)."""
+    bx, by = scene.BIN_CENTRE
+    DESTINATIONS["bin"] = {**DESTINATIONS["bin"], "xy": (float(bx), float(by)), "surface_z": float(getattr(scene, "BIN_FLOOR_Z", 0.0))}
 
 
 def object_ids() -> list[str]:

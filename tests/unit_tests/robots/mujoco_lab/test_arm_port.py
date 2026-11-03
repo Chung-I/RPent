@@ -187,3 +187,28 @@ def test_the_menu_is_unreachable_when_no_pinch_is(env, monkeypatch):
     err, a = tools._assess("object", "table_centre", "normal", prims, {})
     assert a is None and err["assessed"] is False and err["reason"] == "unreachable"
     assert calls and set(calls) == {"table_centre"}
+
+
+def test_unreachable_probe_rows_are_not_learned_from():
+    from robots.mujoco_lab.corpus import trainable
+
+    assert not trainable({"kind": "unreachable", "probe": "push"})
+    assert trainable({"kind": "slid", "probe": "push"})
+
+
+def test_the_bin_destination_follows_the_scene(env):
+    from robots.mujoco_lab.adapter import sync_bin
+    from rpent.skills.pick_place.destinations import DESTINATIONS
+
+    sc = env.s["scene"]
+    assert DESTINATIONS["bin"]["xy"] == tuple(sc.BIN_CENTRE) and DESTINATIONS["bin"]["surface_z"] == sc.BIN_FLOOR_Z
+
+    class Floor:
+        BIN_CENTRE = (-0.62, 0.0)
+
+    saved = dict(DESTINATIONS["bin"])
+    try:
+        sync_bin(Floor)
+        assert DESTINATIONS["bin"]["xy"] == (-0.62, 0.0) and DESTINATIONS["bin"]["surface_z"] == 0.0
+    finally:
+        DESTINATIONS["bin"] = saved
