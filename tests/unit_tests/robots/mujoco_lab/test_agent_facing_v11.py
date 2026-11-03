@@ -30,6 +30,7 @@ MATERIALS_V11_SHA256 = "68efd51603df33f21f572e21b654684caa7b643be281b63aa93e6c37
 RENAMED = {"hot3d__foam_roller": "foam roller", "hot3d__megaphone": "megaphone", "hot3d__clay_plates": "clay plates",
            "hot3d__lizard_figurine": "lizard figurine", "hot3d__storage_box": "storage box", "hot3d__pitcher": "pitcher"}
 RECLASSED = ("ycb__mug", "ycb__bowl", "ycb__bowl2", "hot3d__clay_plates", "hot3d__pitcher")
+SIM = pytest.mark.skipif(not os.environ.get("RPENT_MUJOCO_SIM_DIR"), reason="sim dir not set")
 
 
 def test_the_materials_table_is_pinned(tmp_path):
@@ -63,6 +64,7 @@ def test_v11_agent_object_shows_the_real_material_and_one_name_format():
     assert agent_object(box, "v10") == box
 
 
+@SIM
 def test_v11_agent_text_shows_no_old_name_and_no_lab_material(monkeypatch, tmp_path):
     """Every text an agent reads about the object under v11 (the task text, the audit file name and view_env_state's
     entry), for all 95 objects: a renamed object's old name never appears, the id is the agent id, and the material is
@@ -87,6 +89,7 @@ def test_v11_agent_text_shows_no_old_name_and_no_lab_material(monkeypatch, tmp_p
             assert old not in text.replace("_", " ") and oid not in text, (oid, text)
 
 
+@SIM
 def test_v11_locate_takes_any_separator(monkeypatch):
     """The agent may write a name with spaces, hyphens or underscores under v11; v10 keeps the lab's names."""
     from robots.mujoco_lab.adapter import MuJoCoLabEnv
@@ -125,6 +128,7 @@ def test_the_milestone_1_prior_refuses_v11_rows():
         belief_features(row, np.random.default_rng(0))
 
 
+@SIM
 def test_the_v11_prior_draws_the_v11_classes_and_masses():
     """The prior a v11 agent holds (make_prior under the v11 classes and law): no damage law on the 5 reclassed
     objects, and the empty particles' median mass at the real mass (the scale is log-uniform on [1/sqrt(6), sqrt(6)],
@@ -148,3 +152,61 @@ def test_the_v11_prior_draws_the_v11_classes_and_masses():
             assert all(p["v_break_ms"] is None and p["f_damage_n"] is None for p in b.particles), oid
         med = float(np.median([p["mass"] for p in b.particles if p["fill"] == 0.0]))
         assert math.isclose(med, real[oid]["mass_kg"], rel_tol=0.06), (oid, med, real[oid]["mass_kg"])
+
+
+def test_an_assessment_names_the_located_agent_name_not_the_callers_spelling(tmp_path):
+    """Review (Codex, agent-facing-v11): an assessment echoed the caller's spelling, and its cache kept the first one, so
+    under v11 an agent that wrote the lab id ("hot3d__foam_roller") read the old id back. An env whose locate gives the
+    agent's name (the lab env under v11) names the assessment with it; without one (v10) the caller's spelling stays."""
+    from tests.unit_tests.robots.mujoco_lab.test_toolkit import _toolkit
+    from tests.unit_tests.skills.test_tools import FakeEnv
+
+    class Renamed(FakeEnv):
+        def locate(self, prompt):
+            loc = super().locate("mug" if prompt in ("hot3d__foam_roller", "whiteboard eraser") else prompt)
+            return None if loc is None else dict(loc, name="whiteboard eraser")
+
+    (tmp_path / "v11").mkdir()
+    tk = _toolkit(tmp_path / "v11", env=Renamed())
+    first = tk.execute_tool("assess_pick", {"object": "hot3d__foam_roller", "destination": "table_centre"})
+    again = tk.execute_tool("assess_pick", {"object": "whiteboard eraser", "destination": "table_centre"})
+    assert first.data["object"] == again.data["object"] == "whiteboard eraser"
+    (tmp_path / "v10").mkdir()
+    plain = _toolkit(tmp_path / "v10", env=FakeEnv())
+    assert plain.execute_tool("assess_pick", {"object": "object", "destination": "table_centre"}).data["object"] == "object"
+
+
+@SIM
+def test_v11_locate_gives_the_agent_name(monkeypatch):
+    """The lab env's locate names the located object as the agent sees it under v11 (any accepted spelling); v10's
+    locate record is unchanged (no name)."""
+    from robots.mujoco_lab.adapter import MuJoCoLabEnv
+
+    env = MuJoCoLabEnv()
+    monkeypatch.setenv("RPENT_LAB_GENERATOR", "v11")
+    env.reset("hot3d__foam_roller", seed=0)
+    spellings = ("hot3d__foam_roller", "foam roller", "Whiteboard-Eraser", "hot3d__whiteboard_eraser")
+    assert {env.locate(p)["name"] for p in spellings} == {"whiteboard eraser"}
+    env.reset("ycb__sugar_box", seed=0)
+    assert env.locate("sugar_box")["name"] == "sugar box"
+    monkeypatch.setenv("RPENT_LAB_GENERATOR", "v10")
+    env.reset("hot3d__foam_roller", seed=0)
+    assert "name" not in env.locate("foam_roller")
+
+
+def test_v11_refuses_an_output_dir_that_holds_a_renamed_objects_lab_id(tmp_path, monkeypatch):
+    """Review (Opus, agent-facing-v11): the dashboard names the task folder from the id the user typed, and RPent puts the
+    output dir into list_directory's schema, so a v11 run of a renamed object showed the old id to the agent. Under v11
+    _parse_config refuses an output dir that holds a renamed object's lab id; v10 and the other objects keep theirs."""
+    from robots.mujoco_lab.robot_spec import _parse_config
+
+    def cfg(obj, out, gen):
+        monkeypatch.setenv("RPENT_LAB_GENERATOR", gen)
+        return _parse_config(argparse.Namespace(object=obj, destination="bin", care="normal", seed=0,
+                                                output_dir=str(tmp_path / out), memory_dir=str(tmp_path)))
+
+    with pytest.raises(ValueError, match="hot3d__clay_plates"):
+        cfg("hot3d__clay_plates", "tasks/0001_hot3d__clay_plates_bin_s0", "v11")
+    assert cfg("hot3d__clay_plates", "tasks/0001_hot3d__spun_bamboo_tray_bin_s0", "v11").prompt_vars["object"] == "hot3d__spun_bamboo_tray"
+    assert cfg("ycb__mug", "tasks/0001_ycb__mug_bin_s0", "v11").output_dir.name == "0001_ycb__mug_bin_s0"
+    assert cfg("hot3d__clay_plates", "tasks/0001_hot3d__clay_plates_bin_s0", "v10").output_dir.name == "0001_hot3d__clay_plates_bin_s0"

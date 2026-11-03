@@ -46,7 +46,7 @@ from robots.mujoco_lab.corpus import lab_generator
 from robots.mujoco_lab.fragility import FLAGS, THRESHOLDS_V0, Thresholds, classes_for, damage_event, entry_of, liquid, load_classes, spill_angle
 from robots.mujoco_lab.labels import Final, final_label, first_lifted, label_rollout, lifted
 from robots.mujoco_lab.masses import real_props, volume_centroid
-from robots.mujoco_lab.names import accepts
+from robots.mujoco_lab.names import accepts, object_name
 from robots.mujoco_lab.meter import DamageMeter
 from robots.mujoco_lab.readouts import RISEN_M, slide_force, summarize
 from rpent.skills.pick_place.features import G, Geometry
@@ -648,9 +648,10 @@ class MuJoCoLabEnv:
     def locate(self, prompt: str) -> dict[str, Any] | None:
         self._need()
         o, props = self.obj, self.props
-        if not accepts(o, prompt, lab_generator()):
+        generator = lab_generator()
+        if not accepts(o, prompt, generator):
             return None
-        return {
+        loc = {
             "object_id": o["id"],
             "centroid": self.sim.obj_pos().tolist(),
             "extent": float(props["length"]),
@@ -659,6 +660,9 @@ class MuJoCoLabEnv:
             "hollow": bool(o["hollow"]),
             "reachable": self._resting(),
         }
+        if generator == "v11":
+            loc["name"] = object_name(o["id"], generator)       # the name an agent sees, whatever spelling it used
+        return loc
 
     def _resting(self) -> bool:
         """The object touches the table or a fixture in the scene: not on the floor, in the bin, or held

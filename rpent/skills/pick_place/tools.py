@@ -226,7 +226,7 @@ def _assess(object: str, destination: str, care: str | float, primitives: Any,
         evidence.append(f"probes run this episode: {', '.join(sorted(rec['probes_run']))}")
     if rec.get("attempted") and getattr(primitives, "probe_models", None):
         evidence.append(AFTER_ATTEMPT)
-    a = Assessment(object=object, destination=destination, options=options, evidence=evidence,
+    a = Assessment(object=loc.get("name") or object, destination=destination, options=options, evidence=evidence,
                    recommendation=recommendation, care=care, visibility=belief.visibility, episode=key[3], care_scale=scale,
                    abstain_cost=None if abstain is None else float(abstain), probe_time_scale=time_scale,
                    without_probe=without_probe(options, recommendation, destination, care, abstain, getattr(primitives, "threshold", None)))

@@ -266,6 +266,9 @@ def _parse_config(args: argparse.Namespace) -> RunConfig:
     shown = agent_id(args.object, lab_generator())     # the agent's name for the object (v11: the corrected name)
     recipe_tag = f"{shown}_{args.destination}_s{args.seed}"
     output_dir = getattr(args, "output_dir", None)
+    if output_dir is not None and shown != args.object and args.object in str(output_dir):
+        raise ValueError(f"the output dir {output_dir} holds the lab id {args.object}, and RPent shows the output dir to the "
+                         f"agent, which must see the corrected name under {lab_generator()}: give a dir without it (e.g. {shown})")
     if output_dir is None:
         output_dir = get_repo_root() / "logs" / f"{datetime.now().strftime('%Y%m%d-%H:%M:%S')}_mujoco_lab_{recipe_tag}"
     memory_dir = Path(args.memory_dir) if getattr(args, "memory_dir", None) else get_memory_dir("mujoco_lab")
