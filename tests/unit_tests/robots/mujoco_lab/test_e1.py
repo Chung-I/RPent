@@ -1,0 +1,347 @@
+# Copyright 2026 The RPent Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""The E1 pilot (robots.mujoco_lab.e1): display names, the case plan, the scoring, the menu views and the planner loop."""
+
+from __future__ import annotations
+
+import json
+
+import numpy as np
+import pytest
+
+from robots.mujoco_lab import e1
+
+TEMPLATES = {
+    "default_rule": {"care_scale": 10, "abstain_cost": 10, "recovery": "absorbing"},
+    "settings": {"hi_abs": {"care_scale": 30, "abstain_cost": 10, "recovery": "absorbing"},
+                 "hi_rec": {"care_scale": 30, "abstain_cost": 10, "recovery": "rec20"},
+                 "lo_abs": {"care_scale": 1, "abstain_cost": 10, "recovery": "absorbing"},
+                 "lo_rec": {"care_scale": 1, "abstain_cost": 10, "recovery": "rec20"}},
+    "families": {f: {"split": "heldout" if f == "F3" else "tune",
+                     "templates": {s: [f"{f} {s} a: put the {{object}} on the {{destination}}.",
+                                       f"{f} {s} b: move the {{object}} to the {{destination}}."]
+                                   for s in ("hi_abs", "hi_rec", "lo_abs", "lo_rec")}}
+                 for f in ("F1", "F2", "F3")},
+}
+
+
+def test_display_names_drop_the_dataset_and_the_number():
+    assert e1.display_object("hope__orange_juice_carton") == "orange juice carton"
+    assert e1.display_object("fruits_veggies__lemon1") == "lemon"
+    assert e1.display_object("handal__hammer_6") == "hammer"
+    assert e1.display_object("ycb__mug") == "mug"
+    assert e1.display_destination("table_edge") == "table edge"
+    assert e1.display_destination("mouse_pad") == "mouse pad"
+
+
+def test_display_names_follow_the_generator(monkeypatch):
+    """Under v11 the planner's text names a renamed object by its corrected name (names.object_name), in the instruction
+    too; under v10 every object keeps the pilot's name (the rule before v11, copied here)."""
+    import re
+
+    from robots.mujoco_lab.masses import load_masses
+
+    monkeypatch.setenv("RPENT_LAB_GENERATOR", "v11")
+    assert e1.display_object("hot3d__foam_roller") == "whiteboard eraser" and e1.display_object("hot3d__pitcher") == "vase"
+    assert e1.display_object("handal__hammer_6") == "hammer" and e1.display_object("fruits_veggies__lemon1") == "lemon"
+    job = {"template": "Put the {object} on the {destination}.", "object": "hot3d__clay_plates"}
+    assert e1.instruction(job, "table_edge") == "Put the spun-bamboo tray on the table edge."
+    monkeypatch.setenv("RPENT_LAB_GENERATOR", "v10")
+    assert e1.instruction(job, "table_edge") == "Put the clay plates on the table edge."
+    for oid in load_masses()["objects"]:
+        assert e1.display_object(oid) == re.sub(r"_?\d+$", "", oid.split("__", 1)[-1]).replace("_", " ")
+
+
+def test_spread_cases_cover_every_object_before_a_second_case():
+    cases = {"a": [1, 2, 3, 4], "b": [5], "c": [6, 7]}
+    picked = e1.spread_cases(cases, 4, seed=0)
+    assert len(picked) == 4 and {o for o, _ in picked} == {"a", "b", "c"}
+    assert len(set(picked)) == 4 and all(i in cases[o] for o, i in picked)
+    assert e1.spread_cases(cases, 4, seed=0) == picked
+
+
+def test_the_final_plan_pairs_two_settings_per_case_and_uses_the_held_out_family():
+    cases = {f"o{k}": list(range(5)) for k in range(6)}
+    jobs = e1.plan_jobs(cases, TEMPLATES, n_cases=24, split="final", seed=12, plan_seed=0)
+    assert len(jobs) == 48
+    per = {s: sum(j["setting"] == s for j in jobs) for s in TEMPLATES["settings"]}
+    assert per == {"hi_abs": 12, "hi_rec": 12, "lo_abs": 12, "lo_rec": 12}
+    by_case = {}
+    for j in jobs:
+        by_case.setdefault((j["object"], j["idx"]), []).append(j["setting"])
+    assert all(sorted(v) in (["hi_abs", "lo_rec"], ["hi_rec", "lo_abs"]) for v in by_case.values())
+    assert all(j["family"] == "F3" and j["seed"] == 12 and j["split"] == "final" for j in jobs)
+    assert all(j["template"] in TEMPLATES["families"]["F3"]["templates"][j["setting"]] for j in jobs)
+    assert e1.instruction(jobs[0], "table_edge").endswith(".") and "{" not in e1.instruction(jobs[0], "table_edge")
+
+
+def test_the_tuning_plan_uses_one_setting_per_case_and_only_the_tuning_families():
+    cases = {f"o{k}": list(range(5)) for k in range(6)}
+    jobs = e1.plan_jobs(cases, TEMPLATES, n_cases=8, split="tune", seed=13, plan_seed=0)
+    assert len(jobs) == 8 and {j["family"] for j in jobs} <= {"F1", "F2"}
+    assert {j["setting"] for j in jobs} == set(TEMPLATES["settings"])
+
+
+def test_realized_cost_follows_the_hidden_setting():
+    case = {"ended": "placed", "probes": [{"probe": "weigh", "kind": "measured", "thrown": False}],
+            "attempts": [{"outcome": "dropped_high", "cost_s": 8.0}, {"outcome": "placed_stable", "cost_s": 8.0}]}
+    s = TEMPLATES["settings"]
+    # rec20: the drop costs the reset (20 s at 0.05) and its time; the weigh 4 s; the success its time
+    assert e1.realized_cost(case, s["hi_rec"]) == pytest.approx(0.2 + (1.0 + 0.4) + 0.4)
+    assert e1.realized_cost(case, s["lo_rec"]) == pytest.approx(0.2 + 1.4 + 0.4)
+    failed = {"ended": "failed", "probes": [], "attempts": [{"outcome": "spilled", "cost_s": 9.0}]}
+    assert e1.realized_cost(failed, s["hi_abs"]) == pytest.approx(5 * 30 + 0.45 + 10)
+    assert e1.realized_cost(failed, s["lo_abs"]) == pytest.approx(5 * 1 + 0.45 + 10)
+    assert e1.realized_cost({"ended": "abstained", "probes": [], "attempts": []}, s["lo_abs"]) == 10.0
+    thrown = {"ended": "thrown", "probes": [{"probe": "push", "kind": "slid", "thrown": True}], "attempts": []}
+    assert e1.realized_cost(thrown, s["hi_abs"]) == pytest.approx(0.1 + 150 + 10)
+
+
+def _row(rid, kind="lower_risk", cost=12.0, p_ok=0.6, dest="table_edge"):
+    p = {k: 0.0 for k in e1.OUTCOMES}
+    p.update(placed_stable=p_ok, spilled=0.2, not_lifted=1 - p_ok - 0.2)
+    return {"id": rid, "kind": kind, "action": {"force": 10.0, "v_lift": 0.15, "v_transport": 0.5, "a_transport": 2.0,
+                                                "destination": dest, "release_height": None, "s": 0.5},
+            "p": p, "cost_s": 8.0, "expected_cost": cost, "reason": "twice the squeeze", "probe": None}
+
+
+def _probe_row(rid="probe_weigh", cost=9.0):
+    return {"id": rid, "kind": "probe", "action": {"probe": rid.split("_")[1], "s": 0.5, "force": 20.0}, "p": None, "cost_s": 4.0,
+            "expected_cost": cost, "reason": "weigh first: value of information 1.51",
+            "probe": {"p_kind": {"measured": 0.6, "lower_bound": 0.4}, "p_thrown": 0.01, "evoi": 1.5, "evoi_se": 0.2,
+                      "expected_cost_after": 8.8}}
+
+
+def _menu(rec="probe", recommended="probe_weigh"):
+    rows = [_probe_row(), _row("firm_grip", cost=17.6), _row("commit_std", "commit", cost=19.5),
+            _row("inboard_place", cost=19.1, dest="table_centre"),
+            {"id": "decline", "kind": "decline", "action": {}, "p": None, "cost_s": 0.0, "expected_cost": 10.0,
+             "reason": "best row costs 17.57 > abstain 10.00: spilled carries the largest expected cost", "probe": None}]
+    return {"assessed": True, "destination": "table_edge", "best_option": "firm_grip", "options": rows, "recommendation": rec,
+            "recommended_option": recommended, "without_probe": "decline", "decline_reason": rows[-1]["reason"],
+            "evidence": ["mass median 0.268 kg, 80 % interval 0.094 to 0.403 kg"], "guard": {"flag": False}}
+
+
+def test_the_menu_view_shows_every_row_but_inboard_place_with_its_numbers():
+    text, ids = e1.render_menu(_menu(), "menu_planner", "table_edge", np.random.default_rng(0))
+    assert set(ids) == {"probe_weigh", "firm_grip", "commit_std", "decline"} and "inboard_place" not in text
+    assert "17.60" in text and "probe_weigh" in text and "Recommendation: probe" in text
+
+
+def test_the_rec_view_shows_the_recommended_row_and_decline_only():
+    text, ids = e1.render_menu(_menu(), "rec_planner", "table_edge", np.random.default_rng(0))
+    assert ids == ["probe_weigh", "decline"] and "firm_grip" not in text
+    text, ids = e1.render_menu(_menu("decline", None), "rec_planner", "table_edge", np.random.default_rng(0))
+    assert ids == ["firm_grip", "decline"] and "declines" in text
+
+
+def test_the_nomenu_view_shows_actions_without_numbers():
+    text, ids = e1.render_menu(_menu(), "nomenu_planner", "table_edge", np.random.default_rng(0))
+    assert set(ids) == {"probe_weigh", "firm_grip", "commit_std", "decline"}
+    assert "17.6" not in text and "0.60" not in text and "Recommendation" not in text and "value of information" not in text
+
+
+def test_parse_choice_reads_a_tool_call_or_a_json_object():
+    assert e1.parse_choice({"tool": "choose", "args": {"option_id": "firm_grip", "reason": "x"}}, ["firm_grip", "decline"]) == "firm_grip"
+    assert e1.parse_choice({"tool": None, "args": None, "content": 'I pick {"option_id": "decline"}'}, ["firm_grip", "decline"]) == "decline"
+    assert e1.parse_choice({"tool": "choose", "args": {"option_id": "slow_lift"}}, ["firm_grip", "decline"]) is None
+
+
+class FakeTools:
+    """A scripted lab: the first menu recommends decline; an attempt places the object."""
+
+    def __init__(self, outcome="placed_stable"):
+        self.outcome, self.calls = outcome, []
+
+    def assess(self):
+        return _menu("decline", None)
+
+    def act(self, option_id):
+        self.calls.append(option_id)
+        return {"outcome": self.outcome, "placed": self.outcome == "placed_stable", "placed_at_requested": self.outcome == "placed_stable",
+                "option": option_id, "damage": None, "readouts": {"rose": True}, "diagnosis": [], "artifact": False,
+                "assessment": _menu("decline", None)}
+
+
+class ScriptModel:
+    def __init__(self, choices):
+        self.choices, self.n = list(choices), 0
+
+    def __call__(self, messages, tools):
+        self.n += 1
+        c = self.choices.pop(0)
+        if c is None:
+            return {"tool": None, "args": None, "content": "no idea", "reasoning": "", "seconds": 0.0, "usage": {}, "error": None}
+        return {"tool": "choose", "args": {"option_id": c, "reason": "because"}, "content": "", "reasoning": "r", "seconds": 0.0,
+                "usage": {}, "error": None}
+
+
+def test_the_planner_loop_counts_an_override_and_ends_when_placed():
+    tools, model = FakeTools(), ScriptModel(["firm_grip"])
+    case = e1.planner_loop(tools, model, "menu_planner", "Put it there.", "object", "table_edge", np.random.default_rng(0))
+    assert case["ended"] == "placed" and tools.calls == ["firm_grip"] and case["overrides"] == 1 and len(case["calls"]) == 1
+    assert case["attempts"][0]["outcome"] == "placed_stable" and case["attempts"][0]["cost_s"] == 8.0
+
+
+def test_the_planner_loop_retries_a_malformed_call_and_stops_at_the_cap():
+    tools, model = FakeTools(outcome="tipped"), ScriptModel([None, "firm_grip", "firm_grip", "firm_grip"])
+    case = e1.planner_loop(tools, model, "menu_planner", "Put it there.", "object", "table_edge", np.random.default_rng(0),
+                           max_calls=6)
+    assert case["malformed"] == 1 and case["ended"] == "failed" and len(case["attempts"]) == 3
+    tools, model = FakeTools(outcome="tipped"), ScriptModel([None] * 6)
+    case = e1.planner_loop(tools, model, "menu_planner", "Put it there.", "object", "table_edge", np.random.default_rng(0),
+                           max_calls=6)
+    assert case["ended"] == "call_cap" and case["malformed"] == 6 and tools.calls == []
+
+
+def test_the_planner_loop_declines():
+    tools, model = FakeTools(), ScriptModel(["decline"])
+    case = e1.planner_loop(tools, model, "rec_planner", "Put it there.", "object", "table_edge", np.random.default_rng(0))
+    assert case["ended"] == "abstained" and tools.calls == [] and case["overrides"] == 0
+
+
+def test_object_bootstrap_interval_contains_the_mean():
+    rng = np.random.default_rng(0)
+    rows = [{"object": f"o{k % 5}", "d": float(v)} for k, v in enumerate(rng.normal(1.0, 0.5, 50))]
+    mean, lo, hi = e1.object_bootstrap([r["d"] for r in rows], [r["object"] for r in rows], n_boot=500, seed=0)
+    assert lo < mean < hi and mean == pytest.approx(np.mean([r["d"] for r in rows]))
+
+
+def _pair_rows(obj, idx, menu_cost, rule_cost, overrides=0, artifact=(False, False)):
+    base = {"object": obj, "idx": idx, "setting": "lo_abs", "destination": "plate", "instruction": "Put it there.",
+            "ended": "placed", "probes": [], "attempts": [], "calls": [], "transcript": []}
+    return [dict(base, arm="menu_planner", cost=menu_cost, overrides=overrides, artifact=artifact[0]),
+            dict(base, arm="default_rule", cost=rule_cost, overrides=0, artifact=artifact[1])]
+
+
+def test_examples_skip_the_pairs_the_contrasts_drop():
+    rows = (_pair_rows("a", 0, 0.6, 10.2, overrides=1, artifact=(True, True))      # the largest override, but an artifact
+            + _pair_rows("b", 1, 14.2, 10.2, overrides=1)                          # the only clean override
+            + _pair_rows("c", 2, 10.0, 160.0)                                       # the largest gain
+            + _pair_rows("d", 3, 11.5, 0.5, artifact=(False, True))                 # the largest loss, but an artifact
+            + _pair_rows("e", 4, 5.5, 0.5))                                         # the largest clean loss
+    text = e1.examples(rows)
+    assert "### The planner beat the rule (difference -150.00)" in text
+    assert "### The planner lost to the rule (difference +5.00)" in text
+    assert "### An override of a decline (difference +4.00)" in text
+    assert "-9.60" not in text and "+11.00" not in text
+
+
+def test_the_neutral_task_text_leaves_the_recommendation_as_advice():
+    v1 = e1.user_text("Put it there.", "mug", "plate", "menu_planner")
+    assert "If the recommendation is a probe, run it" in v1 and "decline when the recommendation is decline" in v1   # as run
+    for arm in ("menu_planner", "rec_planner"):
+        t = e1.user_text("Put it there.", "mug", "plate", arm, task="neutral")
+        assert "run it" not in t and "when the recommendation is decline" not in t and "advice, not an order" in t
+    assert e1.user_text("Put it there.", "mug", "plate", "nomenu_planner", task="neutral") == \
+        e1.user_text("Put it there.", "mug", "plate", "nomenu_planner")
+    with pytest.raises(ValueError):
+        e1.user_text("Put it there.", "mug", "plate", "menu_planner", task="other")
+
+
+class RecordingModel(ScriptModel):
+    def __call__(self, messages, tools):
+        self.messages = [dict(m) for m in messages]
+        return super().__call__(messages, tools)
+
+
+def test_the_planner_loop_sends_the_chosen_task_text():
+    tools, model = FakeTools(), RecordingModel(["decline"])
+    e1.planner_loop(tools, model, "menu_planner", "Put it there.", "object", "table_edge", np.random.default_rng(0), task="neutral")
+    assert "advice, not an order" in model.messages[1]["content"]
+
+
+@pytest.mark.skipif(not __import__("os").environ.get("RPENT_MUJOCO_SIM_DIR"), reason="sim dir not set")
+def test_a_case_resets_with_the_bundles_classes(monkeypatch):
+    """reset_case resets as calibrate.run_case does: the env takes the bundle's classes (its manifest's fragility world),
+    the ones the case's hidden fragility is drawn from; with no fragility world the env reads the generator's file."""
+    from types import SimpleNamespace
+
+    import robots.mujoco_lab.prior as prior
+    from robots.mujoco_lab.fragility import CLASSES, THRESHOLDS_V0, Thresholds, load_classes
+
+    class Stop(Exception):
+        pass
+
+    class Env:
+        classes = "unset"
+
+        def reset(self, *a, **kw):
+            raise Stop
+
+    C = load_classes(CLASSES)
+    for world, want in (((C, Thresholds.from_json(THRESHOLDS_V0)), C), (None, None)):
+        monkeypatch.setattr(prior, "fragility_world", lambda manifest, w=world: w)
+        prims = SimpleNamespace(env=Env(), manifest={})
+        with pytest.raises(Stop):
+            e1.reset_case(prims, "ycb__mug", 0, 0)
+        assert prims.env.classes is want
+
+
+def test_a_planner_run_records_its_generator_and_refuses_a_directory_of_another(tmp_path, monkeypatch):
+    """e1-v11: as e1_gap.run, the run config records the lab's generator and a directory that holds a run of another
+    generator is an error."""
+    import glob
+
+    crossfit = tmp_path / "folds"
+    crossfit.mkdir()
+    (crossfit / "folds.json").write_text(json.dumps({"a": 0}))
+    plan = tmp_path / "plan.json"
+    plan.write_text(json.dumps({"settings": {}, "jobs": []}))
+    monkeypatch.setattr(e1, "run_job", lambda item: [])
+    monkeypatch.setenv("RPENT_LAB_GENERATOR", "v11")
+    args = dict(split="final", arms=["default_rule"], workers=1, base_url=None, stub=True, crossfit=str(crossfit))
+    e1.run(str(plan), out_dir=str(tmp_path / "v11"), **args)
+    [held] = glob.glob(str(tmp_path / "v11" / "run_config_*.json"))
+    assert json.load(open(held))["generator"] == "v11"
+    monkeypatch.setenv("RPENT_LAB_GENERATOR", "v10")
+    with pytest.raises(ValueError, match="generator v11"):
+        e1.run(str(plan), out_dir=str(tmp_path / "v11"), **args)
+
+
+class _FakeCompletions:
+    def __init__(self):
+        self.kwargs = None
+
+    def create(self, **kwargs):
+        from types import SimpleNamespace as N
+
+        self.kwargs = kwargs
+        call = N(function=N(name="choose", arguments='{"option_id": "decline", "reason": "r"}'))
+        return N(choices=[N(message=N(tool_calls=[call], content="", reasoning_content="think"), finish_reason="tool_calls")],
+                 usage=N(prompt_tokens=10, completion_tokens=3))
+
+
+def _planner(**kw):
+    from types import SimpleNamespace as N
+
+    p = e1.GemmaPlanner("http://127.0.0.1:1/v1", **kw)
+    fake = _FakeCompletions()
+    p.client = N(chat=N(completions=fake))
+    return p, fake
+
+
+def test_planner_sends_no_top_p_or_top_k_by_default():
+    p, fake = _planner()
+    r = p([{"role": "user", "content": "x"}], e1.tool_schema(["decline"]))
+    assert r["tool"] == "choose" and r["usage"] == {"prompt": 10, "completion": 3}
+    assert "top_p" not in fake.kwargs and "top_k" not in fake.kwargs["extra_body"]
+    assert fake.kwargs["temperature"] == 0.0 and fake.kwargs["extra_body"]["chat_template_kwargs"] == {"enable_thinking": True}
+
+
+def test_planner_passes_top_p_and_top_k():
+    p, fake = _planner(temperature=1.0, top_p=0.95, top_k=20)
+    p([{"role": "user", "content": "x"}], e1.tool_schema(["decline"]))
+    assert fake.kwargs["temperature"] == 1.0 and fake.kwargs["top_p"] == 0.95 and fake.kwargs["extra_body"]["top_k"] == 20

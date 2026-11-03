@@ -197,3 +197,57 @@ def test_weigh_narrows_the_fill():
         hits.append(q10 <= 0.6 <= q90)
     assert max(widths) < 0.3 and np.mean(hits) >= 0.75, (max(widths), np.mean(hits))
     assert np.median(p_filled) > 0.6
+
+
+def test_the_narrow_prior_matches_the_narrow_truth():
+    """plan H3 decision 4, quantile-coupled, on a fillable object (the mug) and a rigid one (the banana): the m2b prior's
+    particles at f = 0.25 are shrink_theta of its particles at f = 1 from the same stream (mass scale, mu, com_s; the
+    fill, fragility latent, CoM end and branch unchanged), and 2,000 narrow case draws are shrink_theta of the wide ones
+    (test_shrink_keeps_the_case_stream), so each KS comparison of the prior with the draws (mass scale empty and filled
+    apart, mu, com_s) equals milestone 4's comparison of the wide ones, statistic and p, whose agreement
+    test_prior_matches_the_generator checks; every narrow particle and draw lies in the narrow ranges; lab_prior too."""
+    from scipy.stats import ks_2samp
+
+    from robots.mujoco_lab.adapter import MuJoCoLabEnv, object_props
+    from robots.mujoco_lab.calibrate import case_draw
+    from robots.mujoco_lab.corpus import shrink_theta
+    from robots.mujoco_lab.fragility import THRESHOLDS_V0, Thresholds, load_classes
+    from robots.mujoco_lab.prior import lab_prior, make_prior
+
+    hidden = ("mass_scale", "mu", "com_s")
+
+    def coupled(wide, narrow):
+        for w, n in zip(wide, narrow, strict=True):
+            want = shrink_theta({k: w[k] for k in hidden}, 0.25, w.get("fill", 0.0) > 0)
+            assert all(n[k] is None if want[k] is None else n[k] == pytest.approx(want[k], rel=1e-12) for k in hidden)
+            assert all(n[k] == w[k] for k in ("fill", "frag_z", "com_end", "com_branch") if k in w)
+
+    def inside(x, filled):
+        lo, hi = (0.9457, 1.0574) if filled else (0.9789, 1.5323)
+        com = x["com_s"] is None or 0.4875 <= x["com_s"] <= 0.6125
+        return lo <= x["mass_scale"] <= hi and 0.4 <= x["mu"] <= 0.6 and com
+
+    classes, th = load_classes(), Thresholds.from_json(THRESHOLDS_V0)
+    prior, env = make_prior(classes, th), MuJoCoLabEnv()
+    for oid in ("ycb__mug", "ycb__banana"):
+        env.reset(oid, seed=0)
+        pose, mass = env.pose_info(), object_props(oid)["mass"]
+        wide, narrow = (prior(pose, 4000, np.random.default_rng(2), spread=f).particles for f in (1.0, 0.25))
+        coupled(wide, narrow)
+        tw, tn = ([case_draw(3, oid, i, mass, False, fragility=(classes, th), spread=f) for i in range(2000)] for f in (1.0, 0.25))
+        compared = 0
+        for full in (False, True):
+            for k in hidden:
+                pw, pn = ([x[k] for x in P if (x["fill"] > 0) == full and x[k] is not None] for P in (wide, narrow))
+                cw, cn = ([c[0][k] for c in T if (c[3]["fill"] > 0) == full and c[0][k] is not None] for T in (tw, tn))
+                if not (pw and cw):
+                    assert not (pn or cn)
+                    continue
+                a, b = ks_2samp(pn, cn), ks_2samp(pw, cw)
+                assert (a.statistic, a.pvalue) == pytest.approx((b.statistic, b.pvalue), rel=1e-9)
+                compared += 1
+        assert compared == (5 if oid == "ycb__mug" else 3)
+        assert all(inside(x, x["fill"] > 0) for x in narrow) and all(inside(c[0], c[3]["fill"] > 0) for c in tn)
+    wide, narrow = (lab_prior(env.pose_info(), 2000, np.random.default_rng(3), spread=f).particles for f in (1.0, 0.25))
+    coupled(wide, narrow)
+    assert all(inside(x, False) for x in narrow)

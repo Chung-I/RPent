@@ -1,0 +1,45 @@
+{
+ "G1": {
+  "pass": true,
+  "n_failures": 0,
+  "failures": [],
+  "checked": 9734
+ },
+ "first_menus": {
+  "pass": true,
+  "n_failures": 0,
+  "failures": []
+ },
+ "Gr": {
+  "pass": true,
+  "n_failures": 0,
+  "failures": [],
+  "restores": 1529
+ },
+ "Gs": {
+  "pass": true,
+  "n_failures": 0,
+  "failures": [],
+  "shams": 8544
+ },
+ "Gp": {
+  "pass": true,
+  "n_failures": 0,
+  "failures": [],
+  "pairs": 10450
+ },
+ "Gt": {
+  "pass": true,
+  "n_failures": 0,
+  "failures": [],
+  "twins": 6270
+ },
+ "Ga": {
+  "pass": true,
+  "n_failures": 0,
+  "failures": [],
+  "rows": 1301
+ },
+ "seed": 11,
+ "pass": true
+}

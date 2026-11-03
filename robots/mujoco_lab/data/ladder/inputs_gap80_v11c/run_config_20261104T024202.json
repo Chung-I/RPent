@@ -1,0 +1,30 @@
+{
+ "cases": "robots/mujoco_lab/data/e1/gap/cases.json",
+ "n_cases": 80,
+ "settings": {
+  "k100_A3_abs": {
+   "care_scale": 100.0,
+   "abstain_cost": 3.0,
+   "recovery": "absorbing"
+  },
+  "k30_A3_abs": {
+   "care_scale": 30.0,
+   "abstain_cost": 3.0,
+   "recovery": "absorbing"
+  },
+  "k100_A10_abs": {
+   "care_scale": 100.0,
+   "abstain_cost": 10.0,
+   "recovery": "absorbing"
+  }
+ },
+ "crossfit": "robots/mujoco_lab/data/m2b2_v11c/folds",
+ "generator": "v11",
+ "workers": 8,
+ "code": {
+  "revision": "6a38c38634bc3d59fd57c7cfab99454a0d542e48",
+  "dirty": false,
+  "sim_revision": "89aa86351d73ffb35de0de0a0c41bdb05b92a222",
+  "sim_dirty": false
+ }
+}

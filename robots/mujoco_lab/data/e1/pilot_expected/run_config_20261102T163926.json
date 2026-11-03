@@ -1,0 +1,39 @@
+{
+ "kind": "pilot",
+ "source": {
+  "kind": "pilot",
+  "final": "/home/chungyili/Codes/RPent-e1/robots/mujoco_lab/data/e1/final",
+  "neutral": "/home/chungyili/Codes/RPent-e1/robots/mujoco_lab/data/e1/neutral/final",
+  "plan": "/home/chungyili/Codes/RPent-e1/robots/mujoco_lab/data/e1/plan.json"
+ },
+ "workers": 8,
+ "limit": null,
+ "jobs": 160,
+ "crossfit": "robots/mujoco_lab/data/m2b2/folds",
+ "settings": {
+  "hi_abs": {
+   "care_scale": 30,
+   "abstain_cost": 10,
+   "recovery": "absorbing"
+  },
+  "hi_rec": {
+   "care_scale": 30,
+   "abstain_cost": 10,
+   "recovery": "rec20"
+  },
+  "lo_abs": {
+   "care_scale": 1,
+   "abstain_cost": 10,
+   "recovery": "absorbing"
+  },
+  "lo_rec": {
+   "care_scale": 1,
+   "abstain_cost": 10,
+   "recovery": "rec20"
+  }
+ },
+ "code": {
+  "revision": "d0d32cb0ad128625947ab35117f46d5ea6a02504",
+  "dirty": false
+ }
+}

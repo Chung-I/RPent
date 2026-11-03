@@ -637,3 +637,32 @@ def test_the_transport_slosh_takes_the_carry_scale(monkeypatch):
     assert n > 0 and s.log.count("carry") == n and s.log[0] == s.log[-1] == "jolt"
     i = s.log.index("carry")
     assert s.log[i:i + n] == ["carry"] * n
+
+
+def test_restore_returns_the_start_state():
+    """plan H3 gate Gr: restore() after an attempt that carried the object into the bin rebuilds the reset's start
+    state: the object's pose, every joint position and velocity and the hand's mocap target as they were after the
+    reset, the same theta and the same episode; the sensor streams go on from where the attempt left them (no reseed,
+    no rewind)."""
+    env = _env()
+    env.reset(LONG, {"mu": 0.8, "mass_scale": 1.0, "com_s": None, "v_lift": 0.15}, seed=0)
+    sim = env.sim
+    pos0, mat0, qpos0, qvel0, mocap0 = (sim.obj_pos().copy(), sim.obj_mat().copy(), sim.d.qpos.copy(), sim.d.qvel.copy(),
+                                        sim.d.mocap_pos.copy())
+    episode, theta, fresh = env.episode, dict(env.theta), env.force_rng.bit_generator.state
+    r = env.execute(env.proposals()[1], force=20.0, v_lift=0.15)
+    assert r.label == "placed_stable" and r.zone == "bin"                         # the object left its start pose
+    moved = env.force_rng.bit_generator.state
+    assert moved != fresh
+    check = env.restore()
+    sim = env.sim
+    assert np.array_equal(sim.d.qpos, qpos0) and np.array_equal(sim.d.qvel, qvel0) and np.array_equal(sim.d.mocap_pos, mocap0)
+    assert np.allclose(sim.obj_pos(), pos0, atol=1e-6) and np.allclose(sim.obj_mat(), mat0, atol=1e-6)
+    assert env.episode == episode and env.theta == theta and env.force_rng.bit_generator.state == moved
+    assert check["pos_err_mm"] <= 1.0 and check["rot_err_deg"] <= 0.1 and check["qpos_err"] == 0.0 and check["qvel_err"] == 0.0
+    assert check["mocap_err"] == 0.0 and check["same_case"] is True and check["episode"] is True and check["at_rest"] is True
+
+
+def test_restore_needs_a_reset():
+    with pytest.raises(RuntimeError):
+        _env().restore()

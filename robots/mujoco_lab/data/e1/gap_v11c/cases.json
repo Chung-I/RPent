@@ -1,0 +1,412 @@
+{
+ "seed": 13,
+ "plan_seed": 1,
+ "n": 80,
+ "cases": [
+  [
+   "hope__canned_peaches",
+   0
+  ],
+  [
+   "ycb__banana",
+   0
+  ],
+  [
+   "handal__red_serving_spoon",
+   10
+  ],
+  [
+   "hot3d__storage_box",
+   7
+  ],
+  [
+   "handal__hammer_6",
+   1
+  ],
+  [
+   "hope__parmesan_cheese_canister",
+   2
+  ],
+  [
+   "hope__pineapple_slices_can",
+   0
+  ],
+  [
+   "ycb__cheez_it",
+   0
+  ],
+  [
+   "fruits_veggies__orange1",
+   7
+  ],
+  [
+   "handal__ladle",
+   6
+  ],
+  [
+   "hope__ketchup_bottle",
+   1
+  ],
+  [
+   "hot3d__clay_plates",
+   4
+  ],
+  [
+   "ycb__chocolate_pudding",
+   5
+  ],
+  [
+   "hope__cream_cheese",
+   0
+  ],
+  [
+   "ycb__soft_scrub",
+   2
+  ],
+  [
+   "handal__measuring_spoon",
+   8
+  ],
+  [
+   "hope__popcorn_box",
+   0
+  ],
+  [
+   "hot3d__frozen_vegetable_block",
+   8
+  ],
+  [
+   "hot3d__foam_roller",
+   10
+  ],
+  [
+   "hope__yogurt_cup",
+   2
+  ],
+  [
+   "hot3d__remote_control",
+   9
+  ],
+  [
+   "hot3d__dumbbell",
+   7
+  ],
+  [
+   "hot3d__computer_mouse",
+   7
+  ],
+  [
+   "ycb__spring_clamp",
+   4
+  ],
+  [
+   "ycb__wood_block",
+   4
+  ],
+  [
+   "ycb__mustard",
+   2
+  ],
+  [
+   "handal__pink_spaghetti_spoon",
+   1
+  ],
+  [
+   "hot3d__soup_can",
+   4
+  ],
+  [
+   "hope__mustard_bottle",
+   9
+  ],
+  [
+   "ycb__dry_erase_marker",
+   10
+  ],
+  [
+   "ycb__spam_can",
+   6
+  ],
+  [
+   "handal__hammer_4",
+   4
+  ],
+  [
+   "ycb__tomato_soup_can",
+   2
+  ],
+  [
+   "ycb__tuna_can",
+   9
+  ],
+  [
+   "hot3d__spatula",
+   6
+  ],
+  [
+   "hope__orange_juice_carton",
+   10
+  ],
+  [
+   "ycb__bowl2",
+   6
+  ],
+  [
+   "hope__mayonnaise_bottle",
+   1
+  ],
+  [
+   "hope__pitted_cherries",
+   2
+  ],
+  [
+   "handal__hammer_7",
+   3
+  ],
+  [
+   "handal__hammer_1",
+   6
+  ],
+  [
+   "hot3d__bbq_sauce_bottle",
+   5
+  ],
+  [
+   "hope__canned_mushrooms",
+   4
+  ],
+  [
+   "hope__granola_bars",
+   5
+  ],
+  [
+   "hot3d__lizard_figurine",
+   5
+  ],
+  [
+   "fruits_veggies__lemon1",
+   1
+  ],
+  [
+   "hot3d__mug",
+   2
+  ],
+  [
+   "ycb__brick",
+   1
+  ],
+  [
+   "hot3d__megaphone",
+   9
+  ],
+  [
+   "handal__hammer_8",
+   0
+  ],
+  [
+   "hope__butter",
+   0
+  ],
+  [
+   "ycb__pitcher",
+   1
+  ],
+  [
+   "hot3d__glasses",
+   3
+  ],
+  [
+   "hope__spaghetti",
+   1
+  ],
+  [
+   "handal__measuring_cups",
+   7
+  ],
+  [
+   "ycb__bowl",
+   3
+  ],
+  [
+   "handal__hammer_2",
+   8
+  ],
+  [
+   "hot3d__smartphone",
+   9
+  ],
+  [
+   "hot3d__keyboard",
+   6
+  ],
+  [
+   "hope__bbq_sauce_bottle",
+   1
+  ],
+  [
+   "hope__oatmeal_raisin_cookies",
+   4
+  ],
+  [
+   "ycb__jello",
+   0
+  ],
+  [
+   "handal__hammer_3",
+   9
+  ],
+  [
+   "ycb__mug",
+   6
+  ],
+  [
+   "hope__ranch_dressing",
+   0
+  ],
+  [
+   "hope__green_beans_can",
+   1
+  ],
+  [
+   "hot3d__ceramic_mug",
+   0
+  ],
+  [
+   "hope__canned_tuna",
+   0
+  ],
+  [
+   "hope__tomato_sauce_can",
+   7
+  ],
+  [
+   "hot3d__coffee_pot",
+   0
+  ],
+  [
+   "hot3d__wooden_bowl",
+   6
+  ],
+  [
+   "hot3d__potato_masher",
+   2
+  ],
+  [
+   "hope__chocolate_pudding_mix",
+   8
+  ],
+  [
+   "handal__hammer",
+   6
+  ],
+  [
+   "hope__raisin_box",
+   7
+  ],
+  [
+   "hope__milk_carton",
+   10
+  ],
+  [
+   "fruits_veggies__avocado",
+   7
+  ],
+  [
+   "hot3d__birdhouse",
+   7
+  ],
+  [
+   "hope__peas_and_carrots",
+   8
+  ],
+  [
+   "ycb__scissors",
+   2
+  ]
+ ],
+ "h3_recommendation": {
+  "hope__canned_peaches/0": "decline",
+  "ycb__banana/0": "decline",
+  "handal__red_serving_spoon/10": "commit",
+  "hot3d__storage_box/7": "decline",
+  "handal__hammer_6/1": "decline",
+  "hope__parmesan_cheese_canister/2": "decline",
+  "hope__pineapple_slices_can/0": "decline",
+  "ycb__cheez_it/0": "decline",
+  "fruits_veggies__orange1/7": "decline",
+  "handal__ladle/6": "commit",
+  "hope__ketchup_bottle/1": "commit",
+  "hot3d__clay_plates/4": "decline",
+  "ycb__chocolate_pudding/5": "decline",
+  "hope__cream_cheese/0": "commit",
+  "ycb__soft_scrub/2": "probe",
+  "handal__measuring_spoon/8": "commit",
+  "hope__popcorn_box/0": "decline",
+  "hot3d__frozen_vegetable_block/8": "commit",
+  "hot3d__foam_roller/10": "commit",
+  "hope__yogurt_cup/2": "decline",
+  "hot3d__remote_control/9": "decline",
+  "hot3d__dumbbell/7": "commit",
+  "hot3d__computer_mouse/7": "commit",
+  "ycb__spring_clamp/4": "commit",
+  "ycb__wood_block/4": "decline",
+  "ycb__mustard/2": "probe",
+  "handal__pink_spaghetti_spoon/1": "commit",
+  "hot3d__soup_can/4": "commit",
+  "hope__mustard_bottle/9": "commit",
+  "ycb__dry_erase_marker/10": "commit",
+  "ycb__spam_can/6": "commit",
+  "handal__hammer_4/4": "decline",
+  "ycb__tomato_soup_can/2": "commit",
+  "ycb__tuna_can/9": "commit",
+  "hot3d__spatula/6": "decline",
+  "hope__orange_juice_carton/10": "probe",
+  "ycb__bowl2/6": "decline",
+  "hope__mayonnaise_bottle/1": "probe",
+  "hope__pitted_cherries/2": "commit",
+  "handal__hammer_7/3": "decline",
+  "handal__hammer_1/6": "decline",
+  "hot3d__bbq_sauce_bottle/5": "commit",
+  "hope__canned_mushrooms/4": "decline",
+  "hope__granola_bars/5": "probe",
+  "hot3d__lizard_figurine/5": "decline",
+  "fruits_veggies__lemon1/1": "probe",
+  "hot3d__mug/2": "commit",
+  "ycb__brick/1": "commit",
+  "hot3d__megaphone/9": "decline",
+  "handal__hammer_8/0": "probe",
+  "hope__butter/0": "commit",
+  "ycb__pitcher/1": "decline",
+  "hot3d__glasses/3": "commit",
+  "hope__spaghetti/1": "probe",
+  "handal__measuring_cups/7": "decline",
+  "ycb__bowl/3": "decline",
+  "handal__hammer_2/8": "decline",
+  "hot3d__smartphone/9": "decline",
+  "hot3d__keyboard/6": "decline",
+  "hope__bbq_sauce_bottle/1": "commit",
+  "hope__oatmeal_raisin_cookies/4": "decline",
+  "ycb__jello/0": "probe",
+  "handal__hammer_3/9": "decline",
+  "ycb__mug/6": "decline",
+  "hope__ranch_dressing/0": "probe",
+  "hope__green_beans_can/1": "decline",
+  "hot3d__ceramic_mug/0": "probe",
+  "hope__canned_tuna/0": "commit",
+  "hope__tomato_sauce_can/7": "commit",
+  "hot3d__coffee_pot/0": "commit",
+  "hot3d__wooden_bowl/6": "decline",
+  "hot3d__potato_masher/2": "decline",
+  "hope__chocolate_pudding_mix/8": "decline",
+  "handal__hammer/6": "decline",
+  "hope__raisin_box/7": "commit",
+  "hope__milk_carton/10": "decline",
+  "fruits_veggies__avocado/7": "commit",
+  "hot3d__birdhouse/7": "decline",
+  "hope__peas_and_carrots/8": "commit",
+  "ycb__scissors/2": "commit"
+ },
+ "source": "/home/chungyili/Codes/RPent-e1/robots/mujoco_lab/data/h3/policy_no_probe_absorbing_wide_seed13.json.gz",
+ "exclude_plan": "/home/chungyili/Codes/RPent-e1/logs/e1/plan.json",
+ "excluded": 80
+}

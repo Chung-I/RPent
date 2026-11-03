@@ -1,0 +1,139 @@
+{
+ "cases": "/home/chungyili/Codes/RPent-e1/logs/e1/gap/cases.json",
+ "n_cases": 80,
+ "workers": 8,
+ "crossfit": "robots/mujoco_lab/data/m2b2/folds",
+ "limit": null,
+ "default": {
+  "care_scale": 10.0,
+  "abstain_cost": 10.0,
+  "recovery": "absorbing"
+ },
+ "settings": {
+  "k1_A3_abs": {
+   "care_scale": 1.0,
+   "abstain_cost": 3.0,
+   "recovery": "absorbing"
+  },
+  "k1_A10_abs": {
+   "care_scale": 1.0,
+   "abstain_cost": 10.0,
+   "recovery": "absorbing"
+  },
+  "k1_A30_abs": {
+   "care_scale": 1.0,
+   "abstain_cost": 30.0,
+   "recovery": "absorbing"
+  },
+  "k3_A3_abs": {
+   "care_scale": 3.0,
+   "abstain_cost": 3.0,
+   "recovery": "absorbing"
+  },
+  "k3_A10_abs": {
+   "care_scale": 3.0,
+   "abstain_cost": 10.0,
+   "recovery": "absorbing"
+  },
+  "k3_A30_abs": {
+   "care_scale": 3.0,
+   "abstain_cost": 30.0,
+   "recovery": "absorbing"
+  },
+  "k30_A3_abs": {
+   "care_scale": 30.0,
+   "abstain_cost": 3.0,
+   "recovery": "absorbing"
+  },
+  "k30_A10_abs": {
+   "care_scale": 30.0,
+   "abstain_cost": 10.0,
+   "recovery": "absorbing"
+  },
+  "k30_A30_abs": {
+   "care_scale": 30.0,
+   "abstain_cost": 30.0,
+   "recovery": "absorbing"
+  },
+  "k100_A3_abs": {
+   "care_scale": 100.0,
+   "abstain_cost": 3.0,
+   "recovery": "absorbing"
+  },
+  "k100_A10_abs": {
+   "care_scale": 100.0,
+   "abstain_cost": 10.0,
+   "recovery": "absorbing"
+  },
+  "k100_A30_abs": {
+   "care_scale": 100.0,
+   "abstain_cost": 30.0,
+   "recovery": "absorbing"
+  },
+  "k1_A3_rec20": {
+   "care_scale": 1.0,
+   "abstain_cost": 3.0,
+   "recovery": "rec20"
+  },
+  "k1_A10_rec20": {
+   "care_scale": 1.0,
+   "abstain_cost": 10.0,
+   "recovery": "rec20"
+  },
+  "k1_A30_rec20": {
+   "care_scale": 1.0,
+   "abstain_cost": 30.0,
+   "recovery": "rec20"
+  },
+  "k3_A3_rec20": {
+   "care_scale": 3.0,
+   "abstain_cost": 3.0,
+   "recovery": "rec20"
+  },
+  "k3_A10_rec20": {
+   "care_scale": 3.0,
+   "abstain_cost": 10.0,
+   "recovery": "rec20"
+  },
+  "k3_A30_rec20": {
+   "care_scale": 3.0,
+   "abstain_cost": 30.0,
+   "recovery": "rec20"
+  },
+  "k30_A3_rec20": {
+   "care_scale": 30.0,
+   "abstain_cost": 3.0,
+   "recovery": "rec20"
+  },
+  "k30_A10_rec20": {
+   "care_scale": 30.0,
+   "abstain_cost": 10.0,
+   "recovery": "rec20"
+  },
+  "k30_A30_rec20": {
+   "care_scale": 30.0,
+   "abstain_cost": 30.0,
+   "recovery": "rec20"
+  },
+  "k100_A3_rec20": {
+   "care_scale": 100.0,
+   "abstain_cost": 3.0,
+   "recovery": "rec20"
+  },
+  "k100_A10_rec20": {
+   "care_scale": 100.0,
+   "abstain_cost": 10.0,
+   "recovery": "rec20"
+  },
+  "k100_A30_rec20": {
+   "care_scale": 100.0,
+   "abstain_cost": 30.0,
+   "recovery": "rec20"
+  }
+ },
+ "runs_per_case": 29,
+ "code": {
+  "revision": "5674adbb1f8317a6634c5985ce2e810ec27408aa",
+  "dirty": false
+ }
+}

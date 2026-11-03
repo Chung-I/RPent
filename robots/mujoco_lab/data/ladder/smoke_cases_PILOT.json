@@ -1,0 +1,74 @@
+[
+ {
+  "object": "hope__butter",
+  "idx": 3,
+  "seed": 13,
+  "setting": "k100_A3_abs"
+ },
+ {
+  "object": "hope__milk_carton",
+  "idx": 8,
+  "seed": 13,
+  "setting": "k30_A3_abs"
+ },
+ {
+  "object": "hope__granola_bars",
+  "idx": 9,
+  "seed": 13,
+  "setting": "k100_A10_abs"
+ },
+ {
+  "object": "hot3d__clay_plates",
+  "idx": 1,
+  "seed": 13,
+  "setting": "k100_A3_abs"
+ },
+ {
+  "object": "hot3d__spatula",
+  "idx": 3,
+  "seed": 13,
+  "setting": "k30_A3_abs"
+ },
+ {
+  "object": "fruits_veggies__red_onion",
+  "idx": 2,
+  "seed": 13,
+  "setting": "k100_A10_abs"
+ },
+ {
+  "object": "ycb__tomato_soup_can",
+  "idx": 1,
+  "seed": 13,
+  "setting": "k100_A3_abs"
+ },
+ {
+  "object": "handal__measuring_spoon",
+  "idx": 7,
+  "seed": 13,
+  "setting": "k30_A3_abs"
+ },
+ {
+  "object": "ycb__coffee_can",
+  "idx": 3,
+  "seed": 13,
+  "setting": "k100_A10_abs"
+ },
+ {
+  "object": "fruits_veggies__avocado",
+  "idx": 1,
+  "seed": 13,
+  "setting": "k100_A3_abs"
+ },
+ {
+  "object": "hope__tomato_sauce_can",
+  "idx": 3,
+  "seed": 13,
+  "setting": "k30_A3_abs"
+ },
+ {
+  "object": "hope__oatmeal_raisin_cookies",
+  "idx": 3,
+  "seed": 13,
+  "setting": "k100_A10_abs"
+ }
+]

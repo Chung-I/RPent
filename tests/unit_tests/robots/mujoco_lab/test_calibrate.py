@@ -863,7 +863,9 @@ def test_the_case_records_its_first_menu_costs(monkeypatch):
 @needs_bundle
 def test_cases_file_runs_only_the_listed_cases(tmp_path):
     """Plan m4 decision 4: a cases file runs exactly its cases, the same cases a full run draws; it must be for the run's
-    seed, and its objects must have folds."""
+    seed, and its objects must have folds; the output records the file's sha256 (plan H3 decision 11)."""
+    import hashlib
+
     from robots.mujoco_lab.calibrate import main
 
     cf = tmp_path / "folds"
@@ -876,7 +878,8 @@ def test_cases_file_runs_only_the_listed_cases(tmp_path):
     base = ["--crossfit", str(cf), "--protocol", "commit", "--coverage-sims", "0"]
     res = main(base + ["--repeats", "11", "--cases", str(cases), "--seed", "13", "--out", str(tmp_path / "c.json")])
     assert [(r["object"], r["idx"]) for r in res["rows"]] == [("ycb__banana", 2), ("ycb__banana", 5)]
-    assert res["cases"] == {"path": str(cases), "n": 2} and res["objects"] == ["ycb__banana"]
+    assert res["cases"] == {"path": str(cases), "n": 2, "sha256": hashlib.sha256(cases.read_bytes()).hexdigest()}
+    assert res["objects"] == ["ycb__banana"]
     full = main(base + ["--repeats", "6", "--objects", "ycb__banana", "--seed", "13", "--out", str(tmp_path / "f.json")])
 
     def key(r):
@@ -891,7 +894,8 @@ def test_cases_file_runs_only_the_listed_cases(tmp_path):
 
 
 def test_the_output_records_its_code_revision(tmp_path):
-    """Plan m4 decision 9: every output says which code made it, and is written whole or not at all."""
+    """Plan m4 decision 9: every output says which code made it, and is written whole or not at all; an arm without a
+    forced probe records no forced-probe rule (plan H3 decision 11)."""
     import re
 
     from robots.mujoco_lab.calibrate import main
@@ -902,6 +906,486 @@ def test_the_output_records_its_code_revision(tmp_path):
     rev = saved["code"]["revision"]
     assert (rev is None or re.fullmatch(r"[0-9a-f]{40}", rev)) and saved["code"]["dirty"] in (True, False, None)
     assert saved["cases"] is None and not list(tmp_path.glob("*.tmp"))
+    assert saved["protocol"] == "commit" and saved["forced_rule"] is None
+
+
+
+# ---------------------------------------------------------------- the recovery mode (plan H3 decision 3)
+class _RestoringScript(_Script):
+    """A scripted case under the recovery mode: an irreversible attempt, or a thrown probe (``thrown``), comes back
+    restored with the skill's restore record."""
+
+    def __init__(self, assessments, outcomes, thrown=False):
+        super().__init__(assessments, outcomes)
+        self.thrown = thrown
+
+    def pick(self, **kw):
+        d = super().pick(**kw).data
+        if "probed" in d and self.thrown:
+            d.update(thrown=True, restored={"after": "probe", "event": "thrown", "check": {"same_case": True}})
+        elif d.get("outcome") in ("dropped_high", "rolled_off", "crushed", "bruised", "broken", "spilled"):
+            d["restored"] = {"after": "attempt", "event": d["outcome"], "check": {"same_case": True}}
+        return SimpleNamespace(data=d)
+
+
+def _restoring(monkeypatch, assessments, outcomes, thrown=False):
+    from robots.mujoco_lab import calibrate
+
+    sc = _RestoringScript(assessments, outcomes, thrown)
+    monkeypatch.setattr(calibrate, "assess_pick", sc.assess)
+    monkeypatch.setattr(calibrate, "pick_and_place", sc.pick)
+    return sc
+
+
+def test_recovery_retries_after_an_irreversible_event(monkeypatch):
+    """Under reset_s 20 a dropped_high comes back restored and the policy retries: dropped_high then placed costs
+    0.05 x (8 + 8) + 1.0 and ends placed; absorbing, the same script ends after the drop at 5 kappa + A + 0.05 x 8."""
+    from robots.mujoco_lab.calibrate import run_protocol
+    from rpent.skills.pick_place.costs import TIME_COST_PER_S
+
+    sc = _restoring(monkeypatch, [_assessment("commit")] * 3, ["dropped_high", "placed_stable"])
+    case = run_protocol(SimpleNamespace(abstain_cost=10.0, reset_s=20.0), "policy", "table_centre", np.random.default_rng(0), care=10.0)
+    assert sc.calls == ["commit_std", "commit_std"] and case["ended"] == "placed"
+    assert case["cost"] == pytest.approx(TIME_COST_PER_S * 16.0 + 1.0)
+    assert [(r["after"], r["event"]) for r in case["restores"]] == [("attempt", "dropped_high")]
+    sc = _scripted(monkeypatch, [_assessment("commit")] * 3, ["dropped_high", "placed_stable"])
+    case = run_protocol(SimpleNamespace(abstain_cost=10.0), "policy", "table_centre", np.random.default_rng(0), care=10.0)
+    assert sc.calls == ["commit_std"] and case["ended"] == "failed" and case["restores"] == []
+    assert case["cost"] == pytest.approx(50.0 + 10.0 + TIME_COST_PER_S * 8.0)
+
+
+def test_a_restored_probe_does_not_end_the_case(monkeypatch):
+    """Under reset_s a thrown probe costs its time and the reset (0.05 x 20), the object comes back, and the case goes
+    on to the next assessment's row."""
+    from robots.mujoco_lab.calibrate import run_protocol
+    from rpent.skills.pick_place.costs import TIME_COST_PER_S
+    from rpent.skills.pick_place.probes import PROBE_SECONDS
+
+    sc = _restoring(monkeypatch, [_assessment("probe", probe=True), _assessment("commit"), _assessment("commit")], ["placed_stable"],
+                    thrown=True)
+    case = run_protocol(SimpleNamespace(abstain_cost=10.0, reset_s=20.0), "policy", "table_centre", np.random.default_rng(0), care=10.0)
+    assert sc.calls == ["probe_push", "commit_std"] and case["ended"] == "placed"
+    assert case["probes"][0]["cost"] == pytest.approx(TIME_COST_PER_S * (PROBE_SECONDS["push"] + 20.0))
+    assert case["cost"] == pytest.approx(TIME_COST_PER_S * (PROBE_SECONDS["push"] + 20.0 + 8.0))
+    assert [(r["after"], r["event"]) for r in case["restores"]] == [("probe", "thrown")]
+
+
+def test_the_reset_prices_the_realized_costs():
+    from robots.mujoco_lab.calibrate import attempt_cost, probe_cost
+    from rpent.skills.pick_place.costs import TIME_COST_PER_S
+    from rpent.skills.pick_place.probes import PROBE_SECONDS
+
+    assert attempt_cost("dropped_high", 8.0, 10.0, reset_s=20.0) == pytest.approx(TIME_COST_PER_S * 28.0)
+    assert attempt_cost("dropped_high", 8.0, 10.0) == pytest.approx(50.0 + TIME_COST_PER_S * 8.0)
+    assert attempt_cost("tipped", 8.0, 10.0, reset_s=20.0) == attempt_cost("tipped", 8.0, 10.0)
+    assert probe_cost("squeeze", "damaged", False, 10.0, reset_s=0.0) == pytest.approx(TIME_COST_PER_S * PROBE_SECONDS["squeeze"])
+
+
+def test_reset_argument_reaches_the_workers_and_the_output(tmp_path):
+    import argparse
+
+    from robots.mujoco_lab.calibrate import _reset_arg, attempt_cost, main, run_reset_s
+
+    assert _reset_arg("20") == 20.0 and _reset_arg("0") == 0.0
+    for bad in ("-1", "nan", "inf", "x"):
+        with pytest.raises(argparse.ArgumentTypeError):
+            _reset_arg(bad)
+    assert run_reset_s([{"reset_s": 20.0}, {"error": "x"}]) == 20.0 and run_reset_s([{"reset_s": None}]) is None
+    out = tmp_path / "c.json"
+    main(["--metrics", METRICS, "--repeats", "1", "--out", str(out), "--objects", "ycb__banana", "--seed", "2", "--care", "10",
+          "--abstain-cost", "2", "--reset-s", "20"])
+    saved = json.load(open(out))
+    assert saved["reset_s"] == 20.0 and saved["rows"][0]["reset_s"] == 20.0
+    t = saved["rows"][0]["attempts"][0]
+    assert t["cost"] == pytest.approx(attempt_cost(t["outcome"], t["cost_s"], 10.0, reset_s=20.0))
+
+
+def test_compare_refuses_runs_with_different_reset_times():
+    """plan H3: a file without the field reads as absorbing (no reset)."""
+    from robots.mujoco_lab.calibrate import compare
+
+    row = {"object": "o", "idx": 0, "cost": 1.0, "attempts": []}
+    a = {"protocol": "policy", "care_scale": 1.0, "abstain_cost": 1.0, "rows": [row]}
+    with pytest.raises(ValueError, match="different costs"):
+        compare(a, dict(a, reset_s=20.0), np.random.default_rng(0))
+    assert compare(a, dict(a, reset_s=None), np.random.default_rng(0))["n_paired"] == 1
+
+
+# ---------------------------------------------------------------- rec_hi, the care price (plan H3 Addendum A)
+def test_the_care_price_charges_the_realized_absorbing_penalty():
+    """Under reset_price "care" an irreversible attempt or probe costs 5 kappa (no reset seconds)."""
+    from robots.mujoco_lab.calibrate import attempt_cost, probe_cost
+    from rpent.skills.pick_place.costs import TIME_COST_PER_S
+    from rpent.skills.pick_place.probes import PROBE_SECONDS
+
+    assert attempt_cost("dropped_high", 8.0, 10.0, reset_s=0.0, reset_price="care") == pytest.approx(50.0 + TIME_COST_PER_S * 8.0)
+    assert attempt_cost("tipped", 8.0, 10.0, reset_s=0.0, reset_price="care") == attempt_cost("tipped", 8.0, 10.0)
+    assert probe_cost("squeeze", "damaged", False, 10.0, reset_s=0.0, reset_price="care") == pytest.approx(
+        50.0 + TIME_COST_PER_S * PROBE_SECONDS["squeeze"])
+    assert attempt_cost("dropped_high", 8.0, 10.0, reset_s=20.0, reset_price="time") == attempt_cost("dropped_high", 8.0, 10.0, reset_s=20.0)
+
+
+def test_recovery_at_the_care_price_retries_and_charges_5_kappa(monkeypatch):
+    """rec_hi: a dropped_high costs 5 kappa = 50, the object comes back, the policy retries and places: 0.05 x 16 + 50,
+    with no A (absorbing, the same script ends at 50 + A + 0.05 x 8)."""
+    from robots.mujoco_lab.calibrate import run_protocol
+    from rpent.skills.pick_place.costs import TIME_COST_PER_S
+
+    _restoring(monkeypatch, [_assessment("commit")] * 3, ["dropped_high", "placed_stable"])
+    case = run_protocol(SimpleNamespace(abstain_cost=10.0, reset_s=0.0, reset_price="care"), "policy", "table_centre",
+                        np.random.default_rng(0), care=10.0)
+    assert case["ended"] == "placed" and case["cost"] == pytest.approx(TIME_COST_PER_S * 16.0 + 50.0)
+    assert [(r["after"], r["event"]) for r in case["restores"]] == [("attempt", "dropped_high")]
+
+
+def test_reset_price_argument_reaches_the_workers_and_the_output(tmp_path):
+    from robots.mujoco_lab.calibrate import attempt_cost, main, run_reset_price
+
+    assert run_reset_price([{"reset_price": "care"}, {"error": "x"}]) == "care" and run_reset_price([{"reset_price": "time"}]) == "time"
+    base = ["--metrics", METRICS, "--repeats", "1", "--objects", "ycb__banana", "--seed", "2", "--care", "10", "--abstain-cost", "2"]
+    with pytest.raises(SystemExit):
+        main(base + ["--out", str(tmp_path / "x.json"), "--reset-price", "care"])        # care needs --reset-s
+    with pytest.raises(SystemExit):
+        main(base + ["--out", str(tmp_path / "y.json"), "--reset-s", "0", "--reset-price", "free"])
+    out = tmp_path / "c.json"
+    main(base + ["--out", str(out), "--reset-s", "0", "--reset-price", "care"])
+    saved = json.load(open(out))
+    assert saved["reset_price"] == "care" and saved["rows"][0]["reset_price"] == "care" and saved["reset_s"] == 0.0
+    t = saved["rows"][0]["attempts"][0]
+    assert t["cost"] == pytest.approx(attempt_cost(t["outcome"], t["cost_s"], 10.0, reset_s=0.0, reset_price="care"))
+    main(base + ["--out", str(tmp_path / "d.json"), "--reset-s", "20"])
+    assert json.load(open(tmp_path / "d.json"))["reset_price"] == "time"
+
+
+def test_compare_refuses_runs_with_different_reset_prices():
+    """plan H3 Addendum A: a file without the field reads as the time price."""
+    from robots.mujoco_lab.calibrate import compare
+
+    row = {"object": "o", "idx": 0, "cost": 1.0, "attempts": []}
+    a = {"protocol": "policy", "care_scale": 1.0, "abstain_cost": 1.0, "reset_s": 0.0, "rows": [row]}
+    with pytest.raises(ValueError, match="different costs"):
+        compare(a, dict(a, reset_price="care"), np.random.default_rng(0))
+    assert compare(a, dict(a, reset_price="time"), np.random.default_rng(0))["n_paired"] == 1
+
+
+# ---------------------------------------------------------------- the spread factor (plan H3 decision 4)
+def test_shrink_keeps_the_case_stream():
+    """A narrow case is its wide case with the shrunk theta: over 50 cases the CoM end, destination, v_lift, fill and
+    fragility are equal at f = 1 and 0.25, and the narrow theta is shrink_theta of the wide one (filled or not)."""
+    from robots.mujoco_lab.adapter import object_props
+    from robots.mujoco_lab.calibrate import case_draw
+    from robots.mujoco_lab.corpus import shrink_theta
+    from robots.mujoco_lab.fragility import THRESHOLDS_V0, Thresholds, load_classes
+
+    world, filled = (load_classes(), Thresholds.from_json(THRESHOLDS_V0)), 0
+    for oid in ("ycb__mug", "ycb__banana"):
+        mass = object_props(oid)["mass"]
+        for i in range(25):
+            wide = case_draw(3, oid, i, mass, True, fragility=world)
+            narrow = case_draw(3, oid, i, mass, True, fragility=world, spread=0.25)
+            assert narrow[1:] == wide[1:] and narrow[0]["v_lift"] == wide[0]["v_lift"]
+            assert narrow[0] == shrink_theta(wide[0], 0.25, wide[3]["fill"] > 0)
+            filled += wide[3]["fill"] > 0
+    assert 0 < filled < 25                              # both branches of the mug ran
+
+
+SPREAD_ONE_PINS = ("3aafbcc248fdb5b0", "7743bd5a185c308d")   # milestone 4's draws (b3136f5), before the spread factor
+
+
+def _spread_one_digests(**kw):
+    """Digests of 120 case draws (the mug and the banana, m2b and m2 worlds) and of 300 prior particles of each prior
+    for both objects, with the prior streams' states after the draw."""
+    import hashlib
+
+    from robots.mujoco_lab.adapter import MuJoCoLabEnv, object_props
+    from robots.mujoco_lab.calibrate import case_draw
+    from robots.mujoco_lab.fragility import THRESHOLDS_V0, Thresholds, load_classes
+    from robots.mujoco_lab.prior import lab_prior, make_prior
+
+    classes, th = load_classes(), Thresholds.from_json(THRESHOLDS_V0)
+    prior, env, cases, parts = make_prior(classes, th), MuJoCoLabEnv(), [], []
+    for oid in ("ycb__mug", "ycb__banana"):
+        mass = object_props(oid)["mass"]
+        for world in ((classes, th), None):
+            cases += [case_draw(5, oid, i, mass, True, fragility=world, **kw) for i in range(30)]
+        env.reset(oid, seed=0)
+        for fn in (prior, lab_prior):
+            rng = np.random.default_rng(11)
+            b = fn(env.pose_info(), 300, rng, **kw)
+            parts.append([b.particles, rng.bit_generator.state])
+    h = lambda x: hashlib.sha256(json.dumps(x, sort_keys=True, default=str).encode()).hexdigest()[:16]  # noqa: E731
+    return h(cases), h(parts)
+
+
+def test_spread_one_is_milestone4():
+    """f = 1 (the default, or named) gives milestone 4's case draws and prior particles bit for bit, the streams'
+    states included."""
+    assert _spread_one_digests() == SPREAD_ONE_PINS
+    assert _spread_one_digests(spread=1.0) == SPREAD_ONE_PINS
+
+
+def test_spread_argument_reaches_the_workers_and_the_output(tmp_path):
+    import argparse
+
+    from robots.mujoco_lab.calibrate import _spread_arg, main, run_prior_spread, run_truth_spread
+
+    assert _spread_arg("0.25") == 0.25 and _spread_arg("1") == 1.0
+    for bad in ("0", "-0.5", "1.5", "nan", "x"):
+        with pytest.raises(argparse.ArgumentTypeError):
+            _spread_arg(bad)
+    assert run_truth_spread([{"truth_spread": 0.25}, {"error": "x"}]) == 0.25 and run_truth_spread([{"truth_spread": 1.0}]) == 1.0
+    assert run_prior_spread([{"prior_spread": 0.25}, {"error": "x"}]) == 0.25 and run_prior_spread([{"prior_spread": 1.0}]) == 1.0
+    out = tmp_path / "c.json"
+    main(["--metrics", METRICS, "--repeats", "2", "--out", str(out), "--objects", "ycb__banana", "--seed", "2", "--spread", "0.25"])
+    saved = json.load(open(out))
+    assert saved["truth_spread"] == saved["prior_spread"] == 0.25 and "spread" not in saved      # --spread sets both
+    assert all(r["truth_spread"] == r["prior_spread"] == 0.25 and "spread" not in r for r in saved["rows"])
+    for r in saved["rows"]:
+        assert 0.4 <= r["theta"]["mu"] <= 0.6 and 0.978 <= r["theta"]["mass_scale"] <= 1.533
+        assert r["theta"]["com_s"] is None or 0.4875 <= r["theta"]["com_s"] <= 0.6125
+
+
+def test_compare_refuses_runs_with_different_spreads():
+    """plan H3: a file without the fields reads as f = 1, the truth's and the prior's (Addendum A2)."""
+    from robots.mujoco_lab.calibrate import compare
+
+    row = {"object": "o", "idx": 0, "cost": 1.0, "attempts": []}
+    a = {"protocol": "policy", "care_scale": 1.0, "abstain_cost": 1.0, "rows": [row]}
+    for key in ("truth_spread", "prior_spread"):
+        with pytest.raises(ValueError, match="different spreads"):
+            compare(a, dict(a, **{key: 0.25}), np.random.default_rng(0))
+    assert compare(a, dict(a, truth_spread=1.0, prior_spread=1.0), np.random.default_rng(0))["n_paired"] == 1
+
+
+# ---------------------------------------------------------------- the forced probe and the sham (plan H3 decisions 5, 6)
+M2B2 = os.path.join(os.path.dirname(METRICS), "m2b2")      # the default bundle (H3 runs on it); BUNDLE stays m2
+needs_m2b2 = pytest.mark.skipif(not os.path.exists(os.path.join(M2B2, "success_model.joblib")), reason="the m2b2 bundle is not built")
+
+
+def _forced_menu(rec="probe", squeeze=False, guard=None, without="commit"):
+    a = _assessment(rec, probe=True)
+    a["options"] = a["options"] + [{"id": "probe_weigh", "kind": "probe", "action": {"probe": "weigh"}, "expected_cost": 0.7}]
+    if squeeze:
+        a["options"].append({"id": "probe_squeeze", "kind": "probe", "action": {"probe": "squeeze"}, "expected_cost": 0.8})
+    return dict(a, guard=guard, without_probe=without)
+
+
+class _ForcedScript(_Script):
+    """The scripted skill for the forced-probe arms: a probe payload names its option's probe; ``damage`` crushes the
+    object (the case ends) or, with ``restore``, comes back restored (the recovery mode); the sham goes through the same
+    script and adds the sham record."""
+
+    def __init__(self, assessments, outcomes, damage=False, restore=False):
+        super().__init__(assessments, outcomes)
+        self.damage, self.restore, self.shams = damage, restore, 0
+
+    def pick(self, **kw):
+        oid = str(kw.get("option_id"))
+        if not oid.startswith("probe_"):
+            return super().pick(**kw)
+        self.calls.append(oid)
+        nxt = self.assessments.pop(0) if self.assessments else _assessment("decline")
+        d = {"probed": oid[len("probe_"):], "kind": "measured", "reading": {"k_hat": 1.0}, "thrown": False, "assessment": nxt}
+        if self.damage:
+            d.update(kind="damaged", reading={}, damage={"label": "crushed", "channel": "force", "t": 1.0})
+            if self.restore:
+                d["restored"] = {"after": "probe", "event": "crushed", "check": {"same_case": True}}
+            else:
+                d["assessment"] = {"assessed": False, "reason": "object is damaged (crushed)"}
+        return SimpleNamespace(data=d)
+
+    def sham(self, **kw):
+        self.shams += 1
+        return dict(self.pick(**kw).data, sham=True, belief_hash_before="h0", belief_hash_after="h0", belief_hash_next="h0")
+
+
+def _forced(monkeypatch, assessments, outcomes, **kw):
+    from robots.mujoco_lab import calibrate
+
+    sc = _ForcedScript(assessments, outcomes, **kw)
+    monkeypatch.setattr(calibrate, "assess_pick", sc.assess)
+    monkeypatch.setattr(calibrate, "pick_and_place", sc.pick)
+    monkeypatch.setattr(calibrate, "sham_probe", sc.sham)
+    return sc
+
+
+def test_probe_once_runs_one_probe_then_no_more(monkeypatch):
+    """The forced probe runs at the first menu, then the policy without probes: a menu that recommends a probe again
+    commits by without_probe, or declines by it; the case records the forced probe, the decision after it and the
+    change, and first_menu keeps the decision without probes and the best row."""
+    from robots.mujoco_lab.calibrate import run_protocol
+
+    sc = _forced(monkeypatch, [_forced_menu(), _forced_menu(), _assessment("commit")], ["placed_stable"])
+    case = run_protocol(SimpleNamespace(abstain_cost=1.0), "probe_once", "table_centre", np.random.default_rng(0))
+    assert sc.calls == ["probe_weigh", "commit_std"] and len(case["probes"]) == 1 and case["ended"] == "placed"
+    assert case["forced_probe"] == "weigh" and case["post_probe"] == "commit_std" and case["changed"] == "same"
+    assert case["first_menu"]["without_probe"] == "commit" and case["first_menu"]["best_row"] == "commit_std"
+    sc = _forced(monkeypatch, [_forced_menu(), _forced_menu(without="decline")], [])
+    case = run_protocol(SimpleNamespace(abstain_cost=1.0), "probe_once", "table_centre", np.random.default_rng(0))
+    assert sc.calls == ["probe_weigh"] and case["ended"] == "abstained" and len(case["probes"]) == 1
+    assert case["post_probe"] == "decline" and case["changed"] == "decline" and sc.shams == 0
+
+
+def test_the_forced_probe_rule(monkeypatch):
+    """The squeeze when the first menu offers it, else the weigh; no probe after a guard flag or without either row
+    (then the policy without probes runs: post_probe and changed "no_probe"); sham_once forces the same probe through
+    the sham."""
+    from robots.mujoco_lab.calibrate import forced_probe, run_protocol
+
+    assert forced_probe(_forced_menu(squeeze=True)) == "probe_squeeze" and forced_probe(_forced_menu()) == "probe_weigh"
+    assert forced_probe(_forced_menu(squeeze=True, guard={"flag": True})) is None and forced_probe(_assessment("commit")) is None
+    sc = _forced(monkeypatch, [_forced_menu(rec="decline", guard={"flag": True}, without="decline")], [])
+    case = run_protocol(SimpleNamespace(abstain_cost=1.0), "sham_once", "table_centre", np.random.default_rng(0))
+    assert sc.calls == [] and case["forced_probe"] is None and case["post_probe"] == case["changed"] == "no_probe"
+    assert case["ended"] == "abstained" and case["probes"] == []
+    sc = _forced(monkeypatch, [_forced_menu(squeeze=True), _assessment("commit"), _assessment("commit")], ["placed_stable"])
+    case = run_protocol(SimpleNamespace(abstain_cost=1.0), "sham_once", "table_centre", np.random.default_rng(0))
+    assert sc.calls == ["probe_squeeze", "commit_std"] and sc.shams == 1 and case["forced_probe"] == "squeeze"
+    assert case["probes"][0]["sham"] is True and case["probes"][0]["belief_hash_before"] == case["probes"][0]["belief_hash_next"]
+
+
+def test_the_decision_change_categories(monkeypatch):
+    """plan H3 decision 6: same (the first menu's decision without probes), another commit row, a decline, terminal (the
+    probe crushed the object: the case ended, or the object was restored under the recovery mode) and no probe."""
+    from robots.mujoco_lab.calibrate import decision_change, run_protocol
+
+    first = {"without_probe": "commit", "best_row": "commit_std"}
+    assert [decision_change(first, p) for p in ("commit_std", "commit_low", "decline", "terminal", "no_probe")] == \
+        ["same", "other_row", "decline", "terminal", "no_probe"]
+    assert decision_change({"without_probe": "decline", "best_row": "commit_std"}, "decline") == "same"
+    assert decision_change({"without_probe": "decline", "best_row": "commit_std"}, "commit_std") == "other_row"
+    assert decision_change(first, "unreachable") is None and decision_change(first, "error") is None
+    other = dict(_forced_menu(rec="commit"), best_option="commit_low")
+    other["options"] = other["options"] + [_row("commit_low")]
+    sc = _forced(monkeypatch, [_forced_menu(), other], ["placed_stable"])
+    case = run_protocol(SimpleNamespace(abstain_cost=1.0), "probe_once", "table_centre", np.random.default_rng(0))
+    assert sc.calls == ["probe_weigh", "commit_low"] and case["post_probe"] == "commit_low" and case["changed"] == "other_row"
+    sc = _forced(monkeypatch, [_forced_menu(squeeze=True)], [], damage=True)
+    case = run_protocol(SimpleNamespace(abstain_cost=1.0), "probe_once", "table_centre", np.random.default_rng(0))
+    assert sc.calls == ["probe_squeeze"] and case["ended"] == "damaged" and case["post_probe"] == case["changed"] == "terminal"
+    sc = _forced(monkeypatch, [_forced_menu(squeeze=True), _assessment("commit"), _assessment("commit")], ["placed_stable"],
+                 damage=True, restore=True)
+    case = run_protocol(SimpleNamespace(abstain_cost=1.0, reset_s=20.0), "sham_once", "table_centre", np.random.default_rng(0))
+    assert sc.calls == ["probe_squeeze", "commit_std"] and case["ended"] == "placed" and case["restores"][0]["probe"] == "squeeze"
+    assert case["post_probe"] == case["changed"] == "terminal"
+
+
+@needs_m2b2
+def test_the_forced_probe_is_the_same_at_every_recovery_level(tmp_path):
+    """The rule reads only the menu's probe rows, which follow the object's public flags: every recovery level forces
+    the same physical probe, the squeeze on a crushable object (the jello box), the weigh on a rigid one (the soup can).
+    Each output records the rule (plan H3 decision 11)."""
+    from robots.mujoco_lab.calibrate import FORCED_RULE, main
+
+    forced, rules = [], []
+    for reset in (None, "20", "0"):
+        out = tmp_path / f"c{reset}.json"
+        main(["--bundle", M2B2, "--repeats", "1", "--out", str(out), "--objects", "ycb__jello,ycb__tomato_soup_can", "--seed", "2",
+              "--protocol", "probe_once", "--care", "10", "--abstain-cost", "10"] + ([] if reset is None else ["--reset-s", reset]))
+        forced.append({r["object"]: r["forced_probe"] for r in json.load(open(out))["rows"]})
+        rules.append(json.load(open(out))["forced_rule"])
+    assert forced[0] == forced[1] == forced[2] == {"ycb__jello": "squeeze", "ycb__tomato_soup_can": "weigh"}
+    assert rules == [FORCED_RULE] * 3 and "squeeze" in FORCED_RULE and "weigh" in FORCED_RULE
+
+
+@needs_m2b2
+def test_sham_once_leaves_the_belief_unchanged(tmp_path, monkeypatch):
+    """Gates Gp and Gs on real cases: the sham's probe trace (kind, reading, thrown, displacement, tilt) and its charge
+    equal the real probe's on the same case, and its belief hashes before, after and at the next menu are equal (the
+    next menu missing only when the probe ended the case); a real probe carries no sham record. Paired draws: the
+    stream state at the probe's next menu is the same in both arms."""
+    import rpent.skills.pick_place.tools as tools_mod
+    from robots.mujoco_lab.calibrate import main
+
+    run_probe, reassess, inside, states = tools_mod._run_probe, tools_mod._reassess, [], {"probe_once": [], "sham_once": []}
+    ess = tools_mod.REFRESH_ESS
+
+    def probe_spy(*a, **k):
+        inside.append(json.dumps(a[4].rng.bit_generator.state, sort_keys=True))
+        tools_mod.REFRESH_ESS = float("inf")       # the probe's update refreshes, so it draws from primitives.rng
+        try:
+            return run_probe(*a, **k)
+        finally:
+            tools_mod.REFRESH_ESS = ess
+            inside.pop()
+
+    def reassess_spy(*a):
+        if inside:      # the probe's next menu: the stream state at the probe's start and at that menu
+            states[arm].append((inside[-1], json.dumps(a[3].rng.bit_generator.state, sort_keys=True)))
+        return reassess(*a)
+
+    monkeypatch.setattr(tools_mod, "_run_probe", probe_spy)
+    monkeypatch.setattr(tools_mod, "_reassess", reassess_spy)
+    rows = {}
+    for arm in ("probe_once", "sham_once"):
+        out = tmp_path / f"{arm}.json"
+        main(["--bundle", M2B2, "--repeats", "2", "--out", str(out), "--objects", "ycb__jello,ycb__tomato_soup_can", "--seed", "2",
+              "--protocol", arm, "--care", "10", "--abstain-cost", "10"])
+        rows[arm] = {(r["object"], r["idx"]): r for r in json.load(open(out))["rows"]}
+    trace, ran = ("probe", "kind", "reading", "thrown", "displacement_m", "tilt_deg", "cost"), 0
+    for key, real in rows["probe_once"].items():
+        sham = rows["sham_once"][key]
+        assert sham["forced_probe"] == real["forced_probe"] and len(sham["probes"]) == len(real["probes"]) == 1
+        p, q = real["probes"][0], sham["probes"][0]
+        assert {k: p[k] for k in trace} == {k: q[k] for k in trace} and "sham" not in p and q["sham"] is True
+        assert q["belief_hash_before"] == q["belief_hash_after"]
+        assert q["belief_hash_next"] == q["belief_hash_before"] or q["kind"] == "damaged" or q["thrown"]
+        ran += 1
+    assert ran == 4 and len(states["probe_once"]) == 4 and all(s != n for s, n in states["probe_once"])
+    assert states["sham_once"] == states["probe_once"]
+
+
+@needs_m2b2
+def test_split_spreads_draw_the_narrow_truth_and_believe_the_wide_prior(tmp_path, monkeypatch):
+    """plan H3 Addendum A2 (narrowT_wideB) on the m2b2 prior: at truth 0.25 and prior 1 every case draws what the narrow
+    condition's case draws (theta, CoM end, destination, fill), so the object rests as it does there; every prior draw
+    of the skill (the first belief and each refresh) is the wide one (no spread argument), and the first belief's
+    particles equal the wide condition's exactly. --spread sets both factors and the split flags override it. (The rest
+    pose is an observation that follows the truth, so the menus, and the stream after the first menu, are neither
+    condition's.)"""
+    import hashlib
+
+    import robots.mujoco_lab.calibrate as cal
+    import rpent.skills.pick_place.tools as tools_mod
+    from rpent.skills.pick_place.belief import N_PARTICLES
+
+    calls, primitives = [], cal._primitives
+
+    def spied(*a, **k):
+        prims = primitives(*a, **k)
+        inner = prims.prior
+        if not getattr(inner, "spied", False):
+            def prior(pose, n, rng, **kw):
+                b = inner(pose, n, rng, **kw)
+                parts = json.dumps(b.particles, sort_keys=True, default=lambda o: np.asarray(o).tolist())
+                calls.append({"first": n == N_PARTICLES, "spread": kw.get("spread"), "pose": (pose["R"], pose["p"]),
+                              "particles": hashlib.sha256(parts.encode()).hexdigest()})
+                return b
+            prior.spied = True
+            monkeypatch.setattr(prims, "prior", prior)
+        return prims
+
+    monkeypatch.setattr(cal, "_primitives", spied)
+    monkeypatch.setattr(tools_mod, "REFRESH_ESS", float("inf"))        # every update refreshes: the refreshes draw too
+    base = ["--bundle", M2B2, "--repeats", "2", "--objects", "ycb__jello,ycb__tomato_soup_can", "--seed", "2", "--protocol", "probe_once",
+            "--care", "10", "--abstain-cost", "10", "--coverage-sims", "0"]
+    runs, drawn = {}, {}
+    for name, flags in (("wide", []), ("narrow", ["--spread", "0.25"]), ("split", ["--truth-spread", "0.25", "--prior-spread", "1"]),
+                        ("override", ["--spread", "0.25", "--prior-spread", "1"])):
+        calls.clear()
+        cal.main(base + flags + ["--out", str(tmp_path / f"{name}.json")])
+        runs[name], drawn[name] = json.load(open(tmp_path / f"{name}.json")), list(calls)
+    assert [(R["truth_spread"], R["prior_spread"]) for R in runs.values()] == [(1.0, 1.0), (0.25, 0.25), (0.25, 1.0), (0.25, 1.0)]
+    keys = ("theta", "com_end", "destination", "fill")
+    for s, n, w in zip(*(runs[k]["rows"] for k in ("split", "narrow", "wide"))):
+        assert {k: s[k] for k in keys} == {k: n[k] for k in keys} and s["theta"] != w["theta"]
+    for name, want in (("wide", None), ("narrow", 0.25), ("split", None), ("override", None)):
+        assert {c["spread"] for c in drawn[name]} == {want}, name
+        assert sum(c["first"] for c in drawn[name]) == 4 and sum(not c["first"] for c in drawn[name]) >= 4, name
+    first = {k: [c for c in drawn[k] if c["first"]] for k in drawn}
+    assert [c["particles"] for c in first["split"]] == [c["particles"] for c in first["wide"]] == [c["particles"] for c in first["override"]]
+    assert all(a["particles"] != b["particles"] for a, b in zip(first["narrow"], first["wide"]))
+    assert [c["pose"] for c in first["split"]] == [c["pose"] for c in first["narrow"]]
 
 
 def test_code_revision_records_the_simulator_folder(tmp_path, monkeypatch):

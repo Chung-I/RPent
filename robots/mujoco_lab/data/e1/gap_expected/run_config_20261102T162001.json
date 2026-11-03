@@ -1,0 +1,137 @@
+{
+ "kind": "gap",
+ "source": {
+  "kind": "gap",
+  "src": "/home/chungyili/Codes/RPent-e1/robots/mujoco_lab/data/e1/gap"
+ },
+ "workers": 8,
+ "limit": null,
+ "jobs": 80,
+ "crossfit": "robots/mujoco_lab/data/m2b2/folds",
+ "settings": {
+  "k1_A3_abs": {
+   "care_scale": 1.0,
+   "abstain_cost": 3.0,
+   "recovery": "absorbing"
+  },
+  "k1_A10_abs": {
+   "care_scale": 1.0,
+   "abstain_cost": 10.0,
+   "recovery": "absorbing"
+  },
+  "k1_A30_abs": {
+   "care_scale": 1.0,
+   "abstain_cost": 30.0,
+   "recovery": "absorbing"
+  },
+  "k3_A3_abs": {
+   "care_scale": 3.0,
+   "abstain_cost": 3.0,
+   "recovery": "absorbing"
+  },
+  "k3_A10_abs": {
+   "care_scale": 3.0,
+   "abstain_cost": 10.0,
+   "recovery": "absorbing"
+  },
+  "k3_A30_abs": {
+   "care_scale": 3.0,
+   "abstain_cost": 30.0,
+   "recovery": "absorbing"
+  },
+  "k30_A3_abs": {
+   "care_scale": 30.0,
+   "abstain_cost": 3.0,
+   "recovery": "absorbing"
+  },
+  "k30_A10_abs": {
+   "care_scale": 30.0,
+   "abstain_cost": 10.0,
+   "recovery": "absorbing"
+  },
+  "k30_A30_abs": {
+   "care_scale": 30.0,
+   "abstain_cost": 30.0,
+   "recovery": "absorbing"
+  },
+  "k100_A3_abs": {
+   "care_scale": 100.0,
+   "abstain_cost": 3.0,
+   "recovery": "absorbing"
+  },
+  "k100_A10_abs": {
+   "care_scale": 100.0,
+   "abstain_cost": 10.0,
+   "recovery": "absorbing"
+  },
+  "k100_A30_abs": {
+   "care_scale": 100.0,
+   "abstain_cost": 30.0,
+   "recovery": "absorbing"
+  },
+  "k1_A3_rec20": {
+   "care_scale": 1.0,
+   "abstain_cost": 3.0,
+   "recovery": "rec20"
+  },
+  "k1_A10_rec20": {
+   "care_scale": 1.0,
+   "abstain_cost": 10.0,
+   "recovery": "rec20"
+  },
+  "k1_A30_rec20": {
+   "care_scale": 1.0,
+   "abstain_cost": 30.0,
+   "recovery": "rec20"
+  },
+  "k3_A3_rec20": {
+   "care_scale": 3.0,
+   "abstain_cost": 3.0,
+   "recovery": "rec20"
+  },
+  "k3_A10_rec20": {
+   "care_scale": 3.0,
+   "abstain_cost": 10.0,
+   "recovery": "rec20"
+  },
+  "k3_A30_rec20": {
+   "care_scale": 3.0,
+   "abstain_cost": 30.0,
+   "recovery": "rec20"
+  },
+  "k30_A3_rec20": {
+   "care_scale": 30.0,
+   "abstain_cost": 3.0,
+   "recovery": "rec20"
+  },
+  "k30_A10_rec20": {
+   "care_scale": 30.0,
+   "abstain_cost": 10.0,
+   "recovery": "rec20"
+  },
+  "k30_A30_rec20": {
+   "care_scale": 30.0,
+   "abstain_cost": 30.0,
+   "recovery": "rec20"
+  },
+  "k100_A3_rec20": {
+   "care_scale": 100.0,
+   "abstain_cost": 3.0,
+   "recovery": "rec20"
+  },
+  "k100_A10_rec20": {
+   "care_scale": 100.0,
+   "abstain_cost": 10.0,
+   "recovery": "rec20"
+  },
+  "k100_A30_rec20": {
+   "care_scale": 100.0,
+   "abstain_cost": 30.0,
+   "recovery": "rec20"
+  }
+ },
+ "code": {
+  "revision": "d0d32cb0ad128625947ab35117f46d5ea6a02504",
+  "dirty": false
+ }
+}

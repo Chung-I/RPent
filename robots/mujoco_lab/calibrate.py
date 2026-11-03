@@ -36,12 +36,18 @@ protocols are paired case by case), resets the lab, and runs one protocol throug
   the probe rows (the payload's ``without_probe``), so it learns only from failed attempts (the retry baseline);
 * ``policy_probe_one`` (plan m4): the first menu's cheapest probe row whatever the recommendation (none after a
   guard flag), then the policy.
+* ``probe_once`` and ``sham_once`` (plan H3 decision 5): the first menu's squeeze row when it offers one, else its
+  weigh row (none after a guard flag: forced_probe), then the policy without probes; ``sham_once`` runs that probe
+  through tools.sham_probe (the same motion, time and risk, the result discarded). The case records
+  ``forced_probe``, ``post_probe`` (the decision after the probe: a commit row id, "decline", "terminal" or
+  "no_probe") and ``changed`` (decision_change against the first menu's decision without probes).
 
 Each case records its first menu's costs (``first_menu``: the best row's and the recommended option's expected
-cost), and each probe its place (``position`` among the case's probes, ``after_attempts``). ``--cases FILE``
-(``{"seed", "cases": {object: [idx, ...]}}``, for the run's seed) runs exactly the listed cases, which are the same
-cases a full run draws. The output records the code that made it (``code``: git HEAD and whether tracked files
-differed) and is written to a temporary file first, then renamed.
+cost; in the forced arms also the decision without the probe rows and the best row), and each probe its place
+(``position`` among the case's probes, ``after_attempts``). ``--cases FILE`` (``{"seed", "cases": {object: [idx, ...]}}``, for the run's
+seed) runs exactly the listed cases, which are the same cases a full run draws; the output records the file's
+sha256. The output records the code that made it (``code``: git HEAD and whether tracked files differed) and, for
+the forced arms, their rule (``forced_rule``); it is written to a temporary file first, then renamed.
 
 Each case keeps the novelty guard's check of its first assessment (``guard``, None without a guard), and the
 summary counts the cases it checked and flagged; the commit protocol runs the best row after a guard decline too.
@@ -71,6 +77,7 @@ adds an isotonic map of P(placed_stable) fitted on the other folds' executions),
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import multiprocessing as mp
 import os
@@ -84,18 +91,23 @@ from typing import Any
 import numpy as np
 
 from robots.mujoco_lab import tracking
-from robots.mujoco_lab.corpus import apply_damage, case_rng, damage_rng, draw_damage, draw_theta, lab_generator, trainable
-from rpent.skills.pick_place.costs import COST, TIME_COST_PER_S, care_scale, probe_time_scale
+from robots.mujoco_lab.corpus import (apply_damage, case_rng, damage_rng, draw_damage, draw_theta, lab_generator, shrink_theta,
+                                      spread_factor, trainable)
+from rpent.skills.pick_place.costs import (COST, RESET_PRICES, TIME_COST_PER_S, care_scale, probe_time_scale, reset_cost,
+                                           reset_time)
 from rpent.skills.pick_place.destinations import MESH_IDS, PRIMITIVE_IDS
 from rpent.skills.pick_place.evaluate import (_ece, coverage_design, ece_ci, ece_from_sums, ece_iid_floor,
                                               object_sums, object_weights, per_class, score)
 from rpent.skills.pick_place.features import extract
 from rpent.skills.pick_place.probes import DAMAGED, PROBE_KINDS, PROBE_SECONDS
 from rpent.skills.pick_place.protocol import DAMAGE, IRREVERSIBLE, MOTION_OUTCOMES, OUTCOMES, RECOVERABLE, Prediction
-from rpent.skills.pick_place.tools import MAX_PROBES, _threshold, assess_pick, pick_and_place
+from rpent.skills.pick_place.tools import MAX_PROBES, PROBE_OPTIONS, _threshold, assess_pick, pick_and_place, sham_probe
 
-PROTOCOLS = ("commit", "probe_first", "repair", "random_row", "probe_all", "policy", "policy_no_probe", "policy_probe_one")
-POLICIES = ("policy", "policy_no_probe", "policy_probe_one")      # the protocols that run the policy loop
+PROTOCOLS = ("commit", "probe_first", "repair", "random_row", "probe_all", "policy", "policy_no_probe", "policy_probe_one",
+             "probe_once", "sham_once")
+FORCED = ("probe_once", "sham_once")      # plan H3 decision 5: one forced probe, then the policy without probes
+FORCED_RULE = "the first menu's squeeze row if offered, else its weigh row; none after a guard flag"      # forced_probe
+POLICIES = ("policy", "policy_no_probe", "policy_probe_one") + FORCED      # the protocols that run the policy loop
 POLICY_ATTEMPTS = 3               # policy: the attempts per case (a recoverable failure is reassessed)
 PROBE_ORDER = ("probe_push", "probe_weigh")     # probe_all: the order of scene A of the probe corpus
 CARE = "normal"                   # the default care of the realized cost
@@ -106,19 +118,29 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 
 # ---------------------------------------------------------------- costs
 
-def attempt_cost(outcome: str, cost_s: float, care: str | float = CARE) -> float:
-    """An executed row: its outcome's cost (care scales the irreversible ones) and its time."""
+def attempt_cost(outcome: str, cost_s: float, care: str | float = CARE, reset_s: float | None = None,
+                 reset_price: str = "time") -> float:
+    """An executed row: its outcome's cost (care scales the irreversible ones; under the recovery mode, ``reset_s``,
+    an irreversible one costs the reset's time, plan H3, or at ``reset_price`` "care" its absorbing cost, Addendum A)
+    and its time."""
+    reset = reset_cost(reset_s, care, reset_price)
+    if reset is not None and outcome in IRREVERSIBLE:
+        return float(reset + TIME_COST_PER_S * float(cost_s))
     return float(COST[outcome] * (care_scale(care) if outcome in IRREVERSIBLE else 1.0) + TIME_COST_PER_S * float(cost_s))
 
 
-def probe_cost(probe: str, kind: str, thrown: bool, care: str | float = CARE, time_scale: float = 1.0) -> float:
+def probe_cost(probe: str, kind: str, thrown: bool, care: str | float = CARE, time_scale: float = 1.0,
+               reset_s: float | None = None, reset_price: str = "time") -> float:
     """An executed probe: its time (times ``time_scale``, plan 2b2 decision 4), a tipped push, and a thrown or damaged
-    object, charged once (the probe row's expected-cost terms; the case adds A when it ends, see run_protocol)."""
+    object, charged once (the probe row's expected-cost terms; the case adds A when it ends, see run_protocol); under the
+    recovery mode (``reset_s``, plan H3) that object costs the reset's time instead, or at ``reset_price`` "care" its
+    absorbing cost (Addendum A)."""
     c = probe_time_scale(time_scale) * TIME_COST_PER_S * PROBE_SECONDS[probe]
     if probe == "push" and kind == "tipped":
         c += COST["tipped"]
+    reset = reset_cost(reset_s, care, reset_price)
     if thrown or kind == DAMAGED:
-        c += COST["dropped_high"] * care_scale(care)
+        c += COST["dropped_high"] * care_scale(care) if reset is None else reset
     return float(c)
 
 
@@ -145,32 +167,67 @@ def _without_probe(a: dict[str, Any], prims: Any) -> str:
     return "commit" if float(row["expected_cost"]) <= float(A) and (floor is None or p >= float(floor)) else "decline"
 
 
-def _first_menu(a: dict[str, Any]) -> dict[str, float | None]:
-    """The first assessment's best row and recommended option costs (plan m4: the declared saving); None when missing."""
+def _first_menu(a: dict[str, Any], forced: bool = False) -> dict[str, Any]:
+    """The first assessment's best row and recommended option costs (plan m4: the declared saving); in the forced arms
+    (plan H3 decision 6) also its decision without the probe rows and its best row; None when missing."""
     cost = {o["id"]: o.get("expected_cost") for o in a.get("options") or []}
-    return {"best_cost": cost.get(a.get("best_option")), "recommended_cost": cost.get(a.get("recommended_option"))}
+    out = {"best_cost": cost.get(a.get("best_option")), "recommended_cost": cost.get(a.get("recommended_option"))}
+    if forced:
+        out.update(without_probe=a.get("without_probe"), best_row=a.get("best_option"))
+    return out
+
+
+def forced_probe(a: dict[str, Any]) -> str | None:
+    """Plan H3 decision 5's rule at the first menu: its squeeze row when it offers one (a crushable or bruisable object),
+    else its weigh row; None after a guard flag or when it offers neither."""
+    if (a.get("guard") or {}).get("flag"):
+        return None
+    ids = {o["id"] for o in a.get("options") or [] if o.get("kind") == "probe"}
+    return next((p for p in ("probe_squeeze", "probe_weigh") if p in ids), None)
+
+
+def decision_change(first: dict[str, Any] | None, post: str | None) -> str | None:
+    """Plan H3 decision 6: what the forced probe did to the decision. "no_probe" and "terminal" as recorded; "same" when
+    the decision after the probe is the first menu's decision without probes (its best row, or decline); "decline";
+    "other_row" (another commit row, or a commit where the first menu declined); None after an error or an object out
+    of reach."""
+    if post in ("no_probe", "terminal"):
+        return post
+    if post in (None, "error", "unreachable") or first is None:
+        return None
+    before = "decline" if first.get("without_probe") == "decline" else first.get("best_row")
+    if post == before:
+        return "same"
+    return "decline" if post == "decline" else "other_row"
 
 
 def _probe_record(d: dict[str, Any], prims: Any, care: str | float, position: int = 0, after_attempts: int = 0) -> dict[str, Any]:
+    """One executed probe; a sham probe (plan H3) adds ``sham`` and the belief hashes."""
     pm = (getattr(prims, "probe_models", None) or {}).get(d["probed"])
     stats = getattr(pm, "stats", None) or {}
     n, kinds = int(stats.get("n") or 0), stats.get("kinds") or {}
     n_kinds = sum(int(v) for v in kinds.values())                     # the kind model's rows (2b: the results not thrown)
-    return {"probe": d["probed"], "position": position, "after_attempts": after_attempts, "kind": d["kind"], "reading": d["reading"],
+    out = {"probe": d["probed"], "position": position, "after_attempts": after_attempts, "kind": d["kind"], "reading": d["reading"],
             "thrown": bool(d["thrown"]), "damage": d.get("damage"),
             "artifact": bool(d.get("artifact", False)), "displacement_m": d.get("displacement_m"), "tilt_deg": d.get("tilt_deg"),
             "declared": d.get("declared"),
             "const_kind": {k: v / n_kinds for k, v in kinds.items()} if n_kinds else None,
             "kinds_not_thrown": bool(getattr(pm, "kinds_not_thrown", True)),
             "const_thrown": stats["thrown"] / n if n and "thrown" in stats else None,
-            "cost": probe_cost(d["probed"], d["kind"], d["thrown"], care, getattr(prims, "probe_time_scale", 1.0))}
+            "cost": probe_cost(d["probed"], d["kind"], d["thrown"], care, getattr(prims, "probe_time_scale", 1.0),
+                               getattr(prims, "reset_s", None), getattr(prims, "reset_price", "time"))}
+    if d.get("sham"):
+        out.update({k: d.get(k) for k in ("sham", "belief_hash_before", "belief_hash_after", "belief_hash_next")})
+    return out
 
 
-def _attempt_record(d: dict[str, Any], row: dict[str, Any], a: dict[str, Any], features: Any, care: str | float) -> dict[str, Any]:
+def _attempt_record(d: dict[str, Any], row: dict[str, Any], a: dict[str, Any], features: Any, care: str | float,
+                    reset_s: float | None = None, reset_price: str = "time") -> dict[str, Any]:
     return {"option": d["option"], "kind": row["kind"], "action": row["action"], "recommendation": a.get("recommendation"),
             "declared": {"p": row["p"], "p_drop_height": row["p_drop_height"], "expected_cost": row["expected_cost"]},
             "outcome": d["outcome"], "label": d["outcome"], "placed_at_requested": d["placed_at_requested"],
-            "cost_s": row["cost_s"], "cost": attempt_cost(d["outcome"], row["cost_s"], care), "features": features,
+            "cost_s": row["cost_s"], "cost": attempt_cost(d["outcome"], row["cost_s"], care, reset_s, reset_price),
+            "features": features,
             "diagnosis": d.get("diagnosis"), "artifact": bool(d.get("artifact", False))}
 
 
@@ -183,7 +240,9 @@ def run_protocol(prims: Any, protocol: str, destination: str, rng: np.random.Gen
         raise ValueError(f"protocol must be one of {PROTOCOLS}, not {protocol!r}")
     store: dict[str, Any] = {}
     case: dict[str, Any] = {"protocol": protocol, "recommendation": None, "best_option": None, "guard": None, "first_menu": None,
-                            "probes": [], "attempts": [], "cost": 0.0, "ended": None}
+                            "probes": [], "attempts": [], "restores": [], "cost": 0.0, "ended": None}
+    reset_s = getattr(prims, "reset_s", None)      # plan H3: the recovery mode restores after an irreversible event
+    price = getattr(prims, "reset_price", "time")  # plan H3 Addendum A: what the restored event costs
 
     def end(reason: str, error: str | None = None) -> dict[str, Any]:
         case["ended"] = reason
@@ -209,20 +268,26 @@ def run_protocol(prims: Any, protocol: str, destination: str, rng: np.random.Gen
     if not a.get("assessed", True):
         return end("unreachable")
     case["recommendation"], case["best_option"], case["guard"] = a.get("recommendation"), a.get("best_option"), a.get("guard")
-    case["first_menu"] = _first_menu(a)
+    case["first_menu"] = _first_menu(a, protocol in FORCED)
     if follow and a.get("recommendation") == "decline":
         return end("abstained")
-    def probe(option_id: str) -> str | None:
-        """Run one probe row; the reason the case ends, or None (``a`` is then the fresh assessment)."""
+    def probe(option_id: str, sham: bool = False) -> str | None:
+        """Run one probe row (``sham``: through tools.sham_probe); the reason the case ends, or None (``a`` is then the
+        fresh assessment)."""
         nonlocal a
-        d = call(option_id=option_id)
+        if sham:
+            d = sham_probe(object="object", destination=destination, option_id=option_id, care=care, primitives=prims, store=store)
+        else:
+            d = call(option_id=option_id)
         if "error" in d:
             case["error"] = d["error"]
             return "error"
         case["probes"].append(_probe_record(d, prims, care, len(case["probes"]), len(case["attempts"])))
-        if d["kind"] == DAMAGED or d.get("damage"):
+        if d.get("restored") is not None:
+            case["restores"].append(dict(d["restored"], probe=d["probed"]))
+        elif d["kind"] == DAMAGED or d.get("damage"):
             return "damaged"
-        if d["thrown"]:
+        elif d["thrown"]:
             return "thrown"
         a = d["assessment"]
         if "error" in a:
@@ -230,6 +295,24 @@ def run_protocol(prims: Any, protocol: str, destination: str, rng: np.random.Gen
             return "error"
         return None if a.get("assessed", False) else "unreachable"
 
+    if protocol in FORCED:
+        forced = forced_probe(a)
+        case["forced_probe"] = None if forced is None else PROBE_OPTIONS[forced]
+        if forced is None:
+            case["post_probe"] = "no_probe"
+        else:
+            reason = probe(forced, sham=protocol == "sham_once")
+            if reason is not None:
+                case["post_probe"] = "terminal" if reason in ("damaged", "thrown") else reason
+                case["changed"] = decision_change(case["first_menu"], case["post_probe"])
+                return end(reason)
+            if case["restores"]:
+                case["post_probe"] = "terminal"         # restored after the probe (plan H3 decision 6)
+            else:
+                rec = a.get("recommendation")
+                rec = _without_probe(a, prims) if rec == "probe" else rec
+                case["post_probe"] = "decline" if rec == "decline" else a.get("best_option")
+        case["changed"] = decision_change(case["first_menu"], case["post_probe"])
     if protocol == "probe_first":
         while a.get("recommendation") == "probe" and len(case["probes"]) < max_probes:
             reason = probe(a["recommended_option"])
@@ -248,7 +331,7 @@ def run_protocol(prims: Any, protocol: str, destination: str, rng: np.random.Gen
             if reason is not None:
                 return end(reason)
     if protocol in POLICIES:
-        cap = 0 if protocol == "policy_no_probe" else max_probes
+        cap = 0 if protocol == "policy_no_probe" or protocol in FORCED else max_probes
         while True:
             rec = a.get("recommendation")
             if rec == "probe" and len(case["probes"]) >= cap:
@@ -267,10 +350,12 @@ def run_protocol(prims: Any, protocol: str, destination: str, rng: np.random.Gen
             d = call(option_id=row["id"])
             if "outcome" not in d:
                 return end("error", str(d.get("error") or d.get("reason")))
-            case["attempts"].append(_attempt_record(d, row, a, features, care))
+            case["attempts"].append(_attempt_record(d, row, a, features, care, reset_s, price))
+            if d.get("restored") is not None:
+                case["restores"].append(dict(d["restored"], option=row["id"]))
             if d["outcome"] == "placed_stable":
                 return end("placed")
-            if d["outcome"] not in RECOVERABLE or len(case["attempts"]) >= POLICY_ATTEMPTS:
+            if (d["outcome"] not in RECOVERABLE and d.get("restored") is None) or len(case["attempts"]) >= POLICY_ATTEMPTS:
                 return end("failed")
             a = d["assessment"]
             if "error" in a:
@@ -289,7 +374,9 @@ def run_protocol(prims: Any, protocol: str, destination: str, rng: np.random.Gen
         d = call(option_id=row["id"])
         if "outcome" not in d:
             return end("error", str(d.get("error") or d.get("reason")))
-        case["attempts"].append(_attempt_record(d, row, a, features, care))
+        case["attempts"].append(_attempt_record(d, row, a, features, care, reset_s, price))
+        if d.get("restored") is not None:
+            case["restores"].append(dict(d["restored"], option=row["id"]))
         if d["outcome"] == "placed_stable":
             return end("placed")
         a = d["assessment"]
@@ -302,11 +389,14 @@ def run_protocol(prims: Any, protocol: str, destination: str, rng: np.random.Gen
 
 
 def case_draw(seed: int, object_id: str, idx: int, nominal_mass: float, use_fixtures: bool = False,
-              fragility: tuple[dict[str, Any], Any] | None = None) -> tuple[dict[str, Any], int, str, dict[str, Any]]:
+              fragility: tuple[dict[str, Any], Any] | None = None,
+              spread: float = 1.0) -> tuple[dict[str, Any], int, str, dict[str, Any]]:
     """The case's hidden properties, CoM end, destination and hidden damage state {fill, frag, spill_angle_deg}: one
     stream per (seed, object, idx). In an m2b world (``fragility`` = (classes, thresholds)) the fill and the fragility
     come from the corpus's damage stream with the corpus rule (corpus.draw_damage, apply_damage), so a case hides what
-    the corpus row of that (seed, object, idx) hides; an m2 case is empty and cannot be damaged."""
+    the corpus row of that (seed, object, idx) hides; an m2 case is empty and cannot be damaged. Under a spread factor
+    (plan H3 decision 4) corpus.shrink_theta maps the hidden properties after every draw: the stream and every other
+    value stay."""
     from robots.mujoco_lab.fragility import entry_of
 
     rng = case_rng(seed, object_id, idx)
@@ -321,7 +411,7 @@ def case_draw(seed: int, object_id: str, idx: int, nominal_mass: float, use_fixt
         d = draw_damage(damage_rng(seed, object_id, idx), entry_of(object_id, classes)[0], th, 1.0)
         theta, _ = apply_damage(theta, {}, d)
         hidden = {"fill": d["fill"], "frag": d["theta_frag"], "spill_angle_deg": d["spill_angle_deg"]}
-    return theta, com_end, destination, hidden
+    return shrink_theta(theta, spread, hidden["fill"] > 0), com_end, destination, hidden
 
 
 def case_artifact(case: dict[str, Any], reset_info: dict[str, Any]) -> bool:
@@ -346,7 +436,7 @@ def run_case(prims: Any, object_id: str, idx: int, seed: int, protocol: str = "c
     world = fragility_world(getattr(prims, "manifest", None))
     generator = lab_generator()                                  # a bundle's job runs under its generator (load_bundle)
     theta, com_end, destination, hidden = case_draw(seed, object_id, idx, object_props(object_id, generator)["mass"], use_fixtures,
-                                                    fragility=world)
+                                                    fragility=world, spread=getattr(prims, "truth_spread", 1.0))
     if world is not None:
         env.slosh_zeta = world[1].slosh_zeta
         env.slosh_scale = world[1].slosh_scale
@@ -369,6 +459,8 @@ def run_case(prims: Any, object_id: str, idx: int, seed: int, protocol: str = "c
     row = {"object": object_id, "idx": idx, "destination": destination, "theta": theta, "com_end": com_end,
            "fill": hidden["fill"], "theta_frag": hidden["frag"], "force_noise": env.force_noise, "generator": generator,
            "evoi": getattr(prims, "evoi", "plugin"), "probe_time_scale": getattr(prims, "probe_time_scale", 1.0),
+           "reset_s": getattr(prims, "reset_s", None), "reset_price": getattr(prims, "reset_price", "time"),
+           "truth_spread": getattr(prims, "truth_spread", 1.0), "prior_spread": getattr(prims, "prior_spread", 1.0),
            "truth": {k: truth[k] for k in ("mass", "mu", "com_s")}, "reset": reset_info, **case}
     first = case["attempts"][0] if case["attempts"] else None
     row.update(executed=first is not None, option=first and first["option"], outcome=first and first["outcome"],
@@ -431,6 +523,26 @@ def run_probe_time_scale(rows: list[dict[str, Any]]) -> float | list[float] | No
     return _run_value(rows, "probe_time_scale", float)
 
 
+def run_reset_s(rows: list[dict[str, Any]]) -> float | list[float] | None:
+    """The recovery mode's reset seconds a run's cases ran with (plan H3); None: absorbing."""
+    return _run_value(rows, "reset_s", float)
+
+
+def run_reset_price(rows: list[dict[str, Any]]) -> str | list[str] | None:
+    """The recovery mode's price a run's cases were charged at (plan H3 Addendum A): "time" or "care"."""
+    return _run_value(rows, "reset_price")
+
+
+def run_truth_spread(rows: list[dict[str, Any]]) -> float | list[float] | None:
+    """The spread factor a run's cases were drawn at (plan H3 decision 4, Addendum A2)."""
+    return _run_value(rows, "truth_spread", float)
+
+
+def run_prior_spread(rows: list[dict[str, Any]]) -> float | list[float] | None:
+    """The spread factor a run's beliefs were drawn at, the first prior and every refresh (plan H3 Addendum A2)."""
+    return _run_value(rows, "prior_spread", float)
+
+
 def _primitives(bundle: str | None, threshold: float | None, model_kind: str | None) -> Any:
     """One lab env per process, and the primitives of each bundle on it (cached). Every call returns them with the
     bundle's abstain cost, force noise and probe time scale: a job sets its own after the call, and none stays for the
@@ -466,6 +578,10 @@ def _run_object(job: tuple[str, list[int], dict[str, Any]]) -> list[dict[str, An
     prims.abstain_cost = s["abstain_cost"]       # every job sets it: the cached primitives keep no earlier run's value
     prims.force_noise = job_force_noise(s.get("force_noise"), prims.manifest)
     prims.probe_time_scale = job_probe_time_scale(s.get("probe_time_scale"), prims.manifest)
+    prims.reset_s = s.get("reset_s")             # plan H3: every job sets it (None: absorbing)
+    prims.reset_price = s.get("reset_price") or "time"   # plan H3 Addendum A: every job sets it
+    prims.truth_spread = 1.0 if s.get("truth_spread") is None else spread_factor(s["truth_spread"])   # plan H3 decision 4,
+    prims.prior_spread = 1.0 if s.get("prior_spread") is None else spread_factor(s["prior_spread"])   # Addendum A2 (1: m4)
     rows = []
     for idx in idxs:
         t0 = time.time()
@@ -578,7 +694,11 @@ def run_cases(a: argparse.Namespace, plan: dict[str, Any]) -> list[dict[str, Any
                                                  "protocol": a.protocol, "follow": a.follow_recommendation, "fixtures": a.fixtures,
                                                  "threshold": a.threshold, "model_kind": a.model_kind, "care": a.care,
                                                  "abstain_cost": A, "force_noise": getattr(a, "force_noise", None),
-                                                 "probe_time_scale": getattr(a, "probe_time_scale", None)}))
+                                                 "probe_time_scale": getattr(a, "probe_time_scale", None),
+                                                 "reset_s": getattr(a, "reset_s", None),
+                                                 "reset_price": getattr(a, "reset_price", "time"),
+                                                 "truth_spread": getattr(a, "truth_spread", None),
+                                                 "prior_spread": getattr(a, "prior_spread", None)}))
     rows: list[dict[str, Any]] = []
     if a.workers <= 1:
         for job in jobs:
@@ -811,12 +931,19 @@ def summarize(rows: list[dict[str, Any]], protocol: str, rng: np.random.Generato
 def compare(A: dict[str, Any], B: dict[str, Any], rng: np.random.Generator, n_boot: int = N_BOOT) -> dict[str, Any]:
     """A − B over the paired cases (same object and idx, counted in both: no error, no artifact): the mean
     realized cost and the first attempts' ECE on P(placed_stable), each with a 95 % interval that resamples
-    objects jointly for both. The two runs must use the same costs (care scale, abstain cost, probe time scale; files
-    from before these fields read as care normal, no abstain cost and scale 1) and the same generator (no field: v10)."""
+    objects jointly for both. The two runs must use the same costs (care scale, abstain cost, probe time scale, reset
+    time and price; files from before these fields read as care normal, no abstain cost, scale 1, no reset and the time
+    price), the same spread factors, the truth's and the prior's (1 when absent, plan H3), and the same generator (no
+    field: v10)."""
     costs_a, costs_b = ((R.get("care_scale", 1.0), R.get("abstain_cost"),
-                         1.0 if R.get("probe_time_scale") is None else R["probe_time_scale"]) for R in (A, B))
+                         1.0 if R.get("probe_time_scale") is None else R["probe_time_scale"], R.get("reset_s"),
+                         R.get("reset_price") or "time") for R in (A, B))
     if costs_a != costs_b:
-        raise ValueError(f"the runs use different costs (care_scale, abstain_cost, probe_time_scale): a {costs_a}, b {costs_b}")
+        raise ValueError("the runs use different costs (care_scale, abstain_cost, probe_time_scale, reset_s, reset_price): "
+                         f"a {costs_a}, b {costs_b}")
+    spread_a, spread_b = (tuple(1.0 if R.get(k) is None else R[k] for k in ("truth_spread", "prior_spread")) for R in (A, B))
+    if spread_a != spread_b:
+        raise ValueError(f"the runs use different spreads (truth, prior): a {spread_a}, b {spread_b}")
     if (A.get("generator") or "v10") != (B.get("generator") or "v10"):
         raise ValueError(f"the runs use different generators: a {A.get('generator') or 'v10'}, b {B.get('generator') or 'v10'}")
     ka = {(r["object"], r["idx"]): r for r in _counted(A["rows"])}
@@ -881,6 +1008,12 @@ def code_revision() -> dict[str, Any]:
     return {"revision": rev, "dirty": dirty, "sim_revision": sim_rev, "sim_dirty": sim_dirty}
 
 
+def cases_sha256(path: str) -> str:
+    """The sha256 of a cases file's bytes (plan H3 decision 11: the output records it, h3 valid checks it)."""
+    with open(path, "rb") as f:
+        return hashlib.sha256(f.read()).hexdigest()
+
+
 def listed_cases(a: argparse.Namespace) -> dict[str, list[int]] | None:
     """--cases: {object: [idx, ...]} of a cases file written for this run's seed (SystemExit for another seed)."""
     if not getattr(a, "cases", None):
@@ -927,6 +1060,22 @@ def _scale_arg(text: str) -> float:
         raise argparse.ArgumentTypeError(str(exc)) from exc
 
 
+def _reset_arg(text: str) -> float:
+    """--reset-s: a finite number of seconds at least 0 (plan H3)."""
+    try:
+        return reset_time(_number(text))
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
+
+
+def _spread_arg(text: str) -> float:
+    """--spread: a number in (0, 1] (plan H3 decision 4)."""
+    try:
+        return spread_factor(_number(text))
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
+
+
 def _number(text: str) -> str | float:
     try:
         return float(text)
@@ -957,11 +1106,27 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
                     help="the sd of the force readings' error (0: clean); default: each bundle's declared sensor")
     ap.add_argument("--probe-time-scale", type=_scale_arg, default=None,
                     help="the factor on every probe's time charge (0: none); default: each bundle's decision (else 1)")
+    ap.add_argument("--reset-s", type=_reset_arg, default=None,
+                    help="plan H3, the recovery mode: an irreversible event costs 0.05 per second of this reset and the object is restored "
+                         "(default: absorbing)")
+    ap.add_argument("--reset-price", choices=RESET_PRICES, default="time",
+                    help="plan H3 Addendum A, with --reset-s: what an irreversible event costs, time (0.05 per reset second) or "
+                         "care (the absorbing 5 x care, rec_hi with --reset-s 0)")
+    ap.add_argument("--spread", type=_spread_arg, default=None,
+                    help="plan H3 decision 4: shrink the hidden properties' ranges and the prior's by this factor, quantile-coupled "
+                         "(default 1: the corpus ranges); sets both --truth-spread and --prior-spread")
+    ap.add_argument("--truth-spread", type=_spread_arg, default=None,
+                    help="plan H3 Addendum A2: the factor on the hidden properties' ranges only (default: --spread)")
+    ap.add_argument("--prior-spread", type=_spread_arg, default=None,
+                    help="plan H3 Addendum A2: the factor on the prior's ranges only, the first belief and every refresh "
+                         "(default: --spread)")
     ap.add_argument("--model-kind", default=None)
     ap.add_argument("--fixtures", action="store_true", help="draw half the destinations from the inspected mesh fixtures")
     ap.add_argument("--workers", type=int, default=1)
     ap.add_argument("--coverage-sims", type=int, default=200, help="simulations for the interval coverage (0: skip)")
     a = ap.parse_args(argv)
+    both = 1.0 if a.spread is None else a.spread                         # plan H3 Addendum A2: --spread sets both
+    a.truth_spread, a.prior_spread = (both if f is None else f for f in (a.truth_spread, a.prior_spread))
     t0 = time.time()
     rng = np.random.default_rng(a.seed)
     if a.compare:
@@ -974,18 +1139,23 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
         ap.error("give --metrics, --bundle, --crossfit or --compare")
     if a.follow_recommendation and a.protocol != "commit":
         ap.error("--follow-recommendation applies to the commit protocol")
+    if a.reset_price != "time" and a.reset_s is None:
+        ap.error("--reset-price care needs --reset-s (the absorbing mode has no reset to price)")
     if a.cases and a.objects:
         ap.error("--cases names the objects; drop --objects")
+    cases_hash = cases_sha256(a.cases) if a.cases else None
     code = code_revision()          # before the cases run; an output whose code or simulator changed by its end says so
     plan = plan_cases(a)
     rows = run_cases(a, plan)
     out = summarize(rows, a.protocol, rng, a.coverage_sims, nested=bool(a.crossfit))
     out.update(kind=plan["kind"], objects=plan["objects"], folds=plan["folds"], seed=a.seed, repeats=a.repeats,
                care=a.care, care_scale=care_scale(a.care), abstain_cost=run_abstain_cost(a, plan), force_noise=run_force_noise(rows),
-               evoi=run_evoi(rows), probe_time_scale=run_probe_time_scale(rows), generator=run_generator(rows),
+               evoi=run_evoi(rows), probe_time_scale=run_probe_time_scale(rows), reset_s=run_reset_s(rows),
+               reset_price=run_reset_price(rows), truth_spread=run_truth_spread(rows), prior_spread=run_prior_spread(rows),
+               generator=run_generator(rows),
                source={"crossfit": a.crossfit, "bundle": a.bundle, "metrics": a.metrics}, seconds=round(time.time() - t0, 1),
-               cases=None if not a.cases else {"path": a.cases, "n": len(rows)},
-               code=dict(code, changed_during_run=code_revision() != code))
+               cases=None if not a.cases else {"path": a.cases, "n": len(rows), "sha256": cases_hash},
+               forced_rule=FORCED_RULE if a.protocol in FORCED else None, code=dict(code, changed_during_run=code_revision() != code))
     _write(out, a.out)
     summary = {k: out[k] for k in ("protocol", "kind", "care", "abstain_cost", "n", "n_executed", "abstained", "errors", "artifacts", "ece",
                                    "ece_ci95_object_bootstrap", "brier", "brier_const", "ece_iid_floor", "outcomes", "probes_run",
@@ -994,7 +1164,9 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
                    acceptance=out["first_attempt"]["acceptance"], seconds=out["seconds"])
     out["wandb"] = tracking.log_run("calibrate", {"protocol": a.protocol, "seed": a.seed, "repeats": a.repeats, "source": out["source"],
                                                   "n_objects": len(plan["objects"]), "threshold": a.threshold,
-                                                  "care": a.care, "abstain_cost": out["abstain_cost"]}, summary)
+                                                  "care": a.care, "abstain_cost": out["abstain_cost"], "reset_s": out["reset_s"],
+                                                  "reset_price": out["reset_price"], "truth_spread": out["truth_spread"],
+                                                  "prior_spread": out["prior_spread"]}, summary)
     print(json.dumps(summary, indent=1, default=float))
     return out
 

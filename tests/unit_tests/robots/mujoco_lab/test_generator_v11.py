@@ -820,3 +820,30 @@ def test_v11_agent_prompt_uses_the_corrected_name(tmp_path, monkeypatch):
     monkeypatch.setenv("RPENT_LAB_GENERATOR", "v10")
     cfg = _parse_config(args)
     assert cfg.prompt_vars["object"] == "hot3d__foam_roller" and cfg.recipe_tag == "hot3d__foam_roller_bin_s0"
+
+
+@SIM
+def test_v11_spread_shrinks_around_the_v11_range(monkeypatch):
+    """The H3 spread under v11 (e1-v11, the merge of real-masses): the truth's mass scale shrinks around the log-midpoint
+    of V11_MASS_SCALE_RANGE, the range the v11 prior shrinks, so the narrow prior stays quantile-coupled to the narrow
+    truth (a filled container's range is the same under both generators)."""
+    from robots.mujoco_lab.adapter import MuJoCoLabEnv
+    from robots.mujoco_lab.corpus import FILLED_MASS_SCALE_RANGE, V11_MASS_SCALE_RANGE, shrink_theta, shrunk_range
+    from robots.mujoco_lab.fragility import CLASSES_V11, DATA, Thresholds, load_classes
+    from robots.mujoco_lab.prior import make_prior
+
+    monkeypatch.setenv("RPENT_LAB_GENERATOR", "v11")
+
+    def scale(x, filled=False):
+        return shrink_theta({"mass_scale": x, "mu": 0.5, "com_s": None}, 0.25, filled)["mass_scale"]
+
+    assert [scale(x) for x in V11_MASS_SCALE_RANGE] == pytest.approx(list(shrunk_range(V11_MASS_SCALE_RANGE, 0.25, log=True)))
+    assert scale(1.0) == pytest.approx(1.0)                                   # the v11 log-midpoint stays
+    assert [scale(x, True) for x in FILLED_MASS_SCALE_RANGE] == pytest.approx(list(shrunk_range(FILLED_MASS_SCALE_RANGE, 0.25, log=True)))
+    prior = make_prior(load_classes(CLASSES_V11), Thresholds.from_json(os.path.join(DATA, "thresholds_v1.json")), generator="v11")
+    env = MuJoCoLabEnv()
+    for oid in ("ycb__banana", "ycb__mug"):
+        env.reset(oid, seed=0)
+        wide, narrow = (prior(env.pose_info(), 500, np.random.default_rng(2), spread=f).particles for f in (1.0, 0.25))
+        for w, n in zip(wide, narrow, strict=True):
+            assert n["mass_scale"] == pytest.approx(scale(w["mass_scale"], w["fill"] > 0), rel=1e-12), oid

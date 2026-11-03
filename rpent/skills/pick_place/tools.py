@@ -25,16 +25,31 @@ for one episode; every attempt appends a history entry ``{"type", "base", "pose"
 "used_terms", "rejected_terms"}`` and reweights it (``update_belief``), and every cached assessment is
 then stale. A probe or an attempt that damages the object ends the case: the record keeps the damage label
 (``"damaged"``) and the object gets no menu for the rest of the episode.
+
+The recovery mode (``primitives.reset_s``, plan H3 decision 3): an irreversible attempt, or a probe that throws or
+damages the object, is followed in the same call by ``env.restore()`` (the case's start state; the episode and the
+sensor streams go on), the damage latch is cleared, the record keeps ``restored`` (no probe after it), and the call
+returns the restored object's fresh assessment with the payload's ``restored`` record. The belief keeps what the event
+taught.
+
+The sham probe (``sham_probe``, plan H3 decision 5: calibrate's sham_once arm, not a planner tool) runs a probe row as
+pick_and_place would, with the same motion, time and risk, and discards the result: no reweight and no history entry.
+The probe still enters ``probes_run`` and ``probe_seq``, so every later menu sees what it sees after the real probe,
+and the payload records the belief's hash before, after and at the next assessment (gate Gs). The sham computes the
+real probe's update on a copy and discards it: an update that refreshes draws from ``primitives.rng``, so both arms
+then continue from the same stream state (paired draws).
 """
 
 from __future__ import annotations
 
+import hashlib
+import json
 from typing import Any, Callable
 
 import numpy as np
 
 from rpent.skills.pick_place.belief import MIN_ESS, N_PARTICLES, REFRESH_DRAWS, Belief, ParticleBelief, refresh
-from rpent.skills.pick_place.costs import care_scale, prediction_matrix, probe_time_scale
+from rpent.skills.pick_place.costs import care_scale, prediction_matrix, probe_time_scale, reset_price, reset_time
 from rpent.skills.pick_place.destinations import DESTINATIONS
 from rpent.skills.pick_place.diagnose import diagnose
 from rpent.skills.pick_place.features import A_TRANSPORT, model_names, particle_matrix, particle_sides
@@ -52,6 +67,7 @@ PROBE_FOLLOWS = {"push": ("weigh",)}   # the probes that may follow a probe: the
                                        # and the weigh after the push (the probe corpus's scenes); primitives.probe_follows
                                        # overrides it
 AFTER_ATTEMPT = "no probe after an attempt: the probe models cover probes from rest"
+AFTER_RESTORE = "no probe after a restore: the probe models cover probes from rest of an untouched object"
 REFRESH_ESS = MIN_ESS             # update_belief refreshes when the effective particles fall below this
 FLOOR_P = 1e-4                    # the outcome term's floor without a readout model
 OUT_OF_REACH = {"assessed": False, "reason": "object is out of reach (floor or bin)", "next": "report it; the skill cannot reach it"}
@@ -72,6 +88,14 @@ def _beliefs(store: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return store.setdefault("beliefs", {})
 
 
+def _spread_kw(primitives: Any) -> dict[str, float]:
+    """The prior's spread argument (plan H3 decision 4; Addendum A2: the belief's own factor, apart from the truth's
+    ``primitives.truth_spread``): none at f = 1 or without ``primitives.prior_spread``, so a prior without the argument
+    keeps working."""
+    f = getattr(primitives, "prior_spread", None)
+    return {} if f is None or float(f) == 1.0 else {"spread": float(f)}
+
+
 def _prior_belief(loc: dict[str, Any], env: Any, primitives: Any, n: int = N_PARTICLES,
                   rng: np.random.Generator | None = None) -> ParticleBelief:
     """The substrate's prior (``primitives.prior``) when it has one, else the milestone 1 prior as
@@ -79,7 +103,7 @@ def _prior_belief(loc: dict[str, Any], env: Any, primitives: Any, n: int = N_PAR
     rng = primitives.rng if rng is None else rng
     prior = getattr(primitives, "prior", None)
     if prior is not None and hasattr(env, "pose_info"):
-        return prior(env.pose_info(), n, rng)
+        return prior(env.pose_info(), n, rng, **_spread_kw(primitives))
     parametric = Belief.prior(loc["volume"], loc["material"], loc.get("hollow", False), length=loc.get("extent"))
     com = env.pose_info()["com_obj_nominal"] if hasattr(env, "pose_info") else list(map(float, env.geometry().com))
     return ParticleBelief.from_parametric(parametric, com, n, rng)
@@ -105,8 +129,9 @@ def _belief_record(loc: dict[str, Any], env: Any, primitives: Any, store: dict[s
 
 def _probes_allowed(rec: dict[str, Any], primitives: Any) -> set[str] | None:
     """The probes the menu may offer now (plan m4 decision 1): every probe before the first one, after one probe those
-    that may follow it (PROBE_FOLLOWS), none after two probes or after an attempt. None: no restriction yet."""
-    if rec.get("attempted"):
+    that may follow it (PROBE_FOLLOWS), none after two probes, after an attempt or after a restore (plan H3). None: no
+    restriction yet."""
+    if rec.get("attempted") or rec.get("restored"):
         return set()
     seq = rec.get("probe_seq") or []
     if not seq:
@@ -120,6 +145,8 @@ def _probe_refusal(probe: str, rec: dict[str, Any], primitives: Any) -> str | No
     allowed = _probes_allowed(rec, primitives)
     if allowed is None or probe in allowed:
         return None
+    if rec.get("restored"):
+        return f"probe_{probe} is not offered: {AFTER_RESTORE}"
     if rec.get("attempted"):
         return f"probe_{probe} is not offered: probes run only before the first attempt of an episode ({AFTER_ATTEMPT})"
     return (f"probe_{probe} cannot follow the {rec['probe_seq'][-1]}: the probe models cover probes from rest and the weigh "
@@ -172,24 +199,36 @@ def update_belief(belief: ParticleBelief, entry: dict[str, Any], primitives: Any
     if post.effective_size() >= REFRESH_ESS:
         return post
     if prior_fn is None and getattr(primitives, "prior", None) is not None:
-        prior_fn = lambda n, rng: primitives.prior(entry["pose"], n, rng)  # noqa: E731
+        prior_fn = lambda n, rng: primitives.prior(entry["pose"], n, rng, **_spread_kw(primitives))  # noqa: E731
     if prior_fn is None:
         return post._replace(degenerate=True, flags=post.flags + ["fewer than 100 effective particles and no prior to refresh from"])
     replay = lambda fresh, e: entry_loglik(fresh, e, primitives, terms=e["used_terms"])[0]  # noqa: E731
     return refresh(post, prior_fn, replay, primitives.rng, n_draws=refresh_draws, n_keep=len(belief))
 
 
+def _menu_recovery(primitives: Any) -> tuple[float | None, str]:
+    """The recovery mode the menu prices, (reset_s, reset_price), checked: ``primitives.menu_recovery`` when set (the E1
+    pilot: a menu priced at the default, absorbing, while the lab restores under ``primitives.reset_s``), else the lab's own
+    ``reset_s`` and ``reset_price``. A ValueError for a bad reset time or price."""
+    pair = getattr(primitives, "menu_recovery", None)
+    seconds, price = pair if pair is not None else (getattr(primitives, "reset_s", None), getattr(primitives, "reset_price", "time"))
+    return (None if seconds is None else reset_time(seconds)), reset_price(price)
+
+
 def _assess(object: str, destination: str, care: str | float, primitives: Any,
             store: dict[str, Any]) -> tuple[dict[str, Any] | None, Assessment | None]:
     """Build (or reuse) the assessment. Returns (error-or-semantic payload, None) or (None, assessment).
     ``primitives.abstain_cost`` (when set) selects the cost rule, ``primitives.evoi`` (when set) the probe-value
-    estimator and ``primitives.probe_time_scale`` (when set) the factor on the probe rows' time charge (menu.build_menu);
-    a bad scale is an error payload."""
+    estimator, ``primitives.probe_time_scale`` (when set) the factor on the probe rows' time charge and
+    ``primitives.reset_s`` (when set, plan H3) the recovery mode's reset seconds and ``primitives.reset_price`` (when set,
+    plan H3 Addendum A) its price, "time" or "care" (menu.build_menu), or ``primitives.menu_recovery`` the menu's own pair
+    (_menu_recovery); a bad scale, reset time or reset price is an error payload."""
     if destination not in DESTINATIONS:
         return {"error": f"unknown destination {destination!r}; known: {sorted(DESTINATIONS)}"}, None
     try:
         scale = care_scale(care)
         time_scale = probe_time_scale(getattr(primitives, "probe_time_scale", 1.0))
+        reset_s, price = _menu_recovery(primitives)
     except ValueError as exc:
         return {"error": str(exc)}, None
     abstain = getattr(primitives, "abstain_cost", None)
@@ -220,16 +259,21 @@ def _assess(object: str, destination: str, care: str | float, primitives: Any,
                                          env.plan_trajectory, primitives.rng, pose_fn=pose_fn, max_open=pinch_limit(env),
                                          threshold=getattr(primitives, "threshold", None), probe_models=probes or None,
                                          guard=getattr(primitives, "guard", None), abstain_cost=abstain,
-                                         evoi=getattr(primitives, "evoi", "plugin"), probe_time_scale=time_scale)
+                                         evoi=getattr(primitives, "evoi", "plugin"), probe_time_scale=time_scale, reset_s=reset_s,
+                                         reset_price=price)
     evidence = belief.summary() + [f"standard squeeze {f_std:.0f} N per pad", f"{len(proposals)} pinch proposals along the long axis"]
     if rec["probes_run"]:
         evidence.append(f"probes run this episode: {', '.join(sorted(rec['probes_run']))}")
     if rec.get("attempted") and getattr(primitives, "probe_models", None):
         evidence.append(AFTER_ATTEMPT)
+    if rec.get("restored"):
+        evidence.append(f"restored after {rec['restored']['event']} ({rec['restored']['after']}); {AFTER_RESTORE}")
     a = Assessment(object=loc.get("name") or object, destination=destination, options=options, evidence=evidence,
                    recommendation=recommendation, care=care, visibility=belief.visibility, episode=key[3], care_scale=scale,
-                   abstain_cost=None if abstain is None else float(abstain), probe_time_scale=time_scale,
-                   without_probe=without_probe(options, recommendation, destination, care, abstain, getattr(primitives, "threshold", None)))
+                   abstain_cost=None if abstain is None else float(abstain), probe_time_scale=time_scale, reset_s=reset_s,
+                   reset_price=price,
+                   without_probe=without_probe(options, recommendation, destination, care, abstain, getattr(primitives, "threshold", None),
+                                               reset_s=reset_s, reset_price=price))
     cache[key] = {"assessment": a, "menu": {o.id: o for o in options}, "belief": belief}
     return None, a
 
@@ -285,12 +329,47 @@ def _update(rec: dict[str, Any], entry: dict[str, Any], loc: dict[str, Any], pri
     return before, after
 
 
-def _run_probe(row: Option, object: str, destination: str, care: str, primitives: Any, store: dict[str, Any]) -> dict[str, Any]:
+def _restore(rec: dict[str, Any], env: Any, after: str, event: str) -> dict[str, Any]:
+    """The recovery mode (plan H3 decision 3): the lab rebuilds the case's start state (env.restore()), the damage
+    latch is cleared and the record keeps ``restored``; the belief stays. The caller reassesses next (_reassess clears
+    the cached assessments). Returns the payload's record: after, event and the lab's check (plan H3 gate Gr)."""
+    check = env.restore()
+    rec.pop("damaged", None)
+    rec["restored"] = {"after": after, "event": event}
+    return {"after": after, "event": event, "check": check}
+
+
+def _jsonable(x: Any) -> Any:
+    if isinstance(x, np.ndarray):
+        return x.tolist()
+    if isinstance(x, np.generic):
+        return x.item()
+    if isinstance(x, (set, frozenset)):
+        return sorted(x, key=str)
+    return str(x)
+
+
+def belief_hash(belief: ParticleBelief) -> str:
+    """The sha256 of the full belief state (plan H3 gate Gs): the particles (ancestors included), the weights, the
+    likelihood history, the flags, the visibility and the refresh state."""
+    h = hashlib.sha256(json.dumps({"particles": belief.particles, "history": belief.history, "flags": belief.flags,
+                                   "visibility": belief.visibility, "degenerate": belief.degenerate,
+                                   "importance_ess": belief.importance_ess}, sort_keys=True, default=_jsonable).encode())
+    h.update(np.asarray(belief.weights, dtype=float).tobytes())
+    return h.hexdigest()
+
+
+def _run_probe(row: Option, object: str, destination: str, care: str, primitives: Any, store: dict[str, Any],
+               sham: bool = False) -> dict[str, Any]:
     """Run one probe row, update the belief with its result, and return the probe payload. A probe that damages
-    the object ends the case (its fresh assessment says so); the reading's noise (HIDDEN_READING) stays out."""
+    the object ends the case (its fresh assessment says so); the reading's noise (HIDDEN_READING) stays out. ``sham``
+    (plan H3 decision 5): the same motion, damage latch, probe record and restore; the update runs on a copy of the
+    record and is discarded (its draws from primitives.rng stay: paired draws); the payload adds ``sham`` and the
+    belief's hashes before, after and at the next assessment (None when there is none)."""
     env = primitives.env
     loc = env.locate(object)
     rec = _belief_record(loc, env, primitives, store)
+    h0 = belief_hash(rec["belief"]) if sham else None
     probe, act = row.action["probe"], row.action
     if probe in ("weigh", "squeeze"):
         prop = next(p for p in env.proposals() if abs(p.s - act["s"]) < 1e-9)
@@ -305,12 +384,24 @@ def _run_probe(row: Option, object: str, destination: str, care: str, primitives
     reading = {k: v for k, v in dict(res.reading).items() if k not in HIDDEN_READING}
     entry = {"type": "probe", "option": row.id, "base": row._base, "pose": row._pose, "force": float(act["force"]), "planned": None,
              "obs": {"probe": probe, "kind": res.kind, "reading": dict(reading), "thrown": bool(res.thrown)}}
-    before, after = _update(rec, entry, loc, primitives)
-    return {"probed": probe, "placed": False, "kind": res.kind, "reading": reading,
-            "displacement_m": res.displacement_m, "tilt_deg": res.tilt_deg, "thrown": bool(res.thrown), "seconds": res.seconds,
-            "artifact": bool(getattr(res, "artifact", False)), "damage": damage,
-            "declared": row.to_data()["probe"], "belief_before": before.to_data(),
-            "belief": after.to_data(), "assessment": _reassess(object, destination, care, primitives, store)}
+    if sham:
+        _update(dict(rec), entry, loc, primitives)      # discarded: only its draws from primitives.rng stay
+        before = after = rec["belief"]
+    else:
+        before, after = _update(rec, entry, loc, primitives)
+    out = {"probed": probe, "placed": False, "kind": res.kind, "reading": reading,
+           "displacement_m": res.displacement_m, "tilt_deg": res.tilt_deg, "thrown": bool(res.thrown), "seconds": res.seconds,
+           "artifact": bool(getattr(res, "artifact", False)), "damage": damage,
+           "declared": row.to_data()["probe"], "belief_before": before.to_data(), "belief": after.to_data()}
+    if sham:
+        out.update(sham=True, belief_hash_before=h0, belief_hash_after=belief_hash(rec["belief"]))
+    if getattr(primitives, "reset_s", None) is not None and (res.thrown or rec.get("damaged")):
+        out["restored"] = _restore(rec, env, "probe", rec.get("damaged") or "thrown")
+    out["assessment"] = _reassess(object, destination, care, primitives, store)
+    if sham:
+        nxt = _cache(store).get((loc["object_id"], destination, care, int(getattr(env, "episode", 0))))
+        out["belief_hash_next"] = None if nxt is None else belief_hash(nxt["belief"])
+    return out
 
 
 def _meter_max(meter: dict[str, Any] | None) -> dict[str, float]:
@@ -337,7 +428,7 @@ def _attempt(option: Option, object: str, destination: str, care: str, primitive
     entry = {"type": "attempt", "option": option.id, "base": option._base, "pose": option._pose, "force": float(act["force"]),
              "planned": option._planned, "obs": {"label": r.label, "readouts": readouts, "force": float(act["force"])}}
     before, after = _update(rec, entry, loc, primitives)
-    return {
+    out = {
         "placed": r.label == "placed_stable",
         "placed_at_requested": r.label == "placed_stable" and act["destination"] == destination,
         "outcome": r.label,
@@ -359,8 +450,11 @@ def _attempt(option: Option, object: str, destination: str, care: str, primitive
                               mu_range=(float(np.min(before.arrays()["mu"])), float(np.max(before.arrays()["mu"])))),
         "belief_before": before.to_data(),
         "belief": after.to_data(),
-        "assessment": _reassess(object, destination, care, primitives, store),
     }
+    if getattr(primitives, "reset_s", None) is not None and r.label in IRREVERSIBLE:
+        out["restored"] = _restore(rec, env, "attempt", r.label)
+    out["assessment"] = _reassess(object, destination, care, primitives, store)
+    return out
 
 
 def _commit(a: Assessment, option_id: str | None, object: str, destination: str, care: str, primitives: Any,
@@ -400,6 +494,38 @@ def _probe_brief(d: dict[str, Any]) -> dict[str, Any]:
     return {k: d[k] for k in ("probed", "kind", "reading", "displacement_m", "thrown", "artifact")}
 
 
+def _named_probe(option_id: str, a: Assessment, object: str, destination: str, care: str | float, primitives: Any,
+                 store: dict[str, Any], sham: bool = False) -> dict[str, Any]:
+    """The probe row ``option_id`` of the assessment ``a`` run (once per episode, as the probe sequence allows), or the
+    error payload; ``sham`` as in _run_probe."""
+    loc = primitives.env.locate(object)
+    rec = _belief_record(loc, primitives.env, primitives, store)
+    if PROBE_OPTIONS[option_id] in rec["probes_run"]:
+        return {"error": f"{option_id} already ran this episode; the menu shows what is left"}
+    refusal = _probe_refusal(PROBE_OPTIONS[option_id], rec, primitives)
+    if refusal is not None:
+        return {"error": refusal}
+    row = next((o for o in a.options if o.id == option_id), None)
+    if row is None:
+        return {"error": f"{option_id} is not on the menu: no row to the requested destination to probe for"}
+    return _run_probe(row, object, destination, care, primitives, store, sham=sham)
+
+
+def sham_probe(*, object: str, destination: str = "bin", option_id: str, care: str | float = "normal", primitives,
+               store) -> dict[str, Any]:
+    """The sham_once arm's probe (plan H3 decision 5; calibrate calls it, it is not a planner tool): the probe row
+    ``option_id`` runs as pick_and_place runs it (the same checks, motion, time and risk) and its result is discarded
+    (_run_probe's ``sham``). Returns the probe payload or an error payload."""
+    if option_id not in PROBE_OPTIONS:
+        return {"error": f"{option_id!r} is not a probe row (one of {sorted(PROBE_OPTIONS)})"}
+    if PROBE_OPTIONS[option_id] not in (getattr(primitives, "probe_models", None) or {}):
+        return {"error": "probe models are not loaded"}
+    err, a = _assess(object, destination, care, primitives, store)
+    if err is not None:
+        return err
+    return _named_probe(option_id, a, object, destination, care, primitives, store, sham=True)
+
+
 @tool(readonly=False, exclude=("primitives", "store"))
 def pick_and_place(*, object: str, destination: str = "bin", mode: str = "commit", option_id: str | None = None,
                    care: str | float = "normal", primitives, store) -> ToolResult:
@@ -434,17 +560,7 @@ def pick_and_place(*, object: str, destination: str = "bin", mode: str = "commit
     if mode == "assess_only":
         return ToolResult(data=a.to_data())
     if option_id in PROBE_OPTIONS:
-        loc = primitives.env.locate(object)
-        rec = _belief_record(loc, primitives.env, primitives, store)
-        if PROBE_OPTIONS[option_id] in rec["probes_run"]:
-            return ToolResult(data={"error": f"{option_id} already ran this episode; the menu shows what is left"})
-        refusal = _probe_refusal(PROBE_OPTIONS[option_id], rec, primitives)
-        if refusal is not None:
-            return ToolResult(data={"error": refusal})
-        row = next((o for o in a.options if o.id == option_id), None)
-        if row is None:
-            return ToolResult(data={"error": f"{option_id} is not on the menu: no row to the requested destination to probe for"})
-        return ToolResult(data=_run_probe(row, object, destination, care, primitives, store))
+        return ToolResult(data=_named_probe(option_id, a, object, destination, care, primitives, store))
     probes: list[dict[str, Any]] = []
     if mode == "probe_first" and probe_models:
         for _ in range(MAX_PROBES):

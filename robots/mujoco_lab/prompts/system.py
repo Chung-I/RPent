@@ -61,6 +61,10 @@ release height). The top-level numbers repeat the best row's values; `best_optio
   P(the object does not end placed_stable). `abstain_cost` is A,
   the value of the task: a case that ends without the object placed costs A, and the `decline` row
   (abstaining) costs A. When `abstain_cost` is null, that term is absent and a decline costs nothing.
+  When `reset_s` is a number (the recovery mode), an irreversible outcome costs 0.05 per second of the
+  reset (`reset_s` seconds) in place of 5 times the care factor: the object is then restored to its
+  start pose and you may try again, and no probe runs after a restore. When `reset_s` is null, an
+  irreversible outcome is not undone.
 - `inboard_place` sets the object down at `table_centre` instead of the requested place. It is
   never chosen by default; name it in `option_id` if you accept the trade. The result then reports
   `placed_at_requested: false`.
@@ -137,7 +141,8 @@ Retry after a failure: a failed attempt that leaves the object on the table (tip
 dropped_low, not_lifted) can be followed by another attempt. Read the `diagnosis` and the
 `belief`, then choose the next row from the result's `assessment`, as with any other call. If
 `assessment` has `assessed: false` (for example the object is out of reach), report that and
-stop. An irreversible outcome (dropped_high, rolled_off) usually ends the task.
+stop. An irreversible outcome (dropped_high, rolled_off) usually ends the task, unless `reset_s` is a
+number: the result's `assessment` is then that of the restored object.
 
 A damaged object: an attempt or a probe that crushes, bruises, breaks or spills the object ends the
 case. Every later call this episode returns `assessed: false` with the reason `object is damaged

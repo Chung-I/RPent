@@ -900,3 +900,225 @@ def test_menu_rng_use_does_not_depend_on_the_probe_time_scale(evoi):
         d = assess_pick(object="mug", destination="table_centre", primitives=prims, store={}).data
         out.append((prims.rng.bit_generator.state, [o for o in d["options"] if o["kind"] != "probe"], d["without_probe"]))
     assert out[0] == out[1]
+
+
+# ---------------------------------------------------------------- the recovery mode (plan H3 decision 3)
+def test_the_reset_reaches_the_menu_and_the_payload():
+    """primitives.reset_s prices every irreversible outcome of the menu at the reset's time, and the payload states
+    it (None without one: the absorbing rule); a bad reset time is an error payload."""
+    prims = _aprims()
+    d = assess_pick(object="mug", destination="table_centre", care=10, primitives=prims, store={}).data
+    assert d["reset_s"] is None
+    prims.reset_s = 20.0
+    d = assess_pick(object="mug", destination="table_centre", care=10, primitives=prims, store={}).data
+    row = next(o for o in d["options"] if o["id"] == "commit_std")
+    assert row["expected_cost"] == pytest.approx(0.1 * 1.0 + 0.1 * 1 + 0.4 + 1.0 * 0.2, abs=1e-3)
+    assert d["reset_s"] == 20.0
+    prims.reset_s = -1.0
+    assert "reset" in assess_pick(object="mug", destination="table_centre", primitives=prims, store={}).data["error"]
+
+
+def test_the_care_price_reaches_the_menu_and_the_payload():
+    """primitives.reset_price "care" (rec_hi, plan H3 Addendum A) prices the menu's irreversible outcomes at 5 kappa, as
+    absorbing does, and the payload states it ("time" by default); a bad price is an error payload."""
+    prims = _aprims()
+    absorbing = assess_pick(object="mug", destination="table_centre", care=10, primitives=prims, store={}).data
+    assert absorbing["reset_price"] == "time"
+    prims.reset_s, prims.reset_price = 0.0, "care"
+    d = assess_pick(object="mug", destination="table_centre", care=10, primitives=prims, store={}).data
+    assert d["reset_s"] == 0.0 and d["reset_price"] == "care"
+    row = lambda x: next(o for o in x["options"] if o["id"] == "commit_std")  # noqa: E731
+    assert row(d)["expected_cost"] == pytest.approx(row(absorbing)["expected_cost"])
+    prims.reset_price = "free"
+    assert "reset price" in assess_pick(object="mug", destination="table_centre", primitives=prims, store={}).data["error"]
+
+
+
+# ---------------------------------------------------------------- the restore (plan H3 decision 3)
+PERFECT_CHECK = {"pos_err_mm": 0.0, "rot_err_deg": 0.0, "qpos_err": 0.0, "qvel_err": 0.0, "mocap_err": 0.0, "same_case": True,
+                 "episode": True, "at_rest": True}
+
+
+class _RestoreEnv(_DamageEnv):
+    """A damage env that counts restore() calls."""
+
+    def __init__(self, results):
+        super().__init__(results)
+        self.restores = 0
+
+    def restore(self):
+        self.restores += 1
+        return dict(PERFECT_CHECK)
+
+
+def test_recovery_restores_after_an_irreversible_attempt():
+    """Under reset_s an irreversible outcome (dropped_high, or a damage label) is followed by env.restore(), the damage
+    latch is cleared and the call returns the restored object's fresh assessment; without reset_s nothing is restored,
+    and a recoverable outcome is never restored."""
+    for label in ("dropped_high", "spilled"):
+        env = _RestoreEnv([(label, _hold(0.3))])
+        prims, store = _bprims(env), {}
+        prims.reset_s = 20.0
+        d = _commit(prims, store)
+        assert env.restores == 1 and d["restored"] == {"after": "attempt", "event": label, "check": PERFECT_CHECK}
+        assert d["assessment"]["assessed"] is True and "damaged" not in store["beliefs"]["ycb__mug"]
+        assert store["beliefs"]["ycb__mug"]["restored"] == {"after": "attempt", "event": label}
+        env = _RestoreEnv([(label, _hold(0.3))])
+        assert "restored" not in _commit(_bprims(env), {}) and env.restores == 0
+    env = _RestoreEnv([("tipped", _hold(0.3))])
+    prims = _bprims(env)
+    prims.reset_s = 20.0
+    assert "restored" not in _commit(prims, {}) and env.restores == 0
+
+
+def test_the_belief_survives_a_restore():
+    """The restore keeps what the event taught: the posterior after the dropped attempt is the belief of the fresh
+    assessment, and its history ends with the attempt."""
+    env = _RestoreEnv([("dropped_high", _hold(0.3))])
+    prims, store = _bprims(env), {}
+    prims.reset_s = 20.0
+    d = _commit(prims, store)
+    rec = store["beliefs"]["ycb__mug"]
+    assert env.restores == 1 and rec["episode"] == env.episode
+    assert rec["belief"].history[-1]["obs"]["label"] == "dropped_high" and rec["attempted"] is True
+    assert store["pick_place"][KEY]["belief"] is rec["belief"] and d["belief"] == rec["belief"].to_data()
+
+
+class _RestoreProbeEnv(_SqueezeEnv):
+    """A crushable probe env whose restore() brings a thrown object back within reach."""
+
+    def __init__(self, results=(), probes=()):
+        super().__init__(results, probes)
+        self.restores = 0
+
+    def restore(self):
+        self.restores += 1
+        self.reachable = True
+        return dict(PERFECT_CHECK)
+
+
+def test_no_probe_after_a_restore():
+    """Under reset_s a thrown push and a crushing squeeze are restored; the fresh menu then offers no probe, and a named
+    probe is refused with the reason (an erased push no longer allows the weigh)."""
+    for probe, res in (("push", _push(thrown=True)), ("squeeze", _squeeze())):
+        env = _RestoreProbeEnv(probes=[res])
+        prims, store = _bprims(env, probe_models={"push": PerfectPush(), "weigh": FlatWeigh(), "squeeze": FlatSqueeze()},
+                               model=MuGate(f_std=10.0)), {}
+        prims.reset_s = 20.0
+        d = pick_and_place(object="mug", destination="table_centre", option_id=f"probe_{probe}", primitives=prims, store=store).data
+        assert env.restores == 1 and d["restored"]["after"] == "probe"
+        assert d["restored"]["event"] == ("thrown" if probe == "push" else "crushed")
+        a = d["assessment"]
+        assert a["assessed"] is True and not [o for o in a["options"] if o["kind"] == "probe"]
+        e = pick_and_place(object="mug", destination="table_centre", option_id="probe_weigh", primitives=prims, store=store).data
+        assert "no probe after a restore" in e["error"]
+
+
+# ---------------------------------------------------------------- the spread factor (plan H3 decision 4)
+def test_the_refresh_keeps_the_prior_spread(monkeypatch):
+    """Under primitives.prior_spread both prior calls of the skill (the first belief and every refresh) draw at that
+    spread; at f = 1, or without the field, the prior is called as before, with no spread argument. The truth's spread
+    (primitives.truth_spread, plan H3 Addendum A2) never reaches the belief."""
+    monkeypatch.setattr(tools_mod, "REFRESH_ESS", float("inf"))
+    calls = []
+
+    def prior(pose, n, rng, **kw):
+        calls.append(kw.get("spread"))
+        return _gen_prior(pose, n, rng)
+
+    for (truth, belief), want in (((None, 0.25), {0.25}), ((None, 1.0), {None}), ((None, None), {None}),
+                                  ((0.25, 1.0), {None}), ((0.25, None), {None}), ((1.0, 0.25), {0.25})):
+        prims, store = _bprims(_ReadingEnv([("placed_stable", _hold(0.2))])), {}
+        prims.prior, calls[:] = prior, []
+        if truth is not None:
+            prims.truth_spread = truth
+        if belief is not None:
+            prims.prior_spread = belief
+        _commit(prims, store)
+        assert any(f.startswith("refreshed from") for f in store["beliefs"]["ycb__mug"]["belief"].flags)
+        assert len(calls) >= 2 and set(calls) == want
+
+
+# ---------------------------------------------------------------- the sham probe (plan H3 decision 5)
+def test_a_sham_probe_draws_what_the_real_probe_draws(monkeypatch):
+    """Paired draws (the paper session, 2026-10-31): a probe's update draws from primitives.rng when it refreshes, so
+    the sham computes the same update on a copy and discards it. The next assessment of either arm starts from the same
+    stream state, and the sham's belief stays the pre-probe belief."""
+    from rpent.skills.pick_place.tools import belief_hash, sham_probe
+
+    monkeypatch.setattr(tools_mod, "REFRESH_ESS", float("inf"))      # every update refreshes: it draws from primitives.rng
+    pms = {"push": PerfectPush(), "weigh": FlatWeigh()}
+    real_env, sham_env = (_ProbeEnv([("placed_stable", _hold(0.2))], probes=[_push()]) for _ in range(2))
+    (real, rs), (sham, ss) = ((_bprims(e, probe_models=pms, model=MuGate(f_std=10.0)), {}) for e in (real_env, sham_env))
+    for prims, store in ((real, rs), (sham, ss)):
+        assess_pick(object="mug", destination="table_centre", primitives=prims, store=store)
+    start = real.rng.bit_generator.state
+    assert sham.rng.bit_generator.state == start
+    h0, states, orig = belief_hash(ss["beliefs"]["ycb__mug"]["belief"]), [], tools_mod._reassess
+    monkeypatch.setattr(tools_mod, "_reassess", lambda *a: (states.append(a[3].rng.bit_generator.state), orig(*a))[1])
+    pick_and_place(object="mug", destination="table_centre", option_id="probe_push", primitives=real, store=rs)
+    d = sham_probe(object="mug", destination="table_centre", option_id="probe_push", primitives=sham, store=ss)
+    assert any(f.startswith("refreshed from") for f in rs["beliefs"]["ycb__mug"]["belief"].flags)     # the real update drew
+    assert states[0] != start and states[1] == states[0]
+    assert d["belief_hash_before"] == d["belief_hash_after"] == d["belief_hash_next"] == h0
+
+
+def test_a_sham_probe_keeps_the_belief(monkeypatch):
+    """sham_probe (the sham_once arm, not a planner tool) runs the probe row's motion as the real probe does (the same
+    call and trace) and discards the result: the full belief state hashes equal before, after and in the next
+    assessment, whose menu equals the menu built from the pre-probe belief at the post-probe state with the same stream
+    state; the probe enters probes_run and probe_seq, so the next menu offers the rows a real probe leaves (the weigh
+    after a push); a second sham of the same probe is refused; a later refresh replays no sham result."""
+    import copy
+
+    from rpent.skills.pick_place.tools import belief_hash, sham_probe
+    from rpent.tools.base import Tool
+
+    assert not isinstance(sham_probe, Tool)                  # the toolkit registers Tool objects only: no planner sees it
+    pms = {"push": PerfectPush(), "weigh": FlatWeigh()}
+    real_env, sham_env = (_ProbeEnv([("placed_stable", _hold(0.2))], probes=[_push()]) for _ in range(2))
+    (real, rs), (sham, ss) = ((_bprims(e, probe_models=pms, model=MuGate(f_std=10.0)), {}) for e in (real_env, sham_env))
+    for prims, store in ((real, rs), (sham, ss)):
+        assess_pick(object="mug", destination="table_centre", primitives=prims, store=store)
+    r = pick_and_place(object="mug", destination="table_centre", option_id="probe_push", primitives=real, store=rs).data
+    rec = ss["beliefs"]["ycb__mug"]
+    pre = copy.deepcopy(rec["belief"])
+    h0, states, orig = belief_hash(pre), [], tools_mod._reassess
+    monkeypatch.setattr(tools_mod, "_reassess", lambda *a: (states.append(a[3].rng.bit_generator.state), orig(*a))[1])
+    d = sham_probe(object="mug", destination="table_centre", option_id="probe_push", primitives=sham, store=ss)
+    assert d["sham"] is True and d["belief_hash_before"] == d["belief_hash_after"] == d["belief_hash_next"] == h0
+    assert belief_hash(rec["belief"]) == h0 and rec["belief"].history == [] and len(rs["beliefs"]["ycb__mug"]["belief"].history) == 1
+    trace = ("probed", "kind", "reading", "displacement_m", "tilt_deg", "thrown", "seconds")
+    assert {k: d[k] for k in trace} == {k: r[k] for k in trace} and sham_env.probe_calls == real_env.probe_calls == ["push"]
+    assert rec["probes_run"] == {"push"} and rec["probe_seq"] == ["push"]
+    probe_rows = lambda a: [o["id"] for o in a["options"] if o["kind"] == "probe"]  # noqa: E731
+    assert probe_rows(d["assessment"]) == probe_rows(r["assessment"]) == ["probe_weigh"]
+    fresh = {"beliefs": {"ycb__mug": dict(rec, belief=pre, probes_run=set(rec["probes_run"]), probe_seq=list(rec["probe_seq"]))}}
+    sham.rng.bit_generator.state = states[0]
+    again = assess_pick(object="mug", destination="table_centre", primitives=sham, store=fresh).data
+    assert again["options"] == d["assessment"]["options"] and again["recommendation"] == d["assessment"]["recommendation"]
+    assert "already ran" in sham_probe(object="mug", destination="table_centre", option_id="probe_push", primitives=sham, store=ss)["error"]
+    monkeypatch.setattr(tools_mod, "REFRESH_ESS", float("inf"))
+    _commit(sham, ss)
+    b = ss["beliefs"]["ycb__mug"]["belief"]
+    assert any(f.startswith("refreshed from") for f in b.flags) and [e["type"] for e in b.history] == ["attempt"]
+
+
+# ---------------------------------------------------------------- the menu's own recovery (E1 pilot)
+def test_a_menu_recovery_prices_the_menu_apart_from_the_restore():
+    """primitives.menu_recovery (the E1 pilot), a (reset_s, reset_price) pair, prices the menu while primitives.reset_s keeps
+    the lab's restore: a menu priced as absorbing ((None, "time")) under reset_s 20 has the absorbing costs and says so, and
+    an irreversible attempt is still restored."""
+    prims = _aprims()
+    absorbing = assess_pick(object="mug", destination="table_centre", care=10, primitives=prims, store={}).data
+    prims.reset_s, prims.menu_recovery = 20.0, (None, "time")
+    d = assess_pick(object="mug", destination="table_centre", care=10, primitives=prims, store={}).data
+    row = lambda x: next(o for o in x["options"] if o["id"] == "commit_std")  # noqa: E731
+    assert d["reset_s"] is None and row(d)["expected_cost"] == pytest.approx(row(absorbing)["expected_cost"])
+    env = _RestoreEnv([("dropped_high", _hold(0.3))])
+    prims, store = _bprims(env), {}
+    prims.reset_s, prims.menu_recovery = 20.0, (None, "time")
+    out = _commit(prims, store)
+    assert env.restores == 1 and out["restored"]["event"] == "dropped_high" and out["assessment"]["reset_s"] is None
+    prims.menu_recovery = (-1.0, "time")
+    assert "reset" in assess_pick(object="mug", destination="table_centre", primitives=prims, store={}).data["error"]
