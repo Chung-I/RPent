@@ -377,13 +377,7 @@ def source_bundle(dirs: list[str]) -> tuple[str, str]:
     v10): the rescore rebuilds their menus with the same bundle under the same generator."""
     from robots.mujoco_lab.corpus import lab_generator
 
-    configs = [json.load(open(p)) for d in dirs for p in sorted(glob.glob(os.path.join(d, "run_config_*.json")))]
-    if not configs:
-        raise ValueError(f"no run config in {dirs}: the source runs' bundle is unknown")
-    seen = sorted({(c["crossfit"], c.get("generator", "v10")) for c in configs})
-    if len(seen) != 1:
-        raise ValueError(f"the source runs name {len(seen)} (bundle, generator) pairs, not one: {seen}")
-    [(crossfit, generator)] = seen
+    crossfit, generator = e1.runs_bundle(dirs)
     if generator != lab_generator():
         raise ValueError(f"the source runs are generator {generator}, but this process runs {lab_generator()}: rescore "
                          f"under RPENT_LAB_GENERATOR={generator}")
@@ -732,11 +726,14 @@ def main(argv: list[str] | None = None) -> int:
         md = markdown_pilot
     summ["checks"] = checks(recs)
     summ["source"] = src
+    crossfit, summ["generator"] = e1.runs_bundle([a.dir])
+    summ["bundle"] = e1.bundle_path(crossfit)
     if a.wandb:
         from robots.mujoco_lab import tracking
 
         metrics["checks"] = {arm: c["first_mismatch"] + c["later_mismatch"] for arm, c in summ["checks"].items()}
-        summ["wandb"] = tracking.log_run("e1_expected", {"dir": a.dir, "n_boot": a.n_boot, **src}, metrics)
+        summ["wandb"] = tracking.log_run("e1_expected", {"dir": a.dir, "n_boot": a.n_boot, **src, "generator": summ["generator"],
+                                                         "bundle": summ["bundle"]}, metrics)
         print(f"wandb: {summ['wandb']}")
     with open(os.path.join(a.dir, "summary.json"), "w") as f:
         json.dump(summ, f, indent=1)

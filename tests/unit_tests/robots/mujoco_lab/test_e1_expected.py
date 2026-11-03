@@ -339,3 +339,42 @@ def test_the_rescore_takes_the_bundle_and_generator_of_its_source_runs(tmp_path,
         ex.source_bundle([two])
     with pytest.raises(ValueError, match="no run config"):
         ex.source_bundle([source("empty", configs=[])])
+
+
+def test_the_rescore_compares_the_bundles_as_one_path(tmp_path, monkeypatch):
+    """Review fix: one folder spelled relative and absolute (or through a link) is one bundle (e1.bundle_path), so a
+    resume that spells its --crossfit another way is not refused."""
+    import json
+
+    (tmp_path / "folds").mkdir()
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "run_config_0.json").write_text(json.dumps({"crossfit": str(tmp_path / "folds"), "generator": "v11"}))
+    (src / "run_config_1.json").write_text(json.dumps({"crossfit": "folds", "generator": "v11"}))
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("RPENT_LAB_GENERATOR", "v11")
+    crossfit, generator = ex.source_bundle([str(src)])
+    assert generator == "v11" and ex.e1.bundle_path(crossfit) == str((tmp_path / "folds").resolve())
+
+
+def test_the_rescore_summary_records_the_generator_and_the_bundle(tmp_path, monkeypatch):
+    """Review fix: summary.json and the wandb config name the rescore's generator and bundle (its run configs)."""
+    import json
+
+    from robots.mujoco_lab import tracking
+
+    d = tmp_path / "rescore"
+    d.mkdir()
+    (d / "records.jsonl").write_text("")
+    (d / "source.json").write_text(json.dumps({"kind": "gap", "src": "s"}))
+    (d / "run_config_20261103T170000.json").write_text(json.dumps({"crossfit": str(tmp_path / "folds"), "generator": "v11"}))
+    monkeypatch.setattr(ex, "gap_pairs", lambda recs: [])
+    monkeypatch.setattr(ex, "summarize_gap", lambda prs, n_boot: {"settings": {}, "ranking": []})
+    monkeypatch.setattr(ex, "checks", lambda recs: {})
+    monkeypatch.setattr(ex, "markdown_gap", lambda summ: "")
+    seen = {}
+    monkeypatch.setattr(tracking, "log_run", lambda name, config, metrics: seen.update(config) or "url")
+    assert ex.main(["summary", "--dir", str(d), "--wandb"]) == 0
+    summ = json.load(open(d / "summary.json"))
+    assert summ["generator"] == "v11" and summ["bundle"] == ex.e1.bundle_path(str(tmp_path / "folds"))
+    assert seen["generator"] == "v11" and seen["bundle"] == summ["bundle"]

@@ -53,7 +53,8 @@ import numpy as np
 
 from robots.mujoco_lab import tracking
 from robots.mujoco_lab.calibrate import FORCED, FORCED_RULE, cases_sha256
-from robots.mujoco_lab.corpus import COM_S_RANGE, FILLED_MASS_SCALE_RANGE, MASS_SCALE_RANGE, MU_RANGE, shrunk_range
+from robots.mujoco_lab.corpus import (COM_S_RANGE, FILLED_MASS_SCALE_RANGE, MASS_SCALE_RANGE, MU_RANGE, mass_scale_range,
+                                     shrunk_range)
 from robots.mujoco_lab.sweep import (_ci, _dump, _event, _key, _num, _ok, _signature, _strip, arm_metrics, bootstrap_weights,
                                      cell, check_identical, load_dir, load_run, probe_cases, variance_split, verdict)
 from robots.mujoco_lab.sweep import valid as sweep_valid
@@ -531,9 +532,11 @@ def gates(runs: dict[tuple[str, str, str, int], dict[str, Any]], m4_dir: str, se
 
 def in_narrow(row: dict[str, Any], f: float = SPREAD["narrow"][0]) -> bool:
     """Whether a case's truth lies in the narrow class's ranges (decision 4's matched-truth check): the mass scale (on a
-    filled container's range when its fill is above 0), mu, and a non-None com_s inside shrunk_range at ``f``."""
+    filled container's range when its fill is above 0, else on the case generator's: corpus.mass_scale_range, v10 for a
+    row without the field), mu, and a non-None com_s inside shrunk_range at ``f``."""
     th = row["theta"]
-    lo, hi = shrunk_range(FILLED_MASS_SCALE_RANGE if float(row.get("fill") or 0.0) > 0.0 else MASS_SCALE_RANGE, f, log=True)
+    empty = mass_scale_range(row.get("generator") or "v10")
+    lo, hi = shrunk_range(FILLED_MASS_SCALE_RANGE if float(row.get("fill") or 0.0) > 0.0 else empty, f, log=True)
     ok = lo <= float(th["mass_scale"]) <= hi
     lo, hi = shrunk_range(MU_RANGE, f)
     ok = ok and lo <= float(th["mu"]) <= hi

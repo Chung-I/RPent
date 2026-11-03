@@ -182,8 +182,9 @@ def test_a_run_records_its_generator_and_refuses_a_directory_of_another(tmp_path
     import glob
 
     crossfit = tmp_path / "folds"
-    crossfit.mkdir()
+    (crossfit / "fold_0").mkdir(parents=True)
     (crossfit / "folds.json").write_text(json.dumps({"a": 0}))
+    (crossfit / "fold_0" / "manifest.json").write_text(json.dumps({"generator": "v11"}))
     cases = tmp_path / "cases.json"
     cases.write_text(json.dumps({"seed": 13, "n": 1, "cases": [["a", 0]]}))
     monkeypatch.setattr(e1_gap, "run_case", lambda item: [])
@@ -205,11 +206,69 @@ def test_the_run_command_takes_the_bundle(tmp_path, monkeypatch):
     import glob
 
     crossfit = tmp_path / "folds"
-    crossfit.mkdir()
+    (crossfit / "fold_0").mkdir(parents=True)
     (crossfit / "folds.json").write_text(json.dumps({"a": 0}))
+    (crossfit / "fold_0" / "manifest.json").write_text(json.dumps({}))
     cases = tmp_path / "cases.json"
     cases.write_text(json.dumps({"seed": 13, "n": 1, "cases": [["a", 0]]}))
     monkeypatch.setattr(e1_gap, "run_case", lambda item: [])
+    monkeypatch.delenv("RPENT_LAB_GENERATOR", raising=False)
     e1_gap.main(["run", "--cases", str(cases), "--workers", "1", "--out", str(tmp_path / "out"), "--crossfit", str(crossfit)])
     [held] = glob.glob(str(tmp_path / "out" / "run_config_*.json"))
     assert json.load(open(held))["crossfit"] == str(crossfit)
+
+
+def test_a_run_checks_its_bundle_before_it_records_a_config(tmp_path, monkeypatch):
+    """Review fix: before a run writes its config, the manifests of the folds its folds.json names must give the run's
+    generator (no field: v10), and a directory that holds a run of another bundle is an error (one folder spelled
+    relative or absolute is one bundle), so a resume without --crossfit never records the default v10 bundle beside a
+    v11 one."""
+    import glob
+
+    def folds(name, generator):
+        d = tmp_path / name
+        (d / "fold_0").mkdir(parents=True)
+        (d / "folds.json").write_text(json.dumps({"a": 0}))
+        (d / "fold_0" / "manifest.json").write_text(json.dumps({"generator": generator} if generator else {}))
+        return d
+
+    v10, v11, other = folds("v10", None), folds("v11", "v11"), folds("other", "v11")
+    cases = tmp_path / "cases.json"
+    cases.write_text(json.dumps({"seed": 13, "n": 1, "cases": [["a", 0]]}))
+    monkeypatch.setattr(e1_gap, "run_case", lambda item: [])
+    monkeypatch.setenv("RPENT_LAB_GENERATOR", "v11")
+    out = tmp_path / "out"
+    with pytest.raises(ValueError, match="generator v10 bundle"):
+        e1_gap.run(str(cases), workers=1, out_dir=str(out), crossfit=str(v10))
+    assert not glob.glob(str(out / "run_config_*.json"))
+    e1_gap.run(str(cases), workers=1, out_dir=str(out), crossfit=str(v11))
+    monkeypatch.chdir(tmp_path)
+    e1_gap.run(str(cases), workers=1, out_dir=str(out), crossfit="v11")          # the same bundle, spelled relative
+    with pytest.raises(ValueError, match="another bundle"):
+        e1_gap.run(str(cases), workers=1, out_dir=str(out), crossfit=str(other))
+    with pytest.raises(ValueError, match="generator v10 bundle"):
+        e1_gap.run(str(cases), workers=1, out_dir=str(out))                       # the default bundle is v10's
+    held = {e1.bundle_path(json.load(open(p))["crossfit"]) for p in glob.glob(str(out / "run_config_*.json"))}
+    assert held == {e1.bundle_path(str(v11))}
+
+
+def test_the_summary_records_the_generator_and_the_bundle(tmp_path, monkeypatch):
+    """Review fix: summary.json and the wandb config name the runs' generator and bundle (from the run configs, the
+    bundle as e1.bundle_path), so a v11 result never reads as a v10 one."""
+    from robots.mujoco_lab import tracking
+
+    d = tmp_path / "gap"
+    d.mkdir()
+    (d / "rows.jsonl").write_text("")
+    (d / "cases.json").write_text(json.dumps({"seed": 13, "plan_seed": 1, "n": 1, "cases": [["a", 0]], "source": "s"}))
+    (d / "run_config_20261103T170000.json").write_text(json.dumps({"crossfit": str(tmp_path / "folds"), "generator": "v11"}))
+    monkeypatch.setattr(e1_gap, "pairs", lambda rows, settings: [])
+    monkeypatch.setattr(e1_gap, "summarize", lambda prs, n_boot: {"settings": {}, "ranking": []})
+    monkeypatch.setattr(e1_gap, "checks", lambda *a: {})
+    monkeypatch.setattr(e1_gap, "markdown", lambda summ: "")
+    seen = {}
+    monkeypatch.setattr(tracking, "log_run", lambda name, config, metrics: seen.update(config) or "url")
+    assert e1_gap.main(["summary", "--dir", str(d), "--wandb"]) == 0
+    summ = json.load(open(d / "summary.json"))
+    assert summ["generator"] == "v11" and summ["bundle"] == e1.bundle_path(str(tmp_path / "folds"))
+    assert seen["generator"] == "v11" and seen["bundle"] == summ["bundle"]

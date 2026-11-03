@@ -351,6 +351,7 @@ def run(cases_path: str, workers: int, out_dir: str, crossfit: str | None = None
         raise ValueError(f"{out_dir} holds another cases file ({held}); give a new directory")
     generator = e1.run_generator(out_dir)
     crossfit = crossfit or repo_path("robots/mujoco_lab/data/m2b2/folds")
+    e1.check_bundle(out_dir, crossfit, generator)
     settings = grid()
     per = len(_plan(settings))
     cfg = {"settings": settings, "crossfit": crossfit, "folds": json.load(open(os.path.join(crossfit, "folds.json")))}
@@ -428,6 +429,8 @@ def main(argv: list[str] | None = None) -> int:
     summ = summarize(pairs(rows, settings), a.n_boot)
     summ["checks"] = checks(rows, settings, spec.get("h3_recommendation"))
     summ["grid"] = settings
+    crossfit, summ["generator"] = e1.runs_bundle([a.dir])
+    summ["bundle"] = e1.bundle_path(crossfit)
     if a.wandb:
         from robots.mujoco_lab import tracking
 
@@ -438,7 +441,8 @@ def main(argv: list[str] | None = None) -> int:
                    "checks": {k: v["mismatch"] for k, v in summ["checks"].items() if isinstance(v, dict) and "mismatch" in v}}
         summ["wandb"] = tracking.log_run("e1_gap", {"dir": a.dir, "cases": spec.get("source"), "n_cases": spec["n"],
                                                     "seed": spec["seed"], "plan_seed": spec["plan_seed"], "grid": settings,
-                                                    "n_boot": a.n_boot}, metrics)
+                                                    "n_boot": a.n_boot, "generator": summ["generator"],
+                                                    "bundle": summ["bundle"]}, metrics)
         print(f"wandb: {summ['wandb']}")
     with open(os.path.join(a.dir, "summary.json"), "w") as f:
         json.dump(summ, f, indent=1)

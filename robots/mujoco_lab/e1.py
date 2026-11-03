@@ -668,6 +668,44 @@ def run_generator(out_dir: str) -> str:
     return generator
 
 
+def bundle_path(crossfit: str) -> str:
+    """A bundle's crossfit folder as one path (train_models.repo_path, then os.path.realpath): a relative and an absolute
+    spelling of one folder, or a link to it, give the same path."""
+    from robots.mujoco_lab.train_models import repo_path
+
+    return os.path.realpath(repo_path(crossfit))
+
+
+def runs_bundle(dirs: list[str]) -> tuple[str, str]:
+    """The (crossfit, generator) the run configs in ``dirs`` name (no generator field: v10), the crossfit as the first
+    config records it; configs that name more than one pair, their folders compared as bundle_path, are an error."""
+    configs = [json.load(open(p)) for d in dirs for p in sorted(glob.glob(os.path.join(d, "run_config_*.json")))]
+    if not configs:
+        raise ValueError(f"no run config in {dirs}: the runs' bundle is unknown")
+    seen = sorted({(bundle_path(c["crossfit"]), c.get("generator") or "v10") for c in configs})
+    if len(seen) != 1:
+        raise ValueError(f"the runs in {dirs} name {len(seen)} (bundle, generator) pairs, not one: {seen}")
+    return configs[0]["crossfit"], seen[0][1]
+
+
+def check_bundle(out_dir: str, crossfit: str, generator: str) -> None:
+    """Before a run into ``out_dir`` writes its config: the manifests of the folds that ``crossfit``'s folds.json names
+    give the run's generator (robot_spec.manifest_generator: no field is v10), and the directory holds no run of another
+    bundle (bundle_path), so a resume with another --crossfit, or none, never records a second bundle."""
+    from robots.mujoco_lab.robot_spec import manifest_generator
+
+    for k in sorted(set(json.load(open(os.path.join(crossfit, "folds.json"))).values())):
+        g = manifest_generator(json.load(open(os.path.join(crossfit, f"fold_{k}", "manifest.json"))))
+        if g != generator:
+            raise ValueError(f"{crossfit} is a generator {g} bundle (fold_{k}), but this run is {generator}: give the "
+                             f"--crossfit of a {generator} bundle")
+    want = bundle_path(crossfit)
+    for held in sorted(glob.glob(os.path.join(out_dir, "run_config_*.json"))):
+        b = bundle_path(json.load(open(held))["crossfit"])
+        if b != want:
+            raise ValueError(f"{out_dir} holds a run of another bundle {b} ({held}), not {want}: give a new directory")
+
+
 def _done(path: str) -> set[tuple]:
     if not os.path.exists(path):
         return set()

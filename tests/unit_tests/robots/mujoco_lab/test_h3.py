@@ -295,6 +295,15 @@ def test_in_narrow_reads_the_narrow_ranges():
     assert not in_narrow(row(1.2, com_s=0.7)) and not in_narrow(row(1.2, fill=0.5))
 
 
+def test_in_narrow_reads_the_cases_generator_mass_range():
+    """Review fix: an empty case's mass range is its generator's (corpus.mass_scale_range; a row without the field is
+    v10): at f = 0.25 the v11 narrow range is about [0.80, 1.25] and the v10 one about [0.98, 1.53]."""
+    row = {"theta": {"mass_scale": 0.9, "mu": 0.5, "com_s": None}, "fill": 0.0, "generator": "v11"}
+    assert in_narrow(row)
+    assert not in_narrow({**row, "generator": "v10"}) and not in_narrow({k: v for k, v in row.items() if k != "generator"})
+    assert not in_narrow({**row, "theta": {**row["theta"], "mass_scale": 1.4}})
+
+
 def _pilot():
     """A passing pilot: every arm in every condition at seed 11; the forced arms' probe traces equal; the sham's hashes
     equal; one restore with a passing check."""
