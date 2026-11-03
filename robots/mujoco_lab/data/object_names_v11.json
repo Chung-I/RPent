@@ -1,0 +1,37 @@
+{
+ "note": "old: the name the id gives (v10 text, the stored VLM answers, the E1 records); new: the name for any v11 text an agent or a VLM reads",
+ "objects": {
+  "hot3d__clay_plates": {
+   "evidence": "A round 30 cm plate or shallow tray whose texture (obj_000003.png) shows concentric spun-bamboo layers, not clay (RoboLab plate_bamboo). Mass: LEXA 12 in spun-bamboo serving tray.",
+   "new": "spun-bamboo tray",
+   "old": "clay plates"
+  },
+  "hot3d__foam_roller": {
+   "evidence": "A rectangular block with a felt face: a whiteboard eraser (RoboLab names the same mesh whiteboard_eraser). Masses: Legamaster whiteboard eraser 7-120300 data sheet.",
+   "new": "whiteboard eraser",
+   "old": "foam roller"
+  },
+  "hot3d__lizard_figurine": {
+   "evidence": "A green theropod dinosaur toy figure, 24 cm long (texture obj_000027.png; RoboLab dino_toy). Mass: Schleich Allosaurus 15043, the nearest size.",
+   "new": "dinosaur figure",
+   "old": "lizard figurine"
+  },
+  "hot3d__megaphone": {
+   "evidence": "A 30 cm jug with a handle from the rim, a flared oval lip and a white stopper (RoboLab flask). Mass: Stelton EM77 vacuum jug 1 l, a different model of the same kind and height.",
+   "new": "vacuum jug",
+   "old": "megaphone"
+  },
+  "hot3d__pitcher": {
+   "evidence": "A white conical vase, scan 16.7 x 13.6 x 10.0 cm (RoboLab vase); likely IKEA SOCKERART, sold as 'vase, white' (vase/jug), not confirmed by a mark. 'jug' would be a synonym of the old name, so the new name is vase.",
+   "new": "vase",
+   "old": "pitcher"
+  },
+  "hot3d__storage_box": {
+   "evidence": "A small upright bamboo holder, scan 12.4 x 8.6 x 6.6 cm (RoboLab holder_gray); likely IKEA DRAGAN toothbrush holder, not confirmed by a mark.",
+   "new": "toothbrush holder",
+   "old": "storage box"
+  }
+ },
+ "source": "daily-logs researches/property-belief-manipulation/experiments/2026-11-03-real-masses/sources/hot3d.md",
+ "version": "v11"
+}

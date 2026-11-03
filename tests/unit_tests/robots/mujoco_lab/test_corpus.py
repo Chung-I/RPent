@@ -29,6 +29,7 @@ ROW_KEYS = {
     "reset", "rev_steps", "deepest_mm", "artifact",
     "a_transport", "entry", "theta_frag", "fill", "spill_angle_deg", "meter", "motion_label", "damage",      # corpus v9
     "sensor",                                                                                                  # corpus v10
+    "generator",                                                                                               # corpus v11
 }
 OUTCOME_KEYS = {"label", "max_z", "drop_z", "loss_phase", "loss_step", "loss_t", "loss_speed", "zone", "release", "planned", "readouts",
                 "rev_steps", "deepest_mm", "artifact", "meter", "motion_label", "damage", "sensor"}

@@ -91,8 +91,8 @@ from typing import Any
 import numpy as np
 
 from robots.mujoco_lab import tracking
-from robots.mujoco_lab.corpus import (apply_damage, case_rng, damage_rng, draw_damage, draw_theta, shrink_theta, spread_factor,
-                                      trainable)
+from robots.mujoco_lab.corpus import (apply_damage, case_rng, damage_rng, draw_damage, draw_theta, lab_generator, shrink_theta,
+                                      spread_factor, trainable)
 from rpent.skills.pick_place.costs import (COST, RESET_PRICES, TIME_COST_PER_S, care_scale, probe_time_scale, reset_cost,
                                            reset_time)
 from rpent.skills.pick_place.destinations import MESH_IDS, PRIMITIVE_IDS
@@ -255,7 +255,12 @@ def run_protocol(prims: Any, protocol: str, destination: str, rng: np.random.Gen
         return case
 
     def call(**kw) -> dict[str, Any]:
-        return pick_and_place(object="object", destination=destination, care=care, primitives=prims, store=store, **kw).data
+        """A tool call; one that raises (a simulator fault) gives its error, so the case ends in an error row that keeps
+        what it had (its first recommendation, first menu, probes and attempts)."""
+        try:
+            return pick_and_place(object="object", destination=destination, care=care, primitives=prims, store=store, **kw).data
+        except Exception as exc:  # noqa: BLE001  one bad case must not stop the run
+            return {"error": str(exc)[:200]}
 
     a = assess_pick(object="object", destination=destination, care=care, primitives=prims, store=store).data
     if "error" in a:
@@ -429,11 +434,13 @@ def run_case(prims: Any, object_id: str, idx: int, seed: int, protocol: str = "c
     env = prims.env
     env.force_noise = getattr(prims, "force_noise", None)       # the job's sensor (job_force_noise); None: the lab default
     world = fragility_world(getattr(prims, "manifest", None))
-    theta, com_end, destination, hidden = case_draw(seed, object_id, idx, object_props(object_id)["mass"], use_fixtures,
+    generator = lab_generator()                                  # a bundle's job runs under its generator (load_bundle)
+    theta, com_end, destination, hidden = case_draw(seed, object_id, idx, object_props(object_id, generator)["mass"], use_fixtures,
                                                     fragility=world, spread=getattr(prims, "truth_spread", 1.0))
     if world is not None:
         env.slosh_zeta = world[1].slosh_zeta
         env.slosh_scale = world[1].slosh_scale
+    env.classes = None if world is None else world[0]            # the reset's flags and damage law: the bundle's classes
     env.reset(object_id, theta, seed=seed * 1000 + idx, com_end=com_end, fixture=destination if destination in MESH_IDS else None,
               fill=hidden["fill"], frag=hidden["frag"])
     reset_info = dict(getattr(env, "reset_info", None) or {})
@@ -450,7 +457,7 @@ def run_case(prims: Any, object_id: str, idx: int, seed: int, protocol: str = "c
                         follow=follow)
     case["artifact"] = case_artifact(case, reset_info)
     row = {"object": object_id, "idx": idx, "destination": destination, "theta": theta, "com_end": com_end,
-           "fill": hidden["fill"], "theta_frag": hidden["frag"], "force_noise": env.force_noise,
+           "fill": hidden["fill"], "theta_frag": hidden["frag"], "force_noise": env.force_noise, "generator": generator,
            "evoi": getattr(prims, "evoi", "plugin"), "probe_time_scale": getattr(prims, "probe_time_scale", 1.0),
            "reset_s": getattr(prims, "reset_s", None), "reset_price": getattr(prims, "reset_price", "time"),
            "truth_spread": getattr(prims, "truth_spread", 1.0), "prior_spread": getattr(prims, "prior_spread", 1.0),
@@ -504,6 +511,11 @@ def run_evoi(rows: list[dict[str, Any]]) -> str | list[str] | None:
 def run_force_noise(rows: list[dict[str, Any]]) -> float | list[float] | None:
     """The force noise a run's cases read with."""
     return _run_value(rows, "force_noise", float)
+
+
+def run_generator(rows: list[dict[str, Any]]) -> str | list[str] | None:
+    """The lab generator a run's cases were drawn and simulated under."""
+    return _run_value(rows, "generator")
 
 
 def run_probe_time_scale(rows: list[dict[str, Any]]) -> float | list[float] | None:
@@ -921,7 +933,8 @@ def compare(A: dict[str, Any], B: dict[str, Any], rng: np.random.Generator, n_bo
     realized cost and the first attempts' ECE on P(placed_stable), each with a 95 % interval that resamples
     objects jointly for both. The two runs must use the same costs (care scale, abstain cost, probe time scale, reset
     time and price; files from before these fields read as care normal, no abstain cost, scale 1, no reset and the time
-    price) and the same spread factors, the truth's and the prior's (1 when absent, plan H3)."""
+    price), the same spread factors, the truth's and the prior's (1 when absent, plan H3), and the same generator (no
+    field: v10)."""
     costs_a, costs_b = ((R.get("care_scale", 1.0), R.get("abstain_cost"),
                          1.0 if R.get("probe_time_scale") is None else R["probe_time_scale"], R.get("reset_s"),
                          R.get("reset_price") or "time") for R in (A, B))
@@ -931,6 +944,8 @@ def compare(A: dict[str, Any], B: dict[str, Any], rng: np.random.Generator, n_bo
     spread_a, spread_b = (tuple(1.0 if R.get(k) is None else R[k] for k in ("truth_spread", "prior_spread")) for R in (A, B))
     if spread_a != spread_b:
         raise ValueError(f"the runs use different spreads (truth, prior): a {spread_a}, b {spread_b}")
+    if (A.get("generator") or "v10") != (B.get("generator") or "v10"):
+        raise ValueError(f"the runs use different generators: a {A.get('generator') or 'v10'}, b {B.get('generator') or 'v10'}")
     ka = {(r["object"], r["idx"]): r for r in _counted(A["rows"])}
     kb = {(r["object"], r["idx"]): r for r in _counted(B["rows"])}
     keys = sorted(set(ka) & set(kb))
@@ -970,16 +985,27 @@ def _write(out: dict[str, Any], path: str) -> None:
     os.replace(tmp, path)
 
 
-def code_revision() -> dict[str, Any]:
-    """The RPent checkout's git HEAD and whether its tracked files differ from it; None for both outside a checkout."""
-    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+def _git_state(path: str, revision: list[str], pathspec: list[str]) -> tuple[str | None, bool | None]:
+    """(the revision ``git revision`` prints, whether tracked files under ``pathspec`` differ from HEAD) for the checkout
+    at ``path``; None for both outside a checkout."""
     try:
-        rev = subprocess.run(["git", "-C", root, "rev-parse", "HEAD"], capture_output=True, text=True, timeout=30, check=True).stdout.strip()
-        status = subprocess.run(["git", "-C", root, "status", "--porcelain", "--untracked-files=no"], capture_output=True, text=True,
-                                timeout=60, check=True).stdout
+        rev = subprocess.run(["git", "-C", path, *revision], capture_output=True, text=True, timeout=30, check=True).stdout.strip()
+        status = subprocess.run(["git", "-C", path, "status", "--porcelain", "--untracked-files=no", *pathspec], capture_output=True,
+                                text=True, timeout=60, check=True).stdout
     except (OSError, subprocess.SubprocessError):
-        return {"revision": None, "dirty": None}
-    return {"revision": rev, "dirty": bool(status.strip())}
+        return None, None
+    return rev or None, bool(status.strip())
+
+
+def code_revision() -> dict[str, Any]:
+    """The RPent checkout's git HEAD and whether its tracked files differ from it; the same for the simulator folder
+    (``RPENT_MUJOCO_SIM_DIR``, a folder of another repository): the last commit that touched it and whether its tracked
+    files differ, the rest of that repository aside. None outside a checkout or with no folder set."""
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    rev, dirty = _git_state(root, ["rev-parse", "HEAD"], [])
+    sim = os.environ.get("RPENT_MUJOCO_SIM_DIR")
+    sim_rev, sim_dirty = _git_state(sim, ["log", "-1", "--format=%H", "--", "."], ["--", "."]) if sim else (None, None)
+    return {"revision": rev, "dirty": dirty, "sim_revision": sim_rev, "sim_dirty": sim_dirty}
 
 
 def cases_sha256(path: str) -> str:
@@ -1118,6 +1144,7 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
     if a.cases and a.objects:
         ap.error("--cases names the objects; drop --objects")
     cases_hash = cases_sha256(a.cases) if a.cases else None
+    code = code_revision()          # before the cases run; an output whose code or simulator changed by its end says so
     plan = plan_cases(a)
     rows = run_cases(a, plan)
     out = summarize(rows, a.protocol, rng, a.coverage_sims, nested=bool(a.crossfit))
@@ -1125,9 +1152,10 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
                care=a.care, care_scale=care_scale(a.care), abstain_cost=run_abstain_cost(a, plan), force_noise=run_force_noise(rows),
                evoi=run_evoi(rows), probe_time_scale=run_probe_time_scale(rows), reset_s=run_reset_s(rows),
                reset_price=run_reset_price(rows), truth_spread=run_truth_spread(rows), prior_spread=run_prior_spread(rows),
+               generator=run_generator(rows),
                source={"crossfit": a.crossfit, "bundle": a.bundle, "metrics": a.metrics}, seconds=round(time.time() - t0, 1),
                cases=None if not a.cases else {"path": a.cases, "n": len(rows), "sha256": cases_hash},
-               forced_rule=FORCED_RULE if a.protocol in FORCED else None, code=code_revision())
+               forced_rule=FORCED_RULE if a.protocol in FORCED else None, code=dict(code, changed_during_run=code_revision() != code))
     _write(out, a.out)
     summary = {k: out[k] for k in ("protocol", "kind", "care", "abstain_cost", "n", "n_executed", "abstained", "errors", "artifacts", "ece",
                                    "ece_ci95_object_bootstrap", "brier", "brier_const", "ece_iid_floor", "outcomes", "probes_run",

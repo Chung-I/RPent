@@ -25,7 +25,7 @@ pairs with the policy at every s (gate G1b checks this). Intervals are 95 % perc
 bootstrap: each draw gives every case of an object, in every seed and cell, the object's multiplicity, and every ratio
 is recomputed inside the draw.
 
-    python -P -m robots.mujoco_lab.sweep valid FILE --revision R --protocol P --care K --abstain A --scale S --seed X (--n N | --cases F)
+    python -P -m robots.mujoco_lab.sweep valid FILE --revision R --sim-revision SIM --protocol P --care K --abstain A --scale S --seed X (--n N | --cases F)
     python -P -m robots.mujoco_lab.sweep cases --dir D --seed S --care K --abstain A --out F
     python -P -m robots.mujoco_lab.sweep check --dir D --seed S
     python -P -m robots.mujoco_lab.sweep risk --dir D --seed S --out F
@@ -50,7 +50,7 @@ from scipy.stats import poisson
 
 from robots.mujoco_lab import tracking
 from robots.mujoco_lab.calibrate import _counted
-from robots.mujoco_lab.corpus import FILLED_MASS_SCALE_RANGE, MASS_SCALE_RANGE
+from robots.mujoco_lab.corpus import FILLED_MASS_SCALE_RANGE, lab_generator, mass_scale_range
 from rpent.skills.pick_place.evaluate import object_weights
 from rpent.skills.pick_place.protocol import IRREVERSIBLE
 
@@ -59,6 +59,9 @@ ABSTAIN = (1.0, 3.0, 10.0)
 SCALES = (1.0, 0.25, 0.0)
 TEST_CELLS = tuple((k, A, s) for k in (10.0, 30.0) for A in (3.0, 10.0) for s in SCALES)    # 5κ + A from 53 to 160
 CHEAP = ((0.5, 1.0, 1.0), (1.0, 1.0, 1.0), (0.5, 3.0, 1.0))                                 # 5κ + A at most 6
+GATE_RUNS = (tuple(("policy", (k, A, s)) for k in KAPPAS for A in ABSTAIN for s in SCALES)         # G1 and G1b at a seed (decision 4)
+             + tuple(("policy_no_probe", (k, A, 1.0)) for k in KAPPAS for A in ABSTAIN)
+             + tuple(("policy_no_probe", c) for c in TEST_CELLS if c[2] != 1.0))
 DIAGNOSTIC = ((1.0, 1.0, 1.0), (10.0, 1.0, 1.0))
 PILOT_SEED = 11               # stage 0: power and smoke only, never a verdict
 BASE_SEED = 12                # stage 1: every arm, the common sample of the 45 cells
@@ -122,8 +125,11 @@ def _label(c: tuple[float, float | None, float]) -> str:
 
 def valid(path: str, expect: dict[str, Any]) -> list[str]:
     """Why the output at ``path`` cannot be reused (empty when it can): it loads, it comes from ``expect["revision"]`` on
-    a tree without uncommitted changes, and its protocol, care, abstain cost, probe time scale, seed and number of
-    cases match ``expect`` (keys revision, protocol, care, abstain, scale, seed, n)."""
+    a tree without uncommitted changes and from the simulator at ``expect["sim_revision"]`` without uncommitted changes,
+    neither changed during the run, and its protocol, care, abstain cost, probe time scale, seed and number of cases match
+    ``expect`` (keys revision, sim_revision, protocol, care, abstain, scale, seed, n); it ran the generator
+    ``expect["generator"]`` (default: this process's; an output without the field ran v10); for a subset run, its cases
+    are the (object, idx) set ``expect["cases"]``."""
     try:
         run = load_run(path)
     except FileNotFoundError:
@@ -138,8 +144,16 @@ def valid(path: str, expect: dict[str, Any]) -> list[str]:
         why.append(f"revision {code.get('revision')} is not {expect['revision']}")
     if code.get("dirty") is not False:
         why.append(f"made from a tree with uncommitted changes (dirty: {code.get('dirty')})")
+    if code.get("sim_revision") != expect["sim_revision"]:
+        why.append(f"simulator revision {code.get('sim_revision')} is not {expect['sim_revision']}")
+    if code.get("sim_dirty") is not False:
+        why.append(f"made with uncommitted simulator changes (sim_dirty: {code.get('sim_dirty')})")
+    if code.get("changed_during_run") is not False:
+        why.append(f"the code or the simulator changed during the run (changed_during_run: {code.get('changed_during_run')})")
     if run.get("protocol") != expect["protocol"]:
         why.append(f"protocol {run.get('protocol')} is not {expect['protocol']}")
+    if (run.get("generator") or "v10") != (expect.get("generator") or lab_generator()):
+        why.append(f"generator {run.get('generator') or 'v10'} is not {expect.get('generator') or lab_generator()}")
     try:
         care, A, s = cell(run)
     except (KeyError, TypeError, ValueError) as exc:
@@ -152,6 +166,10 @@ def valid(path: str, expect: dict[str, Any]) -> list[str]:
     n = len(run["rows"])
     if n != int(expect["n"]) or int(run.get("n", -1)) != n:
         why.append(f"{n} cases (n {run.get('n')}), not {expect['n']}")
+    if expect.get("cases") is not None:
+        got = {_key(r) for r in run["rows"]}
+        if got != expect["cases"]:
+            why.append(f"its cases are not the cases file's ({len(got - expect['cases'])} others, {len(expect['cases'] - got)} missing)")
     return why
 
 
@@ -240,7 +258,7 @@ def declared_saving(first_menu: dict[str, Any] | None, A: float | None) -> float
 
 
 def pairs(a: dict[str, Any], b: dict[str, Any], subset: bool = False) -> dict[str, Any]:
-    """The cases of run ``a`` paired with run ``b`` (same seed, care, abstain cost and force noise): arrays ``object``,
+    """The cases of run ``a`` paired with run ``b`` (same seed, care, abstain cost, force noise and generator): arrays ``object``,
     ``idx``, ``probe`` (a's first recommendation is a probe), ``cost_a``, ``cost_b``, ``d`` = cost_b − cost_a,
     ``declared`` (a's declared saving on probe cases, else 0), ``counted`` (no error, no artifact in either row) and
     ``no_error``; ``n`` counted pairs, ``dropped`` the others. ``b`` at another probe time scale must have run no probe.
@@ -252,6 +270,9 @@ def pairs(a: dict[str, Any], b: dict[str, Any], subset: bool = False) -> dict[st
                          f"{b['protocol']} at care {cb[0]}, A {cb[1]}, force noise {b.get('force_noise')}")
     if int(a["seed"]) != int(b["seed"]):
         raise ValueError(f"different seeds: {a['seed']} and {b['seed']}")
+    if (a.get("generator") or "v10") != (b.get("generator") or "v10"):
+        raise ValueError(f"different generators: {a['protocol']} ran {a.get('generator') or 'v10'}, {b['protocol']} ran "
+                         f"{b.get('generator') or 'v10'}")
     if not _num(ca[2], cb[2]) and any(r.get("probes") for r in b["rows"]):
         raise ValueError(f"{b['protocol']} at s = {cb[2]} ran a probe, so it cannot pair with {a['protocol']} at s = {ca[2]}")
     rb = {_key(r): r for r in b["rows"]}
@@ -445,14 +466,14 @@ def arm_metrics(run: dict[str, Any], W: np.ndarray, objects: list[str]) -> dict[
 
 def subgroup(case: dict[str, Any], classes: dict[str, dict[str, Any]]) -> tuple[str, str]:
     """(public class, prior-draw tercile): container (fillable), crushable, bruisable, breakable or rigid (class none);
-    the draw's quantile within its own generator range (log-uniform on MASS_SCALE_RANGE, or FILLED_MASS_SCALE_RANGE for
-    a filled container) in thirds: low, mid, high."""
+    the draw's quantile within its own generator range (log-uniform on the case generator's mass_scale_range, v10 for a
+    case without the field, or FILLED_MASS_SCALE_RANGE for a filled container) in thirds: low, mid, high."""
     from robots.mujoco_lab.fragility import entry_of
 
     entry = entry_of(case["object"], classes)[0]
     cls = "container" if entry.get("fillable") else (entry.get("class") if entry.get("class") in ("crushable", "bruisable", "breakable")
                                                     else "rigid")
-    lo, hi = FILLED_MASS_SCALE_RANGE if float(case.get("fill") or 0.0) > 0.0 else MASS_SCALE_RANGE
+    lo, hi = FILLED_MASS_SCALE_RANGE if float(case.get("fill") or 0.0) > 0.0 else mass_scale_range(case.get("generator", "v10"))
     q = math.log(float(case["theta"]["mass_scale"]) / lo) / math.log(hi / lo)
     return cls, "low" if q < 1 / 3 else ("mid" if q < 2 / 3 else "high")
 
@@ -523,12 +544,17 @@ def summary(runs: list[dict[str, Any]], classes: dict[str, dict[str, Any]], n_bo
             row["choose"] = cell_draws(object_sums(pairs(P, F), objects), W)     # cost(probe_one) − cost(policy)
         cells[c] = row
 
-    test, test_art, test_pairs = [], [], []
+    want = set(seeds)                     # every seed of a run, and every seed the power result asked for
+    if power_result and power_result.get("k"):
+        want |= set(range(BASE_SEED, BASE_SEED + 1 + int(power_result["k"])))
+    test, test_art, test_pairs, missing = [], [], [], set()
     for c in TEST_CELLS:
         S, S_art, used = np.zeros((len(objects), 4)), np.zeros((len(objects), 4)), []
-        for seed in seeds:
+        for seed in sorted(want):
             P, N = get("policy", c, seed), never(c, seed)
             if P is None or N is None:
+                missing.update(f"{p} {_label(x)} seed {seed}" for p, x, r in (("policy", c, P), ("policy_no_probe", (c[0], c[1], 1.0), N))
+                               if r is None)
                 continue
             p = pairs(P, N, subset=_subset(N))
             S += object_sums(p, objects)
@@ -538,10 +564,10 @@ def summary(runs: list[dict[str, Any]], classes: dict[str, dict[str, Any]], n_bo
         if used:
             test.append(dict(cell_draws(S, W), cell=_label(c), seeds=used))
             test_art.append(cell_draws(S_art, W))
-    complete = len(test) == len(TEST_CELLS)
     pays = h1_pays(test) if test else {"R": None, "ci": None, "verdict": "missing"}
-    if test and not complete:
+    if test and missing:
         pays["verdict"] = "incomplete"
+    pays["missing"] = sorted(missing)
     pays["cells"] = test
     pays["artifacts_counted"] = h1_pays(test_art) if test_art else None
 
@@ -583,18 +609,20 @@ def summary(runs: list[dict[str, Any]], classes: dict[str, dict[str, Any]], n_bo
     groups: dict[str, dict[str, np.ndarray]] = {"class": {}, "tercile": {}}
     for c, P, p in test_pairs:
         by_key = {_key(r): r for r in P["rows"]}
-        labels = [subgroup(by_key[(str(o), int(i))], classes) for o, i in zip(p["object"], p["idx"])]
+        rows = [by_key[(str(o), int(i))] for o, i in zip(p["object"], p["idx"])]
+        labels = [subgroup(r, classes) if "theta" in r else None for r in rows]      # an error row has no draw, and never counts
         for j, kind in enumerate(("class", "tercile")):
-            for g in sorted({lab[j] for lab in labels}):
-                mask = p["counted"] & np.array([lab[j] == g for lab in labels], dtype=bool)
+            for g in sorted({lab[j] for lab in labels if lab is not None}):
+                mask = p["counted"] & np.array([lab is not None and lab[j] == g for lab in labels], dtype=bool)
                 groups[kind][g] = groups[kind].get(g, np.zeros((len(objects), 4))) + object_sums(p, objects, mask)
     subgroups = {kind: {g: cell_draws(S, W) for g, S in sorted(d.items())} for kind, d in groups.items()}
 
     exclusions = {}
     for k, run in sorted(idx.items(), key=lambda kv: str(kv[0])):
-        tally: dict[str, list[int]] = {"probe": [0, 0], "other": [0, 0]}
+        tally: dict[str, list[int]] = {"probe": [0, 0], "other": [0, 0], "unknown": [0, 0]}
         for r in run["rows"]:
-            t = tally["probe" if r.get("recommendation") == "probe" else "other"]
+            rec = r.get("recommendation")       # None: the case raised before its first menu
+            t = tally["unknown" if rec is None else "probe" if rec == "probe" else "other"]
             t[0] += "error" in r
             t[1] += "error" not in r and bool(r.get("artifact"))
         exclusions[f"{k[0]}_{_label(k[1:4])}_seed{k[4]}"] = {g: {"errors": e, "artifacts": a} for g, (e, a) in tally.items()}
@@ -625,6 +653,8 @@ def markdown(s: dict[str, Any]) -> str:
     L = [f"# Milestone 4 sweep (seeds {s['seeds']}, {s['n_objects']} objects, {s['n_boot']} joint bootstrap draws)", ""]
     p = s["h1_pays"]
     L += ["## Verdicts", "", f"- H1-pays: R = {_f(p.get('R'))} {_ci_s(p.get('ci'))} → **{p['verdict']}**"]
+    if p.get("missing"):
+        L.append(f"  - missing runs ({len(p['missing'])}): {', '.join(p['missing'])}")
     if p.get("artifacts_counted"):
         L.append(f"  - artifacts counted: R = {_f(p['artifacts_counted']['R'])} {_ci_s(p['artifacts_counted']['ci'])}")
     L.append(f"- H1-only (margin {s['h1_only']['margin']}): **{s['h1_only']['verdict']}**")
@@ -694,6 +724,7 @@ def main(argv: list[str] | None = None) -> int:
     v = sub.add_parser("valid", help="exit 1 when an output cannot be reused")
     v.add_argument("file")
     v.add_argument("--revision", required=True)
+    v.add_argument("--sim-revision", required=True, help="the simulator folder's last commit (an output's code.sim_revision)")
     v.add_argument("--protocol", required=True)
     for name in ("--care", "--abstain", "--scale"):
         v.add_argument(name, type=float, required=True)
@@ -720,9 +751,11 @@ def main(argv: list[str] | None = None) -> int:
     if a.cmd == "valid":
         if (a.n is None) == (a.cases is None):
             ap.error("give --n or --cases")
-        n = a.n if a.n is not None else sum(len(v) for v in json.load(open(a.cases))["cases"].values())
-        why = valid(a.file, {"revision": a.revision, "protocol": a.protocol, "care": a.care, "abstain": a.abstain, "scale": a.scale,
-                             "seed": a.seed, "n": n})
+        listed = json.load(open(a.cases))["cases"] if a.cases else None
+        n = a.n if a.n is not None else sum(len(v) for v in listed.values())
+        why = valid(a.file, {"revision": a.revision, "sim_revision": a.sim_revision, "protocol": a.protocol, "care": a.care,
+                             "abstain": a.abstain, "scale": a.scale, "seed": a.seed, "n": n,
+                             "cases": None if listed is None else {(o, int(i)) for o, v in listed.items() for i in v}})
         print("valid" if not why else "not valid: " + "; ".join(why))
         return 0 if not why else 1
     if a.cmd == "cases":
@@ -737,7 +770,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if a.cmd == "check":
         runs = _index(_runs_of(a.dir, a.seed))
-        out: dict[str, Any] = {"G1": {}, "G1b": {}, "missing": []}
+        out: dict[str, Any] = {"G1": {}, "G1b": {}, "missing": [f"{p} {_label(c)}" for p, c in GATE_RUNS if (p, *c, a.seed) not in runs]}
         for k, run in sorted(runs.items(), key=lambda kv: str(kv[0])):
             if k[0] == "policy":
                 nv = runs.get(("policy_no_probe", k[1], k[2], 1.0, k[4]))

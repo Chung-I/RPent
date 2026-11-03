@@ -76,6 +76,20 @@ def manifest_force_noise(manifest: dict[str, Any]) -> float:
     return float(sd)
 
 
+def manifest_generator(manifest: dict[str, Any]) -> str:
+    """The lab generator of a bundle's corpora ({"generator": "v11"}), which its jobs must run under; v10 without the
+    field (bundles from before generator v11). A lab prior mirrors one generator (prior.PRIOR_GENERATORS), so a manifest
+    whose prior mirrors another is an error."""
+    from robots.mujoco_lab.corpus import lab_generator
+    from robots.mujoco_lab.prior import PRIOR_GENERATORS
+
+    g = lab_generator(manifest.get("generator", "v10"))
+    want = PRIOR_GENERATORS.get(manifest.get("prior"))
+    if want is not None and want != g:
+        raise ValueError(f"the manifest's prior {manifest['prior']!r} mirrors generator {want}, not its generator {g}")
+    return g
+
+
 def manifest_evoi(manifest: dict[str, Any]) -> str:
     """The probe-value estimator of a bundle's decision (plan 2b2 decision 2: {"decision": {"evoi": "heldout"}});
     "plugin" without the field (m2 and m2b). Another name raises ValueError."""
@@ -98,12 +112,19 @@ def manifest_probe_time_scale(manifest: dict[str, Any]) -> float:
 def load_bundle(bundle_dir: str, kind: str | None = None) -> dict[str, Any]:
     """The models a bundle's manifest names: the success model of its kind (or ``kind``), the prior (and an m2b
     prior's fragility classes), and the readout and probe models and the novelty guard when present, the decision's
-    abstain cost, the sensor's force noise, and the feature and outcome schemas ("m2" when the manifest names none). Every model must read the schema's features."""
+    abstain cost, the sensor's force noise, the generator, and the feature and outcome schemas ("m2" when the manifest
+    names none). Every model must read the schema's features. A bundle runs under its own generator: a process whose
+    RPENT_LAB_GENERATOR differs is an error, raised before any model loads."""
     from rpent.skills.pick_place.features import FEATURE_SCHEMAS, model_names
 
+    from robots.mujoco_lab.corpus import lab_generator
     from robots.mujoco_lab.prior import fragility_world, prior_from_manifest
 
     man = json.load(open(os.path.join(bundle_dir, "manifest.json")))
+    generator = manifest_generator(man)
+    if generator != lab_generator():
+        raise ValueError(f"{bundle_dir} is a generator {generator} bundle, but this process runs {lab_generator()}: set "
+                         f"RPENT_LAB_GENERATOR={generator}")
     kind = kind or os.environ.get("RPENT_PICK_PLACE_MODEL_KIND") or man.get("kind", "classifier")
     if kind == "hazard" and not man.get("hazard_model"):
         raise ValueError(f"{bundle_dir} has no hazard model (the hazard model is not eligible for its labels)")
@@ -149,7 +170,8 @@ def load_bundle(bundle_dir: str, kind: str | None = None) -> dict[str, Any]:
             "prior": lab_prior_fn if man.get("prior") == "lab_generator" else prior_from_manifest(man),
             "classes": (fragility_world(man) or (None,))[0],
             "readout_model": readout, "probe_models": probe_models, "guard": guard, "abstain_cost": manifest_abstain_cost(man),
-            "force_noise": manifest_force_noise(man), "evoi": manifest_evoi(man), "probe_time_scale": manifest_probe_time_scale(man)}
+            "force_noise": manifest_force_noise(man), "evoi": manifest_evoi(man), "probe_time_scale": manifest_probe_time_scale(man),
+            "generator": generator}
 
 
 def load_model(model_path: str | None = None, kind: str | None = None) -> Any:
@@ -236,14 +258,18 @@ def _add_cli_args(parser: argparse.ArgumentParser, use_dashboard: bool) -> None:
 
 
 def _parse_config(args: argparse.Namespace) -> RunConfig:
+    from robots.mujoco_lab.corpus import lab_generator
+    from robots.mujoco_lab.names import agent_id
+
     if not args.object:
         raise ValueError("--object is required")
-    recipe_tag = f"{args.object}_{args.destination}_s{args.seed}"
+    shown = agent_id(args.object, lab_generator())     # the agent's name for the object (v11: the corrected name)
+    recipe_tag = f"{shown}_{args.destination}_s{args.seed}"
     output_dir = getattr(args, "output_dir", None)
     if output_dir is None:
         output_dir = get_repo_root() / "logs" / f"{datetime.now().strftime('%Y%m%d-%H:%M:%S')}_mujoco_lab_{recipe_tag}"
     memory_dir = Path(args.memory_dir) if getattr(args, "memory_dir", None) else get_memory_dir("mujoco_lab")
-    prompt_vars = {"object": args.object, "destination": args.destination, "care": args.care, "seed": args.seed,
+    prompt_vars = {"object": shown, "destination": args.destination, "care": args.care, "seed": args.seed,
                    "recipe_tag": recipe_tag, "mode": "eval", "memory_dir": str(memory_dir)}
     return RunConfig(recipe_tag=recipe_tag, output_dir=Path(output_dir), prompt_vars=prompt_vars,
                      task_desc={"object": args.object, "destination": args.destination, "seed": args.seed, "care": args.care})

@@ -52,9 +52,10 @@ from typing import Any
 import numpy as np
 
 from robots.mujoco_lab import tracking
+from robots.mujoco_lab.corpus import lab_generator
 from robots.mujoco_lab.prior import com_hypothesis, joint_hidden, lab_prior
 from robots.mujoco_lab.robot_spec import load_bundle
-from robots.mujoco_lab.train_models import load_rows, repo_path, write_manifest
+from robots.mujoco_lab.train_models import corpus_generator, load_rows, repo_path, write_manifest
 from rpent.skills.pick_place.belief import ParticleBelief
 from rpent.skills.pick_place.evaluate import _ece, ece_ci, object_weights, row_base, row_pose, rows_of
 from rpent.skills.pick_place.features import model_names, particle_matrix, particle_sides
@@ -84,21 +85,23 @@ def sim_truth(row: dict[str, Any]) -> dict[str, float]:
 
 
 def generator_truth(row: dict[str, Any], classes: dict[str, dict[str, Any]] | None = None) -> dict[str, float]:
-    """The row's theta as a point of the prior's space: mass nominal x scale x (1 + f), the friction drawn,
-    the CoM fraction of ``com_hypothesis`` (the particles' arithmetic). A filled row adds its liquid as the m2b
-    particles do (prior.joint_hidden: the joint mass and CoM), from the object's cavity in ``classes``."""
+    """The row's theta as a point of the prior's space: mass nominal x scale x (1 + f) (nominal x scale when the row's
+    "generator" is v11: the CoM point mass is inside the total), the friction drawn, the CoM fraction of
+    ``com_hypothesis`` (the particles' arithmetic). A filled row adds its liquid as the m2b particles do
+    (prior.joint_hidden: the joint mass and CoM), from the object's cavity in ``classes``."""
     pose, th = row["pose"], row["theta"]
+    generator = lab_generator(row.get("generator", "v10"))
     pv = pose["pivot"]
     fill = float(row.get("fill") or 0.0)
     if fill > 0.0:
         entry = (classes or {}).get(row.get("object")) or {}
         if not entry.get("cavity"):
             raise ValueError(f"{row.get('object')}: a filled row's truth needs the object's cavity (the fragility classes)")
-        joint = joint_hidden(pose, entry, th, int(row["com_end"]), fill)
+        joint = joint_hidden(pose, entry, th, int(row["com_end"]), fill, generator=generator)
         mass, com = float(joint["mass"]), joint["com_obj"]
     else:
         com, f = com_hypothesis(pv, pose["com_obj_nominal"], th["com_s"], int(row["com_end"]))
-        mass = float(pose["nominal_mass"]) * float(th["mass_scale"]) * (1.0 + f)
+        mass = float(pose["nominal_mass"]) * float(th["mass_scale"]) * ((1.0 + f) if generator == "v10" else 1.0)
     frac = ((np.asarray(com) - np.asarray(pv["centre"], dtype=float)) @ np.asarray(pv["axis"], dtype=float) - float(pv["lo"])) / float(pv["L"])
     return {"mass": mass, "mu": float(th["mu"]), "com": float(frac)}
 
@@ -111,10 +114,19 @@ def _widths(b: ParticleBelief) -> dict[str, float]:
     return {k: b.quantile(key, 0.9) - b.quantile(key, 0.1) for k, key in KEYS}
 
 
+def bundle_prior(bundle: dict[str, Any]) -> Any:
+    """The bundle's prior; a bundle that names none (m1) gets the m2a lab prior, which mirrors generator v10 only."""
+    if bundle.get("prior") is not None:
+        return bundle["prior"]
+    if bundle.get("generator", "v10") != "v10":
+        raise SystemExit(f"the bundle names no prior, and the m2a lab prior mirrors generator v10, not {bundle['generator']}")
+    return lab_prior
+
+
 def check_rows(rows: list[dict[str, Any]], bundle: dict[str, Any], grid: list[float], n: int, seed: int) -> list[dict[str, Any]]:
     """One case per row: the prior's hits and widths, and per temper the posterior's (``*_sim``: against the sim's values)."""
     model, readout = bundle["model"], bundle["readout_model"]
-    prior = bundle.get("prior") or lab_prior                  # the bundle's manifest names it
+    prior = bundle_prior(bundle)                              # the bundle's manifest names it
     rng = np.random.default_rng(seed)
     cases = []
     for r in rows:
@@ -152,7 +164,7 @@ def probe_cases(rows: list[dict[str, Any]], probes: str) -> list[list[dict[str, 
 def check_probe_cases(cases: list[list[dict[str, Any]]], bundle: dict[str, Any], grid: list[float], n: int, seed: int) -> list[dict[str, Any]]:
     """Like check_rows, with the probe models' likelihood of each case's probe results."""
     pms = bundle["probe_models"]
-    prior = bundle.get("prior") or lab_prior
+    prior = bundle_prior(bundle)
     rng = np.random.default_rng(seed)
     out = []
     for case in cases:
@@ -360,6 +372,9 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
         rows = [r for p in paths for r in load_rows(repo_path(p))]
         rows = [r for r in rows if r.get("readouts") and "pose" in r and "com_obj_true" in r and "com_end" in r]
         temper0 = float(B["readout_model"].temper)
+    if corpus_generator(rows) != B.get("generator", "v10"):                              # no field: v10
+        raise SystemExit(f"the rows are generator {corpus_generator(rows)}, but the bundle {a.bundle} is generator "
+                         f"{B.get('generator', 'v10')}")
 
     def rows_for(split: str) -> list[dict[str, Any]]:
         ids = a.objects.split(",") if (a.objects and split == a.split) else metrics["split"][split]

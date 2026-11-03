@@ -18,6 +18,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from robots.mujoco_lab.corpus import lab_generator
+from robots.mujoco_lab.names import agent_object
 from rpent.tools.base import ToolResult, tool
 
 CAMERA_ARTIFACT = "cam_main.png"
@@ -55,5 +57,5 @@ def view_env_state(step: int = -1, *, primitives, state) -> ToolResult:
         images = [state.load_bytes(CAMERA_ARTIFACT, step=record.step_idx)] if CAMERA_ARTIFACT in record.artifacts else []
     obj = getattr(primitives.env, "obj", None)
     data = {"step": record.step_idx, "state": dict(record.state),
-            "object": None if obj is None else {"name": obj["name"], "id": obj["id"], "material": obj["material"]}}
+            "object": None if obj is None else agent_object(obj, lab_generator())}       # v11: corrected names (names.py)
     return ToolResult(data=data, images=images)
