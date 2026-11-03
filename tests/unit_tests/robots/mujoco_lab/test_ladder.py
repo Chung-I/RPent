@@ -293,3 +293,10 @@ def test_probe_value_text_counts_the_probe_risk_in_the_cost_after():
     t = ladder.value_text(probe, D)
     assert "the expected cost after it, which counts the irreversible cost when the probe throws or damages the object" in t
     assert "best row's expected cost after it" not in t
+
+
+def test_ops_markdown_gives_both_gpu_hour_estimates():
+    rows = [{"rung": "A", "ended": "abstained", "calls": [], "seconds": 120.0} for _ in range(8)]
+    md = ladder.ops_markdown(ladder.ops(rows), [{"started": 0.0, "ended": 600.0, "jobs": 8, "runs": 8, "workers": 4}], 6.0, "T")
+    assert "about 35.6 GPU-hours" in md          # wall: 1.25 min per rung run x 1704 runs, plus the 6 min start
+    assert "about 14.3 GPU-hours" in md          # per run: 2 min x 1704 runs / 4 workers, plus the 6 min start

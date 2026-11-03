@@ -667,12 +667,9 @@ def run_pilot(cases_path: str, rungs: list[str], templates_path: str, crossfit: 
     cfg = {"crossfit": crossfit, "folds": json.load(open(os.path.join(crossfit, "folds.json"))), "settings": settings,
            "templates": tpl, "base_url": base_url, "model": model, "stub": stub, "max_calls": max_calls, "max_tokens": max_tokens,
            **sampling}
-    todo = []
-    for c in cases:
-        left = [r for r in rungs if (c["object"], c["idx"], c["seed"], c["setting"], r) not in done]
-        if left:
-            todo.append((c, dict(cfg, rungs=left)))
-    print(f"ladder pilot: {len(todo)} of {len(cases)} cases to run, rungs {rungs}", file=sys.stderr, flush=True)
+    todo = [(c, dict(cfg, rungs=[r])) for c in cases for r in rungs      # one job per (case, rung): an even load
+            if (c["object"], c["idx"], c["seed"], c["setting"], r) not in done]
+    print(f"ladder pilot: {len(todo)} of {len(cases) * len(rungs)} rung runs to do, rungs {rungs}", file=sys.stderr, flush=True)
     t0 = time.time()
     with open(path, "a") as f:
         def write(parts) -> None:
@@ -750,9 +747,15 @@ def ops_markdown(o: dict[str, Any], times: list[dict[str, Any]], server_start_mi
         lines += ["", f"Wall time: {wall:.1f} min for {runs} rung runs at {workers} workers on one GPU: "
                   f"{f(per, 3)} min per rung run." + ("" if server_start_min is None else f" Server start: {server_start_min:.1f} min.")]
         if per is not None:
-            est = FULL_RUNS * per / 60.0 + (server_start_min or 0.0) / 60.0
+            start = (server_start_min or 0.0) / 60.0
+            est = FULL_RUNS * per / 60.0 + start
             lines.append(f"Full ladder at the n50 sizes (rungs A-D x 426 cases = {FULL_RUNS} rung runs, the same workers): "
-                         f"about {est:.1f} GPU-hours for this model.")
+                         f"about {est:.1f} GPU-hours for this model (from the wall time, with the pilot's tail).")
+            mean = (o["rungs"].get("all") or {}).get("minutes_per_run", {}).get("mean")
+            if mean is not None and len(workers) == 1:
+                est2 = FULL_RUNS * mean / workers[0] / 60.0 + start
+                lines.append(f"From the mean minutes per rung run ({mean:.2f}) at {workers[0]} workers: about {est2:.1f} "
+                             "GPU-hours (no tail).")
     return "\n".join(lines) + "\n"
 
 
