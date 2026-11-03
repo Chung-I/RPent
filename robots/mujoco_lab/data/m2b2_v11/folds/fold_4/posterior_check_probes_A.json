@@ -1,0 +1,233 @@
+{
+ "bundle": "/home/chungyili/Codes/RPent-real/robots/mujoco_lab/data/m2b2_v11/folds/fold_4",
+ "split": "val",
+ "probes": "A",
+ "objects": [
+  "fruits_veggies__red_onion",
+  "handal__green_serving_spoon",
+  "hope__chocolate_pudding_mix",
+  "hope__tomato_sauce_can",
+  "hot3d__computer_mouse",
+  "hot3d__smartphone",
+  "hot3d__soup_can",
+  "ycb__dry_erase_marker",
+  "ycb__jello",
+  "ycb__spring_clamp",
+  "ycb__tuna_can"
+ ],
+ "n": 259,
+ "n_particles": 2000,
+ "temper": 1.0,
+ "feasible": true,
+ "chosen_on": "val",
+ "mass_cov80": 0.7992277992277992,
+ "mu_cov80": 0.8416988416988417,
+ "com_cov80": 0.8108108108108109,
+ "acceptance_b": {
+  "bounds": [
+   0.75,
+   0.85
+  ],
+  "pass": true
+ },
+ "prior_cov80": {
+  "mass": 0.833976833976834,
+  "mu": 0.7915057915057915,
+  "com": 0.803088803088803
+ },
+ "truth": "generator",
+ "sim_truth": {
+  "cov80": {
+   "mass": 0.7953667953667953,
+   "mu": 0.8416988416988417,
+   "com": 0.6988416988416989
+  },
+  "prior_cov80": {
+   "mass": 0.833976833976834,
+   "mu": 0.7915057915057915,
+   "com": 0.749034749034749
+  }
+ },
+ "by_kind": {
+  "no_contact+measured": {
+   "n": 3,
+   "mass_cov80": 1.0,
+   "mu_cov80": 1.0,
+   "com_cov80": 1.0
+  },
+  "slid+damaged": {
+   "n": 25,
+   "mass_cov80": 0.8,
+   "mu_cov80": 0.72,
+   "com_cov80": 0.92
+  },
+  "slid+lower_bound": {
+   "n": 16,
+   "mass_cov80": 0.9375,
+   "mu_cov80": 0.9375,
+   "com_cov80": 0.5625
+  },
+  "slid+measured": {
+   "n": 166,
+   "mass_cov80": 0.8012048192771084,
+   "mu_cov80": 0.8614457831325302,
+   "com_cov80": 0.8012048192771084
+  },
+  "tipped": {
+   "n": 1,
+   "mass_cov80": 0.0,
+   "mu_cov80": 1.0,
+   "com_cov80": 1.0
+  },
+  "tipped+damaged": {
+   "n": 4,
+   "mass_cov80": 0.75,
+   "mu_cov80": 1.0,
+   "com_cov80": 0.75
+  },
+  "tipped+lower_bound": {
+   "n": 1,
+   "mass_cov80": 0.0,
+   "mu_cov80": 0.0,
+   "com_cov80": 1.0
+  },
+  "tipped+measured": {
+   "n": 43,
+   "mass_cov80": 0.7674418604651163,
+   "mu_cov80": 0.7906976744186046,
+   "com_cov80": 0.8604651162790697
+  }
+ },
+ "grid": {
+  "0.7": {
+   "mass": 0.6756756756756757,
+   "mu": 0.833976833976834,
+   "com": 0.8223938223938224
+  },
+  "0.85": {
+   "mass": 0.7451737451737451,
+   "mu": 0.8378378378378378,
+   "com": 0.8185328185328186
+  },
+  "1.0": {
+   "mass": 0.7992277992277992,
+   "mu": 0.8416988416988417,
+   "com": 0.8108108108108109
+  },
+  "1.25": {
+   "mass": 0.8957528957528957,
+   "mu": 0.861003861003861,
+   "com": 0.8108108108108109
+  },
+  "1.5": {
+   "mass": 0.9575289575289575,
+   "mu": 0.8532818532818532,
+   "com": 0.803088803088803
+  },
+  "2.0": {
+   "mass": 0.9652509652509652,
+   "mu": 0.8571428571428571,
+   "com": 0.8108108108108109
+  },
+  "3.0": {
+   "mass": 0.9691119691119691,
+   "mu": 0.8455598455598455,
+   "com": 0.8108108108108109
+  }
+ },
+ "width80_median": {
+  "prior": {
+   "mass": 0.21153029613118923,
+   "mu": 0.6396778510693933,
+   "com": 0.19950880293789242
+  },
+  "posterior": {
+   "mass": 0.02224412145162835,
+   "mu": 0.37652538205159514,
+   "com": 0.19101909622998586
+  }
+ },
+ "terms": {
+  "used": {
+   "push_kind": 259,
+   "push_reading": 207,
+   "push_not_thrown": 259,
+   "weigh_kind": 258,
+   "weigh_not_thrown": 258,
+   "weigh_reading": 213
+  },
+  "rejected": {}
+ },
+ "laws": {
+  "weigh": {
+   "measured": {
+    "kind": "normal",
+    "w": 1.0,
+    "sd1": 0.05,
+    "sd2": null
+   },
+   "lower_bound": {
+    "kind": "normal",
+    "w": 1.0,
+    "sd1": 0.1519418291273466,
+    "sd2": null
+   }
+  },
+  "push": {
+   "slid": {
+    "kind": "mix2",
+    "w": 0.4872478516725528,
+    "sd1": 0.19336067394381526,
+    "sd2": 0.5339062715455622
+   }
+  },
+  "squeeze": {
+   "measured": {
+    "kind": "normal",
+    "w": 1.0,
+    "sd1": 0.09399420586808926,
+    "sd2": null
+   }
+  }
+ },
+ "seconds": 85.7,
+ "n_with_weigh": 258,
+ "acceptance_b2": {
+  "bounds": [
+   0.75,
+   0.85
+  ],
+  "min_cases": 30,
+  "min_objects": 4,
+  "mass": {
+   "n": 259,
+   "n_objects": 11,
+   "coverage": 0.7992277992277992,
+   "ci": [
+    0.752895752895753,
+    0.8378378378378378
+   ],
+   "verdict": "pass"
+  },
+  "mu": {
+   "n": 259,
+   "n_objects": 11,
+   "coverage": 0.8416988416988417,
+   "ci": [
+    0.7575552825552826,
+    0.9133858267716536
+   ],
+   "verdict": "pass"
+  },
+  "com": {
+   "n": 259,
+   "n_objects": 11,
+   "coverage": 0.8108108108108109,
+   "ci": [
+    0.7537878787878788,
+    0.8634583789704271
+   ],
+   "verdict": "reported"
+  }
+ }
+}

@@ -1,0 +1,239 @@
+{
+ "bundle": "/home/chungyili/Codes/RPent-real/robots/mujoco_lab/data/m2b2_v11/folds/fold_0",
+ "split": "val",
+ "probes": "A",
+ "objects": [
+  "handal__hammer_1",
+  "handal__hammer_5",
+  "hope__canned_peaches",
+  "hope__popcorn_box",
+  "hope__yogurt_cup",
+  "hot3d__clay_plates",
+  "hot3d__glasses",
+  "hot3d__lizard_figurine",
+  "ycb__banana",
+  "ycb__spring_clamp",
+  "ycb__sugar_box"
+ ],
+ "n": 222,
+ "n_particles": 2000,
+ "temper": 1.0,
+ "feasible": false,
+ "chosen_on": "val",
+ "mass_cov80": 0.7837837837837838,
+ "mu_cov80": 0.7792792792792793,
+ "com_cov80": 0.7297297297297297,
+ "acceptance_b": {
+  "bounds": [
+   0.75,
+   0.85
+  ],
+  "pass": false
+ },
+ "prior_cov80": {
+  "mass": 0.8198198198198198,
+  "mu": 0.7702702702702703,
+  "com": 0.7432432432432432
+ },
+ "truth": "generator",
+ "sim_truth": {
+  "cov80": {
+   "mass": 0.7837837837837838,
+   "mu": 0.7792792792792793,
+   "com": 0.5900900900900901
+  },
+  "prior_cov80": {
+   "mass": 0.8198198198198198,
+   "mu": 0.7702702702702703,
+   "com": 0.6936936936936937
+  }
+ },
+ "by_kind": {
+  "no_breakaway+lower_bound": {
+   "n": 3,
+   "mass_cov80": 1.0,
+   "mu_cov80": 0.0,
+   "com_cov80": 1.0
+  },
+  "no_breakaway+measured": {
+   "n": 1,
+   "mass_cov80": 1.0,
+   "mu_cov80": 0.0,
+   "com_cov80": 1.0
+  },
+  "slid": {
+   "n": 4,
+   "mass_cov80": 0.75,
+   "mu_cov80": 0.5,
+   "com_cov80": 0.5
+  },
+  "slid+damaged": {
+   "n": 29,
+   "mass_cov80": 0.7241379310344828,
+   "mu_cov80": 0.7931034482758621,
+   "com_cov80": 0.7586206896551724
+  },
+  "slid+lower_bound": {
+   "n": 71,
+   "mass_cov80": 0.7887323943661971,
+   "mu_cov80": 0.8028169014084507,
+   "com_cov80": 0.7464788732394366
+  },
+  "slid+measured": {
+   "n": 102,
+   "mass_cov80": 0.7941176470588235,
+   "mu_cov80": 0.8137254901960784,
+   "com_cov80": 0.7058823529411765
+  },
+  "tipped+damaged": {
+   "n": 4,
+   "mass_cov80": 0.5,
+   "mu_cov80": 0.75,
+   "com_cov80": 1.0
+  },
+  "tipped+lower_bound": {
+   "n": 2,
+   "mass_cov80": 1.0,
+   "mu_cov80": 0.0,
+   "com_cov80": 0.0
+  },
+  "tipped+measured": {
+   "n": 6,
+   "mass_cov80": 0.8333333333333334,
+   "mu_cov80": 0.8333333333333334,
+   "com_cov80": 0.8333333333333334
+  }
+ },
+ "grid": {
+  "0.7": {
+   "mass": 0.6621621621621622,
+   "mu": 0.7342342342342343,
+   "com": 0.7432432432432432
+  },
+  "0.85": {
+   "mass": 0.7117117117117117,
+   "mu": 0.7612612612612613,
+   "com": 0.7297297297297297
+  },
+  "1.0": {
+   "mass": 0.7837837837837838,
+   "mu": 0.7792792792792793,
+   "com": 0.7297297297297297
+  },
+  "1.25": {
+   "mass": 0.8243243243243243,
+   "mu": 0.7927927927927928,
+   "com": 0.7252252252252253
+  },
+  "1.5": {
+   "mass": 0.8603603603603603,
+   "mu": 0.8108108108108109,
+   "com": 0.7342342342342343
+  },
+  "2.0": {
+   "mass": 0.8783783783783784,
+   "mu": 0.8333333333333334,
+   "com": 0.7477477477477478
+  },
+  "3.0": {
+   "mass": 0.8873873873873874,
+   "mu": 0.8153153153153153,
+   "com": 0.7567567567567568
+  }
+ },
+ "width80_median": {
+  "prior": {
+   "mass": 0.3096182458103054,
+   "mu": 0.6396687604209967,
+   "com": 0.20008819991308105
+  },
+  "posterior": {
+   "mass": 0.09050983543609566,
+   "mu": 0.3691566635287176,
+   "com": 0.17291247328073697
+  }
+ },
+ "terms": {
+  "used": {
+   "push_kind": 222,
+   "push_reading": 206,
+   "push_not_thrown": 219,
+   "weigh_kind": 218,
+   "weigh_not_thrown": 218,
+   "weigh_reading": 110
+  },
+  "rejected": {}
+ },
+ "laws": {
+  "weigh": {
+   "measured": {
+    "kind": "normal",
+    "w": 1.0,
+    "sd1": 0.05,
+    "sd2": null
+   },
+   "lower_bound": {
+    "kind": "normal",
+    "w": 1.0,
+    "sd1": 0.25785934855594356,
+    "sd2": null
+   }
+  },
+  "push": {
+   "slid": {
+    "kind": "mix2",
+    "w": 0.8458785765318937,
+    "sd1": 0.29047590749523616,
+    "sd2": 0.7163337766425344
+   }
+  },
+  "squeeze": {
+   "measured": {
+    "kind": "normal",
+    "w": 1.0,
+    "sd1": 0.08624508907608373,
+    "sd2": null
+   }
+  }
+ },
+ "seconds": 66.2,
+ "n_with_weigh": 218,
+ "acceptance_b2": {
+  "bounds": [
+   0.75,
+   0.85
+  ],
+  "min_cases": 30,
+  "min_objects": 4,
+  "mass": {
+   "n": 222,
+   "n_objects": 11,
+   "coverage": 0.7837837837837838,
+   "ci": [
+    0.746606334841629,
+    0.8252427184466019
+   ],
+   "verdict": "pass"
+  },
+  "mu": {
+   "n": 222,
+   "n_objects": 11,
+   "coverage": 0.7792792792792793,
+   "ci": [
+    0.6530588947907929,
+    0.8750129668049792
+   ],
+   "verdict": "pass"
+  },
+  "com": {
+   "n": 222,
+   "n_objects": 11,
+   "coverage": 0.7297297297297297,
+   "ci": [
+    0.6699964114832536,
+    0.7739491655845717
+   ],
+   "verdict": "reported"
+  }
+ }
+}

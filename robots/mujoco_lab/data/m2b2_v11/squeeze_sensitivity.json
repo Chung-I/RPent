@@ -1,0 +1,354 @@
+{
+ "bundle": "/home/chungyili/Codes/RPent-real/robots/mujoco_lab/data/m2b2_v11",
+ "probe_corpus": "/home/chungyili/Codes/RPent-real/robots/mujoco_lab/data/probe_corpus_v10.jsonl",
+ "thresholds": {
+  "path": "/home/chungyili/Codes/RPent-real/robots/mujoco_lab/data/thresholds_v1.json",
+  "sha256": "389fcaae23380196a3344ffdde53cfa0a34e51a7ad3ab2514b6cad82f68509dc"
+ },
+ "split": "val",
+ "n_particles": 2000,
+ "evoi_samples_per_case": 200,
+ "seed": 0,
+ "estimator": "heldout",
+ "care": "normal",
+ "abstain_cost": 1.0,
+ "continuations": "middle pinch to table_centre",
+ "cells": [
+  {
+   "sigma": 0.05,
+   "rho": "0",
+   "rho_by_law": {
+    "cardboard": 0.0,
+    "thin_plastic": 0.0,
+    "fruit": 0.0
+   },
+   "estimator": "heldout",
+   "n_cases": 54,
+   "mean_reading_value": -0.002206310483748783,
+   "reading_between_case_se": 0.0005533196772343499,
+   "reading_mc_se": 0.0002845534049067521,
+   "mean_evoi": -0.002206310483748783,
+   "evoi_between_case_se": 0.0005533196772343499,
+   "evoi_mc_se": 0.0002845534049067521,
+   "plugin_mean_reading_value": 0.0013576120016520286,
+   "plugin_mean_evoi": 0.0013576120016520286,
+   "reading_value_at_most_2_se_above_0": true,
+   "reading_law": {
+    "kind": "mix2",
+    "w": 0.5356048851656101,
+    "b1": 0.03026096559502554,
+    "sd1": 0.05,
+    "b2": -0.031052578727486374,
+    "sd2": 0.05
+   }
+  },
+  {
+   "sigma": 0.1,
+   "rho": "0",
+   "rho_by_law": {
+    "cardboard": 0.0,
+    "thin_plastic": 0.0,
+    "fruit": 0.0
+   },
+   "estimator": "heldout",
+   "n_cases": 54,
+   "mean_reading_value": -0.001032500273541651,
+   "reading_between_case_se": 0.0003330262316022338,
+   "reading_mc_se": 0.00020347403008888203,
+   "mean_evoi": -0.001032500273541651,
+   "evoi_between_case_se": 0.0003330262316022338,
+   "evoi_mc_se": 0.00020347403008888203,
+   "plugin_mean_reading_value": 0.0007564379027683999,
+   "plugin_mean_evoi": 0.0007564379027683999,
+   "reading_value_at_most_2_se_above_0": true,
+   "reading_law": {
+    "kind": "mix2",
+    "w": 0.5355308191101595,
+    "b1": 0.06057230570228125,
+    "sd1": 0.07490645680312344,
+    "b2": -0.062143684444030026,
+    "sd2": 0.08532741405348092
+   }
+  },
+  {
+   "sigma": 0.2,
+   "rho": "0",
+   "rho_by_law": {
+    "cardboard": 0.0,
+    "thin_plastic": 0.0,
+    "fruit": 0.0
+   },
+   "estimator": "heldout",
+   "n_cases": 54,
+   "mean_reading_value": -0.00032432885356195595,
+   "reading_between_case_se": 0.00015185179281482615,
+   "reading_mc_se": 0.00011034376323502211,
+   "mean_evoi": -0.00032432885356195595,
+   "evoi_between_case_se": 0.00015185179281482615,
+   "evoi_mc_se": 0.00011034376323502211,
+   "plugin_mean_reading_value": 0.00030092832066381316,
+   "plugin_mean_evoi": 0.00030092832066381316,
+   "reading_value_at_most_2_se_above_0": true,
+   "reading_law": {
+    "kind": "mix2",
+    "w": 0.5355122654043305,
+    "b1": 0.12116979560055646,
+    "sd1": 0.1497873888362724,
+    "b2": -0.12430660033901218,
+    "sd2": 0.17062624106294466
+   }
+  },
+  {
+   "sigma": 0.4,
+   "rho": "0",
+   "rho_by_law": {
+    "cardboard": 0.0,
+    "thin_plastic": 0.0,
+    "fruit": 0.0
+   },
+   "estimator": "heldout",
+   "n_cases": 54,
+   "mean_reading_value": -6.138437877732142e-05,
+   "reading_between_case_se": 3.9699550399889925e-05,
+   "reading_mc_se": 4.2646127210249595e-05,
+   "mean_evoi": -6.138437877732142e-05,
+   "evoi_between_case_se": 3.9699550399889925e-05,
+   "evoi_mc_se": 4.2646127210249595e-05,
+   "plugin_mean_reading_value": 6.690442577521994e-05,
+   "plugin_mean_evoi": 6.690442577521994e-05,
+   "reading_value_at_most_2_se_above_0": true,
+   "reading_law": {
+    "kind": "mix2",
+    "w": 0.5355076246486112,
+    "b1": 0.24235218291745717,
+    "sd1": 0.2995620140930386,
+    "b2": -0.24862281239259673,
+    "sd2": 0.34123818819058743
+   }
+  },
+  {
+   "sigma": 0.05,
+   "rho": "0.5",
+   "rho_by_law": {
+    "cardboard": 0.5,
+    "thin_plastic": 0.5,
+    "fruit": 0.5
+   },
+   "estimator": "heldout",
+   "n_cases": 54,
+   "mean_reading_value": 0.0019142980296995903,
+   "reading_between_case_se": 0.0008144187346983733,
+   "reading_mc_se": 0.0004309759952323495,
+   "mean_evoi": 0.0019142980296995903,
+   "evoi_between_case_se": 0.0008144187346983733,
+   "evoi_mc_se": 0.0004309759952323495,
+   "plugin_mean_reading_value": 0.0073281153220450925,
+   "plugin_mean_evoi": 0.0073281153220450925,
+   "reading_value_at_most_2_se_above_0": null,
+   "reading_law": {
+    "kind": "mix2",
+    "w": 0.5356048851656096,
+    "b1": 0.03026096559502556,
+    "sd1": 0.05,
+    "b2": -0.03105257872748633,
+    "sd2": 0.05
+   }
+  },
+  {
+   "sigma": 0.1,
+   "rho": "0.5",
+   "rho_by_law": {
+    "cardboard": 0.5,
+    "thin_plastic": 0.5,
+    "fruit": 0.5
+   },
+   "estimator": "heldout",
+   "n_cases": 54,
+   "mean_reading_value": 0.0025862992396356635,
+   "reading_between_case_se": 0.0008181229783360551,
+   "reading_mc_se": 0.0003627404001247284,
+   "mean_evoi": 0.0025862992396356635,
+   "evoi_between_case_se": 0.0008181229783360551,
+   "evoi_mc_se": 0.0003627404001247284,
+   "plugin_mean_reading_value": 0.006032225234044815,
+   "plugin_mean_evoi": 0.006032225234044815,
+   "reading_value_at_most_2_se_above_0": null,
+   "reading_law": {
+    "kind": "mix2",
+    "w": 0.5355308191101593,
+    "b1": 0.06057230570228126,
+    "sd1": 0.07490645680312344,
+    "b2": -0.062143684444030005,
+    "sd2": 0.08532741405348092
+   }
+  },
+  {
+   "sigma": 0.2,
+   "rho": "0.5",
+   "rho_by_law": {
+    "cardboard": 0.5,
+    "thin_plastic": 0.5,
+    "fruit": 0.5
+   },
+   "estimator": "heldout",
+   "n_cases": 54,
+   "mean_reading_value": 0.0020357772394661226,
+   "reading_between_case_se": 0.0006194709351856198,
+   "reading_mc_se": 0.0002788520548973965,
+   "mean_evoi": 0.0020357772394661226,
+   "evoi_between_case_se": 0.0006194709351856198,
+   "evoi_mc_se": 0.0002788520548973965,
+   "plugin_mean_reading_value": 0.003933005105233495,
+   "plugin_mean_evoi": 0.003933005105233495,
+   "reading_value_at_most_2_se_above_0": null,
+   "reading_law": {
+    "kind": "mix2",
+    "w": 0.5355122654043303,
+    "b1": 0.12116979560055655,
+    "sd1": 0.1497873888362724,
+    "b2": -0.12430660033901211,
+    "sd2": 0.17062624106294466
+   }
+  },
+  {
+   "sigma": 0.4,
+   "rho": "0.5",
+   "rho_by_law": {
+    "cardboard": 0.5,
+    "thin_plastic": 0.5,
+    "fruit": 0.5
+   },
+   "estimator": "heldout",
+   "n_cases": 54,
+   "mean_reading_value": 0.0004128257799721579,
+   "reading_between_case_se": 0.00023881548493303245,
+   "reading_mc_se": 0.00015747861227347198,
+   "mean_evoi": 0.0004128257799721579,
+   "evoi_between_case_se": 0.00023881548493303245,
+   "evoi_mc_se": 0.00015747861227347198,
+   "plugin_mean_reading_value": 0.001412997290231391,
+   "plugin_mean_evoi": 0.001412997290231391,
+   "reading_value_at_most_2_se_above_0": null,
+   "reading_law": {
+    "kind": "mix2",
+    "w": 0.535507624648611,
+    "b1": 0.24235218291745717,
+    "sd1": 0.2995620140930387,
+    "b2": -0.24862281239259668,
+    "sd2": 0.34123818819058754
+   }
+  },
+  {
+   "sigma": 0.05,
+   "rho": "final",
+   "rho_by_law": {
+    "cardboard": 0.8,
+    "thin_plastic": 0.8,
+    "fruit": 0.7
+   },
+   "estimator": "heldout",
+   "n_cases": 54,
+   "mean_reading_value": 0.029706528032918136,
+   "reading_between_case_se": 0.004636209605030996,
+   "reading_mc_se": 0.0006710389100278871,
+   "mean_evoi": 0.029706528032918136,
+   "evoi_between_case_se": 0.004636209605030996,
+   "evoi_mc_se": 0.0006710389100278871,
+   "plugin_mean_reading_value": 0.03236343128953761,
+   "plugin_mean_evoi": 0.03236343128953761,
+   "reading_value_at_most_2_se_above_0": null,
+   "reading_law": {
+    "kind": "mix2",
+    "w": 0.5356048851656099,
+    "b1": 0.03026096559502554,
+    "sd1": 0.05,
+    "b2": -0.031052578727486353,
+    "sd2": 0.05
+   }
+  },
+  {
+   "sigma": 0.1,
+   "rho": "final",
+   "rho_by_law": {
+    "cardboard": 0.8,
+    "thin_plastic": 0.8,
+    "fruit": 0.7
+   },
+   "estimator": "heldout",
+   "n_cases": 54,
+   "mean_reading_value": 0.02818309071925788,
+   "reading_between_case_se": 0.004354175812511714,
+   "reading_mc_se": 0.000653130224076643,
+   "mean_evoi": 0.02818309071925788,
+   "evoi_between_case_se": 0.004354175812511714,
+   "evoi_mc_se": 0.000653130224076643,
+   "plugin_mean_reading_value": 0.030302164359513058,
+   "plugin_mean_evoi": 0.030302164359513058,
+   "reading_value_at_most_2_se_above_0": null,
+   "reading_law": {
+    "kind": "mix2",
+    "w": 0.5355308191101595,
+    "b1": 0.06057230570228125,
+    "sd1": 0.07490645680312345,
+    "b2": -0.06214368444403,
+    "sd2": 0.08532741405348092
+   }
+  },
+  {
+   "sigma": 0.2,
+   "rho": "final",
+   "rho_by_law": {
+    "cardboard": 0.8,
+    "thin_plastic": 0.8,
+    "fruit": 0.7
+   },
+   "estimator": "heldout",
+   "n_cases": 54,
+   "mean_reading_value": 0.022925065764345078,
+   "reading_between_case_se": 0.0035459996167862403,
+   "reading_mc_se": 0.0005796502374508919,
+   "mean_evoi": 0.022925065764345078,
+   "evoi_between_case_se": 0.0035459996167862403,
+   "evoi_mc_se": 0.0005796502374508919,
+   "plugin_mean_reading_value": 0.02410985157054521,
+   "plugin_mean_evoi": 0.02410985157054521,
+   "reading_value_at_most_2_se_above_0": null,
+   "reading_law": {
+    "kind": "mix2",
+    "w": 0.5355122654043302,
+    "b1": 0.12116979560055657,
+    "sd1": 0.14978738883627243,
+    "b2": -0.12430660033901204,
+    "sd2": 0.17062624106294463
+   }
+  },
+  {
+   "sigma": 0.4,
+   "rho": "final",
+   "rho_by_law": {
+    "cardboard": 0.8,
+    "thin_plastic": 0.8,
+    "fruit": 0.7
+   },
+   "estimator": "heldout",
+   "n_cases": 54,
+   "mean_reading_value": 0.011497794398840544,
+   "reading_between_case_se": 0.001802875616291816,
+   "reading_mc_se": 0.00041372561835500884,
+   "mean_evoi": 0.011497794398840544,
+   "evoi_between_case_se": 0.001802875616291816,
+   "evoi_mc_se": 0.00041372561835500884,
+   "plugin_mean_reading_value": 0.012217599825063886,
+   "plugin_mean_evoi": 0.012217599825063886,
+   "reading_value_at_most_2_se_above_0": null,
+   "reading_law": {
+    "kind": "mix2",
+    "w": 0.535507624648611,
+    "b1": 0.2423521829174573,
+    "sd1": 0.29956201409303856,
+    "b2": -0.24862281239259665,
+    "sd2": 0.3412381881905876
+   }
+  }
+ ]
+}

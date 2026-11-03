@@ -1,0 +1,49 @@
+{
+ "version": 2,
+ "features": "true",
+ "prior": "lab_generator_v11",
+ "kind": "classifier",
+ "success_model": "success_model.joblib",
+ "hazard_model": null,
+ "metrics": "success_model_metrics.json",
+ "corpus": [
+  "robots/mujoco_lab/data/corpus_v11.jsonl",
+  "robots/mujoco_lab/data/corpus_fixtures_v11.jsonl"
+ ],
+ "split_seed": 0,
+ "feature_schema": "m2b",
+ "outcome_schema": "m2b",
+ "decision": {
+  "abstain_cost": 1.0,
+  "evoi": "heldout",
+  "probe_time_scale": 1.0
+ },
+ "sensor": {
+  "force_noise": 0.05
+ },
+ "generator": "v11",
+ "readout_model": "readout_model.json",
+ "guard": "knn_guard.npz",
+ "tempers": {
+  "readout": 1.0,
+  "probe": 1.0
+ },
+ "classes": {
+  "path": "fragility_classes_v11.json",
+  "sha256": "79608f95d3221e7413456b1cdcd143a5121c126c3fe3f53843547f3173603528"
+ },
+ "thresholds": {
+  "path": "thresholds_v1.json",
+  "sha256": "389fcaae23380196a3344ffdde53cfa0a34e51a7ad3ab2514b6cad82f68509dc"
+ },
+ "fold": 2,
+ "n_folds": 5,
+ "folds": "../folds.json",
+ "probe_models": {
+  "weigh": "probe_weigh.joblib",
+  "push": "probe_push.joblib",
+  "squeeze": "probe_squeeze.joblib"
+ },
+ "probe_metrics": "probe_metrics.json",
+ "probe_corpus": "robots/mujoco_lab/data/probe_corpus_v10.jsonl"
+}

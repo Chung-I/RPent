@@ -57,3 +57,13 @@ robots/mujoco_lab/data/m2b2/folds/*
 !robots/mujoco_lab/data/m2b2/folds/fold_*/
 robots/mujoco_lab/data/m2b2/folds/fold_*/*
 !robots/mujoco_lab/data/m2b2/folds/fold_*/*.json
+# the generator v11 bundle m2b2_v11 and its folds: as milestone 2b2's
+!robots/mujoco_lab/data/m2b2_v11/
+robots/mujoco_lab/data/m2b2_v11/*
+!robots/mujoco_lab/data/m2b2_v11/*.json
+!robots/mujoco_lab/data/m2b2_v11/folds/
+robots/mujoco_lab/data/m2b2_v11/folds/*
+!robots/mujoco_lab/data/m2b2_v11/folds/*.json
+!robots/mujoco_lab/data/m2b2_v11/folds/fold_*/
+robots/mujoco_lab/data/m2b2_v11/folds/fold_*/*
+!robots/mujoco_lab/data/m2b2_v11/folds/fold_*/*.json

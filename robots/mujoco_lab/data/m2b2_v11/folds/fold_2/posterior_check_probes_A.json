@@ -1,0 +1,219 @@
+{
+ "bundle": "/home/chungyili/Codes/RPent-real/robots/mujoco_lab/data/m2b2_v11/folds/fold_2",
+ "split": "val",
+ "probes": "A",
+ "objects": [
+  "handal__pink_spaghetti_spoon",
+  "handal__red_serving_spoon",
+  "hope__bbq_sauce_bottle",
+  "hope__butter",
+  "hope__green_beans_can",
+  "hope__ketchup_bottle",
+  "hope__peas_and_carrots",
+  "hope__pineapple_slices_can",
+  "ycb__spam_can"
+ ],
+ "n": 187,
+ "n_particles": 2000,
+ "temper": 1.0,
+ "feasible": false,
+ "chosen_on": "val",
+ "mass_cov80": 0.7700534759358288,
+ "mu_cov80": 0.8663101604278075,
+ "com_cov80": 0.7807486631016043,
+ "acceptance_b": {
+  "bounds": [
+   0.75,
+   0.85
+  ],
+  "pass": false
+ },
+ "prior_cov80": {
+  "mass": 0.7967914438502673,
+  "mu": 0.8502673796791443,
+  "com": 0.786096256684492
+ },
+ "truth": "generator",
+ "sim_truth": {
+  "cov80": {
+   "mass": 0.7700534759358288,
+   "mu": 0.8663101604278075,
+   "com": 0.679144385026738
+  },
+  "prior_cov80": {
+   "mass": 0.7967914438502673,
+   "mu": 0.8502673796791443,
+   "com": 0.7272727272727273
+  }
+ },
+ "by_kind": {
+  "slid": {
+   "n": 1,
+   "mass_cov80": 1.0,
+   "mu_cov80": 1.0,
+   "com_cov80": 0.0
+  },
+  "slid+damaged": {
+   "n": 30,
+   "mass_cov80": 0.7,
+   "mu_cov80": 0.8666666666666667,
+   "com_cov80": 0.8333333333333334
+  },
+  "slid+lower_bound": {
+   "n": 12,
+   "mass_cov80": 0.5,
+   "mu_cov80": 0.75,
+   "com_cov80": 0.8333333333333334
+  },
+  "slid+measured": {
+   "n": 139,
+   "mass_cov80": 0.7985611510791367,
+   "mu_cov80": 0.8705035971223022,
+   "com_cov80": 0.7697841726618705
+  },
+  "tipped+lower_bound": {
+   "n": 1,
+   "mass_cov80": 1.0,
+   "mu_cov80": 1.0,
+   "com_cov80": 1.0
+  },
+  "tipped+measured": {
+   "n": 4,
+   "mass_cov80": 1.0,
+   "mu_cov80": 1.0,
+   "com_cov80": 0.75
+  }
+ },
+ "grid": {
+  "0.7": {
+   "mass": 0.6524064171122995,
+   "mu": 0.8288770053475936,
+   "com": 0.7807486631016043
+  },
+  "0.85": {
+   "mass": 0.7219251336898396,
+   "mu": 0.8609625668449198,
+   "com": 0.7807486631016043
+  },
+  "1.0": {
+   "mass": 0.7700534759358288,
+   "mu": 0.8663101604278075,
+   "com": 0.7807486631016043
+  },
+  "1.25": {
+   "mass": 0.8235294117647058,
+   "mu": 0.8716577540106952,
+   "com": 0.7807486631016043
+  },
+  "1.5": {
+   "mass": 0.839572192513369,
+   "mu": 0.893048128342246,
+   "com": 0.7754010695187166
+  },
+  "2.0": {
+   "mass": 0.8823529411764706,
+   "mu": 0.893048128342246,
+   "com": 0.7754010695187166
+  },
+  "3.0": {
+   "mass": 0.9090909090909091,
+   "mu": 0.9090909090909091,
+   "com": 0.7914438502673797
+  }
+ },
+ "width80_median": {
+  "prior": {
+   "mass": 0.3183996718308092,
+   "mu": 0.6396735930125761,
+   "com": 0.20055635465173993
+  },
+  "posterior": {
+   "mass": 0.029775322173382218,
+   "mu": 0.35488430430039575,
+   "com": 0.19193211108807645
+  }
+ },
+ "terms": {
+  "used": {
+   "push_kind": 187,
+   "push_reading": 182,
+   "push_not_thrown": 186,
+   "weigh_kind": 186,
+   "weigh_reading": 144,
+   "weigh_not_thrown": 185
+  },
+  "rejected": {}
+ },
+ "laws": {
+  "weigh": {
+   "measured": {
+    "kind": "normal",
+    "w": 1.0,
+    "sd1": 0.05,
+    "sd2": null
+   },
+   "lower_bound": {
+    "kind": "normal",
+    "w": 1.0,
+    "sd1": 0.15676403093904387,
+    "sd2": null
+   }
+  },
+  "push": {
+   "slid": {
+    "kind": "mix2",
+    "w": 0.7176472873507893,
+    "sd1": 0.26132067474085086,
+    "sd2": 0.610530774199415
+   }
+  },
+  "squeeze": {
+   "measured": {
+    "kind": "normal",
+    "w": 1.0,
+    "sd1": 0.09632224490229793,
+    "sd2": null
+   }
+  }
+ },
+ "seconds": 62.5,
+ "n_with_weigh": 186,
+ "acceptance_b2": {
+  "bounds": [
+   0.75,
+   0.85
+  ],
+  "min_cases": 30,
+  "min_objects": 4,
+  "mass": {
+   "n": 187,
+   "n_objects": 9,
+   "coverage": 0.7700534759358288,
+   "ci": [
+    0.7428463203463204,
+    0.7979274611398963
+   ],
+   "verdict": "pass"
+  },
+  "mu": {
+   "n": 187,
+   "n_objects": 9,
+   "coverage": 0.8663101604278075,
+   "ci": [
+    0.7368421052631579,
+    0.9533678756476683
+   ],
+   "verdict": "undecided"
+  },
+  "com": {
+   "n": 187,
+   "n_objects": 9,
+   "coverage": 0.7807486631016043,
+   "ci": [
+    0.7218841285296982,
+    0.8287080362448009
+   ],
+   "verdict": "reported"
+  }
+ }
+}
