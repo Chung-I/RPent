@@ -19,8 +19,8 @@ design document). Each rung adds one part to the rung below:
   outcome and the pad readouts (e1.render_result as the no-menu planner reads it);
 * B, + the posterior: the skill's belief about the hidden properties: mass, friction, the centre of mass along the long
   axis and P(shifted toward one end), and, where the object has them, its damage thresholds, stiffness and fill;
-* C, + the outcome predictions: each attempt row's probabilities of the eleven outcomes, each probe row's result kinds
-  and P(thrown);
+* C, + the outcome predictions: each attempt row's probabilities of the eleven outcomes, each probe row's possible
+  results and P(thrown);
 * D, + the action values: each row's expected cost at the true setting (the menu at the setting's kappa, A and recovery,
   as the oracle rule sees it), decline at A, and each probe row's value of information.
 
@@ -233,10 +233,15 @@ def belief_text(B: dict[str, Any]) -> str:
     return "; ".join(parts)
 
 
-def prediction_text(r: dict[str, Any]) -> str:
+THROWN_FIRST = "P(thrown: the probe knocks the object off its support)"   # the definition, on its first use in a view
+SAME_PINCH = "the same pinch and motion as commit_std; it is charged {t:.0f} s (commit_std {t_std:.0f} s)"
+
+
+def prediction_text(r: dict[str, Any], define_thrown: bool = False) -> str:
+    """C's line of one row; ``define_thrown`` spells out P(thrown) (its first use in a view)."""
     if r["kind"] == "probe":
         kinds = ", ".join(f"{k} {float(x):.2f}" for k, x in sorted(r["p_kind"].items(), key=lambda kv: -float(kv[1] or 0)))
-        return f"result kinds {kinds}; P(thrown) {e1._f(r['p_thrown'])}"
+        return f"possible results: {kinds}; {THROWN_FIRST if define_thrown else 'P(thrown)'} {e1._f(r['p_thrown'])}"
     p = r["p"]
     irr, rec = sum(float(p[k]) for k in IRREVERSIBLE), sum(float(p[k]) for k in RECOVERABLE)
     return (f"P(placed_stable) {e1._f(p['placed_stable'])}; irreversible {irr:.2f} ({e1._top(p, IRREVERSIBLE)}); recoverable "
@@ -253,9 +258,19 @@ def value_text(r: dict[str, Any], D: dict[str, Any]) -> str:
             "the irreversible cost when the probe throws or damages the object)")
 
 
+def row_text(r: dict[str, Any], rows: list[dict[str, Any]]) -> str | None:
+    """The text of row ``r``'s action: the skill's, but for regrasp_com with commit_std's action (the same pinch and
+    motion), which says so and names both rows' times (the skill's reason string stays in menu.py)."""
+    std = next((x for x in rows if x["id"] == "commit_std"), None)
+    if r["id"] == "regrasp_com" and std is not None and r["action"] == std["action"]:
+        return SAME_PINCH.format(t=r["time_s"], t_std=std["time_s"])
+    return r.get("what")
+
+
 def render_state(rung: str, inputs: dict[str, Any], destination: str, rng: np.random.Generator) -> tuple[str, list[str]]:
     """(text, option ids) of one decision point at ``rung``: from B the belief, then the shown rows (C's) in a random
-    order (``rng``) with their action and time, from C their predictions, from D their values; decline last."""
+    order (``rng``) with their action and time, from C their predictions (P(thrown) defined on its first use), from D
+    their values after a line on the cost unit; decline last."""
     if rung not in RUNGS:
         raise ValueError(f"unknown rung {rung!r}: one of {RUNGS}")
     k = RUNGS.index(rung)
@@ -266,14 +281,19 @@ def render_state(rung: str, inputs: dict[str, Any], destination: str, rng: np.ra
     if k >= 1:
         lines.append("The skill's belief about the object's hidden properties (median and 80 % interval): "
                      + belief_text(inputs["B"]) + ".")
+    if k >= 3:
+        lines.append(f"Expected costs are in the task's cost units (decline costs {e1._f(inputs['D']['rows']['decline'])} here).")
     lines.append({0: "Actions (in random order):", 1: "Actions (in random order):",
                   2: "Actions (in random order) with the skill's outcome predictions:",
                   3: "Actions (in random order) with the skill's outcome predictions and expected costs:"}[k])
+    thrown_defined = False
     for r in rows:
-        what = e1._row_action({"kind": r["kind"], "action": r["action"], "reason": r.get("what")}, destination)
+        what = e1._row_action({"kind": r["kind"], "action": r["action"], "reason": row_text(r, rows)}, destination)
         line = f"- {r['id']} ({r['kind']}): {what}; about {r['time_s']:.0f} s."
         if k >= 2:
-            line += "\n  " + prediction_text(r) + ("; " + value_text(r, inputs["D"]) if k >= 3 else "") + "."
+            define = r["kind"] == "probe" and not thrown_defined
+            thrown_defined = thrown_defined or define
+            line += "\n  " + prediction_text(r, define) + ("; " + value_text(r, inputs["D"]) if k >= 3 else "") + "."
         lines.append(line)
     tail = f"; cost {e1._f(inputs['D']['rows']['decline'])}" if k >= 3 else ""
     lines.append(f"- decline: abstain; the task ends without the object placed{tail}.")

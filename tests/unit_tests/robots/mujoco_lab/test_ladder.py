@@ -125,8 +125,61 @@ def test_each_rung_adds_its_part_to_the_rung_below():
     A, B, C, D = (views[r][0] for r in ladder.RUNGS)
     assert "belief" not in A and "P(placed_stable)" not in A and "expected cost" not in A
     assert "The skill's belief" in B and "mass 0.6" in B and "crush" in B and "P(placed_stable)" not in B
-    assert "P(placed_stable) 0.60" in C and "result kinds" in C and "expected cost" not in C and "value of information" not in C
+    assert "P(placed_stable) 0.60" in C and "possible results:" in C and "expected cost" not in C and "value of information" not in C
     assert "expected cost 2.50" in D and "expected cost 2.00" in D and "value of information 0.70" in D and "cost 3.00" in D
+
+
+def _inputs(a):
+    return {"B": ladder.posterior(_belief()), "C": ladder.predictions(a), "D": ladder.values(a)}
+
+
+def _line(text, rid):
+    return next(line for line in text.splitlines() if line.startswith(f"- {rid} "))
+
+
+def test_a_probe_row_lists_its_possible_results():
+    text = ladder.render_state("C", _inputs(_a()), "table_edge", np.random.default_rng(0))[0]
+    assert "possible results: measured 0.60, lower_bound 0.40" in text and "result kinds" not in text
+
+
+def test_p_thrown_is_defined_on_its_first_use_only():
+    a = _menu([_row("light_grip"), _probe_row("probe_weigh"), _probe_row("probe_squeeze")])
+    first = "P(thrown: the probe knocks the object off its support) 0.01"
+    for rung in ("C", "D"):
+        text = ladder.render_state(rung, _inputs(a), "table_edge", np.random.default_rng(0))[0]
+        assert text.count(first) == 1 and text.count("P(thrown) 0.01") == 1
+        assert text.index(first) < text.index("P(thrown) 0.01")
+
+
+def _std_and_regrasp(**action):
+    std = _row("commit_std", kind="commit", cost=2.4)
+    std["reason"] = ""
+    regrasp = _row("regrasp_com", cost=2.6)
+    regrasp.update(cost_s=10.0, reason="the standard pinch is already nearest the believed centre of mass")
+    regrasp["action"] = {**regrasp["action"], **action}
+    return std, regrasp
+
+
+def test_a_regrasp_with_the_standard_pinch_says_so_and_names_both_times():
+    a = _menu(list(_std_and_regrasp()), "commit", "commit_std")
+    line = _line(ladder.render_state("A", _inputs(a), "table_edge", np.random.default_rng(0))[0], "regrasp_com")
+    assert "the same pinch and motion as commit_std; it is charged 10 s (commit_std 8 s)" in line
+    assert "already nearest" not in line
+
+
+def test_a_regrasp_with_its_own_pinch_keeps_the_skill_text():
+    std, regrasp = _std_and_regrasp(s=0.3)
+    regrasp["reason"] = "pinch nearer the believed centre of mass"
+    line = _line(ladder.render_state("A", _inputs(_menu([std, regrasp], "commit", "commit_std")), "table_edge",
+                                     np.random.default_rng(0))[0], "regrasp_com")
+    assert "pinch nearer the believed centre of mass" in line and "same pinch" not in line
+
+
+def test_rung_d_states_the_cost_unit_before_the_list():
+    views = {r: ladder.render_state(r, _inputs(_a()), "table_edge", np.random.default_rng(0))[0] for r in ("C", "D")}
+    unit = "Expected costs are in the task's cost units (decline costs 3.00 here)."
+    assert unit not in views["C"]
+    assert views["D"].count(unit) == 1 and views["D"].index(unit) < views["D"].index("Actions (in random order)")
 
 
 def test_the_rows_order_follows_the_rng_and_decline_stays_last():
