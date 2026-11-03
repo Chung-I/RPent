@@ -265,3 +265,11 @@ def test_ops_counts_resets_not_at_rest():
             {"rung": "B", "ended": "abstained", "calls": [], "seconds": 6.0, "reset": {"at_rest": True}},
             {"rung": "B", "ended": "abstained", "calls": [], "seconds": 6.0}]
     assert ladder.ops(rows)["rungs"]["B"]["reset_not_at_rest"] == 1
+
+
+def test_pilot_model_takes_the_sampling():
+    ladder._WORKER.clear()
+    m = ladder._pilot_model({"base_url": "http://127.0.0.1:1/v1", "model": "qwen", "max_tokens": 100, "temperature": 1.0,
+                             "top_p": 0.95, "top_k": 20})
+    ladder._WORKER.clear()
+    assert (m.model, m.max_tokens, m.temperature, m.top_p, m.top_k, m.thinking) == ("qwen", 100, 1.0, 0.95, 20, True)

@@ -309,3 +309,39 @@ def test_a_planner_run_records_its_generator_and_refuses_a_directory_of_another(
     monkeypatch.setenv("RPENT_LAB_GENERATOR", "v10")
     with pytest.raises(ValueError, match="generator v11"):
         e1.run(str(plan), out_dir=str(tmp_path / "v11"), **args)
+
+
+class _FakeCompletions:
+    def __init__(self):
+        self.kwargs = None
+
+    def create(self, **kwargs):
+        from types import SimpleNamespace as N
+
+        self.kwargs = kwargs
+        call = N(function=N(name="choose", arguments='{"option_id": "decline", "reason": "r"}'))
+        return N(choices=[N(message=N(tool_calls=[call], content="", reasoning_content="think"), finish_reason="tool_calls")],
+                 usage=N(prompt_tokens=10, completion_tokens=3))
+
+
+def _planner(**kw):
+    from types import SimpleNamespace as N
+
+    p = e1.GemmaPlanner("http://127.0.0.1:1/v1", **kw)
+    fake = _FakeCompletions()
+    p.client = N(chat=N(completions=fake))
+    return p, fake
+
+
+def test_planner_sends_no_top_p_or_top_k_by_default():
+    p, fake = _planner()
+    r = p([{"role": "user", "content": "x"}], e1.tool_schema(["decline"]))
+    assert r["tool"] == "choose" and r["usage"] == {"prompt": 10, "completion": 3}
+    assert "top_p" not in fake.kwargs and "top_k" not in fake.kwargs["extra_body"]
+    assert fake.kwargs["temperature"] == 0.0 and fake.kwargs["extra_body"]["chat_template_kwargs"] == {"enable_thinking": True}
+
+
+def test_planner_passes_top_p_and_top_k():
+    p, fake = _planner(temperature=1.0, top_p=0.95, top_k=20)
+    p([{"role": "user", "content": "x"}], e1.tool_schema(["decline"]))
+    assert fake.kwargs["temperature"] == 1.0 and fake.kwargs["top_p"] == 0.95 and fake.kwargs["extra_body"]["top_k"] == 20

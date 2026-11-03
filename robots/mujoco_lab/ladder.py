@@ -588,7 +588,9 @@ _WORKER: dict[str, Any] = {}
 def _pilot_model(cfg: dict[str, Any]) -> Any:
     if "model" not in _WORKER:
         _WORKER["model"] = (e1.StubPlanner(os.getpid()) if cfg.get("stub")
-                            else e1.GemmaPlanner(cfg["base_url"], cfg["model"], max_tokens=cfg["max_tokens"], thinking=True))
+                            else e1.GemmaPlanner(cfg["base_url"], cfg["model"], max_tokens=cfg["max_tokens"],
+                                                 temperature=cfg.get("temperature", 0.0), thinking=True, top_p=cfg.get("top_p"),
+                                                 top_k=cfg.get("top_k")))
     return _WORKER["model"]
 
 
@@ -622,9 +624,12 @@ def pilot_job(item: tuple[dict[str, Any], dict[str, Any]]) -> list[dict[str, Any
 
 
 def run_pilot(cases_path: str, rungs: list[str], templates_path: str, crossfit: str, base_url: str | None, model: str,
-              stub: bool, workers: int, out_dir: str, max_calls: int = e1.MAX_CALLS, max_tokens: int = 6144) -> str:
+              stub: bool, workers: int, out_dir: str, max_calls: int = e1.MAX_CALLS, max_tokens: int = 6144,
+              sampling: dict[str, Any] | None = None) -> str:
     """Every smoke case at every rung (resuming: a (case, rung) in rows.jsonl is skipped; a directory of another
-    bundle, generator, templates file or model is an error); each run segment's start and end in run_times.jsonl."""
+    bundle, generator, templates file, model or sampling is an error); each run segment's start and end in
+    run_times.jsonl. ``sampling``: temperature (default 0, as e1), top_p and top_k (sent only when given)."""
+    sampling = {"temperature": 0.0, "top_p": None, "top_k": None, **(sampling or {})}
     from robots.mujoco_lab.calibrate import code_revision
     from robots.mujoco_lab.corpus import lab_generator
 
@@ -638,15 +643,16 @@ def run_pilot(cases_path: str, rungs: list[str], templates_path: str, crossfit: 
     if os.path.isdir(out_dir):
         for held in sorted(p for p in os.listdir(out_dir) if p.startswith("run_config_")):
             c = json.load(open(os.path.join(out_dir, held)))
-            if (c.get("templates_sha256"), c.get("model"), c.get("stub")) != (sha, model, stub):
-                raise ValueError(f"{out_dir} holds a run of other templates, another model or stub mode ({held})")
+            held_sampling = {k: (c.get("planner") or {}).get(k) for k in sampling}
+            if (c.get("templates_sha256"), c.get("model"), c.get("stub"), held_sampling) != (sha, model, stub, sampling):
+                raise ValueError(f"{out_dir} holds a run of other templates, another model, stub mode or sampling ({held})")
     os.makedirs(out_dir, exist_ok=True)
     settings = {c["setting"]: e1_gap.grid()[c["setting"]] for c in cases}
     with open(os.path.join(out_dir, f"run_config_{time.strftime('%Y%m%dT%H%M%S')}.json"), "w") as f:
         json.dump({"cases": os.path.abspath(cases_path), "rungs": rungs, "templates": os.path.abspath(templates_path),
                    "templates_sha256": sha, "templates_version": tpl.get("version"), "crossfit": crossfit, "generator": lab_generator(),
                    "base_url": base_url, "model": model, "stub": stub, "workers": workers, "max_calls": max_calls,
-                   "max_attempts": e1.MAX_ATTEMPTS, "planner": {"temperature": 0.0, "max_tokens": max_tokens, "thinking": True},
+                   "max_attempts": e1.MAX_ATTEMPTS, "planner": {**sampling, "max_tokens": max_tokens, "thinking": True},
                    "settings": settings, "code": code_revision()}, f, indent=1)
     path = os.path.join(out_dir, "rows.jsonl")
     done = set()
@@ -654,7 +660,8 @@ def run_pilot(cases_path: str, rungs: list[str], templates_path: str, crossfit: 
         with open(path) as f:
             done = {(r["object"], r["idx"], r["seed"], r["setting"], r["rung"]) for r in map(json.loads, filter(str.strip, f))}
     cfg = {"crossfit": crossfit, "folds": json.load(open(os.path.join(crossfit, "folds.json"))), "settings": settings,
-           "templates": tpl, "base_url": base_url, "model": model, "stub": stub, "max_calls": max_calls, "max_tokens": max_tokens}
+           "templates": tpl, "base_url": base_url, "model": model, "stub": stub, "max_calls": max_calls, "max_tokens": max_tokens,
+           **sampling}
     todo = []
     for c in cases:
         left = [r for r in rungs if (c["object"], c["idx"], c["seed"], c["setting"], r) not in done]
@@ -778,6 +785,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--workers", type=int, default=8)
     p.add_argument("--max-calls", type=int, default=e1.MAX_CALLS)
     p.add_argument("--max-tokens", type=int, default=6144)
+    p.add_argument("--temperature", type=float, default=0.0)
+    p.add_argument("--top-p", type=float, default=None)
+    p.add_argument("--top-k", type=int, default=None)
     p.add_argument("--out", required=True)
     p = sub.add_parser("ops", help="the pilot's operational numbers (no choice, outcome or cost)")
     p.add_argument("--dir", required=True)
@@ -817,7 +827,7 @@ def main(argv: list[str] | None = None) -> int:
         if any(r not in RUNGS for r in rungs):
             ap.error(f"rungs must be among {RUNGS}")
         print(run_pilot(a.cases, rungs, a.templates, a.crossfit, a.base_url, a.model, a.stub, a.workers, a.out, a.max_calls,
-                        a.max_tokens))
+                        a.max_tokens, {"temperature": a.temperature, "top_p": a.top_p, "top_k": a.top_k}))
         return 0
     if a.cmd == "ops":
         with open(os.path.join(a.dir, "rows.jsonl")) as f:

@@ -510,22 +510,28 @@ def planner_loop(tools: Any, model: Callable[..., dict[str, Any]], arm: str, ins
 # ---------------------------------------------------------------- the model
 
 class GemmaPlanner:
-    """The served model through its OpenAI-compatible endpoint (thinking on by default); three tries per call."""
+    """The served model through its OpenAI-compatible endpoint (thinking on by default); three tries per call. ``top_p``
+    and ``top_k`` (vLLM's extra field) are sent only when given."""
 
     def __init__(self, base_url: str, model: str = MODEL, max_tokens: int = 6144, temperature: float = 0.0,
-                 thinking: bool = True, timeout: float = 600.0):
+                 thinking: bool = True, timeout: float = 600.0, top_p: float | None = None, top_k: int | None = None):
         from openai import OpenAI
 
         self.client = OpenAI(base_url=base_url, api_key="none", timeout=timeout)
         self.model, self.max_tokens, self.temperature, self.thinking = model, max_tokens, temperature, thinking
+        self.top_p, self.top_k = top_p, top_k
 
     def __call__(self, messages: list[dict[str, Any]], tools: list[dict[str, Any]]) -> dict[str, Any]:
         t0, last = time.time(), None
         for k in range(3):
             try:
+                extra: dict[str, Any] = {"chat_template_kwargs": {"enable_thinking": self.thinking}}
+                if self.top_k is not None:
+                    extra["top_k"] = self.top_k
+                more = {} if self.top_p is None else {"top_p": self.top_p}
                 r = self.client.chat.completions.create(
                     model=self.model, messages=messages, tools=tools, tool_choice="auto", max_tokens=self.max_tokens,
-                    temperature=self.temperature, extra_body={"chat_template_kwargs": {"enable_thinking": self.thinking}})
+                    temperature=self.temperature, extra_body=extra, **more)
                 m = r.choices[0].message
                 call = (m.tool_calls or [None])[0]
                 args = None
