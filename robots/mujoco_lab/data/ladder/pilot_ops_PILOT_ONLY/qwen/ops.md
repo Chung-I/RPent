@@ -1,0 +1,15 @@
+# Qwen3.8-27B FP8 (pilot): operational numbers only
+
+No choice, outcome or cost is read here. Malformed: a reply with no valid option id (no tool call, or an id not on the list); refusal: a reply with no tool call whose text reads as a refusal (a keyword match).
+
+| rung | runs | errors | call cap | malformed | no tool call | refusals | failed calls | length finishes | resets not at rest | calls per run (mean, max) | tokens in per call (mean, max) | tokens out per call (mean, max) | tokens in per run (mean) | tokens out per run (mean) | model s per call (mean, p90) | minutes per run (mean, p90) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| A | 12 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 1.42, 3 | 1622, 2629 | 3535, 12958 | 2298 | 5009 | 42.1, 88.1 | 1.03, 2.07 |
+| B | 12 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 1.25, 3 | 1794, 3109 | 3806, 14428 | 2242 | 4757 | 44.3, 70.2 | 0.95, 2.13 |
+| C | 12 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 1.17, 3 | 2260, 4615 | 4249, 12588 | 2637 | 4957 | 51.0, 120.3 | 1.01, 2.27 |
+| D | 12 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 1.25, 3 | 2592, 4965 | 2892, 10171 | 3240 | 3615 | 34.8, 61.8 | 0.75, 1.61 |
+| all | 48 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 4 | 1.27, 3 | 2049, 4965 | 3607, 14428 | 2604 | 4584 | 42.9, 84.5 | 0.94, 2.14 |
+
+Wall time: 7.6 min for 48 rung runs at [8] workers on one GPU: 0.159 min per rung run. Server start: 3.4 min.
+Full ladder at the n50 sizes (rungs A-D x 426 cases = 1704 rung runs, the same workers): about 4.6 GPU-hours for this model (from the wall time, with the pilot's tail).
+From the mean minutes per rung run (0.94) at 8 workers: about 3.4 GPU-hours (no tail).
