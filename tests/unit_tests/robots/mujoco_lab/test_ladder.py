@@ -273,3 +273,23 @@ def test_pilot_model_takes_the_sampling():
                              "top_p": 0.95, "top_k": 20})
     ladder._WORKER.clear()
     assert (m.model, m.max_tokens, m.temperature, m.top_p, m.top_k, m.thinking) == ("qwen", 100, 1.0, 0.95, 20, True)
+
+
+def test_check_ignores_the_row_order_of_c():
+    def rec(obj, setting, rows, mass=0.5):
+        return {"object": obj, "idx": 0, "seed": 13, "setting": setting, "assessed": True, "B": {"mass": {"median": mass}},
+                "C": [{"id": i, "kind": "commit", "p": {"placed_stable": p}} for i, p in rows],
+                "check": {"match": True}}
+    a, b = [("light_grip", 0.8), ("slow_lift", 0.9)], [("slow_lift", 0.9), ("light_grip", 0.8)]
+    c = ladder.check([rec("x", "k100_A3_abs", a), rec("x", "k30_A3_abs", b),
+                      rec("y", "k100_A3_abs", a), rec("y", "k30_A3_abs", [("slow_lift", 0.9), ("light_grip", 0.7)])])
+    assert c["bc_same_across_settings"] == 1 and c["bc_differ"] == ["y/0"]
+
+
+def test_probe_value_text_counts_the_probe_risk_in_the_cost_after():
+    a = _a()
+    D = ladder.values(a)
+    probe = [r for r in ladder.predictions(a) if r["kind"] == "probe"][0]
+    t = ladder.value_text(probe, D)
+    assert "the expected cost after it, which counts the irreversible cost when the probe throws or damages the object" in t
+    assert "best row's expected cost after it" not in t

@@ -249,7 +249,8 @@ def value_text(r: dict[str, Any], D: dict[str, Any]) -> str:
         return f"expected cost {e1._f(cost)}"
     v = D["probes"][r["id"]]
     return (f"value of information {e1._f(v['evoi'])} (Monte Carlo error {e1._f(v['evoi_se'])}); expected cost {e1._f(cost)} "
-            f"(its time and risk plus the best row's expected cost after it, {e1._f(v['expected_cost_after'])})")
+            f"(its time and any push-tip charge plus {e1._f(v['expected_cost_after'])}, the expected cost after it, which counts "
+            "the irreversible cost when the probe throws or damages the object)")
 
 
 def render_state(rung: str, inputs: dict[str, Any], destination: str, rng: np.random.Generator) -> tuple[str, list[str]]:
@@ -397,7 +398,8 @@ def expected_oracle(d: str) -> dict[tuple, dict[str, Any]]:
 
 def check(recs: list[dict[str, Any]], expected: dict[tuple, dict[str, Any]] | None = None) -> dict[str, Any]:
     """Per setting: the first decisions, those with no menu, the lowest-value policy's matches and its mismatches by
-    reason (with the cases), B and C the same under every setting of a case (they do not depend on kappa or A), and,
+    reason (with the cases), B and C (by row id) the same under every setting of a case (they do not depend on kappa
+    or A), and,
     with the gap rescore's oracle records, the cases whose true first menu (rows, costs, recommendation) or recorded
     first choice differs from this run's."""
     by: dict[str, Any] = {}
@@ -430,7 +432,10 @@ def check(recs: list[dict[str, Any]], expected: dict[tuple, dict[str, Any]] | No
     for r in recs:
         if r.get("assessed"):
             cases.setdefault((r["object"], int(r["idx"]), int(r["seed"])), []).append(r)
-    same = [k for k, rs in cases.items() if all(json.dumps([x["B"], x["C"]], sort_keys=True) == json.dumps([rs[0]["B"], rs[0]["C"]], sort_keys=True) for x in rs)]
+    def bc(x: dict[str, Any]) -> str:   # C by row id: the menu's row order follows the costs, so it changes with kappa and A
+        return json.dumps([x["B"], {row["id"]: row for row in x["C"]}], sort_keys=True)
+
+    same = [k for k, rs in cases.items() if all(bc(x) == bc(rs[0]) for x in rs)]
     return {"settings": by, "cases": len(cases), "bc_same_across_settings": len(same),
             "bc_differ": [f"{o}/{i}" for (o, i, _s), _rs in cases.items() if (o, i, _s) not in set(same)]}
 
