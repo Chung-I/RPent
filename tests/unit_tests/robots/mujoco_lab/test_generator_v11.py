@@ -28,6 +28,9 @@ import pytest
 
 V11_SHA256 = "fcfab59ef2ee9168f83f93f9b2017dd1ca6f663a954fbc4b5b5a869a44287ade"      # table v11b
 CLASSES_V11_SHA256 = "79608f95d3221e7413456b1cdcd143a5121c126c3fe3f53843547f3173603528"
+CLASSES_V11C_SHA256 = "0b7c1d077b4c18122061a060ac5bd9ddb04c56d8249ac9b577e469a9e5ff7443"
+DEPICTED_BOXES = ("hope__butter", "hope__cream_cheese", "hot3d__frozen_vegetable_block", "hot3d__frozen_waffles")
+PARMESAN = "hope__parmesan_cheese_canister"
 # "breakable ceramic" in the lab, by its material rule; their real material (the products the v11 masses use)
 REAL_MATERIAL = {"ycb__mug": "metal", "ycb__bowl": "metal", "ycb__bowl2": "metal", "hot3d__clay_plates": "bamboo",
                  "hot3d__pitcher": "steel"}
@@ -614,6 +617,25 @@ def test_v11_classes_follow_the_real_material():
         assert old[k]["class"] == "breakable" and old[k]["law"] == "ceramic"
         assert new[k]["class"] == "none" and new[k]["law"] is None and material in new[k]["reason"]
         assert all(new[k].get(f) == old[k].get(f) for f in ("fillable", "cavity", "cavity_checked"))   # the tray has no cavity
+
+
+def test_v11c_classes_follow_the_depicted_real_product():
+    """fragility_classes_v11c.json (pinned; the user's decision of 2026-11-03: the class follows the depicted real
+    product, not the toy's material) is fragility_classes_v11.json but four boxes, which take the cardboard-box entry of
+    hope__macaroni_and_cheese (crushable, law cardboard), and the parmesan canister, whose reason now names the rigid
+    plastic canister (class none, no law, as before). v11 stays as it is: the bundle m2b2_v11 pins it."""
+    from robots.mujoco_lab.fragility import CLASSES_V11, DATA, load_classes
+
+    path = os.path.join(DATA, "fragility_classes_v11c.json")
+    assert hashlib.sha256(open(path, "rb").read()).hexdigest() == CLASSES_V11C_SHA256
+    old, new = load_classes(CLASSES_V11), load_classes(path)
+    assert set(old) == set(new) and {k for k in old if old[k] != new[k]} == set(DEPICTED_BOXES) | {PARMESAN}
+    box = {f: v for f, v in old["hope__macaroni_and_cheese"].items() if f != "reason"}
+    for k in DEPICTED_BOXES:
+        assert old[k]["class"] == "none" and {f: v for f, v in new[k].items() if f != "reason"} == box
+        assert "depicted real product: a cardboard box" in new[k]["reason"]
+    assert {f: v for f, v in new[PARMESAN].items() if f != "reason"} == {f: v for f, v in old[PARMESAN].items() if f != "reason"}
+    assert new[PARMESAN]["class"] == "none" and "rigid plastic canister" in new[PARMESAN]["reason"]
 
 
 def test_the_classes_default_follows_the_generator(monkeypatch):
