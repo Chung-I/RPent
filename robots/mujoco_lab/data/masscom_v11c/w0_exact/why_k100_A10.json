@@ -1,0 +1,4201 @@
+[
+ {
+  "object": "hope__parmesan_cheese_canister",
+  "idx": 5,
+  "fold": 2,
+  "setting": "k100_A10",
+  "care": 100.0,
+  "abstain_cost": 10.0,
+  "destination": "mouse_pad",
+  "at_rest": true,
+  "menus": {
+   "class": {
+    "recommendation": "commit",
+    "recommended_option": "firm_grip",
+    "best_option": "firm_grip",
+    "without_probe": "commit",
+    "guard_flag": false,
+    "costs": {
+     "inboard_place": 3.188,
+     "firm_grip": 5.063,
+     "commit_std": 6.364,
+     "regrasp_com": 6.464,
+     "gentle_carry": 6.538,
+     "probe_weigh": 6.847,
+     "slow_lift": 7.396,
+     "light_grip": 8.794,
+     "probe_push": 14.927,
+     "decline": 10.0
+    },
+    "rows": {
+     "inboard_place": {
+      "p": {
+       "placed_stable": 0.946,
+       "tipped": 0.023,
+       "missed": 0.002,
+       "dropped_low": 0.006,
+       "dropped_high": 0.003,
+       "rolled_off": 0.001,
+       "not_lifted": 0.019,
+       "crushed": 0.0,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 3.188,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "table_centre",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "firm_grip": {
+      "p": {
+       "placed_stable": 0.965,
+       "tipped": 0.014,
+       "missed": 0.001,
+       "dropped_low": 0.003,
+       "dropped_high": 0.002,
+       "rolled_off": 0.006,
+       "not_lifted": 0.009,
+       "crushed": 0.0,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 5.063,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 20.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "mouse_pad",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "commit_std": {
+      "p": {
+       "placed_stable": 0.944,
+       "tipped": 0.02,
+       "missed": 0.002,
+       "dropped_low": 0.006,
+       "dropped_high": 0.003,
+       "rolled_off": 0.008,
+       "not_lifted": 0.018,
+       "crushed": 0.0,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 6.364,
+      "probe": null,
+      "kind": "commit",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "mouse_pad",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "regrasp_com": {
+      "p": {
+       "placed_stable": 0.944,
+       "tipped": 0.02,
+       "missed": 0.002,
+       "dropped_low": 0.006,
+       "dropped_high": 0.003,
+       "rolled_off": 0.008,
+       "not_lifted": 0.018,
+       "crushed": 0.0,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 6.464,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "mouse_pad",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "gentle_carry": {
+      "p": {
+       "placed_stable": 0.945,
+       "tipped": 0.019,
+       "missed": 0.002,
+       "dropped_low": 0.005,
+       "dropped_high": 0.002,
+       "rolled_off": 0.009,
+       "not_lifted": 0.018,
+       "crushed": 0.0,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 6.538,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 0.5,
+       "destination": "mouse_pad",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "probe_weigh": {
+      "p": null,
+      "cost": 6.847,
+      "probe": {
+       "p_kind": {
+        "measured": 0.996,
+        "lower_bound": 0.003,
+        "lost": 0.0,
+        "damaged": 0.0
+       },
+       "p_thrown": 0.003,
+       "evoi": 0.0,
+       "evoi_se": 0.0,
+       "expected_cost_after": 6.647
+      },
+      "kind": "probe",
+      "action": {
+       "probe": "weigh",
+       "s": 0.5,
+       "force": 20.0
+      }
+     },
+     "slow_lift": {
+      "p": {
+       "placed_stable": 0.944,
+       "tipped": 0.02,
+       "missed": 0.002,
+       "dropped_low": 0.004,
+       "dropped_high": 0.003,
+       "rolled_off": 0.009,
+       "not_lifted": 0.018,
+       "crushed": 0.0,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 7.396,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.05,
+       "v_transport": 0.2,
+       "a_transport": 2.0,
+       "destination": "mouse_pad",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "light_grip": {
+      "p": {
+       "placed_stable": 0.886,
+       "tipped": 0.029,
+       "missed": 0.002,
+       "dropped_low": 0.014,
+       "dropped_high": 0.003,
+       "rolled_off": 0.011,
+       "not_lifted": 0.054,
+       "crushed": 0.0,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 8.794,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 5.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "mouse_pad",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "probe_push": {
+      "p": null,
+      "cost": 14.927,
+      "probe": {
+       "p_kind": {
+        "slid": 0.962,
+        "tipped": 0.032,
+        "no_breakaway": 0.003,
+        "no_contact": 0.003,
+        "damaged": 0.0
+       },
+       "p_thrown": 0.019,
+       "evoi": 0.0,
+       "evoi_se": 0.0,
+       "expected_cost_after": 14.796
+      },
+      "kind": "probe",
+      "action": {
+       "probe": "push",
+       "s": 0.5,
+       "force": 20.0
+      }
+     },
+     "decline": {
+      "p": null,
+      "cost": 10.0,
+      "probe": null,
+      "kind": "decline",
+      "action": {}
+     }
+    },
+    "matches_record": true
+   },
+   "generic": {
+    "recommendation": "decline",
+    "recommended_option": null,
+    "best_option": "regrasp_com",
+    "without_probe": "decline",
+    "guard_flag": false,
+    "costs": {
+     "inboard_place": 7.461,
+     "probe_weigh": 11.766,
+     "regrasp_com": 12.197,
+     "firm_grip": 14.02,
+     "commit_std": 16.46,
+     "gentle_carry": 16.937,
+     "light_grip": 18.408,
+     "slow_lift": 18.514,
+     "probe_push": 19.773,
+     "decline": 10.0
+    },
+    "rows": {
+     "inboard_place": {
+      "p": {
+       "placed_stable": 0.789,
+       "tipped": 0.051,
+       "missed": 0.002,
+       "dropped_low": 0.029,
+       "dropped_high": 0.006,
+       "rolled_off": 0.003,
+       "not_lifted": 0.119,
+       "crushed": 0.0,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 7.461,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "table_centre",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "probe_weigh": {
+      "p": null,
+      "cost": 11.766,
+      "probe": {
+       "p_kind": {
+        "measured": 0.985,
+        "lower_bound": 0.013,
+        "lost": 0.002,
+        "damaged": 0.0
+       },
+       "p_thrown": 0.003,
+       "evoi": 0.003,
+       "evoi_se": 0.037,
+       "expected_cost_after": 11.566
+      },
+      "kind": "probe",
+      "action": {
+       "probe": "weigh",
+       "s": 0.5,
+       "force": 20.0
+      }
+     },
+     "regrasp_com": {
+      "p": {
+       "placed_stable": 0.75,
+       "tipped": 0.105,
+       "missed": 0.002,
+       "dropped_low": 0.039,
+       "dropped_high": 0.008,
+       "rolled_off": 0.01,
+       "not_lifted": 0.086,
+       "crushed": 0.0,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 12.197,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "mouse_pad",
+       "release_height": null,
+       "s": 0.3
+      }
+     },
+     "firm_grip": {
+      "p": {
+       "placed_stable": 0.866,
+       "tipped": 0.037,
+       "missed": 0.002,
+       "dropped_low": 0.015,
+       "dropped_high": 0.004,
+       "rolled_off": 0.021,
+       "not_lifted": 0.055,
+       "crushed": 0.0,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 14.02,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 20.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "mouse_pad",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "commit_std": {
+      "p": {
+       "placed_stable": 0.784,
+       "tipped": 0.046,
+       "missed": 0.002,
+       "dropped_low": 0.026,
+       "dropped_high": 0.004,
+       "rolled_off": 0.023,
+       "not_lifted": 0.114,
+       "crushed": 0.0,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 16.46,
+      "probe": null,
+      "kind": "commit",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "mouse_pad",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "gentle_carry": {
+      "p": {
+       "placed_stable": 0.786,
+       "tipped": 0.045,
+       "missed": 0.002,
+       "dropped_low": 0.024,
+       "dropped_high": 0.004,
+       "rolled_off": 0.025,
+       "not_lifted": 0.115,
+       "crushed": 0.0,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 16.937,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 0.5,
+       "destination": "mouse_pad",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "light_grip": {
+      "p": {
+       "placed_stable": 0.662,
+       "tipped": 0.051,
+       "missed": 0.002,
+       "dropped_low": 0.039,
+       "dropped_high": 0.005,
+       "rolled_off": 0.024,
+       "not_lifted": 0.217,
+       "crushed": 0.0,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 18.408,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 5.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "mouse_pad",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "slow_lift": {
+      "p": {
+       "placed_stable": 0.784,
+       "tipped": 0.046,
+       "missed": 0.002,
+       "dropped_low": 0.02,
+       "dropped_high": 0.005,
+       "rolled_off": 0.026,
+       "not_lifted": 0.116,
+       "crushed": 0.0,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 18.514,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.05,
+       "v_transport": 0.2,
+       "a_transport": 2.0,
+       "destination": "mouse_pad",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "probe_push": {
+      "p": null,
+      "cost": 19.773,
+      "probe": {
+       "p_kind": {
+        "slid": 0.952,
+        "tipped": 0.036,
+        "no_breakaway": 0.003,
+        "no_contact": 0.008,
+        "damaged": 0.0
+       },
+       "p_thrown": 0.019,
+       "evoi": 0.0,
+       "evoi_se": 0.0,
+       "expected_cost_after": 19.638
+      },
+      "kind": "probe",
+      "action": {
+       "probe": "push",
+       "s": 0.5,
+       "force": 20.0
+      }
+     },
+     "decline": {
+      "p": null,
+      "cost": 10.0,
+      "probe": null,
+      "kind": "decline",
+      "action": {}
+     }
+    },
+    "matches_record": true
+   },
+   "exact_com": {
+    "recommendation": "commit",
+    "recommended_option": "firm_grip",
+    "best_option": "firm_grip",
+    "without_probe": "commit",
+    "guard_flag": false,
+    "costs": {
+     "inboard_place": 3.753,
+     "firm_grip": 4.14,
+     "commit_std": 5.305,
+     "gentle_carry": 5.383,
+     "regrasp_com": 5.405,
+     "probe_weigh": 5.885,
+     "slow_lift": 6.258,
+     "light_grip": 6.809,
+     "probe_push": 14.021,
+     "decline": 10.0
+    },
+    "rows": {
+     "inboard_place": {
+      "p": {
+       "placed_stable": 0.888,
+       "tipped": 0.013,
+       "missed": 0.002,
+       "dropped_low": 0.016,
+       "dropped_high": 0.004,
+       "rolled_off": 0.001,
+       "not_lifted": 0.077,
+       "crushed": 0.0,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 3.753,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "table_centre",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "firm_grip": {
+      "p": {
+       "placed_stable": 0.945,
+       "tipped": 0.009,
+       "missed": 0.002,
+       "dropped_low": 0.008,
+       "dropped_high": 0.002,
+       "rolled_off": 0.004,
+       "not_lifted": 0.031,
+       "crushed": 0.0,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 4.14,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 20.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "mouse_pad",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "commit_std": {
+      "p": {
+       "placed_stable": 0.89,
+       "tipped": 0.012,
+       "missed": 0.002,
+       "dropped_low": 0.015,
+       "dropped_high": 0.003,
+       "rolled_off": 0.005,
+       "not_lifted": 0.074,
+       "crushed": 0.0,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 5.305,
+      "probe": null,
+      "kind": "commit",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "mouse_pad",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "gentle_carry": {
+      "p": {
+       "placed_stable": 0.892,
+       "tipped": 0.011,
+       "missed": 0.002,
+       "dropped_low": 0.014,
+       "dropped_high": 0.003,
+       "rolled_off": 0.005,
+       "not_lifted": 0.074,
+       "crushed": 0.0,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 5.383,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 0.5,
+       "destination": "mouse_pad",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "regrasp_com": {
+      "p": {
+       "placed_stable": 0.89,
+       "tipped": 0.012,
+       "missed": 0.002,
+       "dropped_low": 0.015,
+       "dropped_high": 0.003,
+       "rolled_off": 0.005,
+       "not_lifted": 0.074,
+       "crushed": 0.0,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 5.405,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "mouse_pad",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "probe_weigh": {
+      "p": null,
+      "cost": 5.885,
+      "probe": {
+       "p_kind": {
+        "measured": 0.989,
+        "lower_bound": 0.01,
+        "lost": 0.001,
+        "damaged": 0.0
+       },
+       "p_thrown": 0.003,
+       "evoi": 0.043,
+       "evoi_se": 0.019,
+       "expected_cost_after": 5.685
+      },
+      "kind": "probe",
+      "action": {
+       "probe": "weigh",
+       "s": 0.5,
+       "force": 20.0
+      }
+     },
+     "slow_lift": {
+      "p": {
+       "placed_stable": 0.892,
+       "tipped": 0.012,
+       "missed": 0.002,
+       "dropped_low": 0.011,
+       "dropped_high": 0.003,
+       "rolled_off": 0.006,
+       "not_lifted": 0.075,
+       "crushed": 0.0,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 6.258,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.05,
+       "v_transport": 0.2,
+       "a_transport": 2.0,
+       "destination": "mouse_pad",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "light_grip": {
+      "p": {
+       "placed_stable": 0.797,
+       "tipped": 0.014,
+       "missed": 0.002,
+       "dropped_low": 0.026,
+       "dropped_high": 0.003,
+       "rolled_off": 0.005,
+       "not_lifted": 0.153,
+       "crushed": 0.0,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 6.809,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 5.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "mouse_pad",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "probe_push": {
+      "p": null,
+      "cost": 14.021,
+      "probe": {
+       "p_kind": {
+        "slid": 0.958,
+        "tipped": 0.031,
+        "no_breakaway": 0.003,
+        "no_contact": 0.008,
+        "damaged": 0.0
+       },
+       "p_thrown": 0.019,
+       "evoi": 0.0,
+       "evoi_se": 0.0,
+       "expected_cost_after": 13.891
+      },
+      "kind": "probe",
+      "action": {
+       "probe": "push",
+       "s": 0.5,
+       "force": 20.0
+      }
+     },
+     "decline": {
+      "p": null,
+      "cost": 10.0,
+      "probe": null,
+      "kind": "decline",
+      "action": {}
+     }
+    },
+    "matches_record": true
+   },
+   "exact_mass": {
+    "recommendation": "decline",
+    "recommended_option": null,
+    "best_option": "regrasp_com",
+    "without_probe": "decline",
+    "guard_flag": false,
+    "costs": {
+     "inboard_place": 6.297,
+     "regrasp_com": 11.682,
+     "firm_grip": 11.731,
+     "probe_weigh": 11.769,
+     "commit_std": 15.592,
+     "gentle_carry": 16.146,
+     "slow_lift": 17.692,
+     "probe_push": 19.771,
+     "light_grip": 20.284,
+     "decline": 10.0
+    },
+    "rows": {
+     "inboard_place": {
+      "p": {
+       "placed_stable": 0.881,
+       "tipped": 0.057,
+       "missed": 0.002,
+       "dropped_low": 0.015,
+       "dropped_high": 0.006,
+       "rolled_off": 0.004,
+       "not_lifted": 0.036,
+       "crushed": 0.0,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 6.297,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "table_centre",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "regrasp_com": {
+      "p": {
+       "placed_stable": 0.818,
+       "tipped": 0.116,
+       "missed": 0.002,
+       "dropped_low": 0.019,
+       "dropped_high": 0.007,
+       "rolled_off": 0.011,
+       "not_lifted": 0.026,
+       "crushed": 0.0,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 11.682,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "mouse_pad",
+       "release_height": null,
+       "s": 0.3
+      }
+     },
+     "firm_grip": {
+      "p": {
+       "placed_stable": 0.92,
+       "tipped": 0.032,
+       "missed": 0.002,
+       "dropped_low": 0.006,
+       "dropped_high": 0.003,
+       "rolled_off": 0.018,
+       "not_lifted": 0.02,
+       "crushed": 0.0,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 11.731,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 20.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "mouse_pad",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "probe_weigh": {
+      "p": null,
+      "cost": 11.769,
+      "probe": {
+       "p_kind": {
+        "measured": 0.996,
+        "lower_bound": 0.003,
+        "lost": 0.001,
+        "damaged": 0.0
+       },
+       "p_thrown": 0.003,
+       "evoi": 0.0,
+       "evoi_se": 0.0,
+       "expected_cost_after": 11.569
+      },
+      "kind": "probe",
+      "action": {
+       "probe": "weigh",
+       "s": 0.5,
+       "force": 20.0
+      }
+     },
+     "commit_std": {
+      "p": {
+       "placed_stable": 0.874,
+       "tipped": 0.05,
+       "missed": 0.002,
+       "dropped_low": 0.013,
+       "dropped_high": 0.004,
+       "rolled_off": 0.024,
+       "not_lifted": 0.032,
+       "crushed": 0.0,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 15.592,
+      "probe": null,
+      "kind": "commit",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "mouse_pad",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "gentle_carry": {
+      "p": {
+       "placed_stable": 0.876,
+       "tipped": 0.049,
+       "missed": 0.002,
+       "dropped_low": 0.012,
+       "dropped_high": 0.004,
+       "rolled_off": 0.025,
+       "not_lifted": 0.033,
+       "crushed": 0.0,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 16.146,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 0.5,
+       "destination": "mouse_pad",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "slow_lift": {
+      "p": {
+       "placed_stable": 0.874,
+       "tipped": 0.051,
+       "missed": 0.002,
+       "dropped_low": 0.01,
+       "dropped_high": 0.005,
+       "rolled_off": 0.026,
+       "not_lifted": 0.033,
+       "crushed": 0.0,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 17.692,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.05,
+       "v_transport": 0.2,
+       "a_transport": 2.0,
+       "destination": "mouse_pad",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "probe_push": {
+      "p": null,
+      "cost": 19.771,
+      "probe": {
+       "p_kind": {
+        "slid": 0.96,
+        "tipped": 0.034,
+        "no_breakaway": 0.003,
+        "no_contact": 0.003,
+        "damaged": 0.0
+       },
+       "p_thrown": 0.019,
+       "evoi": 0.0,
+       "evoi_se": 0.0,
+       "expected_cost_after": 19.638
+      },
+      "kind": "probe",
+      "action": {
+       "probe": "push",
+       "s": 0.5,
+       "force": 20.0
+      }
+     },
+     "light_grip": {
+      "p": {
+       "placed_stable": 0.761,
+       "tipped": 0.068,
+       "missed": 0.002,
+       "dropped_low": 0.029,
+       "dropped_high": 0.005,
+       "rolled_off": 0.029,
+       "not_lifted": 0.106,
+       "crushed": 0.0,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 20.284,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 5.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "mouse_pad",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "decline": {
+      "p": null,
+      "cost": 10.0,
+      "probe": null,
+      "kind": "decline",
+      "action": {}
+     }
+    },
+    "matches_record": true
+   },
+   "exact_both": {
+    "recommendation": "commit",
+    "recommended_option": "firm_grip",
+    "best_option": "firm_grip",
+    "without_probe": "commit",
+    "guard_flag": false,
+    "costs": {
+     "inboard_place": 2.615,
+     "firm_grip": 3.188,
+     "commit_std": 4.134,
+     "regrasp_com": 4.234,
+     "gentle_carry": 4.235,
+     "probe_weigh": 4.978,
+     "slow_lift": 5.011,
+     "light_grip": 6.026,
+     "probe_push": 13.085,
+     "decline": 10.0
+    },
+    "rows": {
+     "inboard_place": {
+      "p": {
+       "placed_stable": 0.966,
+       "tipped": 0.013,
+       "missed": 0.002,
+       "dropped_low": 0.004,
+       "dropped_high": 0.003,
+       "rolled_off": 0.001,
+       "not_lifted": 0.011,
+       "crushed": 0.0,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 2.615,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "table_centre",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "firm_grip": {
+      "p": {
+       "placed_stable": 0.979,
+       "tipped": 0.008,
+       "missed": 0.001,
+       "dropped_low": 0.002,
+       "dropped_high": 0.002,
+       "rolled_off": 0.003,
+       "not_lifted": 0.006,
+       "crushed": 0.0,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 3.188,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 20.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "mouse_pad",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "commit_std": {
+      "p": {
+       "placed_stable": 0.966,
+       "tipped": 0.011,
+       "missed": 0.002,
+       "dropped_low": 0.004,
+       "dropped_high": 0.002,
+       "rolled_off": 0.004,
+       "not_lifted": 0.01,
+       "crushed": 0.0,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 4.134,
+      "probe": null,
+      "kind": "commit",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "mouse_pad",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "regrasp_com": {
+      "p": {
+       "placed_stable": 0.966,
+       "tipped": 0.011,
+       "missed": 0.002,
+       "dropped_low": 0.004,
+       "dropped_high": 0.002,
+       "rolled_off": 0.004,
+       "not_lifted": 0.01,
+       "crushed": 0.0,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 4.234,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "mouse_pad",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "gentle_carry": {
+      "p": {
+       "placed_stable": 0.967,
+       "tipped": 0.011,
+       "missed": 0.002,
+       "dropped_low": 0.003,
+       "dropped_high": 0.002,
+       "rolled_off": 0.005,
+       "not_lifted": 0.01,
+       "crushed": 0.0,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 4.235,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 0.5,
+       "destination": "mouse_pad",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "probe_weigh": {
+      "p": null,
+      "cost": 4.978,
+      "probe": {
+       "p_kind": {
+        "measured": 0.997,
+        "lower_bound": 0.002,
+        "lost": 0.0,
+        "damaged": 0.0
+       },
+       "p_thrown": 0.003,
+       "evoi": 0.0,
+       "evoi_se": 0.0,
+       "expected_cost_after": 4.778
+      },
+      "kind": "probe",
+      "action": {
+       "probe": "weigh",
+       "s": 0.5,
+       "force": 20.0
+      }
+     },
+     "slow_lift": {
+      "p": {
+       "placed_stable": 0.966,
+       "tipped": 0.011,
+       "missed": 0.002,
+       "dropped_low": 0.003,
+       "dropped_high": 0.003,
+       "rolled_off": 0.005,
+       "not_lifted": 0.01,
+       "crushed": 0.0,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 5.011,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.05,
+       "v_transport": 0.2,
+       "a_transport": 2.0,
+       "destination": "mouse_pad",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "light_grip": {
+      "p": {
+       "placed_stable": 0.9,
+       "tipped": 0.016,
+       "missed": 0.002,
+       "dropped_low": 0.013,
+       "dropped_high": 0.003,
+       "rolled_off": 0.006,
+       "not_lifted": 0.06,
+       "crushed": 0.0,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 6.026,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 5.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "mouse_pad",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "probe_push": {
+      "p": null,
+      "cost": 13.085,
+      "probe": {
+       "p_kind": {
+        "slid": 0.965,
+        "tipped": 0.029,
+        "no_breakaway": 0.003,
+        "no_contact": 0.003,
+        "damaged": 0.0
+       },
+       "p_thrown": 0.019,
+       "evoi": 0.0,
+       "evoi_se": 0.0,
+       "expected_cost_after": 12.957
+      },
+      "kind": "probe",
+      "action": {
+       "probe": "push",
+       "s": 0.5,
+       "force": 20.0
+      }
+     },
+     "decline": {
+      "p": null,
+      "cost": 10.0,
+      "probe": null,
+      "kind": "decline",
+      "action": {}
+     }
+    },
+    "matches_record": true
+   }
+  },
+  "truth": {
+   "mass": 0.18134497348205667,
+   "com_frac": 0.5100891247793593,
+   "sim_mass": 0.18136000000000002,
+   "sim_com_frac": 0.5101106309471247
+  }
+ },
+ {
+  "object": "hope__butter",
+  "idx": 0,
+  "fold": 4,
+  "setting": "k100_A10",
+  "care": 100.0,
+  "abstain_cost": 10.0,
+  "destination": "box",
+  "at_rest": false,
+  "menus": {
+   "class": {
+    "recommendation": "probe",
+    "recommended_option": "probe_squeeze",
+    "best_option": "light_grip",
+    "without_probe": "commit",
+    "guard_flag": false,
+    "costs": {
+     "probe_squeeze": 6.349,
+     "light_grip": 6.524,
+     "commit_std": 16.656,
+     "regrasp_com": 16.756,
+     "gentle_carry": 16.829,
+     "slow_lift": 16.929,
+     "drop_release": 17.501,
+     "probe_push": 19.224,
+     "firm_grip": 227.893,
+     "probe_weigh": 257.41,
+     "decline": 10.0
+    },
+    "rows": {
+     "probe_squeeze": {
+      "p": null,
+      "cost": 6.349,
+      "probe": {
+       "p_kind": {
+        "measured": 1.0
+       },
+       "p_thrown": 0.0,
+       "evoi": 0.324,
+       "evoi_se": 0.035,
+       "expected_cost_after": 6.199
+      },
+      "kind": "probe",
+      "action": {
+       "probe": "squeeze",
+       "s": 0.5,
+       "force": 5.0
+      }
+     },
+     "light_grip": {
+      "p": {
+       "placed_stable": 0.789,
+       "tipped": 0.041,
+       "missed": 0.01,
+       "dropped_low": 0.021,
+       "dropped_high": 0.005,
+       "rolled_off": 0.001,
+       "not_lifted": 0.132,
+       "crushed": 0.001,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 6.524,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 5.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "box",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "commit_std": {
+      "p": {
+       "placed_stable": 0.837,
+       "tipped": 0.033,
+       "missed": 0.01,
+       "dropped_low": 0.012,
+       "dropped_high": 0.005,
+       "rolled_off": 0.001,
+       "not_lifted": 0.079,
+       "crushed": 0.024,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 16.656,
+      "probe": null,
+      "kind": "commit",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "box",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "regrasp_com": {
+      "p": {
+       "placed_stable": 0.837,
+       "tipped": 0.033,
+       "missed": 0.01,
+       "dropped_low": 0.012,
+       "dropped_high": 0.005,
+       "rolled_off": 0.001,
+       "not_lifted": 0.079,
+       "crushed": 0.024,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 16.756,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "box",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "gentle_carry": {
+      "p": {
+       "placed_stable": 0.841,
+       "tipped": 0.029,
+       "missed": 0.01,
+       "dropped_low": 0.011,
+       "dropped_high": 0.004,
+       "rolled_off": 0.001,
+       "not_lifted": 0.079,
+       "crushed": 0.024,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 16.829,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 0.5,
+       "destination": "box",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "slow_lift": {
+      "p": {
+       "placed_stable": 0.837,
+       "tipped": 0.034,
+       "missed": 0.009,
+       "dropped_low": 0.01,
+       "dropped_high": 0.005,
+       "rolled_off": 0.001,
+       "not_lifted": 0.08,
+       "crushed": 0.024,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 16.929,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.05,
+       "v_transport": 0.2,
+       "a_transport": 2.0,
+       "destination": "box",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "drop_release": {
+      "p": {
+       "placed_stable": 0.806,
+       "tipped": 0.061,
+       "missed": 0.01,
+       "dropped_low": 0.012,
+       "dropped_high": 0.004,
+       "rolled_off": 0.001,
+       "not_lifted": 0.082,
+       "crushed": 0.025,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 17.501,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "box",
+       "release_height": 0.16999999999999998,
+       "s": 0.5
+      }
+     },
+     "probe_push": {
+      "p": null,
+      "cost": 19.224,
+      "probe": {
+       "p_kind": {
+        "slid": 0.949,
+        "tipped": 0.033,
+        "no_breakaway": 0.003,
+        "no_contact": 0.011,
+        "damaged": 0.005
+       },
+       "p_thrown": 0.021,
+       "evoi": 0.0,
+       "evoi_se": 0.0,
+       "expected_cost_after": 19.091
+      },
+      "kind": "probe",
+      "action": {
+       "probe": "push",
+       "s": 0.5,
+       "force": 20.0
+      }
+     },
+     "firm_grip": {
+      "p": {
+       "placed_stable": 0.488,
+       "tipped": 0.015,
+       "missed": 0.007,
+       "dropped_low": 0.006,
+       "dropped_high": 0.003,
+       "rolled_off": 0.001,
+       "not_lifted": 0.04,
+       "crushed": 0.441,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 227.893,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 20.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "box",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "probe_weigh": {
+      "p": null,
+      "cost": 257.41,
+      "probe": {
+       "p_kind": {
+        "measured": 0.471,
+        "lower_bound": 0.031,
+        "lost": 0.0,
+        "damaged": 0.497
+       },
+       "p_thrown": 0.003,
+       "evoi": 0.351,
+       "evoi_se": 0.025,
+       "expected_cost_after": 257.21
+      },
+      "kind": "probe",
+      "action": {
+       "probe": "weigh",
+       "s": 0.5,
+       "force": 20.0
+      }
+     },
+     "decline": {
+      "p": null,
+      "cost": 10.0,
+      "probe": null,
+      "kind": "decline",
+      "action": {}
+     }
+    },
+    "matches_record": true
+   },
+   "generic": {
+    "recommendation": "decline",
+    "recommended_option": null,
+    "best_option": "light_grip",
+    "without_probe": "decline",
+    "guard_flag": false,
+    "costs": {
+     "probe_squeeze": 10.111,
+     "light_grip": 12.21,
+     "probe_push": 22.559,
+     "commit_std": 23.819,
+     "regrasp_com": 23.919,
+     "gentle_carry": 23.971,
+     "slow_lift": 24.274,
+     "drop_release": 24.408,
+     "firm_grip": 236.366,
+     "probe_weigh": 258.321,
+     "decline": 10.0
+    },
+    "rows": {
+     "probe_squeeze": {
+      "p": null,
+      "cost": 10.111,
+      "probe": {
+       "p_kind": {
+        "measured": 1.0
+       },
+       "p_thrown": 0.0,
+       "evoi": 0.039,
+       "evoi_se": 0.015,
+       "expected_cost_after": 9.961
+      },
+      "kind": "probe",
+      "action": {
+       "probe": "squeeze",
+       "s": 0.5,
+       "force": 5.0
+      }
+     },
+     "light_grip": {
+      "p": {
+       "placed_stable": 0.499,
+       "tipped": 0.052,
+       "missed": 0.011,
+       "dropped_low": 0.059,
+       "dropped_high": 0.01,
+       "rolled_off": 0.001,
+       "not_lifted": 0.366,
+       "crushed": 0.002,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 12.21,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 5.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "box",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "probe_push": {
+      "p": null,
+      "cost": 22.559,
+      "probe": {
+       "p_kind": {
+        "slid": 0.948,
+        "tipped": 0.031,
+        "no_breakaway": 0.004,
+        "no_contact": 0.013,
+        "damaged": 0.004
+       },
+       "p_thrown": 0.021,
+       "evoi": -0.011,
+       "evoi_se": 0.005,
+       "expected_cost_after": 22.429
+      },
+      "kind": "probe",
+      "action": {
+       "probe": "push",
+       "s": 0.5,
+       "force": 20.0
+      }
+     },
+     "commit_std": {
+      "p": {
+       "placed_stable": 0.62,
+       "tipped": 0.051,
+       "missed": 0.012,
+       "dropped_low": 0.048,
+       "dropped_high": 0.01,
+       "rolled_off": 0.001,
+       "not_lifted": 0.23,
+       "crushed": 0.027,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 23.819,
+      "probe": null,
+      "kind": "commit",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "box",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "regrasp_com": {
+      "p": {
+       "placed_stable": 0.62,
+       "tipped": 0.051,
+       "missed": 0.012,
+       "dropped_low": 0.048,
+       "dropped_high": 0.01,
+       "rolled_off": 0.001,
+       "not_lifted": 0.23,
+       "crushed": 0.027,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 23.919,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "box",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "gentle_carry": {
+      "p": {
+       "placed_stable": 0.627,
+       "tipped": 0.045,
+       "missed": 0.013,
+       "dropped_low": 0.042,
+       "dropped_high": 0.009,
+       "rolled_off": 0.001,
+       "not_lifted": 0.233,
+       "crushed": 0.029,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 23.971,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 0.5,
+       "destination": "box",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "slow_lift": {
+      "p": {
+       "placed_stable": 0.623,
+       "tipped": 0.053,
+       "missed": 0.012,
+       "dropped_low": 0.037,
+       "dropped_high": 0.01,
+       "rolled_off": 0.001,
+       "not_lifted": 0.236,
+       "crushed": 0.028,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 24.274,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.05,
+       "v_transport": 0.2,
+       "a_transport": 2.0,
+       "destination": "box",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "drop_release": {
+      "p": {
+       "placed_stable": 0.588,
+       "tipped": 0.082,
+       "missed": 0.012,
+       "dropped_low": 0.046,
+       "dropped_high": 0.008,
+       "rolled_off": 0.001,
+       "not_lifted": 0.233,
+       "crushed": 0.03,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 24.408,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "box",
+       "release_height": 0.16999999999999998,
+       "s": 0.5
+      }
+     },
+     "firm_grip": {
+      "p": {
+       "placed_stable": 0.398,
+       "tipped": 0.026,
+       "missed": 0.008,
+       "dropped_low": 0.021,
+       "dropped_high": 0.006,
+       "rolled_off": 0.001,
+       "not_lifted": 0.087,
+       "crushed": 0.453,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 236.366,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 20.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "box",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "probe_weigh": {
+      "p": null,
+      "cost": 258.321,
+      "probe": {
+       "p_kind": {
+        "measured": 0.419,
+        "lower_bound": 0.085,
+        "lost": 0.0,
+        "damaged": 0.496
+       },
+       "p_thrown": 0.003,
+       "evoi": 0.564,
+       "evoi_se": 0.049,
+       "expected_cost_after": 258.121
+      },
+      "kind": "probe",
+      "action": {
+       "probe": "weigh",
+       "s": 0.5,
+       "force": 20.0
+      }
+     },
+     "decline": {
+      "p": null,
+      "cost": 10.0,
+      "probe": null,
+      "kind": "decline",
+      "action": {}
+     }
+    },
+    "matches_record": true
+   },
+   "exact_com": {
+    "recommendation": "probe",
+    "recommended_option": "probe_squeeze",
+    "best_option": "light_grip",
+    "without_probe": "commit",
+    "guard_flag": false,
+    "costs": {
+     "probe_squeeze": 8.119,
+     "light_grip": 8.249,
+     "commit_std": 19.53,
+     "regrasp_com": 19.63,
+     "gentle_carry": 19.864,
+     "slow_lift": 19.91,
+     "probe_push": 20.51,
+     "drop_release": 20.738,
+     "firm_grip": 232.798,
+     "probe_weigh": 263.33,
+     "decline": 10.0
+    },
+    "rows": {
+     "probe_squeeze": {
+      "p": null,
+      "cost": 8.119,
+      "probe": {
+       "p_kind": {
+        "measured": 1.0
+       },
+       "p_thrown": 0.0,
+       "evoi": 0.28,
+       "evoi_se": 0.042,
+       "expected_cost_after": 7.969
+      },
+      "kind": "probe",
+      "action": {
+       "probe": "squeeze",
+       "s": 0.5,
+       "force": 5.0
+      }
+     },
+     "light_grip": {
+      "p": {
+       "placed_stable": 0.621,
+       "tipped": 0.024,
+       "missed": 0.008,
+       "dropped_low": 0.021,
+       "dropped_high": 0.005,
+       "rolled_off": 0.001,
+       "not_lifted": 0.318,
+       "crushed": 0.002,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 8.249,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 5.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "box",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "commit_std": {
+      "p": {
+       "placed_stable": 0.739,
+       "tipped": 0.023,
+       "missed": 0.01,
+       "dropped_low": 0.017,
+       "dropped_high": 0.005,
+       "rolled_off": 0.001,
+       "not_lifted": 0.179,
+       "crushed": 0.027,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 19.53,
+      "probe": null,
+      "kind": "commit",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "box",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "regrasp_com": {
+      "p": {
+       "placed_stable": 0.739,
+       "tipped": 0.023,
+       "missed": 0.01,
+       "dropped_low": 0.017,
+       "dropped_high": 0.005,
+       "rolled_off": 0.001,
+       "not_lifted": 0.179,
+       "crushed": 0.027,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 19.63,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "box",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "gentle_carry": {
+      "p": {
+       "placed_stable": 0.742,
+       "tipped": 0.021,
+       "missed": 0.01,
+       "dropped_low": 0.014,
+       "dropped_high": 0.004,
+       "rolled_off": 0.001,
+       "not_lifted": 0.18,
+       "crushed": 0.028,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 19.864,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 0.5,
+       "destination": "box",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "slow_lift": {
+      "p": {
+       "placed_stable": 0.74,
+       "tipped": 0.024,
+       "missed": 0.009,
+       "dropped_low": 0.013,
+       "dropped_high": 0.005,
+       "rolled_off": 0.001,
+       "not_lifted": 0.181,
+       "crushed": 0.027,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 19.91,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.05,
+       "v_transport": 0.2,
+       "a_transport": 2.0,
+       "destination": "box",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "probe_push": {
+      "p": null,
+      "cost": 20.51,
+      "probe": {
+       "p_kind": {
+        "slid": 0.945,
+        "tipped": 0.035,
+        "no_breakaway": 0.003,
+        "no_contact": 0.012,
+        "damaged": 0.004
+       },
+       "p_thrown": 0.021,
+       "evoi": 0.34,
+       "evoi_se": 0.072,
+       "expected_cost_after": 20.376
+      },
+      "kind": "probe",
+      "action": {
+       "probe": "push",
+       "s": 0.5,
+       "force": 20.0
+      }
+     },
+     "drop_release": {
+      "p": {
+       "placed_stable": 0.713,
+       "tipped": 0.045,
+       "missed": 0.009,
+       "dropped_low": 0.016,
+       "dropped_high": 0.004,
+       "rolled_off": 0.001,
+       "not_lifted": 0.182,
+       "crushed": 0.03,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 20.738,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "box",
+       "release_height": 0.16999999999999998,
+       "s": 0.5
+      }
+     },
+     "firm_grip": {
+      "p": {
+       "placed_stable": 0.46,
+       "tipped": 0.013,
+       "missed": 0.007,
+       "dropped_low": 0.008,
+       "dropped_high": 0.003,
+       "rolled_off": 0.001,
+       "not_lifted": 0.059,
+       "crushed": 0.45,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 232.798,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 20.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "box",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "probe_weigh": {
+      "p": null,
+      "cost": 263.33,
+      "probe": {
+       "p_kind": {
+        "measured": 0.448,
+        "lower_bound": 0.044,
+        "lost": 0.0,
+        "damaged": 0.508
+       },
+       "p_thrown": 0.003,
+       "evoi": 0.597,
+       "evoi_se": 0.037,
+       "expected_cost_after": 263.13
+      },
+      "kind": "probe",
+      "action": {
+       "probe": "weigh",
+       "s": 0.5,
+       "force": 20.0
+      }
+     },
+     "decline": {
+      "p": null,
+      "cost": 10.0,
+      "probe": null,
+      "kind": "decline",
+      "action": {}
+     }
+    },
+    "matches_record": true
+   },
+   "exact_mass": {
+    "recommendation": "commit",
+    "recommended_option": "light_grip",
+    "best_option": "light_grip",
+    "without_probe": "commit",
+    "guard_flag": false,
+    "costs": {
+     "probe_squeeze": 7.533,
+     "light_grip": 7.58,
+     "commit_std": 18.661,
+     "gentle_carry": 18.718,
+     "regrasp_com": 18.761,
+     "slow_lift": 18.894,
+     "drop_release": 19.339,
+     "probe_push": 19.848,
+     "firm_grip": 231.185,
+     "probe_weigh": 241.077,
+     "decline": 10.0
+    },
+    "rows": {
+     "probe_squeeze": {
+      "p": null,
+      "cost": 7.533,
+      "probe": {
+       "p_kind": {
+        "measured": 1.0
+       },
+       "p_thrown": 0.0,
+       "evoi": 0.197,
+       "evoi_se": 0.027,
+       "expected_cost_after": 7.383
+      },
+      "kind": "probe",
+      "action": {
+       "probe": "squeeze",
+       "s": 0.5,
+       "force": 5.0
+      }
+     },
+     "light_grip": {
+      "p": {
+       "placed_stable": 0.78,
+       "tipped": 0.053,
+       "missed": 0.011,
+       "dropped_low": 0.032,
+       "dropped_high": 0.007,
+       "rolled_off": 0.001,
+       "not_lifted": 0.115,
+       "crushed": 0.001,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 7.58,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 5.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "box",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "commit_std": {
+      "p": {
+       "placed_stable": 0.802,
+       "tipped": 0.041,
+       "missed": 0.011,
+       "dropped_low": 0.02,
+       "dropped_high": 0.007,
+       "rolled_off": 0.001,
+       "not_lifted": 0.094,
+       "crushed": 0.024,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 18.661,
+      "probe": null,
+      "kind": "commit",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "box",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "gentle_carry": {
+      "p": {
+       "placed_stable": 0.808,
+       "tipped": 0.036,
+       "missed": 0.011,
+       "dropped_low": 0.018,
+       "dropped_high": 0.007,
+       "rolled_off": 0.001,
+       "not_lifted": 0.094,
+       "crushed": 0.025,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 18.718,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 0.5,
+       "destination": "box",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "regrasp_com": {
+      "p": {
+       "placed_stable": 0.802,
+       "tipped": 0.041,
+       "missed": 0.011,
+       "dropped_low": 0.02,
+       "dropped_high": 0.007,
+       "rolled_off": 0.001,
+       "not_lifted": 0.094,
+       "crushed": 0.024,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 18.761,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "box",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "slow_lift": {
+      "p": {
+       "placed_stable": 0.797,
+       "tipped": 0.042,
+       "missed": 0.01,
+       "dropped_low": 0.024,
+       "dropped_high": 0.007,
+       "rolled_off": 0.001,
+       "not_lifted": 0.095,
+       "crushed": 0.024,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 18.894,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.05,
+       "v_transport": 0.2,
+       "a_transport": 2.0,
+       "destination": "box",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "drop_release": {
+      "p": {
+       "placed_stable": 0.765,
+       "tipped": 0.076,
+       "missed": 0.01,
+       "dropped_low": 0.019,
+       "dropped_high": 0.006,
+       "rolled_off": 0.001,
+       "not_lifted": 0.097,
+       "crushed": 0.026,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 19.339,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "box",
+       "release_height": 0.16999999999999998,
+       "s": 0.5
+      }
+     },
+     "probe_push": {
+      "p": null,
+      "cost": 19.848,
+      "probe": {
+       "p_kind": {
+        "slid": 0.952,
+        "tipped": 0.029,
+        "no_breakaway": 0.003,
+        "no_contact": 0.011,
+        "damaged": 0.005
+       },
+       "p_thrown": 0.021,
+       "evoi": 0.389,
+       "evoi_se": 0.077,
+       "expected_cost_after": 19.72
+      },
+      "kind": "probe",
+      "action": {
+       "probe": "push",
+       "s": 0.5,
+       "force": 20.0
+      }
+     },
+     "firm_grip": {
+      "p": {
+       "placed_stable": 0.467,
+       "tipped": 0.016,
+       "missed": 0.008,
+       "dropped_low": 0.01,
+       "dropped_high": 0.005,
+       "rolled_off": 0.001,
+       "not_lifted": 0.049,
+       "crushed": 0.445,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 231.185,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 20.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "box",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "probe_weigh": {
+      "p": null,
+      "cost": 241.077,
+      "probe": {
+       "p_kind": {
+        "measured": 0.515,
+        "lower_bound": 0.022,
+        "lost": 0.0,
+        "damaged": 0.463
+       },
+       "p_thrown": 0.003,
+       "evoi": -0.074,
+       "evoi_se": 0.01,
+       "expected_cost_after": 240.877
+      },
+      "kind": "probe",
+      "action": {
+       "probe": "weigh",
+       "s": 0.5,
+       "force": 20.0
+      }
+     },
+     "decline": {
+      "p": null,
+      "cost": 10.0,
+      "probe": null,
+      "kind": "decline",
+      "action": {}
+     }
+    },
+    "matches_record": true
+   },
+   "exact_both": {
+    "recommendation": "commit",
+    "recommended_option": "light_grip",
+    "best_option": "light_grip",
+    "without_probe": "commit",
+    "guard_flag": false,
+    "costs": {
+     "light_grip": 4.392,
+     "probe_squeeze": 4.474,
+     "commit_std": 15.424,
+     "regrasp_com": 15.524,
+     "gentle_carry": 15.655,
+     "slow_lift": 15.712,
+     "drop_release": 16.377,
+     "probe_push": 17.148,
+     "firm_grip": 227.126,
+     "probe_weigh": 243.003,
+     "decline": 10.0
+    },
+    "rows": {
+     "light_grip": {
+      "p": {
+       "placed_stable": 0.892,
+       "tipped": 0.024,
+       "missed": 0.009,
+       "dropped_low": 0.009,
+       "dropped_high": 0.004,
+       "rolled_off": 0.001,
+       "not_lifted": 0.06,
+       "crushed": 0.001,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 4.392,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 5.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "box",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "probe_squeeze": {
+      "p": null,
+      "cost": 4.474,
+      "probe": {
+       "p_kind": {
+        "measured": 1.0
+       },
+       "p_thrown": 0.0,
+       "evoi": 0.069,
+       "evoi_se": 0.012,
+       "expected_cost_after": 4.324
+      },
+      "kind": "probe",
+      "action": {
+       "probe": "squeeze",
+       "s": 0.5,
+       "force": 5.0
+      }
+     },
+     "commit_std": {
+      "p": {
+       "placed_stable": 0.887,
+       "tipped": 0.019,
+       "missed": 0.009,
+       "dropped_low": 0.006,
+       "dropped_high": 0.003,
+       "rolled_off": 0.001,
+       "not_lifted": 0.051,
+       "crushed": 0.024,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 15.424,
+      "probe": null,
+      "kind": "commit",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "box",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "regrasp_com": {
+      "p": {
+       "placed_stable": 0.887,
+       "tipped": 0.019,
+       "missed": 0.009,
+       "dropped_low": 0.006,
+       "dropped_high": 0.003,
+       "rolled_off": 0.001,
+       "not_lifted": 0.051,
+       "crushed": 0.024,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 15.524,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "box",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "gentle_carry": {
+      "p": {
+       "placed_stable": 0.889,
+       "tipped": 0.017,
+       "missed": 0.01,
+       "dropped_low": 0.005,
+       "dropped_high": 0.003,
+       "rolled_off": 0.001,
+       "not_lifted": 0.051,
+       "crushed": 0.024,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 15.655,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 0.5,
+       "destination": "box",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "slow_lift": {
+      "p": {
+       "placed_stable": 0.885,
+       "tipped": 0.02,
+       "missed": 0.009,
+       "dropped_low": 0.007,
+       "dropped_high": 0.003,
+       "rolled_off": 0.001,
+       "not_lifted": 0.052,
+       "crushed": 0.024,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 15.712,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.05,
+       "v_transport": 0.2,
+       "a_transport": 2.0,
+       "destination": "box",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "drop_release": {
+      "p": {
+       "placed_stable": 0.86,
+       "tipped": 0.042,
+       "missed": 0.009,
+       "dropped_low": 0.006,
+       "dropped_high": 0.003,
+       "rolled_off": 0.001,
+       "not_lifted": 0.054,
+       "crushed": 0.026,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 16.377,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "box",
+       "release_height": 0.16999999999999998,
+       "s": 0.5
+      }
+     },
+     "probe_push": {
+      "p": null,
+      "cost": 17.148,
+      "probe": {
+       "p_kind": {
+        "slid": 0.95,
+        "tipped": 0.032,
+        "no_breakaway": 0.003,
+        "no_contact": 0.011,
+        "damaged": 0.005
+       },
+       "p_thrown": 0.021,
+       "evoi": 0.0,
+       "evoi_se": 0.0,
+       "expected_cost_after": 17.017
+      },
+      "kind": "probe",
+      "action": {
+       "probe": "push",
+       "s": 0.5,
+       "force": 20.0
+      }
+     },
+     "firm_grip": {
+      "p": {
+       "placed_stable": 0.51,
+       "tipped": 0.008,
+       "missed": 0.007,
+       "dropped_low": 0.004,
+       "dropped_high": 0.002,
+       "rolled_off": 0.001,
+       "not_lifted": 0.028,
+       "crushed": 0.441,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 227.126,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 20.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "box",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "probe_weigh": {
+      "p": null,
+      "cost": 243.003,
+      "probe": {
+       "p_kind": {
+        "measured": 0.518,
+        "lower_bound": 0.012,
+        "lost": 0.0,
+        "damaged": 0.47
+       },
+       "p_thrown": 0.003,
+       "evoi": 0.0,
+       "evoi_se": 0.0,
+       "expected_cost_after": 242.803
+      },
+      "kind": "probe",
+      "action": {
+       "probe": "weigh",
+       "s": 0.5,
+       "force": 20.0
+      }
+     },
+     "decline": {
+      "p": null,
+      "cost": 10.0,
+      "probe": null,
+      "kind": "decline",
+      "action": {}
+     }
+    },
+    "matches_record": true
+   }
+  },
+  "truth": {
+   "mass": 0.06213288081947053,
+   "com_frac": 0.5039780795616214,
+   "sim_mass": 0.06213,
+   "sim_com_frac": 0.5039780766864769
+  }
+ },
+ {
+  "object": "hot3d__frozen_vegetable_block",
+  "idx": 3,
+  "fold": 2,
+  "setting": "k100_A10",
+  "care": 100.0,
+  "abstain_cost": 10.0,
+  "destination": "plate",
+  "at_rest": true,
+  "menus": {
+   "class": {
+    "recommendation": "probe",
+    "recommended_option": "probe_squeeze",
+    "best_option": "light_grip",
+    "without_probe": "commit",
+    "guard_flag": false,
+    "costs": {
+     "probe_squeeze": 5.805,
+     "light_grip": 6.384,
+     "drop_release": 12.483,
+     "commit_std": 12.548,
+     "gentle_carry": 12.596,
+     "regrasp_com": 12.648,
+     "slow_lift": 13.314,
+     "probe_push": 17.23,
+     "firm_grip": 228.668,
+     "probe_weigh": 252.783,
+     "decline": 10.0
+    },
+    "rows": {
+     "probe_squeeze": {
+      "p": null,
+      "cost": 5.805,
+      "probe": {
+       "p_kind": {
+        "measured": 1.0
+       },
+       "p_thrown": 0.0,
+       "evoi": 0.728,
+       "evoi_se": 0.049,
+       "expected_cost_after": 5.655
+      },
+      "kind": "probe",
+      "action": {
+       "probe": "squeeze",
+       "s": 0.5,
+       "force": 5.0
+      }
+     },
+     "light_grip": {
+      "p": {
+       "placed_stable": 0.904,
+       "tipped": 0.028,
+       "missed": 0.002,
+       "dropped_low": 0.018,
+       "dropped_high": 0.005,
+       "rolled_off": 0.004,
+       "not_lifted": 0.039,
+       "crushed": 0.001,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 6.384,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 5.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "plate",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "drop_release": {
+      "p": {
+       "placed_stable": 0.93,
+       "tipped": 0.018,
+       "missed": 0.002,
+       "dropped_low": 0.008,
+       "dropped_high": 0.004,
+       "rolled_off": 0.003,
+       "not_lifted": 0.019,
+       "crushed": 0.016,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 12.483,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "plate",
+       "release_height": 0.065,
+       "s": 0.5
+      }
+     },
+     "commit_std": {
+      "p": {
+       "placed_stable": 0.931,
+       "tipped": 0.017,
+       "missed": 0.001,
+       "dropped_low": 0.008,
+       "dropped_high": 0.004,
+       "rolled_off": 0.003,
+       "not_lifted": 0.019,
+       "crushed": 0.016,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 12.548,
+      "probe": null,
+      "kind": "commit",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "plate",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "gentle_carry": {
+      "p": {
+       "placed_stable": 0.932,
+       "tipped": 0.017,
+       "missed": 0.001,
+       "dropped_low": 0.007,
+       "dropped_high": 0.004,
+       "rolled_off": 0.003,
+       "not_lifted": 0.019,
+       "crushed": 0.016,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 12.596,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 0.5,
+       "destination": "plate",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "regrasp_com": {
+      "p": {
+       "placed_stable": 0.931,
+       "tipped": 0.017,
+       "missed": 0.001,
+       "dropped_low": 0.008,
+       "dropped_high": 0.004,
+       "rolled_off": 0.003,
+       "not_lifted": 0.019,
+       "crushed": 0.016,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 12.648,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "plate",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "slow_lift": {
+      "p": {
+       "placed_stable": 0.933,
+       "tipped": 0.018,
+       "missed": 0.001,
+       "dropped_low": 0.005,
+       "dropped_high": 0.004,
+       "rolled_off": 0.004,
+       "not_lifted": 0.019,
+       "crushed": 0.016,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 13.314,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.05,
+       "v_transport": 0.2,
+       "a_transport": 2.0,
+       "destination": "plate",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "probe_push": {
+      "p": null,
+      "cost": 17.23,
+      "probe": {
+       "p_kind": {
+        "slid": 0.946,
+        "tipped": 0.045,
+        "no_breakaway": 0.004,
+        "no_contact": 0.004,
+        "damaged": 0.002
+       },
+       "p_thrown": 0.019,
+       "evoi": -0.047,
+       "evoi_se": 0.018,
+       "expected_cost_after": 17.086
+      },
+      "kind": "probe",
+      "action": {
+       "probe": "push",
+       "s": 0.5,
+       "force": 20.0
+      }
+     },
+     "firm_grip": {
+      "p": {
+       "placed_stable": 0.532,
+       "tipped": 0.008,
+       "missed": 0.001,
+       "dropped_low": 0.004,
+       "dropped_high": 0.003,
+       "rolled_off": 0.002,
+       "not_lifted": 0.009,
+       "crushed": 0.443,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 228.668,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 20.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "plate",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "probe_weigh": {
+      "p": null,
+      "cost": 252.783,
+      "probe": {
+       "p_kind": {
+        "measured": 0.504,
+        "lower_bound": 0.006,
+        "lost": 0.0,
+        "damaged": 0.489
+       },
+       "p_thrown": 0.003,
+       "evoi": 0.782,
+       "evoi_se": 0.032,
+       "expected_cost_after": 252.583
+      },
+      "kind": "probe",
+      "action": {
+       "probe": "weigh",
+       "s": 0.5,
+       "force": 20.0
+      }
+     },
+     "decline": {
+      "p": null,
+      "cost": 10.0,
+      "probe": null,
+      "kind": "decline",
+      "action": {}
+     }
+    },
+    "matches_record": true
+   },
+   "generic": {
+    "recommendation": "decline",
+    "recommended_option": null,
+    "best_option": "light_grip",
+    "without_probe": "decline",
+    "guard_flag": false,
+    "costs": {
+     "probe_squeeze": 10.17,
+     "light_grip": 12.579,
+     "probe_push": 20.761,
+     "drop_release": 21.137,
+     "commit_std": 21.217,
+     "regrasp_com": 21.317,
+     "gentle_carry": 21.56,
+     "slow_lift": 22.514,
+     "firm_grip": 239.03,
+     "probe_weigh": 265.668,
+     "decline": 10.0
+    },
+    "rows": {
+     "probe_squeeze": {
+      "p": null,
+      "cost": 10.17,
+      "probe": {
+       "p_kind": {
+        "measured": 1.0
+       },
+       "p_thrown": 0.0,
+       "evoi": -0.02,
+       "evoi_se": 0.018,
+       "expected_cost_after": 10.02
+      },
+      "kind": "probe",
+      "action": {
+       "probe": "squeeze",
+       "s": 0.5,
+       "force": 5.0
+      }
+     },
+     "light_grip": {
+      "p": {
+       "placed_stable": 0.588,
+       "tipped": 0.059,
+       "missed": 0.003,
+       "dropped_low": 0.07,
+       "dropped_high": 0.008,
+       "rolled_off": 0.006,
+       "not_lifted": 0.264,
+       "crushed": 0.001,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 12.579,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 5.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "plate",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "probe_push": {
+      "p": null,
+      "cost": 20.761,
+      "probe": {
+       "p_kind": {
+        "slid": 0.949,
+        "tipped": 0.037,
+        "no_breakaway": 0.005,
+        "no_contact": 0.007,
+        "damaged": 0.002
+       },
+       "p_thrown": 0.019,
+       "evoi": 0.008,
+       "evoi_se": 0.015,
+       "expected_cost_after": 20.625
+      },
+      "kind": "probe",
+      "action": {
+       "probe": "push",
+       "s": 0.5,
+       "force": 20.0
+      }
+     },
+     "drop_release": {
+      "p": {
+       "placed_stable": 0.723,
+       "tipped": 0.053,
+       "missed": 0.003,
+       "dropped_low": 0.049,
+       "dropped_high": 0.007,
+       "rolled_off": 0.006,
+       "not_lifted": 0.136,
+       "crushed": 0.023,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 21.137,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "plate",
+       "release_height": 0.065,
+       "s": 0.5
+      }
+     },
+     "commit_std": {
+      "p": {
+       "placed_stable": 0.725,
+       "tipped": 0.053,
+       "missed": 0.003,
+       "dropped_low": 0.048,
+       "dropped_high": 0.007,
+       "rolled_off": 0.006,
+       "not_lifted": 0.136,
+       "crushed": 0.023,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 21.217,
+      "probe": null,
+      "kind": "commit",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "plate",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "regrasp_com": {
+      "p": {
+       "placed_stable": 0.725,
+       "tipped": 0.053,
+       "missed": 0.003,
+       "dropped_low": 0.048,
+       "dropped_high": 0.007,
+       "rolled_off": 0.006,
+       "not_lifted": 0.136,
+       "crushed": 0.023,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 21.317,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "plate",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "gentle_carry": {
+      "p": {
+       "placed_stable": 0.729,
+       "tipped": 0.051,
+       "missed": 0.003,
+       "dropped_low": 0.043,
+       "dropped_high": 0.007,
+       "rolled_off": 0.006,
+       "not_lifted": 0.137,
+       "crushed": 0.023,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 21.56,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 0.5,
+       "destination": "plate",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "slow_lift": {
+      "p": {
+       "placed_stable": 0.735,
+       "tipped": 0.054,
+       "missed": 0.003,
+       "dropped_low": 0.028,
+       "dropped_high": 0.008,
+       "rolled_off": 0.007,
+       "not_lifted": 0.141,
+       "crushed": 0.023,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 22.514,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.05,
+       "v_transport": 0.2,
+       "a_transport": 2.0,
+       "destination": "plate",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "firm_grip": {
+      "p": {
+       "placed_stable": 0.454,
+       "tipped": 0.021,
+       "missed": 0.002,
+       "dropped_low": 0.016,
+       "dropped_high": 0.004,
+       "rolled_off": 0.003,
+       "not_lifted": 0.04,
+       "crushed": 0.459,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 239.03,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 20.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "plate",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "probe_weigh": {
+      "p": null,
+      "cost": 265.668,
+      "probe": {
+       "p_kind": {
+        "measured": 0.417,
+        "lower_bound": 0.072,
+        "lost": 0.0,
+        "damaged": 0.511
+       },
+       "p_thrown": 0.003,
+       "evoi": 0.651,
+       "evoi_se": 0.07,
+       "expected_cost_after": 265.468
+      },
+      "kind": "probe",
+      "action": {
+       "probe": "weigh",
+       "s": 0.5,
+       "force": 20.0
+      }
+     },
+     "decline": {
+      "p": null,
+      "cost": 10.0,
+      "probe": null,
+      "kind": "decline",
+      "action": {}
+     }
+    },
+    "matches_record": true
+   },
+   "exact_com": {
+    "recommendation": "probe",
+    "recommended_option": "probe_squeeze",
+    "best_option": "light_grip",
+    "without_probe": "commit",
+    "guard_flag": false,
+    "costs": {
+     "probe_squeeze": 8.828,
+     "light_grip": 9.236,
+     "drop_release": 17.904,
+     "commit_std": 17.971,
+     "regrasp_com": 18.071,
+     "gentle_carry": 18.252,
+     "slow_lift": 18.955,
+     "probe_push": 19.345,
+     "firm_grip": 235.578,
+     "probe_weigh": 263.945,
+     "decline": 10.0
+    },
+    "rows": {
+     "probe_squeeze": {
+      "p": null,
+      "cost": 8.828,
+      "probe": {
+       "p_kind": {
+        "measured": 1.0
+       },
+       "p_thrown": 0.0,
+       "evoi": 0.558,
+       "evoi_se": 0.058,
+       "expected_cost_after": 8.678
+      },
+      "kind": "probe",
+      "action": {
+       "probe": "squeeze",
+       "s": 0.5,
+       "force": 5.0
+      }
+     },
+     "light_grip": {
+      "p": {
+       "placed_stable": 0.704,
+       "tipped": 0.017,
+       "missed": 0.002,
+       "dropped_low": 0.049,
+       "dropped_high": 0.006,
+       "rolled_off": 0.004,
+       "not_lifted": 0.216,
+       "crushed": 0.001,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 9.236,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 5.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "plate",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "drop_release": {
+      "p": {
+       "placed_stable": 0.82,
+       "tipped": 0.016,
+       "missed": 0.002,
+       "dropped_low": 0.03,
+       "dropped_high": 0.005,
+       "rolled_off": 0.003,
+       "not_lifted": 0.101,
+       "crushed": 0.023,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 17.904,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "plate",
+       "release_height": 0.065,
+       "s": 0.5
+      }
+     },
+     "commit_std": {
+      "p": {
+       "placed_stable": 0.822,
+       "tipped": 0.015,
+       "missed": 0.002,
+       "dropped_low": 0.03,
+       "dropped_high": 0.005,
+       "rolled_off": 0.003,
+       "not_lifted": 0.1,
+       "crushed": 0.022,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 17.971,
+      "probe": null,
+      "kind": "commit",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "plate",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "regrasp_com": {
+      "p": {
+       "placed_stable": 0.822,
+       "tipped": 0.015,
+       "missed": 0.002,
+       "dropped_low": 0.03,
+       "dropped_high": 0.005,
+       "rolled_off": 0.003,
+       "not_lifted": 0.1,
+       "crushed": 0.022,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 18.071,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "plate",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "gentle_carry": {
+      "p": {
+       "placed_stable": 0.824,
+       "tipped": 0.014,
+       "missed": 0.002,
+       "dropped_low": 0.027,
+       "dropped_high": 0.005,
+       "rolled_off": 0.004,
+       "not_lifted": 0.101,
+       "crushed": 0.023,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 18.252,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 0.5,
+       "destination": "plate",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "slow_lift": {
+      "p": {
+       "placed_stable": 0.827,
+       "tipped": 0.015,
+       "missed": 0.002,
+       "dropped_low": 0.021,
+       "dropped_high": 0.006,
+       "rolled_off": 0.004,
+       "not_lifted": 0.103,
+       "crushed": 0.023,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 18.955,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.05,
+       "v_transport": 0.2,
+       "a_transport": 2.0,
+       "destination": "plate",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "probe_push": {
+      "p": null,
+      "cost": 19.345,
+      "probe": {
+       "p_kind": {
+        "slid": 0.947,
+        "tipped": 0.04,
+        "no_breakaway": 0.005,
+        "no_contact": 0.006,
+        "damaged": 0.002
+       },
+       "p_thrown": 0.019,
+       "evoi": 0.648,
+       "evoi_se": 0.115,
+       "expected_cost_after": 19.206
+      },
+      "kind": "probe",
+      "action": {
+       "probe": "push",
+       "s": 0.5,
+       "force": 20.0
+      }
+     },
+     "firm_grip": {
+      "p": {
+       "placed_stable": 0.498,
+       "tipped": 0.006,
+       "missed": 0.001,
+       "dropped_low": 0.009,
+       "dropped_high": 0.003,
+       "rolled_off": 0.002,
+       "not_lifted": 0.026,
+       "crushed": 0.455,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 235.578,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 20.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "plate",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "probe_weigh": {
+      "p": null,
+      "cost": 263.945,
+      "probe": {
+       "p_kind": {
+        "measured": 0.459,
+        "lower_bound": 0.031,
+        "lost": 0.0,
+        "damaged": 0.509
+       },
+       "p_thrown": 0.003,
+       "evoi": 1.139,
+       "evoi_se": 0.034,
+       "expected_cost_after": 263.745
+      },
+      "kind": "probe",
+      "action": {
+       "probe": "weigh",
+       "s": 0.5,
+       "force": 20.0
+      }
+     },
+     "decline": {
+      "p": null,
+      "cost": 10.0,
+      "probe": null,
+      "kind": "decline",
+      "action": {}
+     }
+    },
+    "matches_record": true
+   },
+   "exact_mass": {
+    "recommendation": "probe",
+    "recommended_option": "probe_squeeze",
+    "best_option": "light_grip",
+    "without_probe": "commit",
+    "guard_flag": false,
+    "costs": {
+     "probe_squeeze": 8.345,
+     "light_grip": 9.914,
+     "drop_release": 15.241,
+     "commit_std": 15.302,
+     "gentle_carry": 15.401,
+     "regrasp_com": 15.402,
+     "slow_lift": 16.218,
+     "probe_push": 19.683,
+     "firm_grip": 233.531,
+     "probe_weigh": 257.887,
+     "decline": 10.0
+    },
+    "rows": {
+     "probe_squeeze": {
+      "p": null,
+      "cost": 8.345,
+      "probe": {
+       "p_kind": {
+        "measured": 1.0
+       },
+       "p_thrown": 0.0,
+       "evoi": 1.719,
+       "evoi_se": 0.09,
+       "expected_cost_after": 8.195
+      },
+      "kind": "probe",
+      "action": {
+       "probe": "squeeze",
+       "s": 0.5,
+       "force": 5.0
+      }
+     },
+     "light_grip": {
+      "p": {
+       "placed_stable": 0.788,
+       "tipped": 0.068,
+       "missed": 0.003,
+       "dropped_low": 0.041,
+       "dropped_high": 0.007,
+       "rolled_off": 0.007,
+       "not_lifted": 0.086,
+       "crushed": 0.001,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 9.914,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 5.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "plate",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "drop_release": {
+      "p": {
+       "placed_stable": 0.87,
+       "tipped": 0.043,
+       "missed": 0.003,
+       "dropped_low": 0.019,
+       "dropped_high": 0.005,
+       "rolled_off": 0.005,
+       "not_lifted": 0.039,
+       "crushed": 0.017,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 15.241,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "plate",
+       "release_height": 0.065,
+       "s": 0.5
+      }
+     },
+     "commit_std": {
+      "p": {
+       "placed_stable": 0.871,
+       "tipped": 0.042,
+       "missed": 0.003,
+       "dropped_low": 0.018,
+       "dropped_high": 0.005,
+       "rolled_off": 0.005,
+       "not_lifted": 0.038,
+       "crushed": 0.017,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 15.302,
+      "probe": null,
+      "kind": "commit",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "plate",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "gentle_carry": {
+      "p": {
+       "placed_stable": 0.874,
+       "tipped": 0.041,
+       "missed": 0.003,
+       "dropped_low": 0.016,
+       "dropped_high": 0.005,
+       "rolled_off": 0.005,
+       "not_lifted": 0.039,
+       "crushed": 0.017,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 15.401,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 0.5,
+       "destination": "plate",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "regrasp_com": {
+      "p": {
+       "placed_stable": 0.871,
+       "tipped": 0.042,
+       "missed": 0.003,
+       "dropped_low": 0.018,
+       "dropped_high": 0.005,
+       "rolled_off": 0.005,
+       "not_lifted": 0.038,
+       "crushed": 0.017,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 15.402,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "plate",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "slow_lift": {
+      "p": {
+       "placed_stable": 0.877,
+       "tipped": 0.043,
+       "missed": 0.003,
+       "dropped_low": 0.01,
+       "dropped_high": 0.006,
+       "rolled_off": 0.006,
+       "not_lifted": 0.039,
+       "crushed": 0.017,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 16.218,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.05,
+       "v_transport": 0.2,
+       "a_transport": 2.0,
+       "destination": "plate",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "probe_push": {
+      "p": null,
+      "cost": 19.683,
+      "probe": {
+       "p_kind": {
+        "slid": 0.953,
+        "tipped": 0.038,
+        "no_breakaway": 0.004,
+        "no_contact": 0.003,
+        "damaged": 0.002
+       },
+       "p_thrown": 0.019,
+       "evoi": 0.945,
+       "evoi_se": 0.138,
+       "expected_cost_after": 19.546
+      },
+      "kind": "probe",
+      "action": {
+       "probe": "push",
+       "s": 0.5,
+       "force": 20.0
+      }
+     },
+     "firm_grip": {
+      "p": {
+       "placed_stable": 0.504,
+       "tipped": 0.016,
+       "missed": 0.002,
+       "dropped_low": 0.006,
+       "dropped_high": 0.003,
+       "rolled_off": 0.002,
+       "not_lifted": 0.016,
+       "crushed": 0.451,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 233.531,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 20.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "plate",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "probe_weigh": {
+      "p": null,
+      "cost": 257.887,
+      "probe": {
+       "p_kind": {
+        "measured": 0.487,
+        "lower_bound": 0.016,
+        "lost": 0.0,
+        "damaged": 0.497
+       },
+       "p_thrown": 0.003,
+       "evoi": 1.507,
+       "evoi_se": 0.026,
+       "expected_cost_after": 257.687
+      },
+      "kind": "probe",
+      "action": {
+       "probe": "weigh",
+       "s": 0.5,
+       "force": 20.0
+      }
+     },
+     "decline": {
+      "p": null,
+      "cost": 10.0,
+      "probe": null,
+      "kind": "decline",
+      "action": {}
+     }
+    },
+    "matches_record": true
+   },
+   "exact_both": {
+    "recommendation": "probe",
+    "recommended_option": "probe_squeeze",
+    "best_option": "light_grip",
+    "without_probe": "commit",
+    "guard_flag": false,
+    "costs": {
+     "probe_squeeze": 5.563,
+     "light_grip": 6.377,
+     "drop_release": 12.385,
+     "commit_std": 12.447,
+     "gentle_carry": 12.515,
+     "regrasp_com": 12.547,
+     "slow_lift": 13.215,
+     "probe_push": 16.945,
+     "firm_grip": 230.074,
+     "probe_weigh": 255.122,
+     "decline": 10.0
+    },
+    "rows": {
+     "probe_squeeze": {
+      "p": null,
+      "cost": 5.563,
+      "probe": {
+       "p_kind": {
+        "measured": 1.0
+       },
+       "p_thrown": 0.0,
+       "evoi": 0.965,
+       "evoi_se": 0.058,
+       "expected_cost_after": 5.413
+      },
+      "kind": "probe",
+      "action": {
+       "probe": "squeeze",
+       "s": 0.5,
+       "force": 5.0
+      }
+     },
+     "light_grip": {
+      "p": {
+       "placed_stable": 0.903,
+       "tipped": 0.019,
+       "missed": 0.002,
+       "dropped_low": 0.019,
+       "dropped_high": 0.005,
+       "rolled_off": 0.004,
+       "not_lifted": 0.048,
+       "crushed": 0.001,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 6.377,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 5.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "plate",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "drop_release": {
+      "p": {
+       "placed_stable": 0.94,
+       "tipped": 0.013,
+       "missed": 0.002,
+       "dropped_low": 0.007,
+       "dropped_high": 0.004,
+       "rolled_off": 0.003,
+       "not_lifted": 0.016,
+       "crushed": 0.016,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 12.385,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "plate",
+       "release_height": 0.065,
+       "s": 0.5
+      }
+     },
+     "commit_std": {
+      "p": {
+       "placed_stable": 0.941,
+       "tipped": 0.012,
+       "missed": 0.001,
+       "dropped_low": 0.007,
+       "dropped_high": 0.004,
+       "rolled_off": 0.003,
+       "not_lifted": 0.016,
+       "crushed": 0.016,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 12.447,
+      "probe": null,
+      "kind": "commit",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "plate",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "gentle_carry": {
+      "p": {
+       "placed_stable": 0.942,
+       "tipped": 0.012,
+       "missed": 0.002,
+       "dropped_low": 0.006,
+       "dropped_high": 0.004,
+       "rolled_off": 0.003,
+       "not_lifted": 0.016,
+       "crushed": 0.016,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 12.515,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 0.5,
+       "destination": "plate",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "regrasp_com": {
+      "p": {
+       "placed_stable": 0.941,
+       "tipped": 0.012,
+       "missed": 0.001,
+       "dropped_low": 0.007,
+       "dropped_high": 0.004,
+       "rolled_off": 0.003,
+       "not_lifted": 0.016,
+       "crushed": 0.016,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 12.547,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "plate",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "slow_lift": {
+      "p": {
+       "placed_stable": 0.942,
+       "tipped": 0.012,
+       "missed": 0.001,
+       "dropped_low": 0.005,
+       "dropped_high": 0.004,
+       "rolled_off": 0.003,
+       "not_lifted": 0.016,
+       "crushed": 0.016,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 13.215,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 10.0,
+       "v_lift": 0.05,
+       "v_transport": 0.2,
+       "a_transport": 2.0,
+       "destination": "plate",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "probe_push": {
+      "p": null,
+      "cost": 16.945,
+      "probe": {
+       "p_kind": {
+        "slid": 0.949,
+        "tipped": 0.042,
+        "no_breakaway": 0.003,
+        "no_contact": 0.003,
+        "damaged": 0.002
+       },
+       "p_thrown": 0.019,
+       "evoi": 0.224,
+       "evoi_se": 0.051,
+       "expected_cost_after": 16.804
+      },
+      "kind": "probe",
+      "action": {
+       "probe": "push",
+       "s": 0.5,
+       "force": 20.0
+      }
+     },
+     "firm_grip": {
+      "p": {
+       "placed_stable": 0.534,
+       "tipped": 0.005,
+       "missed": 0.001,
+       "dropped_low": 0.003,
+       "dropped_high": 0.003,
+       "rolled_off": 0.002,
+       "not_lifted": 0.008,
+       "crushed": 0.446,
+       "bruised": 0.0,
+       "broken": 0.0,
+       "spilled": 0.0
+      },
+      "cost": 230.074,
+      "probe": null,
+      "kind": "lower_risk",
+      "action": {
+       "force": 20.0,
+       "v_lift": 0.15,
+       "v_transport": 0.5,
+       "a_transport": 2.0,
+       "destination": "plate",
+       "release_height": null,
+       "s": 0.5
+      }
+     },
+     "probe_weigh": {
+      "p": null,
+      "cost": 255.122,
+      "probe": {
+       "p_kind": {
+        "measured": 0.501,
+        "lower_bound": 0.005,
+        "lost": 0.0,
+        "damaged": 0.494
+       },
+       "p_thrown": 0.003,
+       "evoi": 0.918,
+       "evoi_se": 0.024,
+       "expected_cost_after": 254.922
+      },
+      "kind": "probe",
+      "action": {
+       "probe": "weigh",
+       "s": 0.5,
+       "force": 20.0
+      }
+     },
+     "decline": {
+      "p": null,
+      "cost": 10.0,
+      "probe": null,
+      "kind": "decline",
+      "action": {}
+     }
+    },
+    "matches_record": true
+   }
+  },
+  "truth": {
+   "mass": 0.11912068448892726,
+   "com_frac": 0.503724730584533,
+   "sim_mass": 0.11912,
+   "sim_com_frac": 0.503724733724859
+  }
+ }
+]
