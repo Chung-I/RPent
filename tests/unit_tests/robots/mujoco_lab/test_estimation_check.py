@@ -235,3 +235,41 @@ def test_the_run_config_records_the_generator(monkeypatch):
     assert _revision()["generator"] == "v11"
     monkeypatch.delenv("RPENT_LAB_GENERATOR")
     assert _revision()["generator"] == "v10"
+
+
+def test_jobs_for_carries_the_mass_only_swap_to_every_shape_prior_spec(tmp_path):
+    import json
+
+    from robots.mujoco_lab.estimation_check import jobs_for
+
+    (tmp_path / "folds").mkdir()
+    json.dump({"a": 0, "b": 1}, open(tmp_path / "folds" / "folds.json", "w"))
+    specs = jobs_for(str(tmp_path), True, None, ["attempt"], 100, 3, prior="real", scenes="s.json", mass_only=True)
+    assert [(s["prior"], s["mass_only"]) for s in specs] == [("real", True), ("real", True)]
+    assert "mass_only" not in jobs_for(str(tmp_path), True, None, ["attempt"], 100, 3)[0]    # the class prior swaps nothing
+
+
+def test_job_prior_real_mass_only_takes_the_real_masses_and_keeps_the_class_com(tmp_path, monkeypatch):
+    import json
+
+    import robots.mujoco_lab.estimation_check as ec
+    from robots.mujoco_lab.masses import load_masses
+    from rpent.skills.pick_place.belief import ParticleBelief
+
+    real = load_masses()["objects"]
+    o, t1, t2 = sorted(real)[:3]
+    scenes = tmp_path / "scenes.json"
+    json.dump({k: {"flat": True} for k in (o, t1, t2)}, open(scenes, "w"))
+    monkeypatch.setattr(ec, "attempt_rows", lambda src: [])
+    monkeypatch.setattr(ec, "probe_rows", lambda src: [])
+    monkeypatch.setattr(ec, "case_truths", lambda rows, classes: {t1: [(1.0, 0.5)], t2: [(2.0, 0.4)]})
+
+    def base(pose, n, rng):
+        return ParticleBelief([{"mass": 1.0, "mu": 0.5, "com_obj": [0.01, 0.0, 0.0], "com_frac": 0.75} for _ in range(n)], np.ones(n))
+
+    spec = {"prior": "real", "objects": [o], "tuning": [t1, t2], "scenes": str(scenes), "source": "x", "fold": 0, "mass_only": True}
+    prior, info = ec.job_prior(spec, {"prior": base})
+    assert info["table"][o]["mass"] == real[o]["mass_kg"]
+    a = prior({"object_id": o, "pivot": {"centre": [0, 0, 0], "axis": [1, 0, 0], "lo": -0.1, "L": 0.2}}, 20,
+              np.random.default_rng(0)).arrays()
+    assert np.allclose(a["com_frac"], 0.75) and np.allclose(a["com_obj"], [[0.01, 0.0, 0.0]] * 20)

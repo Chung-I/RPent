@@ -92,9 +92,10 @@ def change_rates(records: list[dict[str, Any]], n_boot: int = N_BOOT, seed: int 
     return out
 
 
-def prior_tables(source: str, scenes: str, vlm: dict[str, str]) -> tuple[dict[str, dict[str, dict[str, Any]]], dict[str, Any]]:
-    """Per prior (generic, and one per VLM records file) the table of every object, each fold's objects with spreads fitted on
-    the other folds (vision_prior.prior_table), and the spreads per prior and fold."""
+def prior_tables(source: str, scenes: str, vlm: dict[str, str],
+                 real: bool = False) -> tuple[dict[str, dict[str, dict[str, Any]]], dict[str, Any]]:
+    """Per prior (generic, one per VLM records file, and with ``real`` the exact-answer prior) the table of every object, each
+    fold's objects with spreads fitted on the other folds (vision_prior.prior_table), and the spreads per prior and fold."""
     from robots.mujoco_lab.estimation_check import attempt_rows, case_truths, probe_rows, tuning_objects
     from robots.mujoco_lab.robot_spec import load_bundle
     from robots.mujoco_lab.vision_prior import prior_table
@@ -104,7 +105,13 @@ def prior_tables(source: str, scenes: str, vlm: dict[str, str]) -> tuple[dict[st
     rows = attempt_rows(source) + [r for r in probe_rows(source) if r["key"].rsplit("__", 1)[1] in ("Apush", "Bweigh")]
     truths = case_truths(rows, classes)
     flat = {o: bool(v["flat"]) for o, v in json.load(open(scenes)).items()}
-    specs = {"generic": ("generic", None), **{n: ("vlm", [json.loads(line) for line in open(p)]) for n, p in vlm.items()}}
+    specs = {"generic": ("generic", None), **{n: ("vlm", [json.loads(line) for line in open(p)]) for n, p in vlm.items()},
+             **({"real": ("real", None)} if real else {})}
+    masses = None
+    if real:
+        from robots.mujoco_lab.masses import load_masses
+
+        masses = {o: float(e["mass_kg"]) for o, e in load_masses()["objects"].items()}
     tables: dict[str, dict[str, dict[str, Any]]] = {}
     spreads: dict[str, dict[int, Any]] = {}
     for name, (kind, records) in specs.items():
@@ -112,7 +119,7 @@ def prior_tables(source: str, scenes: str, vlm: dict[str, str]) -> tuple[dict[st
         for k in sorted(set(folds.values())):
             tune = tuning_objects(folds, k)
             held = sorted(o for o, f in folds.items() if f == k)
-            t, s = prior_table(kind, held, tune, {o: truths[o] for o in tune if o in truths}, flat, records)
+            t, s = prior_table(kind, held, tune, {o: truths[o] for o in tune if o in truths}, flat, records, real=masses)
             tables[name].update(t)
             spreads[name][k] = s
     return tables, spreads
@@ -130,7 +137,7 @@ def run_object(job: tuple[str, list[int], dict[str, Any]]) -> list[dict[str, Any
     o, idxs, s = job
     prims = cal._primitives(s["bundle"], None, None)
     base = prims.prior
-    priors = {"class": base, **{n: shape_prior(base, {o: t[o]}) for n, t in s["tables"].items()}}
+    priors = {"class": base, **{n: shape_prior(base, {o: t[o]}, mass_only=bool(s.get("mass_only"))) for n, t in s["tables"].items()}}
     prims.force_noise = cal.job_force_noise(None, prims.manifest)      # calibrate._run_object's sensor
     env = prims.env
     env.force_noise = prims.force_noise
@@ -175,7 +182,7 @@ def run(a: argparse.Namespace) -> str:
     if os.path.exists(path):
         raise SystemExit(f"{path} exists: pick a new --out")
     vlm = dict(v.split("=", 1) for v in a.vlm or [])
-    tables, spreads = prior_tables(a.bundle, a.scenes, vlm)
+    tables, spreads = prior_tables(a.bundle, a.scenes, vlm, real=a.real)
     folds = json.load(open(os.path.join(a.bundle, "folds", "folds.json")))
     objects = a.objects.split(",") if a.objects else sorted(folds)
     settings = [_setting(t) for t in a.settings.split(",")] if a.settings else [(n, c, A) for n, c, A in SETTINGS]
@@ -183,7 +190,8 @@ def run(a: argparse.Namespace) -> str:
     with open(os.path.join(a.out, "run_config.json"), "w") as f:
         json.dump({**vars(a), **_revision(), "settings_parsed": settings, "spreads": spreads, "tables": tables}, f, indent=1)
     jobs = [(o, list(range(a.repeats)), {"bundle": os.path.join(a.bundle, "folds", f"fold_{folds[o]}"), "fold": folds[o], "seed": a.seed,
-                                         "settings": settings, "tables": {n: {o: t[o]} for n, t in tables.items()}}) for o in objects]
+                                         "settings": settings, "tables": {n: {o: t[o]} for n, t in tables.items()},
+                                         "mass_only": a.mass_only}) for o in objects]
     t0 = time.time()
     with mp.get_context("spawn").Pool(a.workers) as pool, open(path, "w") as out:
         for rows in pool.imap_unordered(run_object, jobs):
@@ -228,6 +236,8 @@ def main(argv: list[str] | None = None) -> Any:
     r.add_argument("--scenes", required=True)
     r.add_argument("--vlm", action="append", help="name=records.jsonl (vlm_query.py output); repeatable")
     r.add_argument("--settings", default=None, help="name:care:A,... (default SETTINGS)")
+    r.add_argument("--real", action="store_true", help="add the exact-answer prior (the real mass as the centre)")
+    r.add_argument("--mass-only", action="store_true", help="every shape prior swaps the mass alone (the class CoM stays)")
     r.add_argument("--objects", default=None)
     r.add_argument("--seed", type=int, default=11)
     r.add_argument("--repeats", type=int, default=11)

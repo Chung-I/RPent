@@ -236,16 +236,23 @@ def tuning_objects(folds: dict[str, int], fold: int) -> list[str]:
 
 
 def job_prior(spec: dict[str, Any], B: dict[str, Any]) -> tuple[Any, dict[str, Any] | None]:
-    """The job's prior: the bundle's (class), or ``shape_prior`` over it with the generic or VLM table of the job's objects,
-    the spreads fitted on ``spec["tuning"]`` (every attempt and probe row of those objects)."""
+    """The job's prior: the bundle's (class), or ``shape_prior`` over it with the generic, VLM or real table of the job's
+    objects, the spreads fitted on ``spec["tuning"]`` (every attempt and probe row of those objects); ``spec["mass_only"]``
+    swaps the mass alone."""
     if spec.get("prior", "class") == "class":
         return None, None
     rows = attempt_rows(spec["source"]) + [r for r in probe_rows(spec["source"]) if r["key"].rsplit("__", 1)[1] in ("Apush", "Bweigh")]
     truths = case_truths(rows_of(rows, spec["tuning"]), B.get("classes"))   # the tuning objects' truths only
     flat = {o: bool(v["flat"]) for o, v in json.load(open(spec["scenes"])).items()}
     records = [json.loads(line) for line in open(spec["vlm"])] if spec["prior"] == "vlm" else None
-    table, spreads = prior_table(spec["prior"], spec["objects"], spec["tuning"], truths, flat, records)
-    return shape_prior(B.get("prior") or lab_prior, table), {"fold": spec["fold"], "spreads": spreads, "table": table}
+    real = None
+    if spec["prior"] == "real":
+        from robots.mujoco_lab.masses import load_masses
+
+        real = {o: float(e["mass_kg"]) for o, e in load_masses()["objects"].items()}
+    table, spreads = prior_table(spec["prior"], spec["objects"], spec["tuning"], truths, flat, records, real=real)
+    return (shape_prior(B.get("prior") or lab_prior, table, mass_only=bool(spec.get("mass_only"))),
+            {"fold": spec["fold"], "spreads": spreads, "table": table})
 
 
 def job(spec: dict[str, Any]) -> list[dict[str, Any]]:
@@ -269,8 +276,8 @@ def job(spec: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def jobs_for(bundle_dir: str, crossfit: bool, objects: list[str] | None, stages: list[str], n: int, seed: int,
-             prior: str = "class", scenes: str | None = None, vlm: str | None = None) -> list[dict[str, Any]]:
-    extra = {} if prior == "class" else {"prior": prior, "scenes": scenes, "vlm": vlm}
+             prior: str = "class", scenes: str | None = None, vlm: str | None = None, mass_only: bool = False) -> list[dict[str, Any]]:
+    extra = {} if prior == "class" else {"prior": prior, "scenes": scenes, "vlm": vlm, **({"mass_only": True} if mass_only else {})}
     if not crossfit:
         spec = {"bundle": bundle_dir, "source": bundle_dir, "fold": -1, "objects": objects, "stages": stages, "n": n, "seed": seed}
         if extra:
@@ -299,7 +306,8 @@ def run(a: argparse.Namespace) -> str:
     if os.path.exists(path):
         raise SystemExit(f"{path} exists: pick a new --out")
     objects = a.objects.split(",") if a.objects else None
-    specs = jobs_for(a.bundle, a.crossfit, objects, a.stages.split(","), a.n_particles, a.seed, a.prior, a.scenes, a.vlm)
+    specs = jobs_for(a.bundle, a.crossfit, objects, a.stages.split(","), a.n_particles, a.seed, a.prior, a.scenes, a.vlm,
+                     mass_only=a.mass_only)
     with open(os.path.join(a.out, "run_config.json"), "w") as f:
         json.dump({**vars(a), **_revision(), "jobs": [{k: v for k, v in s.items() if k not in ("objects", "tuning")}
                                                       | {"n_objects": len(s["objects"] or []), "n_tuning": len(s.get("tuning") or [])}
@@ -373,7 +381,8 @@ def main(argv: list[str] | None = None) -> Any:
     r.add_argument("--n-particles", type=int, default=2000)
     r.add_argument("--seed", type=int, default=0)
     r.add_argument("--workers", type=int, default=5)
-    r.add_argument("--prior", default="class", choices=("class", "generic", "vlm"))
+    r.add_argument("--prior", default="class", choices=("class", "generic", "vlm", "real"))
+    r.add_argument("--mass-only", action="store_true", help="swap the mass alone: the class prior's CoM stays")
     r.add_argument("--scenes", default=None, help="the renders' scenes.json (flat or upright per object): generic and vlm")
     r.add_argument("--vlm", default=None, help="the model's query records (vlm_query.py output): vlm")
     r.add_argument("--out", required=True)
@@ -386,7 +395,7 @@ def main(argv: list[str] | None = None) -> Any:
     if a.cmd == "run" and not a.crossfit and not a.objects:
         raise SystemExit("--objects is needed without --crossfit")
     if a.cmd == "run" and a.prior != "class" and not a.scenes or a.cmd == "run" and a.prior == "vlm" and not a.vlm:
-        raise SystemExit("--prior generic needs --scenes; --prior vlm needs --scenes and --vlm")
+        raise SystemExit("--prior generic or real needs --scenes; --prior vlm needs --scenes and --vlm")
     return run(a) if a.cmd == "run" else summary(a)
 
 

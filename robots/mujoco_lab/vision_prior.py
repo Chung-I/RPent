@@ -25,9 +25,13 @@ fragility stay the class prior's, and then replaces the mass and the CoM:
 
 Centres. VLM: m0 is the median of the model's mass samples; c0 is the median marker's fraction (markers at FRACS) for an
 object laid flat, and 0.5 for an upright container (the model is not asked there). Generic: m0 is exp of the
-object-weighted mean log truth mass of the tuning objects; c0 is 0.5. Spreads: fitted on the tuning objects only, the
-maximum-likelihood spread with the centre fixed (the root mean square of the residuals, each object weighted equally);
-the CoM spread separately for objects laid flat and for upright containers.
+object-weighted mean log truth mass of the tuning objects; c0 is 0.5. Real (the exact-answer prior, 2026-11-04): m0 is
+the object's real mass (the generator v11 table), c0 is 0.5: what a model that names the real mass exactly would give.
+Spreads: fitted on the tuning objects only, the maximum-likelihood spread with the centre fixed (the root mean square of
+the residuals, each object weighted equally); the CoM spread separately for objects laid flat and for upright containers.
+
+``mass_only`` (2026-11-04) replaces the mass alone: the class prior's CoM draws stay, so a swap of the mass prior holds
+everything else fixed.
 """
 
 from __future__ import annotations
@@ -91,15 +95,20 @@ def generic_centres(truths: dict[str, list[tuple[float, float]]], objects: list[
     return {o: {"mass": m0, "com": MIDDLE} for o in objects}
 
 
-def shape_prior(base: Callable[..., ParticleBelief], table: dict[str, dict[str, float]]) -> Callable[..., ParticleBelief]:
+def shape_prior(base: Callable[..., ParticleBelief], table: dict[str, dict[str, float]],
+                mass_only: bool = False) -> Callable[..., ParticleBelief]:
     """``prior(pose, n, rng)``: the base prior's particles with the mass and the CoM of ``table[pose["object_id"]]``
-    (keys mass, com, sigma_mass, sigma_com); the draws come after the base prior's, from the same stream."""
+    (keys mass, com, sigma_mass, sigma_com); the draws come after the base prior's, from the same stream. ``mass_only``
+    replaces the mass alone and keeps the base particles' CoM keys."""
 
     def prior_fn(pose: dict[str, Any], n: int = 2000, rng: np.random.Generator | None = None) -> ParticleBelief:
         rng = rng if rng is not None else np.random.default_rng(0)
         t = table[str(pose["object_id"])]
         b = base(pose, n, rng)
         mass = float(t["mass"]) * np.exp(float(t["sigma_mass"]) * rng.standard_normal(n))
+        if mass_only:
+            parts = [{**p, "mass": float(mass[i]), "mass_scale": float("nan")} for i, p in enumerate(b.particles)]
+            return ParticleBelief(parts, np.ones(n), flags=list(b.flags))
         lo, hi = (ndtr((x - float(t["com"])) / float(t["sigma_com"])) for x in COM_RANGE)
         frac = np.clip(float(t["com"]) + float(t["sigma_com"]) * ndtri(lo + (hi - lo) * rng.random(n)), *COM_RANGE)
         pv = pose["pivot"]
@@ -113,10 +122,12 @@ def shape_prior(base: Callable[..., ParticleBelief], table: dict[str, dict[str, 
 
 
 def prior_table(kind: str, objects: list[str], tuning: list[str], truths: dict[str, list[tuple[float, float]]],
-                flat: dict[str, bool], records: list[dict[str, Any]] | None = None) -> tuple[dict[str, dict[str, Any]], dict[str, Any]]:
-    """The table of ``shape_prior`` for the held-out ``objects`` (``kind`` generic or vlm) and the spreads, fitted on the
-    ``tuning`` objects' truths only. A VLM object without a usable mass answer takes the generic mass centre, one laid
-    flat without a usable marker the pivot's middle (listed under ``fallback``); an upright one is not asked (0.5)."""
+                flat: dict[str, bool], records: list[dict[str, Any]] | None = None,
+                real: dict[str, float] | None = None) -> tuple[dict[str, dict[str, Any]], dict[str, Any]]:
+    """The table of ``shape_prior`` for the held-out ``objects`` (``kind`` generic, vlm or real) and the spreads, fitted on
+    the ``tuning`` objects' truths only. A VLM object without a usable mass answer takes the generic mass centre, one laid
+    flat without a usable marker the pivot's middle (listed under ``fallback``); an upright one is not asked (0.5). The
+    real prior centres each object on ``real[object]`` (kg); an object without one is a ValueError."""
     tune = {o: truths[o] for o in tuning if truths.get(o)}
     generic = generic_centres(tune, sorted(set(objects) | set(tune)))
     if kind == "generic":
@@ -129,6 +140,11 @@ def prior_table(kind: str, objects: list[str], tuning: list[str], truths: dict[s
             fb = [k for k in ("mass", "com") if a.get(k) is None and (k == "mass" or flat[o])]
             centres[o] = {"mass": a.get("mass") or generic[o]["mass"], "com": a.get("com") if a.get("com") is not None else MIDDLE,
                           "fallback": fb}
+    elif kind == "real":
+        missing = sorted(o for o in generic if (real or {}).get(o) is None)
+        if missing:
+            raise ValueError(f"no real mass for {', '.join(missing)}")
+        centres = {o: {"mass": float(real[o]), "com": MIDDLE, "fallback": []} for o in generic}
     else:
         raise ValueError(f"unknown prior {kind!r}")
     s = fit_spreads(tune, centres, flat)

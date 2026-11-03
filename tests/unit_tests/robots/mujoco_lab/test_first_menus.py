@@ -102,3 +102,35 @@ def test_a_case_resets_with_the_bundles_classes(monkeypatch):
         with pytest.raises(Stop):
             first_menus.run_object(("ycb__mug", [0], {"bundle": "b", "tables": {}, "seed": 11, "settings": [], "fold": 0}))
         assert prims.env.classes is want
+
+
+def test_run_object_swaps_the_mass_alone_when_asked(monkeypatch):
+    """--mass-only: every shape prior of a case replaces the mass alone (the class prior's CoM stays)."""
+    from types import SimpleNamespace
+
+    import robots.mujoco_lab.adapter as adapter
+    import robots.mujoco_lab.calibrate as cal
+    import robots.mujoco_lab.prior as prior
+    import robots.mujoco_lab.vision_prior as vp
+    from robots.mujoco_lab import first_menus
+
+    class Stop(Exception):
+        pass
+
+    class Env:
+        def reset(self, *a, **kw):
+            raise Stop
+
+    monkeypatch.setattr(adapter, "object_props", lambda o: {"mass": 1.0})
+
+    seen = []
+    monkeypatch.setattr(vp, "shape_prior", lambda base, table, mass_only=False: seen.append(mass_only) or base)
+    prims = SimpleNamespace(env=Env(), manifest={}, prior=None)
+    monkeypatch.setattr(cal, "_primitives", lambda *a: prims)
+    monkeypatch.setattr(cal, "job_force_noise", lambda *a: None)
+    monkeypatch.setattr(prior, "fragility_world", lambda manifest: None)
+    monkeypatch.setattr(cal, "case_draw", lambda *a, **kw: ({}, 1, "bin", {"fill": 0.0, "frag": None}))
+    s = {"bundle": "b", "tables": {"generic": {"o": {}}, "real": {"o": {}}}, "seed": 11, "settings": [], "fold": 0, "mass_only": True}
+    with pytest.raises(Stop):
+        first_menus.run_object(("o", [0], s))
+    assert seen == [True, True]

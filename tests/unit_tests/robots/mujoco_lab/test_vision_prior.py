@@ -133,3 +133,32 @@ def test_prior_table_refuses_a_spread_it_cannot_fit():
     truths = {"t1": [(1.0, 0.5)], "h": [(2.0, 0.5)]}
     with pytest.raises(ValueError):
         prior_table("generic", ["h"], ["t1"], truths, {"t1": True, "h": False})     # no upright tuning object
+
+
+def test_shape_prior_mass_only_replaces_the_mass_and_keeps_the_base_com():
+    """The mass-only swap (2026-11-04, cause (c) of the v11c check): the mass alone is replaced; the CoM and every other
+    key stay the base prior's draws."""
+    from robots.mujoco_lab.vision_prior import shape_prior
+
+    prior = shape_prior(_base, {"o": {"mass": 0.4, "com": 0.3, "sigma_mass": 1e-6, "sigma_com": 1e-6}}, mass_only=True)
+    pose = {"object_id": "o", "pivot": PIVOT}
+    a = prior(pose, 50, np.random.default_rng(0)).arrays()
+    ref = _base(pose, 50, np.random.default_rng(0)).arrays()
+    assert np.allclose(a["mass"], 0.4) and np.isnan(a["mass_scale"]).all()
+    for k in ("com_obj", "com_frac", "com_s", "f", "mu", "fill", "f_damage_n"):
+        assert np.allclose(a[k], ref[k]), k
+    assert a["com_branch"].all()
+
+
+def test_prior_table_real_centres_on_the_real_masses_and_fits_its_spread():
+    """The exact-answer prior (cause (b)): the centre is the object's real mass, the CoM centre the pivot's middle, the
+    spread fitted on the tuning objects around their real masses."""
+    from robots.mujoco_lab.vision_prior import prior_table
+
+    truths = {"t1": [(2.0, 0.5)], "t2": [(np.e, 0.7)], "h": [(100.0, 0.1)]}
+    flat = {"t1": True, "t2": True, "h": True}
+    t, s = prior_table("real", ["h"], ["t1", "t2"], truths, flat, real={"t1": 2.0, "t2": 1.0, "h": 50.0})
+    assert t["h"]["mass"] == 50.0 and t["h"]["com"] == 0.5 and t["h"]["fallback"] == []
+    assert s["mass"] == pytest.approx(np.sqrt((0.0 + 1.0) / 2))                 # log residuals 0 (t1) and 1 (t2)
+    with pytest.raises(ValueError):
+        prior_table("real", ["h"], ["t1", "t2"], truths, flat, real={"t1": 2.0, "t2": 1.0})   # h has no real mass
