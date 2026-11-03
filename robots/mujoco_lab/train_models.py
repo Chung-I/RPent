@@ -67,7 +67,7 @@ from typing import Any
 import numpy as np
 
 from robots.mujoco_lab import tracking
-from robots.mujoco_lab.corpus import trainable
+from robots.mujoco_lab.corpus import lab_generator, trainable
 from rpent.skills.pick_place.costs import ABSTAIN_COST
 from rpent.skills.pick_place.evaluate import rows_of, split_objects
 from rpent.skills.pick_place.menu import ESTIMATORS
@@ -153,6 +153,15 @@ def _time_scale_arg(text: str) -> float:
         raise argparse.ArgumentTypeError(str(exc)) from exc
 
 
+def corpus_generator(rows: list[dict]) -> str:
+    """The lab generator of a corpus's rows, for the manifest: a row without the field is v10 (corpora from before
+    generator v11); rows of two generators are an error."""
+    gens = {r.get("generator", "v10") for r in rows}
+    if len(gens) > 1:
+        raise ValueError(f"the rows mix generators {sorted(gens)}: a bundle learns from one generator")
+    return gens.pop() if gens else "v10"
+
+
 def write_manifest(out_dir: str, **fields) -> dict:
     """Create or update the bundle's manifest (paths are relative to the bundle directory)."""
     path = os.path.join(out_dir, MANIFEST)
@@ -163,20 +172,21 @@ def write_manifest(out_dir: str, **fields) -> dict:
     return man
 
 
-def m2b_world(classes: str | None, thresholds: str | None) -> tuple[Any, str, dict[str, Any]]:
-    """The m2b prior on a fragility world: (prior_fn, the manifest's prior name, the manifest's ``classes`` and
-    ``thresholds`` entries {path, sha256}). The files default to data/fragility_classes.json and data/thresholds_v0.json;
-    a path under robots/mujoco_lab/data is stored relative to it."""
-    from robots.mujoco_lab.fragility import CLASSES, DATA, THRESHOLDS_V0, Thresholds, load_classes
-    from robots.mujoco_lab.prior import M2B_PRIOR, make_prior, sha256_of
+def m2b_world(classes: str | None, thresholds: str | None, generator: str = "v10") -> tuple[Any, str, dict[str, Any]]:
+    """The m2b prior on a fragility world under ``generator``: (prior_fn, the manifest's prior name: lab_generator_m2b
+    under v10, lab_generator_v11 under v11, the manifest's ``classes`` and ``thresholds`` entries {path, sha256}). The
+    files default to the generator's classes (fragility.classes_for) and data/thresholds_v0.json; a path under
+    robots/mujoco_lab/data is stored relative to it."""
+    from robots.mujoco_lab.fragility import DATA, THRESHOLDS_V0, Thresholds, classes_for, load_classes
+    from robots.mujoco_lab.prior import M2B_PRIOR, V11_PRIOR, make_prior, sha256_of
 
     def entry(path: str) -> dict[str, str]:
         rel = os.path.relpath(os.path.abspath(path), DATA)
         return {"path": os.path.abspath(path) if rel.startswith("..") else rel, "sha256": sha256_of(path)}
 
-    cpath, tpath = classes or CLASSES, thresholds or THRESHOLDS_V0
-    return (make_prior(load_classes(cpath), Thresholds.from_json(tpath)), M2B_PRIOR,
-            {"classes": entry(cpath), "thresholds": entry(tpath)})
+    cpath, tpath = classes or classes_for(generator), thresholds or THRESHOLDS_V0
+    return (make_prior(load_classes(cpath), Thresholds.from_json(tpath), generator=generator),
+            M2B_PRIOR if generator == "v10" else V11_PRIOR, {"classes": entry(cpath), "thresholds": entry(tpath)})
 
 
 def bundle_schema(out_dir: str, schema: str | None = None) -> str:
@@ -199,13 +209,16 @@ def fit_probes(path: str, out_dir: str, split: dict, seed: int = 0, schema: str 
     (both on the results not thrown: the kind classifier's rows)."""
     from rpent.skills.pick_place.probes import fit_probe_models, true_matrix
 
-    from robots.mujoco_lab.robot_spec import manifest_force_noise
+    from robots.mujoco_lab.robot_spec import manifest_force_noise, manifest_generator
 
     rows = load_rows(path)
     man_path = os.path.join(out_dir, MANIFEST)
-    declared = manifest_force_noise(json.load(open(man_path))) if os.path.exists(man_path) else 0.0
+    man = json.load(open(man_path)) if os.path.exists(man_path) else {}
+    declared = manifest_force_noise(man) if man else 0.0
     if corpus_sensor(rows)["force_noise"] != declared:
         raise ValueError(f"the probe corpus's force noise {corpus_sensor(rows)['force_noise']} is not the bundle's {declared}")
+    if corpus_generator(rows) != manifest_generator(man):
+        raise ValueError(f"the probe corpus's generator {corpus_generator(rows)} is not the bundle's {manifest_generator(man)}")
     tr, va = rows_of(rows, split["train"]), rows_of(rows, split["val"])
     law_val = law_val_objects(split, seed)
     models = fit_probe_models(tr, seed=seed, names=FEATURE_SCHEMAS[bundle_schema(out_dir, schema)], val_objects=law_val)
@@ -292,7 +305,7 @@ def main(argv: list[str] | None = None) -> dict:
     ap.add_argument("--guard", action="store_true", help="alone: fit the novelty guard into the existing bundle or folds directory")
     ap.add_argument("--feature-schema", choices=tuple(FEATURE_SCHEMAS), default=None,
                     help="the models' features: m2 (default) or m2b (with the damage features); probes follow the bundle's")
-    ap.add_argument("--classes", default=None, help="m2b: the fragility classes file (default data/fragility_classes.json)")
+    ap.add_argument("--classes", default=None, help="m2b: the fragility classes file (default: the generator's, fragility.classes_for)")
     ap.add_argument("--thresholds", default=None, help="m2b: the damage thresholds file (default data/thresholds_v0.json)")
     ap.add_argument("--evoi", choices=ESTIMATORS, default=None,
                     help="the probe-value estimator the bundle declares (plan 2b2 decision 2); default: none, the plug-in")
@@ -389,12 +402,22 @@ def train_bundle(a: argparse.Namespace, split: dict | None = None, rows: list[di
         if missing:
             raise SystemExit(f"{missing} rows have no pose or true CoM: --features true needs the corpus v2 fields "
                              "(regenerate the corpus, or pass --features nominal)")
+    generator = corpus_generator(rows)
+    if generator != lab_generator():
+        raise SystemExit(f"the corpus rows are generator {generator}, but this process runs {lab_generator()}: train under "
+                         f"RPENT_LAB_GENERATOR={generator}")
+    held = os.path.join(a.out_dir, MANIFEST)
+    if os.path.exists(held) and json.load(open(held)).get("generator", "v10") != generator:
+        raise SystemExit(f"{a.out_dir} holds a generator {json.load(open(held)).get('generator', 'v10')} bundle, whose probe models "
+                         f"and fields would stay: train generator {generator} into a new directory")
     prior_fn, prior, world = None, "m1_parametric", {}
     if a.features == "true" and schema == "m2b":
-        prior_fn, prior, world = m2b_world(getattr(a, "classes", None), getattr(a, "thresholds", None))
+        prior_fn, prior, world = m2b_world(getattr(a, "classes", None), getattr(a, "thresholds", None), generator)
     elif a.features == "true":
         from robots.mujoco_lab.prior import lab_prior
 
+        if generator != "v10":
+            raise SystemExit(f"the m2a lab prior mirrors generator v10, not the corpus's {generator}: use --feature-schema m2b")
         prior_fn, prior = lab_prior, "lab_generator"
     split = split if split is not None else split_objects([{"object": o} for o in corpus_objects(a.corpus)], seed=a.seed)
     tr, va = rows_of(rows, split["train"]), rows_of(rows, split["val"])
@@ -439,7 +462,7 @@ def train_bundle(a: argparse.Namespace, split: dict | None = None, rows: list[di
                    hazard_model="hazard_model.joblib" if eligible else None, metrics=METRICS, corpus=out["corpus"], split_seed=a.seed,
                    feature_schema=schema, outcome_schema=schema,
                    decision=bundle_decision(schema, getattr(a, "evoi", None), getattr(a, "probe_time_scale", None)),
-                   sensor=corpus_sensor(rows),
+                   sensor=corpus_sensor(rows), generator=generator,
                    readout_model=READOUT_MODEL if readout else None, guard=GUARD if guard else None,
                    tempers={}, **world)                                                # new models: tempers are re-chosen
     out["wandb"] = tracking.log_run("train_models", {"corpus": out["corpus"], "features": a.features, "prior": prior,

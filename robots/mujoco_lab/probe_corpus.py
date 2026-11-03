@@ -35,6 +35,10 @@ crushable or bruisable object gets scene C, a fresh reset that squeezes (``Csque
 ``probes.squeeze_cap`` on the m2b prior (2000 particles from the stream [seed, crc32(object), idx, 10]); its row's
 ``force`` and base features are the cap's. ``--mode m2`` is probe corpus v7's world: v8's draws, no liquid, no
 fragility, no scene C.
+
+Probe corpus v10 (generator v11, ``RPENT_LAB_GENERATOR=v11``): corpus v11's masses and mass_scale range (see
+corpus), keys ``<object>__v11s<seed>__d<idx>[__<scene><probe>]``, a ``generator`` field on every row, and the
+squeeze cap on the v11 prior (``prior.V11_PRIOR``). ``--resume`` refuses a file of another generator.
 """
 
 from __future__ import annotations
@@ -50,7 +54,8 @@ import numpy as np
 
 import zlib
 
-from robots.mujoco_lab.corpus import apply_damage, case_rng, damage_rng, draw_damage, draw_theta, world
+from robots.mujoco_lab.corpus import (apply_damage, case_rng, check_resume_generator, damage_rng, draw_damage, draw_theta, key_tag,
+                                      lab_generator, world)
 from rpent.skills.pick_place.probes import squeeze_cap, weigh_force
 
 PROBE_V_LIFT = 0.03
@@ -86,12 +91,14 @@ def probe_rows(env, object_id: str, idx: int, seed: int, classes: str | dict[str
     from robots.mujoco_lab.fragility import FLAGS, entry_of
     from robots.mujoco_lab.prior import make_prior
 
+    generator = lab_generator()
     rng = case_rng(seed, object_id, idx)
-    props = object_props(object_id)
-    theta, com_end = draw_theta(rng, props["mass"])
+    props = object_props(object_id, generator)
+    theta, com_end = draw_theta(rng, props["mass"], generator)
     f_std = float(env.s["t3_make"].std_force(props["mass"]))
     C, th = world(classes, thresholds)
     entry, _ = entry_of(object_id, C)
+    env.classes = C                           # the reset's flags and damage law are this world's
     if mode not in MODES:
         raise ValueError(f"unknown probe corpus mode {mode!r}; known: {MODES}")
     d = draw_damage(damage_rng(seed, object_id, idx), entry, th, f_std)
@@ -105,23 +112,24 @@ def probe_rows(env, object_id: str, idx: int, seed: int, classes: str | dict[str
     env.reset(object_id, theta, **reset)
     start = dict(env.reset_info)
     truth = env.truth()
-    common = {"object": object_id, "draw": idx, "seed": seed, "theta": theta, "com_end": com_end, "force": force, "f_std": f_std,
+    key = f"{object_id}__{key_tag(generator)}s{seed}__d{idx}"
+    common = {"object": object_id, "draw": idx, "seed": seed, "generator": generator, "theta": theta, "com_end": com_end, "force": force, "f_std": f_std,
               "com_obj_true": truth["com_obj"], "truth": {k: truth[k] for k in ("mass", "mu", "com_s")},
               "entry": {k: entry.get(k) for k in FLAGS}, "theta_frag": d["theta_frag"], "fill": d["fill"],
               "spill_angle_deg": d["spill_angle_deg"]}
 
     def row(tag: str, order: int, st: tuple[Any, dict[str, Any], dict[str, float]], res) -> dict[str, Any]:
         prop, pose, base = st
-        return {"key": f"{object_id}__s{seed}__d{idx}__{tag}", **common, "scene": tag[0], "order": order, "s": prop.s,
+        return {"key": f"{key}__{tag}", **common, "scene": tag[0], "order": order, "s": prop.s,
                 "pose": pose, "base": base, **res.to_data(), "reset": start}
 
     def declined(tag: str, order: int, why: str) -> dict[str, Any]:
-        return {"key": f"{object_id}__s{seed}__d{idx}__{tag}", **common, "scene": tag[0], "order": order, "declined": why,
+        return {"key": f"{key}__{tag}", **common, "scene": tag[0], "order": order, "declined": why,
                 "reset": start}
 
     st = _state(env, force)
     if isinstance(st, str):                     # no proposal fits: the skill declines before any probe
-        return [{"key": f"{object_id}__s{seed}__d{idx}", **common, "declined": st, "reset": start}]
+        return [{"key": key, **common, "declined": st, "reset": start}]
     push = env.probe_push()
     rows = [row("Apush", 0, st, push)]
     if not push.thrown and push.damage is None:          # a throw or damage ends scene A
@@ -134,7 +142,7 @@ def probe_rows(env, object_id: str, idx: int, seed: int, classes: str | dict[str
     if mode != "m2" and entry.get("class") in SQUEEZE_CLASSES:
         env.reset(object_id, theta, **reset)
         start = dict(env.reset_info)
-        belief = make_prior(C, th)(env.pose_info(), SQUEEZE_PRIOR_N,
+        belief = make_prior(C, th, generator=generator)(env.pose_info(), SQUEEZE_PRIOR_N,
                                    np.random.default_rng([int(seed), zlib.crc32(object_id.encode()), int(idx), SQUEEZE_STREAM]))
         cap = float(squeeze_cap(belief, f_std))
         st = _state(env, cap)
@@ -157,7 +165,8 @@ def _worker(args: tuple) -> list[dict[str, Any]]:
         try:
             rows.extend(probe_rows(env, object_id, idx, seed, classes, thresholds, mode))
         except Exception as exc:  # noqa: BLE001  one bad draw must not kill the object's batch
-            rows.append({"key": f"{object_id}__s{seed}__d{idx}", "object": object_id, "draw": idx, "error": str(exc)[:200]})
+            rows.append({"key": f"{object_id}__{key_tag()}s{seed}__d{idx}", "object": object_id, "draw": idx,
+                         "generator": lab_generator(), "error": str(exc)[:200]})
     return rows
 
 
@@ -169,13 +178,14 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--objects", default=None, help="comma-separated object ids (default: all)")
     ap.add_argument("--seed", type=int, default=7)
     ap.add_argument("--resume", action="store_true", help="skip the draws that already have rows in --out")
-    ap.add_argument("--classes", default=None, help="the fragility class file (default: data/fragility_classes.json)")
+    ap.add_argument("--classes", default=None, help="the fragility class file (default: the generator's, fragility.classes_for)")
     ap.add_argument("--thresholds", default=None, help="the thresholds file (default: data/thresholds_v0.json)")
     ap.add_argument("--mode", default="v8", choices=MODES, help="v8: the damage draws and scene C; m2: v7's world")
     a = ap.parse_args(argv)
     from robots.mujoco_lab.adapter import object_ids
 
     objects = a.objects.split(",") if a.objects else object_ids()
+    generator = lab_generator()
     done: dict[str, set[int]] = {}
     if a.resume and os.path.exists(a.out):
         for line in open(a.out):
@@ -183,6 +193,7 @@ def main(argv: list[str] | None = None) -> int:
                 r = json.loads(line)
             except json.JSONDecodeError:
                 continue
+            check_resume_generator(a.out, r, generator)
             if "error" not in r:
                 done.setdefault(r["object"], set()).add(int(r["draw"]))
     jobs = [(oid, a.draws, a.seed, sorted(done.get(oid, set())), a.classes, a.thresholds, a.mode) for oid in objects]

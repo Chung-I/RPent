@@ -44,7 +44,7 @@ import numpy as np
 from robots.mujoco_lab.fragility import Thresholds, map_latent
 from robots.mujoco_lab.prior import fragility_world, make_prior, sha256_of
 from robots.mujoco_lab.robot_spec import load_bundle
-from robots.mujoco_lab.train_models import law_val_objects, load_rows
+from robots.mujoco_lab.train_models import corpus_generator, law_val_objects, load_rows
 from rpent.skills.pick_place.costs import particle_costs
 from rpent.skills.pick_place.evaluate import row_pose, rows_of
 from rpent.skills.pick_place.features import model_names, particle_matrix
@@ -106,6 +106,12 @@ def reading_model(pm: Any, rows: list[dict[str, Any]], split: dict[str, list[str
     val = np.array([h for _, h in pairs], dtype=bool)
     law = fit_law(xs[~val], xs[val], seed)
     return replace(pm, reading={**pm.reading, "measured": law})
+
+
+def law_prior(bundle: dict[str, Any], law: Thresholds) -> Any:
+    """The bundle's lab prior under a law: make_prior on the bundle's fragility classes and ``law``, under the bundle's
+    generator."""
+    return make_prior(fragility_world(bundle["manifest"])[0], law, generator=bundle["generator"])
 
 
 def case_value(row: dict[str, Any], bundle: dict[str, Any], prior: Any, pm: Any, n: int, seed: int,
@@ -188,9 +194,11 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
     rows = [r for r in load_rows(a.probe_corpus) if r.get("probe") == "squeeze"]
     if not rows:
         ap.error("no trainable squeeze rows in the probe corpus")
+    if corpus_generator(rows) != bundle.get("generator", "v10"):                         # no field: v10
+        ap.error(f"the probe corpus is generator {corpus_generator(rows)}, but the bundle is generator {bundle.get('generator', 'v10')}")
     cells = []
     for rho, law in laws:
-        prior = make_prior(world[0], law)
+        prior = law_prior(bundle, law)
         for sigma in sigmas:
             replay = recompute_readings(rows, law, sigma)
             pm = reading_model(bundle["probe_models"]["squeeze"], replay, split, a.seed)

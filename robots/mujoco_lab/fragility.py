@@ -46,6 +46,7 @@ from scipy.optimize import brentq
 HERE = os.path.dirname(os.path.abspath(__file__))
 DATA = os.path.join(HERE, "data")
 CLASSES = os.path.join(DATA, "fragility_classes.json")
+CLASSES_V11 = os.path.join(DATA, "fragility_classes_v11.json")   # generator v11: classes of the real materials
 THRESHOLDS_V0 = os.path.join(DATA, "thresholds_v0.json")
 RENDERS = os.path.join(DATA, "cavities")
 LAWS = {"crushable": ("cardboard", "thin_plastic"), "bruisable": ("fruit",), "breakable": ("ceramic", "glass")}
@@ -54,6 +55,13 @@ CAVITY_KEYS = ("axis_obj", "bottom_obj", "r_bottom_m", "r_top_m", "height_m")
 NZ = 2001                                                         # heights of the spill angle's volume integral
 SCAN_DEG = 2.0                                                    # the spill angle's first sign change is looked for on this grid
 FLAGS = ("class", "law", "fillable")
+
+
+def classes_for(generator: str) -> str:
+    """The generator's default classes file: fragility_classes_v11.json under v11 (five "breakable ceramic" objects whose
+    real material cannot break are class none: the YCB mug and bowls, the spun-bamboo tray, the enamelled-steel vase),
+    fragility_classes.json under v10."""
+    return CLASSES_V11 if generator == "v11" else CLASSES
 
 
 def load_classes(path: str = CLASSES) -> dict[str, dict[str, Any]]:
