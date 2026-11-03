@@ -1,0 +1,637 @@
+{
+ "n_records": 6270,
+ "rates": {
+  "k10_A10": {
+   "gemma4_31b": {
+    "n": 1045,
+    "n_left_out": 0,
+    "recommendation": {
+     "rate": 0.1320574162679426,
+     "ci": [
+      0.08325358851674641,
+      0.1808851674641147
+     ]
+    },
+    "option": {
+     "rate": 0.15789473684210525,
+     "ci": [
+      0.10811004784688995,
+      0.21052631578947367
+     ]
+    },
+    "transitions": {
+     "commit->decline": 26,
+     "commit->probe": 46,
+     "probe->commit": 20,
+     "decline->commit": 3,
+     "probe->decline": 26,
+     "decline->probe": 17
+    },
+    "class_recommendations": {
+     "decline": 472,
+     "commit": 394,
+     "probe": 179
+    },
+    "prior_recommendations": {
+     "decline": 504,
+     "commit": 345,
+     "probe": 196
+    }
+   },
+   "generic": {
+    "n": 1045,
+    "n_left_out": 0,
+    "recommendation": {
+     "rate": 0.17703349282296652,
+     "ci": [
+      0.12342105263157895,
+      0.23349282296650717
+     ]
+    },
+    "option": {
+     "rate": 0.20191387559808613,
+     "ci": [
+      0.14258373205741626,
+      0.2660287081339713
+     ]
+    },
+    "transitions": {
+     "decline->commit": 36,
+     "decline->probe": 41,
+     "commit->probe": 73,
+     "probe->commit": 13,
+     "commit->decline": 9,
+     "probe->decline": 13
+    },
+    "class_recommendations": {
+     "decline": 472,
+     "commit": 394,
+     "probe": 179
+    },
+    "prior_recommendations": {
+     "commit": 361,
+     "decline": 417,
+     "probe": 267
+    }
+   },
+   "qwen38_27b": {
+    "n": 1045,
+    "n_left_out": 0,
+    "recommendation": {
+     "rate": 0.10813397129186603,
+     "ci": [
+      0.0660287081339713,
+      0.1492822966507177
+     ]
+    },
+    "option": {
+     "rate": 0.1416267942583732,
+     "ci": [
+      0.09569377990430622,
+      0.1933253588516745
+     ]
+    },
+    "transitions": {
+     "commit->decline": 20,
+     "decline->commit": 5,
+     "commit->probe": 47,
+     "probe->commit": 15,
+     "probe->decline": 24,
+     "decline->probe": 2
+    },
+    "class_recommendations": {
+     "decline": 472,
+     "commit": 394,
+     "probe": 179
+    },
+    "prior_recommendations": {
+     "decline": 509,
+     "commit": 347,
+     "probe": 189
+    }
+   }
+  },
+  "k100_A3": {
+   "gemma4_31b": {
+    "n": 1045,
+    "n_left_out": 0,
+    "recommendation": {
+     "rate": 0.0430622009569378,
+     "ci": [
+      0.019138755980861243,
+      0.06985645933014355
+     ]
+    },
+    "option": {
+     "rate": 0.0430622009569378,
+     "ci": [
+      0.01818181818181818,
+      0.06985645933014355
+     ]
+    },
+    "transitions": {
+     "commit->decline": 45
+    },
+    "class_recommendations": {
+     "decline": 989,
+     "commit": 56
+    },
+    "prior_recommendations": {
+     "decline": 1034,
+     "commit": 11
+    }
+   },
+   "generic": {
+    "n": 1045,
+    "n_left_out": 0,
+    "recommendation": {
+     "rate": 0.0354066985645933,
+     "ci": [
+      0.016267942583732056,
+      0.06028708133971292
+     ]
+    },
+    "option": {
+     "rate": 0.03827751196172249,
+     "ci": [
+      0.01722488038277512,
+      0.06222488038277499
+     ]
+    },
+    "transitions": {
+     "commit->decline": 37
+    },
+    "class_recommendations": {
+     "decline": 989,
+     "commit": 56
+    },
+    "prior_recommendations": {
+     "decline": 1026,
+     "commit": 19
+    }
+   },
+   "qwen38_27b": {
+    "n": 1045,
+    "n_left_out": 0,
+    "recommendation": {
+     "rate": 0.04114832535885168,
+     "ci": [
+      0.019138755980861243,
+      0.06889952153110047
+     ]
+    },
+    "option": {
+     "rate": 0.04114832535885168,
+     "ci": [
+      0.019138755980861243,
+      0.06985645933014355
+     ]
+    },
+    "transitions": {
+     "commit->decline": 43
+    },
+    "class_recommendations": {
+     "decline": 989,
+     "commit": 56
+    },
+    "prior_recommendations": {
+     "decline": 1032,
+     "commit": 13
+    }
+   }
+  },
+  "k100_A10": {
+   "gemma4_31b": {
+    "n": 1045,
+    "n_left_out": 0,
+    "recommendation": {
+     "rate": 0.10909090909090909,
+     "ci": [
+      0.06983253588516747,
+      0.15311004784688995
+     ]
+    },
+    "option": {
+     "rate": 0.11196172248803828,
+     "ci": [
+      0.0708133971291866,
+      0.15598086124401914
+     ]
+    },
+    "transitions": {
+     "commit->decline": 40,
+     "commit->probe": 21,
+     "probe->decline": 42,
+     "probe->commit": 6,
+     "decline->probe": 5
+    },
+    "class_recommendations": {
+     "decline": 770,
+     "commit": 207,
+     "probe": 68
+    },
+    "prior_recommendations": {
+     "decline": 847,
+     "probe": 46,
+     "commit": 152
+    }
+   },
+   "generic": {
+    "n": 1045,
+    "n_left_out": 0,
+    "recommendation": {
+     "rate": 0.11291866028708133,
+     "ci": [
+      0.07461722488038278,
+      0.15789473684210525
+     ]
+    },
+    "option": {
+     "rate": 0.11770334928229666,
+     "ci": [
+      0.0765311004784689,
+      0.16267942583732056
+     ]
+    },
+    "transitions": {
+     "commit->decline": 43,
+     "probe->decline": 51,
+     "commit->probe": 17,
+     "probe->commit": 2,
+     "decline->probe": 2,
+     "decline->commit": 3
+    },
+    "class_recommendations": {
+     "decline": 770,
+     "commit": 207,
+     "probe": 68
+    },
+    "prior_recommendations": {
+     "decline": 859,
+     "commit": 152,
+     "probe": 34
+    }
+   },
+   "qwen38_27b": {
+    "n": 1045,
+    "n_left_out": 0,
+    "recommendation": {
+     "rate": 0.11004784688995216,
+     "ci": [
+      0.07174641148325359,
+      0.15119617224880383
+     ]
+    },
+    "option": {
+     "rate": 0.11100478468899522,
+     "ci": [
+      0.07368421052631578,
+      0.15406698564593302
+     ]
+    },
+    "transitions": {
+     "commit->decline": 50,
+     "commit->probe": 17,
+     "probe->decline": 42,
+     "decline->probe": 5,
+     "probe->commit": 1
+    },
+    "class_recommendations": {
+     "decline": 770,
+     "commit": 207,
+     "probe": 68
+    },
+    "prior_recommendations": {
+     "decline": 857,
+     "probe": 47,
+     "commit": 141
+    }
+   }
+  },
+  "k30_A3": {
+   "gemma4_31b": {
+    "n": 1045,
+    "n_left_out": 0,
+    "recommendation": {
+     "rate": 0.09090909090909091,
+     "ci": [
+      0.05645933014354067,
+      0.1320574162679426
+     ]
+    },
+    "option": {
+     "rate": 0.09090909090909091,
+     "ci": [
+      0.05454545454545454,
+      0.1291866028708134
+     ]
+    },
+    "transitions": {
+     "commit->decline": 68,
+     "commit->probe": 7,
+     "probe->decline": 16,
+     "probe->commit": 4
+    },
+    "class_recommendations": {
+     "decline": 805,
+     "commit": 215,
+     "probe": 25
+    },
+    "prior_recommendations": {
+     "decline": 889,
+     "probe": 12,
+     "commit": 144
+    }
+   },
+   "generic": {
+    "n": 1045,
+    "n_left_out": 0,
+    "recommendation": {
+     "rate": 0.09856459330143541,
+     "ci": [
+      0.05837320574162679,
+      0.14258373205741626
+     ]
+    },
+    "option": {
+     "rate": 0.10047846889952153,
+     "ci": [
+      0.06028708133971292,
+      0.14452153110047836
+     ]
+    },
+    "transitions": {
+     "commit->decline": 67,
+     "probe->decline": 23,
+     "probe->commit": 1,
+     "commit->probe": 9,
+     "decline->commit": 3
+    },
+    "class_recommendations": {
+     "decline": 805,
+     "commit": 215,
+     "probe": 25
+    },
+    "prior_recommendations": {
+     "decline": 892,
+     "commit": 143,
+     "probe": 10
+    }
+   },
+   "qwen38_27b": {
+    "n": 1045,
+    "n_left_out": 0,
+    "recommendation": {
+     "rate": 0.09952153110047847,
+     "ci": [
+      0.05933014354066986,
+      0.1416267942583732
+     ]
+    },
+    "option": {
+     "rate": 0.09952153110047847,
+     "ci": [
+      0.059306220095693786,
+      0.1444976076555024
+     ]
+    },
+    "transitions": {
+     "commit->decline": 75,
+     "probe->decline": 22,
+     "commit->probe": 6,
+     "probe->commit": 1
+    },
+    "class_recommendations": {
+     "decline": 805,
+     "commit": 215,
+     "probe": 25
+    },
+    "prior_recommendations": {
+     "decline": 902,
+     "commit": 135,
+     "probe": 8
+    }
+   }
+  },
+  "k30_A10": {
+   "gemma4_31b": {
+    "n": 1045,
+    "n_left_out": 0,
+    "recommendation": {
+     "rate": 0.13779904306220095,
+     "ci": [
+      0.09282296650717703,
+      0.18851674641148325
+     ]
+    },
+    "option": {
+     "rate": 0.15023923444976076,
+     "ci": [
+      0.10334928229665072,
+      0.20287081339712917
+     ]
+    },
+    "transitions": {
+     "decline->probe": 8,
+     "commit->decline": 36,
+     "probe->commit": 7,
+     "probe->decline": 44,
+     "commit->probe": 49
+    },
+    "class_recommendations": {
+     "decline": 602,
+     "commit": 320,
+     "probe": 123
+    },
+    "prior_recommendations": {
+     "decline": 674,
+     "probe": 129,
+     "commit": 242
+    }
+   },
+   "generic": {
+    "n": 1045,
+    "n_left_out": 0,
+    "recommendation": {
+     "rate": 0.14545454545454545,
+     "ci": [
+      0.10523923444976076,
+      0.19138755980861244
+     ]
+    },
+    "option": {
+     "rate": 0.16172248803827752,
+     "ci": [
+      0.11866028708133972,
+      0.20956937799043063
+     ]
+    },
+    "transitions": {
+     "decline->probe": 39,
+     "decline->commit": 7,
+     "commit->decline": 23,
+     "probe->commit": 6,
+     "probe->decline": 18,
+     "commit->probe": 59
+    },
+    "class_recommendations": {
+     "decline": 602,
+     "commit": 320,
+     "probe": 123
+    },
+    "prior_recommendations": {
+     "probe": 197,
+     "decline": 597,
+     "commit": 251
+    }
+   },
+   "qwen38_27b": {
+    "n": 1045,
+    "n_left_out": 0,
+    "recommendation": {
+     "rate": 0.13492822966507176,
+     "ci": [
+      0.09090909090909091,
+      0.18373205741626794
+     ]
+    },
+    "option": {
+     "rate": 0.15598086124401914,
+     "ci": [
+      0.10715311004784689,
+      0.20382775119617225
+     ]
+    },
+    "transitions": {
+     "decline->commit": 2,
+     "commit->decline": 28,
+     "decline->probe": 13,
+     "probe->commit": 1,
+     "probe->decline": 41,
+     "commit->probe": 56
+    },
+    "class_recommendations": {
+     "decline": 602,
+     "commit": 320,
+     "probe": 123
+    },
+    "prior_recommendations": {
+     "decline": 656,
+     "commit": 239,
+     "probe": 150
+    }
+   }
+  },
+  "k100_A30": {
+   "gemma4_31b": {
+    "n": 1045,
+    "n_left_out": 0,
+    "recommendation": {
+     "rate": 0.11291866028708133,
+     "ci": [
+      0.07272727272727272,
+      0.15406698564593302
+     ]
+    },
+    "option": {
+     "rate": 0.12344497607655502,
+     "ci": [
+      0.08322966507177033,
+      0.16650717703349283
+     ]
+    },
+    "transitions": {
+     "commit->decline": 28,
+     "decline->probe": 12,
+     "probe->commit": 5,
+     "probe->decline": 36,
+     "commit->probe": 36,
+     "decline->commit": 1
+    },
+    "class_recommendations": {
+     "decline": 600,
+     "commit": 297,
+     "probe": 148
+    },
+    "prior_recommendations": {
+     "decline": 651,
+     "probe": 155,
+     "commit": 239
+    }
+   },
+   "generic": {
+    "n": 1045,
+    "n_left_out": 0,
+    "recommendation": {
+     "rate": 0.13588516746411483,
+     "ci": [
+      0.09665071770334928,
+      0.17607655502392344
+     ]
+    },
+    "option": {
+     "rate": 0.15119617224880383,
+     "ci": [
+      0.10811004784688995,
+      0.19428229665071758
+     ]
+    },
+    "transitions": {
+     "decline->probe": 40,
+     "commit->decline": 19,
+     "probe->commit": 4,
+     "probe->decline": 22,
+     "decline->commit": 5,
+     "commit->probe": 52
+    },
+    "class_recommendations": {
+     "decline": 600,
+     "commit": 297,
+     "probe": 148
+    },
+    "prior_recommendations": {
+     "probe": 214,
+     "decline": 596,
+     "commit": 235
+    }
+   },
+   "qwen38_27b": {
+    "n": 1045,
+    "n_left_out": 0,
+    "recommendation": {
+     "rate": 0.11770334928229666,
+     "ci": [
+      0.07942583732057416,
+      0.15789473684210525
+     ]
+    },
+    "option": {
+     "rate": 0.1368421052631579,
+     "ci": [
+      0.09186602870813397,
+      0.1808851674641147
+     ]
+    },
+    "transitions": {
+     "commit->decline": 23,
+     "decline->commit": 2,
+     "decline->probe": 15,
+     "probe->commit": 1,
+     "probe->decline": 36,
+     "commit->probe": 46
+    },
+    "class_recommendations": {
+     "decline": 600,
+     "commit": 297,
+     "probe": 148
+    },
+    "prior_recommendations": {
+     "decline": 642,
+     "commit": 231,
+     "probe": 172
+    }
+   }
+  }
+ },
+ "wandb": "https://forge.coreweave.com/wandb/leon129506/rpent-pick-place/runs/0lq4kvwu"
+}

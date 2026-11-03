@@ -1,0 +1,22 @@
+# First-menu decisions under each prior, against the class prior
+
+| setting | prior | n | recommendation changed [95 % CI] | recommended row changed [95 % CI] | transitions |
+|---|---|---|---|---|---|
+| k10_A10 | gemma4_31b | 1045 | 0.132 [0.083, 0.181] | 0.158 [0.108, 0.211] | {"commit->decline": 26, "commit->probe": 46, "probe->commit": 20, "decline->commit": 3, "probe->decline": 26, "decline->probe": 17} |
+| k10_A10 | generic | 1045 | 0.177 [0.123, 0.233] | 0.202 [0.143, 0.266] | {"decline->commit": 36, "decline->probe": 41, "commit->probe": 73, "probe->commit": 13, "commit->decline": 9, "probe->decline": 13} |
+| k10_A10 | qwen38_27b | 1045 | 0.108 [0.066, 0.149] | 0.142 [0.096, 0.193] | {"commit->decline": 20, "decline->commit": 5, "commit->probe": 47, "probe->commit": 15, "probe->decline": 24, "decline->probe": 2} |
+| k100_A3 | gemma4_31b | 1045 | 0.043 [0.019, 0.070] | 0.043 [0.018, 0.070] | {"commit->decline": 45} |
+| k100_A3 | generic | 1045 | 0.035 [0.016, 0.060] | 0.038 [0.017, 0.062] | {"commit->decline": 37} |
+| k100_A3 | qwen38_27b | 1045 | 0.041 [0.019, 0.069] | 0.041 [0.019, 0.070] | {"commit->decline": 43} |
+| k100_A10 | gemma4_31b | 1045 | 0.109 [0.070, 0.153] | 0.112 [0.071, 0.156] | {"commit->decline": 40, "commit->probe": 21, "probe->decline": 42, "probe->commit": 6, "decline->probe": 5} |
+| k100_A10 | generic | 1045 | 0.113 [0.075, 0.158] | 0.118 [0.077, 0.163] | {"commit->decline": 43, "probe->decline": 51, "commit->probe": 17, "probe->commit": 2, "decline->probe": 2, "decline->commit": 3} |
+| k100_A10 | qwen38_27b | 1045 | 0.110 [0.072, 0.151] | 0.111 [0.074, 0.154] | {"commit->decline": 50, "commit->probe": 17, "probe->decline": 42, "decline->probe": 5, "probe->commit": 1} |
+| k30_A3 | gemma4_31b | 1045 | 0.091 [0.056, 0.132] | 0.091 [0.055, 0.129] | {"commit->decline": 68, "commit->probe": 7, "probe->decline": 16, "probe->commit": 4} |
+| k30_A3 | generic | 1045 | 0.099 [0.058, 0.143] | 0.100 [0.060, 0.145] | {"commit->decline": 67, "probe->decline": 23, "probe->commit": 1, "commit->probe": 9, "decline->commit": 3} |
+| k30_A3 | qwen38_27b | 1045 | 0.100 [0.059, 0.142] | 0.100 [0.059, 0.144] | {"commit->decline": 75, "probe->decline": 22, "commit->probe": 6, "probe->commit": 1} |
+| k30_A10 | gemma4_31b | 1045 | 0.138 [0.093, 0.189] | 0.150 [0.103, 0.203] | {"decline->probe": 8, "commit->decline": 36, "probe->commit": 7, "probe->decline": 44, "commit->probe": 49} |
+| k30_A10 | generic | 1045 | 0.145 [0.105, 0.191] | 0.162 [0.119, 0.210] | {"decline->probe": 39, "decline->commit": 7, "commit->decline": 23, "probe->commit": 6, "probe->decline": 18, "commit->probe": 59} |
+| k30_A10 | qwen38_27b | 1045 | 0.135 [0.091, 0.184] | 0.156 [0.107, 0.204] | {"decline->commit": 2, "commit->decline": 28, "decline->probe": 13, "probe->commit": 1, "probe->decline": 41, "commit->probe": 56} |
+| k100_A30 | gemma4_31b | 1045 | 0.113 [0.073, 0.154] | 0.123 [0.083, 0.167] | {"commit->decline": 28, "decline->probe": 12, "probe->commit": 5, "probe->decline": 36, "commit->probe": 36, "decline->commit": 1} |
+| k100_A30 | generic | 1045 | 0.136 [0.097, 0.176] | 0.151 [0.108, 0.194] | {"decline->probe": 40, "commit->decline": 19, "probe->commit": 4, "probe->decline": 22, "decline->commit": 5, "commit->probe": 52} |
+| k100_A30 | qwen38_27b | 1045 | 0.118 [0.079, 0.158] | 0.137 [0.092, 0.181] | {"commit->decline": 23, "decline->commit": 2, "decline->probe": 15, "probe->commit": 1, "probe->decline": 36, "commit->probe": 46} |

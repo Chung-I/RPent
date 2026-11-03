@@ -1,0 +1,104 @@
+{
+ "cmd": "run",
+ "bundle": "robots/mujoco_lab/data/m2b2_v11c",
+ "crossfit": true,
+ "objects": null,
+ "stages": "attempt,weigh,push",
+ "n_particles": 2000,
+ "seed": 0,
+ "workers": 5,
+ "prior": "vlm",
+ "scenes": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-11-03-mass-com-estimation/scenes.json",
+ "vlm": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-11-03-mass-com-estimation/out/gemma4_31b.jsonl",
+ "out": "/home/chungyili/Codes/RPent-masscom-v11/logs/masscom_v11c/partA_gemma4_31b",
+ "code_revision": "e733977fb4e15d0d7a936db45e070b282804cceb",
+ "dirty": false,
+ "generator": "v11",
+ "jobs": [
+  {
+   "bundle": "robots/mujoco_lab/data/m2b2_v11c/folds/fold_0",
+   "source": "robots/mujoco_lab/data/m2b2_v11c",
+   "fold": 0,
+   "stages": [
+    "attempt",
+    "weigh",
+    "push"
+   ],
+   "n": 2000,
+   "seed": 0,
+   "prior": "vlm",
+   "scenes": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-11-03-mass-com-estimation/scenes.json",
+   "vlm": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-11-03-mass-com-estimation/out/gemma4_31b.jsonl",
+   "n_objects": 19,
+   "n_tuning": 76
+  },
+  {
+   "bundle": "robots/mujoco_lab/data/m2b2_v11c/folds/fold_1",
+   "source": "robots/mujoco_lab/data/m2b2_v11c",
+   "fold": 1,
+   "stages": [
+    "attempt",
+    "weigh",
+    "push"
+   ],
+   "n": 2000,
+   "seed": 0,
+   "prior": "vlm",
+   "scenes": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-11-03-mass-com-estimation/scenes.json",
+   "vlm": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-11-03-mass-com-estimation/out/gemma4_31b.jsonl",
+   "n_objects": 19,
+   "n_tuning": 76
+  },
+  {
+   "bundle": "robots/mujoco_lab/data/m2b2_v11c/folds/fold_2",
+   "source": "robots/mujoco_lab/data/m2b2_v11c",
+   "fold": 2,
+   "stages": [
+    "attempt",
+    "weigh",
+    "push"
+   ],
+   "n": 2000,
+   "seed": 0,
+   "prior": "vlm",
+   "scenes": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-11-03-mass-com-estimation/scenes.json",
+   "vlm": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-11-03-mass-com-estimation/out/gemma4_31b.jsonl",
+   "n_objects": 19,
+   "n_tuning": 76
+  },
+  {
+   "bundle": "robots/mujoco_lab/data/m2b2_v11c/folds/fold_3",
+   "source": "robots/mujoco_lab/data/m2b2_v11c",
+   "fold": 3,
+   "stages": [
+    "attempt",
+    "weigh",
+    "push"
+   ],
+   "n": 2000,
+   "seed": 0,
+   "prior": "vlm",
+   "scenes": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-11-03-mass-com-estimation/scenes.json",
+   "vlm": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-11-03-mass-com-estimation/out/gemma4_31b.jsonl",
+   "n_objects": 19,
+   "n_tuning": 76
+  },
+  {
+   "bundle": "robots/mujoco_lab/data/m2b2_v11c/folds/fold_4",
+   "source": "robots/mujoco_lab/data/m2b2_v11c",
+   "fold": 4,
+   "stages": [
+    "attempt",
+    "weigh",
+    "push"
+   ],
+   "n": 2000,
+   "seed": 0,
+   "prior": "vlm",
+   "scenes": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-11-03-mass-com-estimation/scenes.json",
+   "vlm": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-11-03-mass-com-estimation/out/gemma4_31b.jsonl",
+   "n_objects": 19,
+   "n_tuning": 76
+  }
+ ]
+}
