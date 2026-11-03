@@ -54,7 +54,8 @@ def _run(arm, cond, seed, rows, cases=None):
     return {"protocol": ARMS[arm], "care_scale": 10.0, "abstain_cost": 10.0, "probe_time_scale": 1.0, "seed": seed,
             "force_noise": 0.05, "reset_s": reset_s, "reset_price": price, "truth_spread": truth, "prior_spread": belief,
             "n": len(rows), "rows": rows,
-            "code": {"revision": "a" * 40, "dirty": False}, "cases": cases,
+            "code": {"revision": "a" * 40, "dirty": False, "sim_revision": "s" * 40, "sim_dirty": False, "changed_during_run": False},
+            "cases": cases,
             "forced_rule": FORCED_RULE if arm in ("probe_once", "sham_once") else None}
 
 
@@ -237,8 +238,8 @@ def test_valid_rejects_a_wrong_reset_spread_rule_or_cases_hash(tmp_path):
     run = _run("policy", ("rec20", "narrow"), 12, [_row("a", 0, 1.0), _row("a", 1, 1.0)], cases={"path": str(cf), "n": 2, "sha256": sha})
     good = tmp_path / "good.json"
     good.write_text(json.dumps(run))
-    expect = {"revision": "a" * 40, "protocol": "policy", "reset_s": 20.0, "reset_price": "time", "truth_spread": 0.25,
-              "prior_spread": 0.25, "seed": 12, "cases": str(cf)}
+    expect = {"revision": "a" * 40, "sim_revision": "s" * 40, "protocol": "policy", "reset_s": 20.0, "reset_price": "time",
+              "truth_spread": 0.25, "prior_spread": 0.25, "seed": 12, "cases": str(cf)}
     assert valid(str(good), expect) == []
     for k, v in (("reset_s", None), ("reset_s", 0.0), ("reset_price", "care"), ("truth_spread", 1.0), ("prior_spread", 1.0), ("seed", 13),
                  ("protocol", "probe_once"), ("revision", "b" * 40)):
@@ -254,12 +255,34 @@ def test_valid_rejects_a_wrong_reset_spread_rule_or_cases_hash(tmp_path):
     forced = _run("probe_once", ("absorbing", "wide"), 12, [_row("a", 0, 1.0)])
     f = tmp_path / "forced.json"
     f.write_text(json.dumps(forced))
-    fexp = {"revision": "a" * 40, "protocol": "probe_once", "reset_s": None, "reset_price": "time", "truth_spread": 1.0,
+    fexp = {"revision": "a" * 40, "sim_revision": "s" * 40, "protocol": "probe_once", "reset_s": None, "reset_price": "time", "truth_spread": 1.0,
             "prior_spread": 1.0, "seed": 12, "n": 1}
     assert valid(str(f), fexp) == []
     f.write_text(json.dumps(dict(forced, forced_rule="squeeze always")))
     assert any("rule" in w for w in valid(str(f), fexp))
 
+
+def test_valid_rejects_another_simulator_or_a_change_during_the_run(tmp_path):
+    """Milestone 4's final review (45b9ee8) made sweep.valid check the simulator's provenance, so H3's valid takes the
+    simulator revision too: an output from another simulator, with uncommitted simulator changes, changed during its run, or
+    from before the fix (no record) is not reusable; `h3 valid` takes --sim-revision."""
+    f = tmp_path / "r.json"
+    expect = {"revision": "a" * 40, "sim_revision": "s" * 40, "protocol": "policy", "reset_s": 20.0, "reset_price": "time",
+              "truth_spread": 0.25, "prior_spread": 0.25, "seed": 12, "n": 1}
+
+    def why(**code):
+        run = _run("policy", ("rec20", "narrow"), 12, [_row("a", 0, 1.0)])
+        f.write_text(json.dumps(dict(run, code={k: v for k, v in dict(run["code"], **code).items() if v is not None})))
+        return valid(str(f), expect)
+
+    assert why() == []
+    assert why(sim_revision="t" * 40) and why(sim_dirty=True) and why(changed_during_run=True)
+    assert why(sim_revision=None) and why(sim_dirty=None) and why(changed_during_run=None)
+    why()
+    args = ["valid", str(f), "--revision", "a" * 40, "--sim-revision", "s" * 40, "--protocol", "policy", "--reset-s", "20",
+            "--truth-spread", "0.25", "--prior-spread", "0.25", "--seed", "12", "--n", "1"]
+    assert h3m.main(args) == 0
+    assert h3m.main(args[:5] + ["t" * 40] + args[6:]) == 1
 
 def test_in_narrow_reads_the_narrow_ranges():
     """The matched-truth check's cases (decision 4): the mass scale, mu and a non-None com_s inside the ranges at f = 0.25,

@@ -161,16 +161,18 @@ def _shrink(x: float, bounds: tuple[float, float], f: float, log: bool = False) 
     return math.exp(v) if log else v
 
 
-def shrink_theta(theta: dict[str, Any], f: float, filled: bool) -> dict[str, Any]:
+def shrink_theta(theta: dict[str, Any], f: float, filled: bool, generator: str | None = None) -> dict[str, Any]:
     """A case's hidden properties under the spread factor f (plan H3 decision 4, quantile-coupled): the mass scale on
-    the log scale around the log-midpoint of its range (a filled container's own range when ``filled``), mu and a
-    non-None com_s around their midpoints; every other key unchanged. A (log-)uniform draw keeps its quantile, so the
-    shrunk value is a draw of the narrow range (shrunk_range) and the case stream stays. f = 1 returns an equal dict."""
+    the log scale around the log-midpoint of its range (the generator's, default lab_generator(); a filled container's
+    own range when ``filled``), mu and a non-None com_s around their midpoints; every other key unchanged. A
+    (log-)uniform draw keeps its quantile, so the shrunk value is a draw of the narrow range (shrunk_range) and the case
+    stream stays. f = 1 returns an equal dict."""
     f = spread_factor(f)
     out = dict(theta)
     if f == 1.0:
         return out
-    out["mass_scale"] = _shrink(float(theta["mass_scale"]), FILLED_MASS_SCALE_RANGE if filled else MASS_SCALE_RANGE, f, log=True)
+    bounds = FILLED_MASS_SCALE_RANGE if filled else mass_scale_range(lab_generator(generator))
+    out["mass_scale"] = _shrink(float(theta["mass_scale"]), bounds, f, log=True)
     out["mu"] = _shrink(float(theta["mu"]), MU_RANGE, f)
     if theta.get("com_s") is not None:
         out["com_s"] = _shrink(float(theta["com_s"]), COM_S_RANGE, f)

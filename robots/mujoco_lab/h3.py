@@ -807,11 +807,11 @@ def markdown(s: dict[str, Any]) -> str:
 
 def valid(path: str, expect: dict[str, Any]) -> list[str]:
     """Why the output at ``path`` cannot be reused (empty when it can), decision 11: sweep.valid at H3's cell (the code
-    revision on a clean tree, the protocol, κ = 10, A = 10, s = 1, the seed and the case count), the reset time, the
-    reset price, the truth and prior spreads, the forced-probe rule (calibrate.FORCED_RULE in the forced arms, else None)
-    and, with ``expect["cases"]`` (a cases file), the file's sha256 and the case membership; without one, a full run (no
-    cases record). ``expect``: revision, protocol, reset_s, reset_price, truth_spread, prior_spread, seed, and n or
-    cases."""
+    revision on a clean tree, the simulator revision without uncommitted changes, neither changed during the run, the
+    protocol, κ = 10, A = 10, s = 1, the seed and the case count), the reset time, the reset price, the truth and prior
+    spreads, the forced-probe rule (calibrate.FORCED_RULE in the forced arms, else None) and, with ``expect["cases"]`` (a
+    cases file), the file's sha256 and the case membership; without one, a full run (no cases record). ``expect``:
+    revision, sim_revision, protocol, reset_s, reset_price, truth_spread, prior_spread, seed, and n or cases."""
     listed = None
     if expect.get("cases"):
         try:
@@ -819,8 +819,9 @@ def valid(path: str, expect: dict[str, Any]) -> list[str]:
             listed = {(o, int(i)) for o, idx in spec["cases"].items() for i in idx}
         except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
             return [f"cases file {expect['cases']}: {exc}"[:200]]
-    why = sweep_valid(path, {"revision": expect["revision"], "protocol": expect["protocol"], "care": CARE, "abstain": ABSTAIN,
-                             "scale": SCALE, "seed": expect["seed"], "n": len(listed) if listed is not None else expect["n"]})
+    why = sweep_valid(path, {"revision": expect["revision"], "sim_revision": expect["sim_revision"], "protocol": expect["protocol"],
+                             "care": CARE, "abstain": ABSTAIN, "scale": SCALE, "seed": expect["seed"],
+                             "n": len(listed) if listed is not None else expect["n"]})
     try:
         run = load_run(path)
         rows = run["rows"]
@@ -864,6 +865,7 @@ def main(argv: list[str] | None = None) -> int:
     v = sub.add_parser("valid", help="exit 1 when an output cannot be reused")
     v.add_argument("file")
     v.add_argument("--revision", required=True)
+    v.add_argument("--sim-revision", required=True, help="the simulator folder's last commit (an output's code.sim_revision)")
     v.add_argument("--protocol", required=True)
     v.add_argument("--reset-s", type=_reset_arg, required=True, help="none (absorbing) or the reset time in seconds")
     v.add_argument("--reset-price", choices=("time", "care"), default="time")
@@ -890,8 +892,9 @@ def main(argv: list[str] | None = None) -> int:
     if a.cmd == "valid":
         if (a.n is None) == (a.cases is None):
             ap.error("give --n or --cases")
-        why = valid(a.file, {"revision": a.revision, "protocol": a.protocol, "reset_s": a.reset_s, "reset_price": a.reset_price,
-                             "truth_spread": a.truth_spread, "prior_spread": a.prior_spread, "seed": a.seed, "n": a.n, "cases": a.cases})
+        why = valid(a.file, {"revision": a.revision, "sim_revision": a.sim_revision, "protocol": a.protocol,
+                             "reset_s": a.reset_s, "reset_price": a.reset_price, "truth_spread": a.truth_spread,
+                             "prior_spread": a.prior_spread, "seed": a.seed, "n": a.n, "cases": a.cases})
         print("valid" if not why else "not valid: " + "; ".join(why))
         return 0 if not why else 1
     if a.cmd == "cases":
