@@ -39,6 +39,9 @@ fragility, no scene C.
 Probe corpus v10 (generator v11, ``RPENT_LAB_GENERATOR=v11``): corpus v11's masses and mass_scale range (see
 corpus), keys ``<object>__v11s<seed>__d<idx>[__<scene><probe>]``, a ``generator`` field on every row, and the
 squeeze cap on the v11 prior (``prior.V11_PRIOR``). ``--resume`` refuses a file of another generator.
+
+Arm port (probe corpus v12b): ``--scenes D`` runs scene D alone, the identify probe (``Didentify``) from a fresh reset
+under the same draw at the mid proposal with the weigh squeeze; its rows merge with probe corpus v12's (scenes ABC).
 """
 
 from __future__ import annotations
@@ -84,9 +87,12 @@ def _state(env, force: float) -> tuple[Any, dict[str, Any], dict[str, float]] | 
 
 
 def probe_rows(env, object_id: str, idx: int, seed: int, classes: str | dict[str, Any] | None = None,
-               thresholds: Any = None, mode: str = "v8") -> list[dict[str, Any]]:
+               thresholds: Any = None, mode: str = "v8", scenes: str = "ABC") -> list[dict[str, Any]]:
     """Scene A (push, then weigh unless the push threw or damaged the object), scene B (weigh) and, for a crushable
-    or bruisable object, scene C (squeeze at the prior's cap) of one draw (``mode`` m2: v7's world, no scene C)."""
+    or bruisable object, scene C (squeeze at the prior's cap) of one draw (``mode`` m2: v7's world, no scene C).
+    ``scenes`` (arm port) picks the scenes: "D" is the identify probe (``Didentify``) from a fresh reset, at the mid
+    proposal with the weigh squeeze; a run of "D" alone declines under the key ``...__Didentify``, so its rows merge
+    with a run of "ABC" without a repeated key."""
     from robots.mujoco_lab.adapter import object_props
     from robots.mujoco_lab.fragility import FLAGS, entry_of
     from robots.mujoco_lab.prior import make_prior
@@ -127,9 +133,16 @@ def probe_rows(env, object_id: str, idx: int, seed: int, classes: str | dict[str
         return {"key": f"{key}__{tag}", **common, "scene": tag[0], "order": order, "declined": why,
                 "reset": start}
 
+    unknown = set(scenes) - set("ABCD")
+    if unknown or not scenes:
+        raise ValueError(f"unknown scenes {sorted(unknown)}; known: A, B, C, D")
     st = _state(env, force)
     if isinstance(st, str):                     # no proposal fits: the skill declines before any probe
+        if not set(scenes) & set("ABC"):
+            return [declined("Didentify", 0, st)]
         return [{"key": key, **common, "declined": st, "reset": start}]
+    if not set(scenes) & set("ABC"):            # scene D alone: the reset above is its fresh reset
+        return [row("Didentify", 0, st, env.probe_identify(st[0], force))]
     push = env.probe_push()
     rows = [row("Apush", 0, st, push)]
     if not push.thrown and push.damage is None:          # a throw or damage ends scene A
@@ -150,11 +163,16 @@ def probe_rows(env, object_id: str, idx: int, seed: int, classes: str | dict[str
             rows.append({**declined("Csqueeze", 0, st), "force": cap})
         else:
             rows.append({**row("Csqueeze", 0, st, env.probe_squeeze(st[0], cap)), "force": cap})
+    if "D" in scenes:
+        env.reset(object_id, theta, **reset)
+        start = dict(env.reset_info)
+        st = _state(env, force)
+        rows.append(declined("Didentify", 0, st) if isinstance(st, str) else row("Didentify", 0, st, env.probe_identify(st[0], force)))
     return rows
 
 
 def _worker(args: tuple) -> list[dict[str, Any]]:
-    object_id, draws, seed, skip, classes, thresholds, mode = args
+    object_id, draws, seed, skip, classes, thresholds, mode, scenes = args
     from robots.mujoco_lab.adapter import MuJoCoLabEnv
 
     env = MuJoCoLabEnv()
@@ -163,7 +181,7 @@ def _worker(args: tuple) -> list[dict[str, Any]]:
         if idx in skip:
             continue
         try:
-            rows.extend(probe_rows(env, object_id, idx, seed, classes, thresholds, mode))
+            rows.extend(probe_rows(env, object_id, idx, seed, classes, thresholds, mode, scenes))
         except Exception as exc:  # noqa: BLE001  one bad draw must not kill the object's batch
             rows.append({"key": f"{object_id}__{key_tag()}s{seed}__d{idx}", "object": object_id, "draw": idx,
                          "generator": lab_generator(), "error": str(exc)[:200]})
@@ -181,6 +199,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--classes", default=None, help="the fragility class file (default: the generator's, fragility.classes_for)")
     ap.add_argument("--thresholds", default=None, help="the thresholds file (default: data/thresholds_v0.json)")
     ap.add_argument("--mode", default="v8", choices=MODES, help="v8: the damage draws and scene C; m2: v7's world")
+    ap.add_argument("--scenes", default="ABC", help="the scenes to run (arm port: D, the identify probe; default ABC)")
     a = ap.parse_args(argv)
     from robots.mujoco_lab.adapter import object_ids
 
@@ -196,7 +215,7 @@ def main(argv: list[str] | None = None) -> int:
             check_resume_generator(a.out, r, generator)
             if "error" not in r:
                 done.setdefault(r["object"], set()).add(int(r["draw"]))
-    jobs = [(oid, a.draws, a.seed, sorted(done.get(oid, set())), a.classes, a.thresholds, a.mode) for oid in objects]
+    jobs = [(oid, a.draws, a.seed, sorted(done.get(oid, set())), a.classes, a.thresholds, a.mode, a.scenes) for oid in objects]
     from robots.mujoco_lab.corpus import pop_arm, save_object_sidecar
 
     written = 0

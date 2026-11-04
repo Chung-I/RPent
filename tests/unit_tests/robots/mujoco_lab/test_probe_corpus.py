@@ -151,3 +151,38 @@ def test_probe_corpus_writes_one_sidecar_file_per_object(tmp_path):
     side = load_sidecar(sidecar_dir(str(out)))
     assert os.listdir(sidecar_dir(str(out))) == ["ycb__brick.npz"]
     assert {k.split("|")[1] for k in side} <= set(keys) and {k.split("|")[1] for k in side} & {k for k in keys if k.endswith("d1__Bweigh")}
+
+
+def test_scene_d_identifies_from_a_fresh_reset_of_the_same_draw():
+    """Arm port: --scenes D runs only the identify probe (Didentify), from a fresh reset under the draw's theta, at the
+    mid proposal with the weigh squeeze; its draw fields repeat scene B's (a full run's)."""
+    from robots.mujoco_lab.adapter import MuJoCoLabEnv
+    from robots.mujoco_lab.probe_corpus import probe_rows
+
+    from .conftest import arm_sim
+
+    if not arm_sim():
+        pytest.skip("the identify probe needs the arm sim")
+    env = MuJoCoLabEnv()
+    d = probe_rows(env, "ycb__brick", 0, 7, scenes="D")
+    abc = probe_rows(env, "ycb__brick", 0, 7)
+    assert [r["key"].rsplit("__", 1)[1] for r in d] == ["Didentify"]
+    r, b = d[0], next(x for x in abc if x["key"].endswith("Bweigh"))
+    assert r["probe"] == "identify" and r["scene"] == "D" and r["order"] == 0
+    assert r["kind"] in ("measured", "not_lifted", "lost", "unplanned", "damaged", "unreachable")
+    for k in ("theta", "com_end", "fill", "theta_frag", "force", "s", "truth", "com_obj_true", "reset"):
+        assert r[k] == b[k], k
+    if r["kind"] == "measured":
+        assert {"phi", "cov", "info", "obj_l7", "m_hat", "com_obj_m"} <= set(r["reading"])
+
+
+def test_scene_d_declines_under_its_own_key():
+    """A draw with no fitting proposal: scene D alone gives one declined row keyed Didentify (the full run's
+    declined row keeps the draw's key, so a merge of the two has no repeated key)."""
+    from robots.mujoco_lab.adapter import MuJoCoLabEnv
+    from robots.mujoco_lab.probe_corpus import probe_rows
+
+    env = MuJoCoLabEnv()
+    env.probe_identify = lambda *a, **k: (_ for _ in ()).throw(AssertionError("no probe may run"))
+    rows = probe_rows(env, "hope__macaroni_and_cheese", 2, 7, scenes="D")
+    assert len(rows) == 1 and rows[0]["key"].endswith("__d2__Didentify") and "declined" in rows[0]

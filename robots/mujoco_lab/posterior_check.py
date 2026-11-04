@@ -146,7 +146,7 @@ def check_rows(rows: list[dict[str, Any]], bundle: dict[str, Any], grid: list[fl
     return cases
 
 
-PROBE_TAGS = {"A": ("Apush", "Aweigh"), "B": ("Bweigh",), "C": ("Csqueeze",)}
+PROBE_TAGS = {"A": ("Apush", "Aweigh"), "B": ("Bweigh",), "C": ("Csqueeze",), "D": ("Didentify",)}
 
 
 def probe_cases(rows: list[dict[str, Any]], probes: str) -> list[list[dict[str, Any]]]:
@@ -354,7 +354,7 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
     ap.add_argument("--temper-grid", default=None, help="comma-separated tempers (always with 1 and the bundle's)")
     ap.add_argument("--choose-on", default=None, choices=("train", "val"), help="choose the temper on this split; write it into the bundle")
     ap.add_argument("--seed", type=int, default=0)
-    ap.add_argument("--probes", default=None, choices=tuple(PROBE_TAGS), help="check the update after the probes (A: push then weigh; B: weigh; C: squeeze)")
+    ap.add_argument("--probes", default=None, choices=tuple(PROBE_TAGS), help="check the update after the probes (A: push then weigh; B: weigh; C: squeeze; D: identify)")
     ap.add_argument("--out", required=True)
     a = ap.parse_args(argv)
     B = load_bundle(a.bundle)

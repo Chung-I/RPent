@@ -24,7 +24,12 @@ A composite likelihood, validated by posterior coverage, not assumed exact. Term
   log p(log(fz / (2 mu_i F))), F the squeeze per pad;
 * rot (always, with a rotation classifier): log P(rotated or not | X_i, label) / temper;
 * side (when the readouts tell a heavy side): log(1 - eps) on that side, log eps on the other,
-  log 0.5 for a CoM on the pinch; divided by temper like the other discrete terms.
+  log 0.5 for a CoM on the pinch; divided by temper like the other discrete terms;
+* joint (arm port, a model fitted on rows with the attempt's Real2Sim fit, ``joint``): gate R1's Gaussian
+  log-likelihood of the particle's (m, m c_obj) under the fit ``readouts["joint"]`` (joint_obs, joint_loglik: the
+  identify probe's code), its information with the model-error floor; not tempered (the floor is its inflation).
+  It replaces the hold term: fz_hold_n comes from the same joint torques as the fit's mass. A fit without its
+  information or frame is rejected, and the hold term then stays.
 
 The residual laws are fitted per label on training rows at the true mass and friction; a label with
 fewer than 30 rows uses the pooled law of all rows. A law is a normal law (median and MAD) or a
@@ -68,6 +73,37 @@ MIX_MIN_FIT = 50                    # readings the mixture is fitted on, and hel
 MIX_MIN_VAL = 20
 MIX_GAIN = 0.02                     # nats per held-out reading the mixture must gain over the normal law
 _LOG_SQRT_2PI = 0.5 * float(np.log(2.0 * np.pi))
+
+
+def l7_map(obj_l7: dict[str, Any]) -> np.ndarray:
+    """T with (m, h_l7) = T (m, h_obj): h_l7 = m p + R h_obj for the object frame (p, R) in link 7's frame."""
+    T = np.eye(4)
+    T[1:4, 0] = np.asarray(obj_l7["p"], dtype=float)
+    T[1:4, 1:4] = np.asarray(obj_l7["R"], dtype=float).reshape(3, 3)
+    return T
+
+
+def joint_obs(reading: dict[str, Any]) -> tuple[np.ndarray, np.ndarray] | None:
+    """A Real2Sim fit (the attempt's ``readouts["joint"]`` or an identify reading) in the object frame: (phi_obj =
+    (m, m c_obj), its information), from the fit's phi and info (link 7's frame, the model-error floor in it) and
+    obj_l7; None when a field is missing or not finite."""
+    if any(reading.get(k) is None for k in ("phi", "info", "obj_l7")):
+        return None
+    T = l7_map(reading["obj_l7"])
+    phi = np.asarray(reading["phi"], dtype=float)[:4]
+    info = np.asarray(reading["info"], dtype=float).reshape(4, 4)
+    if not (np.isfinite(phi).all() and np.isfinite(info).all()):
+        return None
+    return np.linalg.solve(T, phi), T.T @ info @ T
+
+
+def joint_loglik(obs: tuple[np.ndarray, np.ndarray], arrays: dict[str, np.ndarray]) -> np.ndarray:
+    """The analytic log-likelihood (up to a constant) of each particle's (m, m c_obj) under the fit (ident.loglik)."""
+    phi, info = obs
+    m = np.asarray(arrays["mass"], dtype=float)
+    x = np.column_stack([m, m[:, None] * np.asarray(arrays["com_obj"], dtype=float).reshape(-1, 3)])
+    e = x - phi[None, :]
+    return -0.5 * np.einsum("ni,ij,nj->n", e, info, e)
 
 
 @dataclass(frozen=True)
@@ -272,6 +308,7 @@ class ReadoutModel:
     temper: float = 1.0
     floor_p: float = 1e-4
     stats: dict[str, Any] = field(default_factory=dict)
+    joint: bool = False                 # arm port: read the attempt's Real2Sim fit (replaces hold)
 
     def __post_init__(self):
         self.terms = {t: {g: as_law(v) for g, v in laws.items()} for t, laws in self.terms.items()}
@@ -293,15 +330,25 @@ class ReadoutModel:
         m, mu = np.asarray(arrays["mass"], dtype=float), np.asarray(arrays["mu"], dtype=float)
         cat: dict[str, np.ndarray] = {}
         norm: dict[str, tuple[np.ndarray, Law]] = {}
+        exact: dict[str, np.ndarray] = {}
         used: list[str] = []
         rejected: list[str] = []
+        joint_used = False
+        if self.joint and r.get("joint") is not None and want("joint"):
+            got = joint_obs(r["joint"])
+            if got is None:
+                rejected.append("joint")
+            else:
+                exact["joint"] = joint_loglik(got, arrays)
+                used.append("joint")
+                joint_used = True
         if preds is not None and want("outcome"):
             P = preds if isinstance(preds, np.ndarray) else prediction_matrix(preds)
             cat["outcome"] = np.log(np.maximum(self.floor_p, P[:, OUTCOMES.index(label)]))
             used.append("outcome")
         for term in CONTINUOUS:
             fz, law = r.get(READING[term]), self.law(term, label)
-            if fz is None or law is None or not want(term):
+            if fz is None or law is None or not want(term) or (term == "hold" and joint_used):
                 continue
             if terms is None and not float(fz) > 0:
                 rejected.append(term)
@@ -322,7 +369,7 @@ class ReadoutModel:
             s, e = np.asarray(sides), float(self.side_error)
             cat["side"] = np.log(np.where(s == heavy, 1.0 - e, np.where(s == 0, 0.5, e)))
             used.append("side")
-        return {"n": len(m), "cat": cat, "norm": norm}, {"used": used, "rejected": rejected}
+        return {"n": len(m), "cat": cat, "norm": norm, "exact": exact}, {"used": used, "rejected": rejected}
 
     def combine(self, comp: dict[str, Any], temper: float | None = None) -> np.ndarray:
         """Per-particle log-likelihood of the components at a temper (default: the model's)."""
@@ -332,6 +379,8 @@ class ReadoutModel:
             ll += v / t
         for x, law in comp["norm"].values():
             ll += law.logpdf(x, t)
+        for v in comp.get("exact", {}).values():       # not tempered
+            ll += v
         return ll
 
     def loglik(self, obs: dict[str, Any], preds, X: np.ndarray | None, arrays: dict[str, np.ndarray],
@@ -394,17 +443,21 @@ class ReadoutModel:
             rot_clf = RotClassifier.fit(X, [r["label"] for r in rot_rows], y, np.array([r["object"] for r in rot_rows]), seed,
                                         names)
             stats["rot"] = {"n": len(rot_rows), "rate": float(y.mean())}
-        return cls(terms=terms, side_error=side_error, rot_clf=rot_clf, stats=stats)
+        n_joint = sum(r["readouts"].get("joint") is not None for r in rows)
+        stats["joint"] = {"n": int(n_joint)}
+        return cls(terms=terms, side_error=side_error, rot_clf=rot_clf, stats=stats, joint=n_joint > 0)
 
     def to_json(self) -> dict[str, Any]:
         return {"version": 1, "terms": {t: {g: law.to_json() for g, law in laws.items()} for t, laws in self.terms.items()},
-                "side_error": float(self.side_error), "temper": float(self.temper), "floor_p": float(self.floor_p), "stats": self.stats}
+                "side_error": float(self.side_error), "temper": float(self.temper), "floor_p": float(self.floor_p), "stats": self.stats,
+                "joint": bool(self.joint)}
 
     @staticmethod
     def from_json(d: dict[str, Any], rot_clf: Any = None) -> ReadoutModel:
         terms = {t: {g: Law.from_json(v) for g, v in laws.items()} for t, laws in d["terms"].items()}
         return ReadoutModel(terms=terms, side_error=float(d["side_error"]), rot_clf=rot_clf, temper=float(d.get("temper", 1.0)),
-                            floor_p=float(d.get("floor_p", 1e-4)), stats=dict(d.get("stats", {})))
+                            floor_p=float(d.get("floor_p", 1e-4)), stats=dict(d.get("stats", {})),
+                            joint=bool(d.get("joint", False)))
 
     def save(self, json_path: str, joblib_path: str | None = None) -> None:
         """The laws as JSON; the rotation classifier in a joblib file the JSON names (same directory)."""

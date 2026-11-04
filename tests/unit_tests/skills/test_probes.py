@@ -27,9 +27,9 @@ G = 9.81
 
 def test_weigh_force():
     assert weigh_force(5.0) == 15.0 and weigh_force(10.0) == 20.0 and weigh_force(30.0) == 60.0 and weigh_force(40.0) == 70.0
-    assert PROBE_SECONDS == {"weigh": 4.0, "push": 2.0, "squeeze": 3.0}           # plan 2b: the squeeze probe
+    assert PROBE_SECONDS == {"weigh": 4.0, "push": 2.0, "squeeze": 3.0, "identify": 18.0}   # plan 2b: the squeeze; arm port: identify
     assert PROBE_KINDS == {"weigh": ("measured", "lower_bound", "lost"), "push": ("slid", "tipped", "no_breakaway", "no_contact"),
-                           "squeeze": ("measured",)}                       # plan 2b: "damaged" is learned where the corpus has it
+                           "squeeze": ("measured",), "identify": ("measured", "not_lifted", "lost", "unplanned")}   # "damaged": learned
 
 
 def test_probe_result_data_has_no_trace():
