@@ -129,12 +129,21 @@ def test_the_lift_and_hold_fit_reads_no_sample_after_the_hold():
     assert fits[0].shape == (16, 2) and np.allclose(fits[0], fits[1])
 
 
-def test_cut_log_ends_every_per_sample_list_and_the_tagged_steps_at_the_window_end():
+def test_cut_log_ends_the_log_at_the_window_and_holds_its_last_sample():
+    """The cut log: every sample up to the window's last one, then hold_s of copies of that sample (the arm keeps
+    holding; step -1, so no window reads them), so the zero-phase filter has no edge inside the window and reads
+    nothing after (b). No tagged step after the window; the log itself is unchanged."""
     log = _Log(_trace())
-    cut = cg.cut_log(log, [5, 6, 7, 8])
-    assert len(cut) == 36 and len(log) == 48 and len(log.steps) == 12           # the log itself is unchanged
-    assert cut.step_index().max() == 8 and [x["i"] for x in cut.steps] == list(range(9))
-    assert len(cut.tau_clean) == len(cut.aux) == len(cut.mark) == 36 and len(cut.arrays()[2]) == 36
+    cut = cg.cut_log(log, [5, 6, 7, 8], hold_s=0.01)              # 0.01 s at the fake's 2 ms samples: 5 copies
+    assert len(log) == 48 and len(log.steps) == 12                    # the log itself is unchanged
+    assert len(cut) == 36 + 5 and [x["i"] for x in cut.steps] == list(range(9))
+    assert cut.step[:36] == log.step[:36] and cut.step[36:] == [-1] * 5 and max(cut.step) == 8
+    assert np.allclose(cut.t[36:], log.t[35] + 0.002 * np.arange(1, 6))
+    for name in ("q", "tau", "fingers", "tau_clean"):
+        assert all(np.array_equal(x, getattr(log, name)[35]) for x in getattr(cut, name)[36:])
+    assert all(np.array_equal(a["qd"], log.aux[35]["qd"]) for a in cut.aux[36:]) and len(cut.aux) == 41
+    assert cut.mark[36:] == [None] * 5 and len(cut.arrays()[2]) == 41
+    assert len(cg.cut_log(log, [5, 6, 7, 8])) == 36 + round(cg.CUT_HOLD_S / 0.002)
     assert cg.cut_log(log, []) is log        # no window: the log as it is (the fit then has no window either)
 
 
@@ -144,7 +153,8 @@ def test_grasp_tap_records_the_lift_and_hold_fit_and_keeps_the_attempt_readout()
         assert tap.fit is None and tap.calls == 0
         out = env._attempt_joint(log, _trace())
     assert out == ({"attempt": True}, {"torque_noise": 0.1})
-    assert tap.fit == {"steps": [5, 6, 7, 8], "params": 4, "floor": [1.0]} and tap.calls == 1 and len(env.fits[0][0]) == 36
+    assert tap.fit == {"steps": [5, 6, 7, 8], "params": 4, "floor": [1.0]} and tap.calls == 1
+    assert len(env.fits[0][0]) == 36 + round(cg.CUT_HOLD_S / 0.002)
     assert "_attempt_joint" not in vars(env) and env._attempt_joint("LOG", []) == ({"attempt": True}, {"torque_noise": 0.1})
     with pytest.raises(RuntimeError):
         with cg.GraspTap(env):

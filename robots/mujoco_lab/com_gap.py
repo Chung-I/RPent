@@ -80,6 +80,7 @@ STOP_BOUND = 0.02                 # the stop rule's bar on H(0.05) per case (pre
 ESS_TABLE = 100.0                 # Amendment 2's secondary table: the cases with at least this ESS in b2 and in the yardstick
 N_BOOT = 2000
 GRASP_FIT, TRUTH = "grasp_fit", "truth"     # the history entries com_gap adds: the lift-and-hold fit, a truth term
+CUT_HOLD_S = 1.0                  # the held last sample after the cut at (b) (0.5 s gave the same fits on four arm-sim cases)
 REFRESH_STREAM = 3                # calibrate._stream k of the refreshes at (b) (1: the menus, 2: the random row)
 HELD_TO_B = ("lift", "hold")      # a loss in these phases: the object is not in the hand at (b)
 BASE_S = 8.0                      # commit_std's time; the executed grasp's own charge is the same for every choice at (b)
@@ -102,19 +103,33 @@ def grasp_steps(trace: list[dict[str, Any]]) -> list[int]:
     return [i for i, x in enumerate(trace) if x["phase"] == "hold" or (x["phase"] == "lift" and x["hand_z"] - z0 >= JOINT_RISE_M)]
 
 
-def cut_log(log: Any, steps: list[int]) -> Any:
-    """A shallow copy of the joint log up to the last sample of the trace steps ``steps`` (for the lift and hold window:
-    point (b), before the carry). ident.segment low-passes the whole log with a zero-phase filter before it cuts the
-    window, so the carry's samples would otherwise reach the window's last samples. The copy's per-sample lists and its
-    tagged steps end there; the log itself is not changed. A log without any of the steps comes back as it is."""
+def cut_log(log: Any, steps: list[int], hold_s: float = None) -> Any:
+    """A shallow copy of the joint log that ends at the last sample of the trace steps ``steps`` (for the lift and hold
+    window: point (b), before the carry), then holds that sample for ``hold_s`` (CUT_HOLD_S): copies of it, one per
+    sample interval, on no trace step (-1). ident.segment low-passes the whole log with a zero-phase filter before it
+    cuts the window, so on the whole log the carry's samples reach the window's last samples (a fit with carry data),
+    and on a bare cut the filter's short end padding leaves an edge transient inside the window (on four arm-sim
+    cases, the mass off by 1.4 to 2.0 sd); the held sample is what the arm would read if it kept holding. The log
+    itself is not changed. A log without any of the steps comes back as it is."""
+    hold_s = CUT_HOLD_S if hold_s is None else float(hold_s)
     k = np.flatnonzero(np.isin(log.step_index(), sorted({int(i) for i in steps})))
     if not len(k):
         return log
     n, end = len(log), int(k[-1]) + 1
+    dt = float(log.t[end - 1] - log.t[end - 2])
+    pad = int(round(hold_s / dt))
     out = copy.copy(log)
     for name, v in vars(log).items():
-        if isinstance(v, list) and len(v) == n:
-            setattr(out, name, v[:end])
+        if not (isinstance(v, list) and len(v) == n):
+            continue
+        last = v[end - 1]
+        if name == "t":
+            tail = [last + dt * (j + 1) for j in range(pad)]
+        elif name in ("step", "mark"):
+            tail = [-1 if name == "step" else None] * pad
+        else:
+            tail = [copy.deepcopy(last) for _ in range(pad)]
+        setattr(out, name, v[:end] + tail)
     out.steps = [x for x in log.steps if x["end"] <= end]
     return out
 
