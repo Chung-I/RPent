@@ -48,6 +48,7 @@ from __future__ import annotations
 
 import argparse
 import gzip
+import hashlib
 import json
 import os
 import subprocess
@@ -207,6 +208,30 @@ def _memo(fn):
     return call
 
 
+class _Memo:
+    """The menu's model with predict_matrix cached by the feature matrix's bytes. A case's menus at both stages and
+    every setting rebuild the same particle matrices (the reweight moves only the weights), and the belief variant
+    repeats the menu's own. Exact for a classifier, which reads no plan; a hazard model's calls pass through."""
+
+    def __init__(self, model: Any):
+        self._model, self._cache = model, {}
+
+    def __getattr__(self, name: str) -> Any:
+        if name.startswith("__"):
+            raise AttributeError(name)
+        return getattr(self._model, name)
+
+    def predict_matrix(self, X: np.ndarray, planned: list[dict[str, Any]] | None = None) -> tuple[np.ndarray, Any, Any]:
+        if getattr(self._model, "kind", "classifier") == "hazard":
+            return self._model.predict_matrix(X, planned)
+        X = np.ascontiguousarray(X, dtype=float)
+        key = (X.shape, hashlib.blake2b(X.tobytes(), digest_size=16).digest())
+        if key not in self._cache:
+            self._cache[key] = self._model.predict_matrix(X)
+        P, DH, LT = self._cache[key]
+        return P.copy(), DH, LT
+
+
 def weigh_job(spec: dict[str, Any]) -> list[dict[str, Any]]:
     """One fold's weigh cases under each prior: the exact estimation_check beliefs, one reset per case to scene B, the
     menus at each stage and setting, and the rows' spreads per variant (see the module)."""
@@ -259,7 +284,7 @@ def weigh_job(spec: dict[str, Any]) -> list[dict[str, Any]]:
                   "s_equal": bool(mid is not None and abs(float(mid.s) - float(first["s"])) < 1e-12)}
         f_std = standard_force(env.nominal_mass(loc["object_id"]))
         checks["f_std_equal"] = abs(f_std - float(first["f_std"])) < 1e-9
-        plan = _memo(env.plan_trajectory)
+        plan, model = _memo(env.plan_trajectory), _Memo(prims.model)
         truth = truth_point(first, classes)
         L = float(first["pose"]["pivot"]["L"])
         for p, (b, post) in beliefs.items():
@@ -270,7 +295,7 @@ def weigh_job(spec: dict[str, Any]) -> list[dict[str, Any]]:
             def chances(opt):
                 k = (opt.id, float(opt.action.get("s", -1.0)), float(opt.action["force"]))
                 if k not in cache:
-                    cache[k] = _variant_chances(prims.model, arrays, truth, opt._base, opt._pose, opt.action["force"], opt._planned)
+                    cache[k] = _variant_chances(model, arrays, truth, opt._base, opt._pose, opt.action["force"], opt._planned)
                 return cache[k]
 
             rec = {"stage": "weigh", "prior": p, "object": o, "key": first["key"], "draw": int(first["draw"]), "fold": spec["fold"],
@@ -280,7 +305,7 @@ def weigh_job(spec: dict[str, Any]) -> list[dict[str, Any]]:
             menu_diff = 0.0
             for stage, belief in (("prior", b), ("weigh", post)):
                 for name, care, A in SETTINGS:
-                    options, _ = build_menu(prims.model, belief, geometry, proposals, f_std, care, DESTINATION, plan,
+                    options, _ = build_menu(model, belief, geometry, proposals, f_std, care, DESTINATION, plan,
                                             np.random.default_rng(0), pose_fn=env.proposal_pose, max_open=lim,
                                             threshold=getattr(prims, "threshold", None), probe_models=None, guard=None,
                                             abstain_cost=A, evoi=getattr(prims, "evoi", "plugin"),
@@ -323,14 +348,14 @@ def attempt_job(spec: dict[str, Any]) -> list[dict[str, Any]]:
             b = fn(r["pose"], spec["n"], rngs[p])          # every row draws: the streams stay estimation_check's
             if r["object"] not in keep:
                 continue
-            a = b.arrays()
+            a, m = b.arrays(), _Memo(model)
             X = particle_matrix(row_base(r), a, row_pose(r), r["force"], model_names(model))
-            P = model.predict_matrix(X, r.get("planned"))[0]
+            P = m.predict_matrix(X, r.get("planned"))[0]
             obs = {"label": r["label"], "readouts": r["readouts"], "force": r["force"]}
             comp, _ = readout.components(obs, P, X, a, particle_sides(a, r["pose"]))
             post = b.reweight(readout.combine(comp))
             truth = truth_point(r, classes)
-            ch = _variant_chances(model, a, truth, row_base(r), row_pose(r), r["force"], r.get("planned"))
+            ch = _variant_chances(m, a, truth, row_base(r), row_pose(r), r["force"], r.get("planned"))
             out.append({"stage": "attempt", "prior": p, "object": r["object"], "key": r.get("key"), "fold": spec["fold"],
                         "label": r["label"], "class": (r.get("entry") or {}).get("class"), "truth": truth, "ess": float(post.ess()),
                         "means": {"prior": _means(b), "attempt": _means(post)},

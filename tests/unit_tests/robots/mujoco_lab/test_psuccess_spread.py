@@ -179,3 +179,43 @@ def test_replication_compares_labels_only_where_the_record_has_one(tmp_path):
     (tmp_path / "records.jsonl").write_text(json.dumps(ref) + "\n")
     mine = {"prior": "class", "stage": "weigh", "key": "w", "means": {"weigh": {"mass": 0.2, "mu": 0.5, "com": 0.4}}}
     assert replication([mine], {"class": str(tmp_path)})["class"]["label_mismatch"] == 0
+
+
+class _Counting:
+    """A model that counts its predict_matrix calls and returns the row sums as P."""
+
+    def __init__(self, kind="classifier"):
+        self.kind, self.feature_names, self.calls = kind, ("a", "b"), 0
+
+    def predict_matrix(self, X, planned=None):
+        self.calls += 1
+        X = np.asarray(X, dtype=float)
+        return np.stack([X.sum(axis=1), X[:, 0]], axis=1), None, planned
+
+
+def test_memo_predicts_each_feature_matrix_once_and_returns_a_copy():
+    from robots.mujoco_lab.psuccess_spread import _Memo
+
+    model = _Counting()
+    memo = _Memo(model)
+    X = np.array([[1.0, 2.0], [3.0, np.nan]])
+    P1 = memo.predict_matrix(X.copy())[0]
+    P1[:] = -1.0                                   # a caller that writes into its result must not change the cache
+    P2 = memo.predict_matrix(X.copy())[0]
+    assert model.calls == 1
+    np.testing.assert_array_equal(P2, model.predict_matrix(X)[0])
+    memo.predict_matrix(X + 1.0)
+    memo.predict_matrix(X[:1])
+    assert model.calls == 2 + 2
+    assert memo.feature_names == ("a", "b") and memo.kind == "classifier"
+
+
+def test_memo_passes_a_hazard_models_plan_through_uncached():
+    from robots.mujoco_lab.psuccess_spread import _Memo
+
+    model = _Counting("hazard")
+    memo = _Memo(model)
+    X = np.ones((2, 2))
+    assert memo.predict_matrix(X, ["plan"])[2] == ["plan"]
+    memo.predict_matrix(X, ["plan"])
+    assert model.calls == 2
