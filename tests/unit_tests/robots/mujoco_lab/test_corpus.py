@@ -230,3 +230,26 @@ def test_shrink_maps_the_ranges():
     for bad in (0.0, -0.25, 1.5, float("nan"), "x", True):
         with pytest.raises(ValueError, match="spread"):
             shrink_theta(lo, bad, False)
+
+
+def test_shards_split_the_objects_in_order():
+    from robots.mujoco_lab.corpus import shard_objects
+
+    objs = [f"o{i}" for i in range(10)]
+    parts = [shard_objects(objs, f"{i}/3") for i in range(3)]
+    assert parts[0] == ["o0", "o3", "o6", "o9"] and sorted(sum(parts, [])) == sorted(objs)
+    assert shard_objects(objs, None) == objs
+
+
+def test_the_sidecar_has_one_file_per_object_and_a_resume_merges(tmp_path):
+    from robots.mujoco_lab.corpus import load_sidecar, save_object_sidecar, sidecar_dir
+
+    out = str(tmp_path / "corpus_v12.jsonl")
+    assert sidecar_dir(out) == str(tmp_path / "corpus_v12_arm")
+    save_object_sidecar(out, "ycb__mug", {"corpus_v12.jsonl|ycb__mug__v11d0|tau": np.zeros(3)})
+    save_object_sidecar(out, "ycb__mug", {"corpus_v12.jsonl|ycb__mug__v11d1|tau": np.ones(3)})
+    save_object_sidecar(out, "ycb__banana", {"corpus_v12.jsonl|ycb__banana__v11d0|tau": np.ones(2)})
+    save_object_sidecar(out, "ycb__brick", {})                                # nothing to write: no file
+    assert sorted(os.listdir(sidecar_dir(out))) == ["ycb__banana.npz", "ycb__mug.npz"]
+    side = load_sidecar(sidecar_dir(out))
+    assert len(side) == 3 and np.array_equal(side["corpus_v12.jsonl|ycb__mug__v11d1|tau"], np.ones(3))

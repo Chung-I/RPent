@@ -80,3 +80,4 @@ robots/mujoco_lab/data/m2b2_v11c/folds/fold_*/*
 
 # mujoco_lab arm port: the 50 Hz arm sidecars of the corpora (joined by (file, key))
 *_arm.npz
+*_arm/

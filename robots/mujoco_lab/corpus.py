@@ -371,12 +371,44 @@ def pop_arm(row: dict[str, Any], store: dict[str, np.ndarray], file_tag: str) ->
     return row
 
 
+def sidecar_dir(out: str) -> str:
+    """The corpus generator's sidecar: <out without .jsonl>_arm/, one <object>.npz per object (keys as pop_arm's), so a
+    run never holds or rewrites the whole sidecar (about 1.15 GB for corpus v12)."""
+    return (out[:-6] if out.endswith(".jsonl") else out) + "_arm"
+
+
+def shard_objects(objects: list[str], shard: str | None) -> list[str]:
+    """The objects of shard "i/k": every k-th from the i-th, in the given order; None: all."""
+    if not shard:
+        return list(objects)
+    i, k = (int(x) for x in shard.split("/"))
+    if not 0 <= i < k:
+        raise ValueError(f"shard {shard!r}: need 0 <= i < k")
+    return list(objects)[i::k]
+
+
 def load_sidecar(path: str) -> dict[str, np.ndarray]:
-    """The sidecar's arrays ({} when there is none): a resumed run starts from them."""
+    """The sidecar's arrays ({} when there is none): one .npz file, or a sidecar_dir (every object's file merged)."""
+    if os.path.isdir(path):
+        out: dict[str, np.ndarray] = {}
+        for name in sorted(os.listdir(path)):
+            if name.endswith(".npz") and not name.endswith(".tmp.npz"):
+                out.update(load_sidecar(os.path.join(path, name)))
+        return out
     if not os.path.exists(path):
         return {}
     with np.load(path) as old:
         return {k: old[k] for k in old.files}
+
+
+def save_object_sidecar(out: str, object_id: str, store: dict[str, np.ndarray]) -> None:
+    """One object's arm fields into sidecar_dir(out)/<object>.npz, merged with the file a stopped run left (a resume
+    reruns only the missing draws); nothing to write: no file."""
+    if not store:
+        return
+    d = sidecar_dir(out)
+    os.makedirs(d, exist_ok=True)
+    save_sidecar(os.path.join(d, f"{object_id}.npz"), store, resume=True)
 
 
 def save_sidecar(path: str, store: dict[str, np.ndarray], resume: bool = False) -> None:
@@ -421,10 +453,12 @@ def main(argv: list[str] | None = None) -> int:
                     help="v9: the damage draws; control: v8's draws and actions with the fragility; m2: v8's world (no damage)")
     ap.add_argument("--classes", default=None, help="the fragility classes (default: the generator's, fragility.classes_for)")
     ap.add_argument("--thresholds", default=THRESHOLDS_V0, help="the damage thresholds (thresholds_v0.json)")
+    ap.add_argument("--shard", default=None, help="i/k: only every k-th object from the i-th (one process per shard, each "
+                                                 "with its own --out; a killed shard loses only its own rows)")
     a = ap.parse_args(argv)
     from robots.mujoco_lab.adapter import object_ids
 
-    objects = a.objects.split(",") if a.objects else object_ids()
+    objects = shard_objects(a.objects.split(",") if a.objects else object_ids(), a.shard)
     generator = lab_generator()
     done: dict[str, set[int]] = {}
     if a.resume and os.path.exists(a.out):
@@ -440,7 +474,6 @@ def main(argv: list[str] | None = None) -> int:
     jobs = [(oid, a.draws, a.seed, sorted(done.get(oid, set())), a.fixtures, a.mode, a.classes, a.thresholds) for oid in objects]
     written = 0
     mode = "a" if a.resume and os.path.exists(a.out) else "w"
-    side: dict[str, np.ndarray] = load_sidecar(sidecar_path(a.out)) if a.resume else {}
     tag = os.path.basename(a.out)
     with open(a.out, mode) as f:
         if a.workers <= 1:
@@ -450,11 +483,14 @@ def main(argv: list[str] | None = None) -> int:
             pool = ctx.Pool(a.workers)
             results = pool.imap_unordered(_worker, jobs)
         for rows in results:
-            for row in rows:
-                f.write(json.dumps(pop_arm(row, side, tag)) + "\n")
+            side: dict[str, np.ndarray] = {}
+            lines = [json.dumps(pop_arm(row, side, tag)) for row in rows]
+            if rows:                                   # the object's arm fields first, then its rows: a stop between
+                save_object_sidecar(a.out, rows[0]["object"], side)       # them reruns the object (same draws)
+            for line, row in zip(lines, rows):
+                f.write(line + "\n")
                 written += "error" not in row
             f.flush()
-            save_sidecar(sidecar_path(a.out), side)
             print(f"{rows[0]['object'] if rows else '-'}: {len(rows)} rows", file=sys.stderr, flush=True)
         if a.workers > 1:
             pool.close()
