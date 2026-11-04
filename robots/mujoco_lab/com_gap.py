@@ -739,6 +739,91 @@ def run(a: argparse.Namespace) -> str:
     return path
 
 
+# What a shard's records depend on: shards that differ in any of these are not one run.
+MERGE_KEYS = ("bundle", "scenes", "settings", "priors", "seed", "repeats", "sample", "sample_seed", "no_full_menu",
+              "code_revision", "generator", "settings_parsed", "priors_parsed", "spreads", "generic", "exact_sd",
+              "stop_bound", "h_costs", "ess_table")
+
+
+def _shard_records(d: str) -> list[dict[str, Any]]:
+    """A shard's records; only its last line may fail to parse (a unit stopped while it wrote)."""
+    lines = open(os.path.join(d, "records.jsonl")).read().split("\n")
+    recs = []
+    for k, line in enumerate(lines):
+        if not line.strip():
+            continue
+        try:
+            recs.append(json.loads(line))
+        except json.JSONDecodeError:
+            if any(x.strip() for x in lines[k + 1:]):
+                raise SystemExit(f"{d}/records.jsonl: line {k + 1} is not JSON and is not the last line")
+    return recs
+
+
+def merge(a: argparse.Namespace) -> str:
+    """Shard runs (run --objects on disjoint objects; the objects a stopped unit left unfinished are rerun as a new
+    shard) as one run dir for the summary. An object with only some of its records in a shard (the unit stopped while
+    it ran) is dropped from that shard and listed in the config's "dropped". Refused when the shards differ in
+    MERGE_KEYS, when one ran on uncommitted code, when a case is in two shards, or when a case of any shard has no
+    complete records."""
+    dirs = a.dirs.split(",")
+    path = os.path.join(a.out, "records.jsonl")
+    if os.path.exists(path):
+        raise SystemExit(f"{path} exists: pick a new --out")
+    cfgs = [json.load(open(os.path.join(d, "run_config.json"))) for d in dirs]
+    for d, c in zip(dirs, cfgs):
+        if c.get("dirty"):
+            raise SystemExit(f"{d} ran on uncommitted code (dirty)")
+        diff = [k for k in MERGE_KEYS if c.get(k) != cfgs[0].get(k)]
+        if diff:
+            raise SystemExit(f"{d} differs from {dirs[0]} in {', '.join(diff)}")
+    cells = {(p, st[0]) for p in cfgs[0]["priors_parsed"] for st in cfgs[0]["settings_parsed"]}
+    owner: dict[tuple[str, int], str] = {}
+    recs: list[dict[str, Any]] = []
+    dropped: dict[str, list[str]] = {}
+    for d, c in zip(dirs, cfgs):
+        want: dict[str, set[int]] = defaultdict(set)
+        for o, i in c["cases"]:
+            want[o].add(int(i))
+        by: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for r in _shard_records(d):
+            if r["object"] not in want:
+                raise SystemExit(f"{d} has records of {r['object']}, which its config does not list")
+            by[r["object"]].append(r)
+        for o in want:
+            got = by.get(o, [])
+            keys = [(int(r["idx"]), r["prior"], r["setting"]) for r in got]
+            if len(keys) != len(set(keys)) or set(keys) != {(i, p, st) for i in want[o] for p, st in cells}:
+                dropped.setdefault(d, []).append(o)
+                continue
+            for i in sorted(want[o]):
+                if (o, i) in owner:
+                    raise SystemExit(f"case {o} {i} is in two shards, {owner[(o, i)]} and {d}: run each case once (twice)")
+                owner[(o, i)] = d
+            recs += got
+    wanted = {(o, int(i)) for c in cfgs for o, i in c["cases"]}
+    missing = sorted(wanted - set(owner))
+    if missing:
+        raise SystemExit(f"{len(missing)} cases have no complete records (missing): rerun "
+                         f"{','.join(sorted({o for o, _ in missing}))} as a new shard")
+    os.makedirs(a.out, exist_ok=True)
+    recs.sort(key=lambda r: (r["object"], int(r["idx"])))
+    with open(path, "w") as f:
+        for r in recs:
+            f.write(json.dumps(r) + "\n")
+    cases = sorted(owner)
+    with open(os.path.join(a.out, "run_config.json"), "w") as f:
+        json.dump({**cfgs[0], "objects": ",".join(sorted({o for o, _ in cases})), "cases": [[o, i] for o, i in cases],
+                   "out": a.out, "workers": [c.get("workers") for c in cfgs], "merged_from": dirs, "dropped": dropped},
+                  f, indent=1)
+    with open(os.path.join(a.out, "provenance.txt"), "w") as f:
+        for d in dirs:
+            p = os.path.join(d, "provenance.txt")
+            f.write(f"== {d}\n" + (open(p).read() if os.path.exists(p) else "(no provenance.txt)\n"))
+    print(f"merged {len(dirs)} shards: {len(cases)} cases, {len(recs)} records; dropped {dropped}: {path}", flush=True)
+    return path
+
+
 # ---------------------------------------------------------------- the summary
 
 def _mean_ci(values: np.ndarray, objects: list[str], rng: np.random.Generator, n_boot: int) -> dict[str, Any]:
@@ -978,13 +1063,16 @@ def main(argv: list[str] | None = None) -> Any:
     r.add_argument("--no-full-menu", action="store_true", help="skip the full menu check at (b)")
     r.add_argument("--workers", type=int, default=8)
     r.add_argument("--out", required=True)
+    m = sub.add_parser("merge")
+    m.add_argument("--dirs", required=True, help="the shard run dirs, comma-separated")
+    m.add_argument("--out", required=True)
     s = sub.add_parser("summary")
     s.add_argument("--dir", required=True)
     s.add_argument("--n-boot", type=int, default=N_BOOT)
     s.add_argument("--seed", type=int, default=0)
     s.add_argument("--wandb", action="store_true")
     a = ap.parse_args(argv)
-    return run(a) if a.cmd == "run" else summary(a)
+    return {"run": run, "merge": merge, "summary": summary}[a.cmd](a)
 
 
 if __name__ == "__main__":

@@ -14,8 +14,9 @@
 
 """TODO 6 step 1, the oracle gap for the CoM at point (b) (com_gap; daily-logs 2026-11-05-com-oracle-gap, Amendments 1
 and 2): the lift-and-hold fit, the conditioned beliefs, the choices at (b), the captured scene, the policy up to its
-first attempt, the summary and the stop rule."""
+first attempt, the summary, the shard merge and the stop rule."""
 
+import json
 from collections import Counter
 from types import SimpleNamespace
 
@@ -746,3 +747,84 @@ def test_the_verdict_is_flagged_when_belief_one_under_covers_the_com_fraction():
     md = cg.markdown(low)
     assert cg.UNDER_COVERS in next(line for line in md.splitlines() if line.startswith("Stop rule"))
     assert cg.UNDER_COVERS not in cg.markdown(ok) and "80 % coverage" in md
+
+
+def _shard(tmp_path, name, objects, repeats=2, settings=("k100_A3", "k30_A3"), priors=("class", "generic"), **cfg):
+    """A com_gap run dir as run() writes it (run_config.json, records.jsonl, provenance.txt) for `objects`."""
+    d = tmp_path / name
+    d.mkdir()
+    cases = [[o, i] for o in objects for i in range(repeats)]
+    config = {"cmd": "run", "bundle": "B", "scenes": "S", "settings": None, "priors": None, "objects": ",".join(objects),
+              "seed": 11, "repeats": repeats, "sample": None, "sample_seed": 0, "no_full_menu": False, "workers": 1,
+              "out": str(d), "code_revision": "abc", "dirty": False, "generator": "v11",
+              "settings_parsed": [[s, 100.0, 3.0] for s in settings], "priors_parsed": list(priors), "cases": cases,
+              "spreads": {"generic": {}}, "generic": {"o": {}}, "exact_sd": {"mass": 0.01}, "stop_bound": 0.02,
+              "h_costs": [0.05, 0.1, 0.3], "ess_table": 100, **cfg}
+    (d / "run_config.json").write_text(json.dumps(config))
+    recs = [{"object": o, "idx": i, "prior": p, "setting": s} for o, i in cases for p in priors for s in settings]
+    (d / "records.jsonl").write_text("".join(json.dumps(r) + "\n" for r in recs))
+    (d / "provenance.txt").write_text(f"code abc, shard {name}\n")
+    return d
+
+
+def _merge(dirs, out):
+    return cg.merge(SimpleNamespace(dirs=",".join(str(d) for d in dirs), out=str(out)))
+
+
+def _merged(out):
+    return ([json.loads(line) for line in open(out / "records.jsonl")], json.load(open(out / "run_config.json")),
+            (out / "provenance.txt").read_text())
+
+
+def test_merge_joins_disjoint_shards_into_one_run(tmp_path):
+    a, b = _shard(tmp_path, "a", ["o1", "o3"]), _shard(tmp_path, "b", ["o2"])
+    _merge([a, b], tmp_path / "m")
+    recs, cfg, prov = _merged(tmp_path / "m")
+    assert len(recs) == 3 * 2 * 2 * 2
+    assert cfg["cases"] == [["o1", 0], ["o1", 1], ["o2", 0], ["o2", 1], ["o3", 0], ["o3", 1]]
+    assert cfg["objects"] == "o1,o2,o3" and cfg["out"] == str(tmp_path / "m") and cfg["merged_from"] == [str(a), str(b)]
+    assert "shard a" in prov and "shard b" in prov
+
+
+def test_merge_refuses_a_case_in_two_shards(tmp_path):
+    with pytest.raises(SystemExit, match="o1.*twice"):
+        _merge([_shard(tmp_path, "a", ["o1"]), _shard(tmp_path, "b", ["o1", "o2"])], tmp_path / "m")
+
+
+@pytest.mark.parametrize("key, value", [("seed", 12), ("code_revision", "def"), ("settings_parsed", [["k100_A3", 100.0, 10.0]]),
+                                        ("bundle", "B2")])
+def test_merge_refuses_shards_that_differ_in_what_the_records_depend_on(tmp_path, key, value):
+    with pytest.raises(SystemExit, match=key):
+        _merge([_shard(tmp_path, "a", ["o1"]), _shard(tmp_path, "b", ["o2"], **{key: value})], tmp_path / "m")
+
+
+def test_merge_refuses_a_shard_run_on_uncommitted_code(tmp_path):
+    with pytest.raises(SystemExit, match="dirty"):
+        _merge([_shard(tmp_path, "a", ["o1"], dirty=True)], tmp_path / "m")
+
+
+def test_merge_drops_a_stopped_shards_unfinished_object_until_it_is_rerun(tmp_path):
+    a = _shard(tmp_path, "a", ["o1", "o2"], repeats=1, settings=("k100_A3",), priors=("class",))
+    lines = (a / "records.jsonl").read_text().splitlines()
+    (a / "records.jsonl").write_text(lines[0] + "\n" + lines[1][:12])          # o2's record cut mid-line by the stop
+    with pytest.raises(SystemExit, match="missing.*o2"):
+        _merge([a], tmp_path / "m")
+    _merge([a, _shard(tmp_path, "b", ["o2"], repeats=1, settings=("k100_A3",), priors=("class",))], tmp_path / "m2")
+    recs, cfg, _ = _merged(tmp_path / "m2")
+    assert [(r["object"], r["idx"]) for r in recs] == [("o1", 0), ("o2", 0)] and cfg["dropped"] == {str(a): ["o2"]}
+
+
+def test_merge_drops_an_object_with_only_some_of_its_records(tmp_path):
+    a = _shard(tmp_path, "a", ["o1", "o2"])
+    lines = (a / "records.jsonl").read_text().splitlines()
+    (a / "records.jsonl").write_text("\n".join(lines[:-3]) + "\n")              # o2 lost its last three records
+    _merge([a, _shard(tmp_path, "b", ["o2"])], tmp_path / "m")
+    recs, cfg, _ = _merged(tmp_path / "m")
+    assert len(recs) == 2 * 2 * 2 * 2 and cfg["dropped"] == {str(a): ["o2"]}
+
+
+def test_merge_refuses_an_existing_out(tmp_path):
+    a = _shard(tmp_path, "a", ["o1"])
+    _merge([a], tmp_path / "m")
+    with pytest.raises(SystemExit, match="exists"):
+        _merge([a], tmp_path / "m")
