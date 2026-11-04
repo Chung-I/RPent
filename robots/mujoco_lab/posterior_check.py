@@ -69,7 +69,15 @@ MIN_CASES, MIN_OBJECTS = 30, 4    # plan 2b2 decision 9: a coverage cell below e
 MIN_ECE_CASES = 50                # and a P(filled) ECE below this
 P_FILLED_ECE = 0.05
 N_BOOT = 2000
-JUDGED = {None: ("mass", "mu", "com"), "A": ("mass", "mu"), "B": ("mass", "mu"), "C": (), "D": ("mass", "com")}
+JUDGED = {
+    None: ("mass", "mu", "com"),
+    "A": ("mass", "mu"),
+    "B": ("mass", "mu"),
+    "C": (),
+    # identify (D): the joint fit reads only m and m*c, so judging mu would test the prior, not the probe. Coordinator
+    # call made on 2026-11-05 after m2b2_v12b's check_D died on the missing row (KeyError 'D'), before any D verdict.
+    "D": ("mass", "com"),
+}
 
 
 def true_com_frac(row: dict[str, Any]) -> float:
