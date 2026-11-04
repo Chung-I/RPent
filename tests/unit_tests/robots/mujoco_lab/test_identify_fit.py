@@ -210,3 +210,19 @@ def test_a_probe_model_reads_an_identify_case_at_its_own_pinch():
     assert r["pose"]["tag"] == "identify" and r["s"] == 0.45 and r["base"] == {"b": 2.0} and r["force"] == 6.0
     w = _weigh("a", 1)
     assert own_scene(w) == w
+
+
+def test_a_run_under_another_generator_than_the_bundles_is_refused(tmp_path, monkeypatch):
+    """The draws and the truths follow the lab generator: a bundle built under v11 refuses a run under v10 (an unset
+    RPENT_LAB_GENERATOR); a bundle that records no generator is not checked."""
+    from robots.mujoco_lab.identify_fit import require_bundle_generator
+
+    (tmp_path / "manifest.json").write_text(json.dumps({"generator": "v11"}))
+    monkeypatch.delenv("RPENT_LAB_GENERATOR", raising=False)
+    with pytest.raises(SystemExit, match="generator v11"):
+        require_bundle_generator(str(tmp_path))
+    monkeypatch.setenv("RPENT_LAB_GENERATOR", "v11")
+    assert require_bundle_generator(str(tmp_path)) == "v11"
+    (tmp_path / "manifest.json").write_text(json.dumps({}))
+    monkeypatch.delenv("RPENT_LAB_GENERATOR", raising=False)
+    assert require_bundle_generator(str(tmp_path)) == "v10"

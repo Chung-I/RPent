@@ -85,7 +85,7 @@ LOW_P = 0.2                # unavoidable: P(placed_stable) at every input's trut
 BAD_LUCK = (0.3, 0.7)      # bad-luck zone: P at every input's truth in this range
 MIN_PRIOR_SD = 0.02        # the extra counts: cases whose prior SD is at least this
 N_BOOT = 2000
-STAGE_INDEX = {"attempt": 0, "weigh": 1, "identify": 1}   # estimation_check's stage order (attempt, weigh, push): the
+STAGE_INDEX = {"attempt": 0, "weigh": 1, "identify": 1}   # estimation_check's stream keys (STREAM, by stage name): the
 #                                                            stream's third key; identify shares the weigh's (its cases)
 PROBE_STAGES = ("weigh", "identify")
 
@@ -398,8 +398,9 @@ def _revision() -> dict[str, Any]:
 
 def run(a: argparse.Namespace) -> str:
     from robots.mujoco_lab.estimation_check import tuning_objects
-    from robots.mujoco_lab.identify_fit import bundle_identify_rows
+    from robots.mujoco_lab.identify_fit import bundle_identify_rows, require_bundle_generator
 
+    require_bundle_generator(a.bundle)
     os.makedirs(a.out, exist_ok=True)
     folds = json.load(open(os.path.join(a.bundle, "folds", "folds.json")))
     only = a.objects.split(",") if a.objects else None

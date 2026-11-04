@@ -16,6 +16,8 @@
 """The P(success) spread check: the weighted spread of per-particle chances, the properties set to the truth, the
 row's chances through the menu's model, the fixed tags and the paired object bootstrap."""
 
+import json
+
 import numpy as np
 import pytest
 
@@ -275,3 +277,14 @@ def test_a_run_with_the_identify_stage_needs_identify_rows_from_the_bundle_or_th
     (tmp_path / "manifest.json").write_text(json.dumps({"probe_corpus": str(tmp_path / "pc.jsonl")}))
     with pytest.raises(SystemExit, match="probe corpus has none"):
         main(["run", "--bundle", str(tmp_path), "--scenes", "s.json", "--stages", "identify", "--out", str(tmp_path / "out")])
+
+
+def test_run_refuses_a_generator_other_than_the_bundles(tmp_path, monkeypatch):
+    """A bundle built under v11 refuses a run under v10 (RPENT_LAB_GENERATOR unset) before any job."""
+    from robots.mujoco_lab.psuccess_spread import main
+
+    (tmp_path / "manifest.json").write_text(json.dumps({"generator": "v11"}))
+    (tmp_path / "scenes.json").write_text("{}")
+    monkeypatch.delenv("RPENT_LAB_GENERATOR", raising=False)
+    with pytest.raises(SystemExit, match="generator"):
+        main(["run", "--bundle", str(tmp_path), "--scenes", str(tmp_path / "scenes.json"), "--out", str(tmp_path / "out")])

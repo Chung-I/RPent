@@ -152,3 +152,39 @@ def test_the_git_state_of_a_folder_names_its_last_commit_and_its_changes(tmp_pat
     (tmp_path / "sim" / "a.py").write_text("x = 2\n")
     assert git_state(str(tmp_path / "sim")) == {"commit": head, "dirty": True}
     assert git_state(None) is None
+
+
+def test_a_generator_that_is_not_the_bundles_is_refused(tmp_path, monkeypatch):
+    """The identify draws follow the lab generator: a bundle built under v11 refuses a run under v10 (an unset
+    RPENT_LAB_GENERATOR) before any case runs."""
+    from robots.mujoco_lab.identify_cases import run
+
+    monkeypatch.delenv("RPENT_LAB_GENERATOR", raising=False)
+    (tmp_path / "manifest.json").write_text(json.dumps({"generator": "v11"}))
+    c = tmp_path / "c.json"
+    c.write_text("{}")
+    a = argparse.Namespace(bundle=str(tmp_path), classes=str(c), thresholds=str(c), objects=None, limit=None, duration=6.0,
+                           workers=1, out=str(tmp_path / "out"))
+    with pytest.raises(SystemExit, match="generator"):
+        run(a)
+
+
+def test_a_rows_file_without_every_draw_of_its_object_is_refused(tmp_path, monkeypatch):
+    """A timing run (--limit) writes a part of an object's draws: a later run in the same --out must not take that file
+    as the object's whole set, or the other draws would read as missing identify cases."""
+    from robots.mujoco_lab import estimation_check, tracking
+    from robots.mujoco_lab.identify_cases import run
+
+    weigh = [{"object": "a", "draw": d, "seed": 0, "key": f"a__v11s0__d{d}__Bweigh"} for d in range(3)]
+    monkeypatch.setattr(estimation_check, "probe_rows", lambda bundle: weigh)
+    monkeypatch.setattr(estimation_check, "stage_cases", lambda rows, stage: [[w] for w in rows])
+    monkeypatch.setattr(tracking, "log_run", lambda *args, **kw: None)
+    (tmp_path / "manifest.json").write_text(json.dumps({}))
+    (tmp_path / "out" / "rows").mkdir(parents=True)
+    (tmp_path / "out" / "rows" / "a.jsonl").write_text(json.dumps({"object": "a", "draw": 0, "kind": "measured"}) + "\n")
+    c = tmp_path / "c.json"
+    c.write_text("{}")
+    a = argparse.Namespace(bundle=str(tmp_path), classes=str(c), thresholds=str(c), objects=None, limit=None, duration=6.0,
+                           workers=1, out=str(tmp_path / "out"))
+    with pytest.raises(SystemExit, match="lacks draws"):
+        run(a)

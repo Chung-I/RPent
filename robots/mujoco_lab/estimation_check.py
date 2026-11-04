@@ -51,7 +51,7 @@ import numpy as np
 
 from robots.mujoco_lab import tracking
 from robots.mujoco_lab.identify_fit import (MISSING, IdentifyFit, attempt_fit_loglik, bundle_identify_rows, identify_cases,
-                                            identify_model, identify_source, own_scene)
+                                            identify_model, identify_source, own_scene, require_bundle_generator)
 from robots.mujoco_lab.posterior_check import generator_truth
 from robots.mujoco_lab.prior import lab_prior
 from robots.mujoco_lab.robot_spec import load_bundle
@@ -66,7 +66,7 @@ STAGES = ("prior", "attempt", "attempt_fit", "weigh", "identify", "push")
 PROPS = (("mass", "mass"), ("mu", "mu"), ("com", "com_frac"))
 TAGS = {"weigh": ("Bweigh",), "push": ("Apush",)}
 TWIN = {"attempt_fit": "attempt", "identify": "weigh"}   # a stage that scores its twin's cases on its twin's stream
-LEGACY_INDEX = {"attempt": 0, "weigh": 1}                # the twins' places in the 3 Nov runs' stages (attempt, weigh, push)
+STREAM = {"attempt": 0, "weigh": 1, "push": 2}           # the stream keys: the 3 Nov runs' places (attempt, weigh, push)
 N_BOOT = 2000
 
 
@@ -251,13 +251,10 @@ def run_attempt_fit(rows: list[dict[str, Any]], B: dict[str, Any], n: int, seed:
     return out
 
 
-def stream_index(stages: list[str], stage: str, i: int) -> int:
-    """A stage's stream key: its place in the job's stages; a twin stage (TWIN) takes its twin's place, or the twin's
-    3 Nov place when the job runs without it."""
-    twin = TWIN.get(stage)
-    if twin is None:
-        return i
-    return stages.index(twin) if twin in stages else LEGACY_INDEX[twin]
+def stream_index(stage: str) -> int:
+    """A stage's stream key, fixed by its name (STREAM), so any order of the job's stages keeps the 3 Nov streams; a twin
+    stage (TWIN) takes its twin's key and so scores its twin's particles."""
+    return STREAM[TWIN.get(stage, stage)]
 
 
 def case_truths(rows: list[dict[str, Any]], classes) -> dict[str, list[tuple[float, float]]]:
@@ -301,8 +298,8 @@ def job(spec: dict[str, Any]) -> list[dict[str, Any]]:
     objs = spec["objects"]
     prior, info = job_prior(spec, B)
     out = [{"stage": "prior_table", **info}] if info else []
-    for i, stage in enumerate(spec["stages"]):
-        k = stream_index(spec["stages"], stage, i)
+    for stage in spec["stages"]:
+        k = stream_index(stage)
         rng_seed = [int(spec["seed"]), int(spec["fold"]), k] if spec["fold"] >= 0 else spec["seed"]   # one bundle: posterior_check's
         if stage == "attempt":
             recs = run_attempt(rows_of(attempt_rows(spec["source"]), objs), B, spec["n"], rng_seed, prior)
@@ -353,6 +350,7 @@ def _revision() -> dict[str, Any]:
 
 
 def run(a: argparse.Namespace) -> str:
+    require_bundle_generator(a.bundle)
     os.makedirs(a.out, exist_ok=True)
     path = os.path.join(a.out, "records.jsonl")
     if os.path.exists(path):

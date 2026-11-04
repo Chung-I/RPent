@@ -94,6 +94,18 @@ def bundle_identify_rows(bundle_dir: str) -> list[dict[str, Any]]:
     return [r for r in rows if str(r.get("key", "")).endswith("__" + TAG)]
 
 
+def require_bundle_generator(bundle_dir: str) -> str:
+    """The lab generator of this run, refused when the bundle's manifest names another: the draws and the truths follow
+    the generator, and RPENT_LAB_GENERATOR unset means v10."""
+    from robots.mujoco_lab.corpus import lab_generator
+
+    g = lab_generator()
+    want = json.load(open(os.path.join(bundle_dir, "manifest.json"))).get("generator")
+    if want and want != g:
+        raise SystemExit(f"{bundle_dir} was built under generator {want}, this run is under {g} (RPENT_LAB_GENERATOR)")
+    return g
+
+
 def identify_source(bundle_dir: str, explicit: str | None) -> tuple[list[dict[str, Any]], str]:
     """A stage's identify rows and their source: the bundle's own when it has them, so a rerun on a bundle built with
     the identify probe is a bundle-path change only (``explicit`` is then not read); else identify_cases's rows at

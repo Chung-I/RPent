@@ -182,7 +182,9 @@ def _sha256(path: str) -> str:
 def run(a: argparse.Namespace) -> dict[str, Any]:
     from robots.mujoco_lab.corpus import lab_generator
     from robots.mujoco_lab.estimation_check import probe_rows, stage_cases
+    from robots.mujoco_lab.identify_fit import require_bundle_generator
 
+    require_bundle_generator(a.bundle)
     os.makedirs(os.path.join(a.out, "rows"), exist_ok=True)
     man = json.load(open(os.path.join(a.bundle, "manifest.json")))
     for name, path in (("classes", a.classes), ("thresholds", a.thresholds)):
@@ -195,6 +197,14 @@ def run(a: argparse.Namespace) -> dict[str, Any]:
     by: dict[str, list[dict[str, Any]]] = {}
     for w in todo:
         by.setdefault(w["object"], []).append(w)
+    for o, ws in by.items():      # a rows file is an object's whole set: one from a --limit run lacks this run's draws
+        path = os.path.join(a.out, "rows", f"{o}.jsonl")
+        if os.path.exists(path):
+            with open(path) as f:
+                have = {int(json.loads(line)["draw"]) for line in f if line.strip()}
+            lack = sorted({int(w["draw"]) for w in ws} - have)
+            if lack:
+                raise SystemExit(f"{path} lacks draws {lack[:5]} of this run (a --limit run?): pick a new --out")
     specs = [{"object": o, "weigh": ws, "classes": a.classes, "thresholds": a.thresholds, "duration": a.duration, "out": a.out}
              for o, ws in sorted(by.items()) if not os.path.exists(os.path.join(a.out, "rows", f"{o}.jsonl"))]
     root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

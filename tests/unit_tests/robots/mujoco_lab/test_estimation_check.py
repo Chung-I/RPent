@@ -16,6 +16,7 @@
 """The mass and CoM estimation check: per case the posterior mean, the 80 % interval and its hit; per stage the
 error's median and IQR, the width, the coverage, each with a 95 % object-bootstrap interval."""
 
+import json
 import os
 
 import numpy as np
@@ -275,17 +276,18 @@ def test_job_prior_real_mass_only_takes_the_real_masses_and_keeps_the_class_com(
     assert np.allclose(a["com_frac"], 0.75) and np.allclose(a["com_obj"], [[0.01, 0.0, 0.0]] * 20)
 
 
-def test_a_twin_stage_takes_its_twins_stream_key():
-    """attempt_fit scores the attempt's cases and identify the weigh's: each takes its twin's place in the job's stages,
-    or the twin's place in the 3 Nov runs (attempt, weigh, push) when the job runs without the twin."""
+def test_stream_keys_are_fixed_by_stage_name():
+    """Each stage's stream key is fixed by its name, the 3 Nov places (attempt 0, weigh 1, push 2), in any order of the
+    job's stages; attempt_fit takes the attempt's key and identify the weigh's, so each pair scores the same particles,
+    and psuccess_spread's keys are the same."""
     from robots.mujoco_lab.estimation_check import stream_index
+    from robots.mujoco_lab.psuccess_spread import STAGE_INDEX
 
-    st = ["attempt", "weigh", "attempt_fit", "identify"]
-    assert [stream_index(st, s, i) for i, s in enumerate(st)] == [0, 1, 0, 1]
-    st = ["attempt", "attempt_fit", "weigh", "identify"]
-    assert [stream_index(st, s, i) for i, s in enumerate(st)] == [0, 0, 2, 2]
-    assert stream_index(["identify"], "identify", 0) == 1 and stream_index(["push", "attempt_fit"], "attempt_fit", 1) == 0
-    assert [stream_index(["attempt", "weigh", "push"], s, i) for i, s in enumerate(["attempt", "weigh", "push"])] == [0, 1, 2]
+    want = {"attempt": 0, "attempt_fit": 0, "weigh": 1, "identify": 1, "push": 2}
+    for st in (["attempt", "weigh", "attempt_fit", "identify"], ["attempt", "attempt_fit", "weigh", "identify"],
+               ["identify", "push", "weigh", "attempt_fit", "attempt"], ["attempt", "weigh", "push"]):
+        assert {s: stream_index(s) for s in st} == {s: want[s] for s in st}
+    assert all(stream_index(s) == k for s, k in STAGE_INDEX.items())
 
 
 def test_twin_stages_draw_their_twins_particles_and_identify_reads_the_fit(monkeypatch):
@@ -389,3 +391,14 @@ def test_a_cases_likelihood_skips_a_missing_row_and_reads_an_identify_row_at_its
     seen.clear()
     ec.case_loglik([_wrow(0)], pms, a)                                                       # a weigh row: as before
     assert seen == [("hold", (1.0, "weigh", 4.0), 4.0)]
+
+
+def test_run_refuses_a_generator_other_than_the_bundles(tmp_path, monkeypatch):
+    """A bundle built under v11 refuses a run under v10 (RPENT_LAB_GENERATOR unset) before any job: the truths follow
+    the generator."""
+    from robots.mujoco_lab.estimation_check import main
+
+    (tmp_path / "manifest.json").write_text(json.dumps({"generator": "v11"}))
+    monkeypatch.delenv("RPENT_LAB_GENERATOR", raising=False)
+    with pytest.raises(SystemExit, match="generator"):
+        main(["run", "--bundle", str(tmp_path), "--crossfit", "--out", str(tmp_path / "out")])
