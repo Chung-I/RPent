@@ -69,7 +69,7 @@ MIN_CASES, MIN_OBJECTS = 30, 4    # plan 2b2 decision 9: a coverage cell below e
 MIN_ECE_CASES = 50                # and a P(filled) ECE below this
 P_FILLED_ECE = 0.05
 N_BOOT = 2000
-JUDGED = {None: ("mass", "mu", "com"), "A": ("mass", "mu"), "B": ("mass", "mu"), "C": ()}
+JUDGED = {None: ("mass", "mu", "com"), "A": ("mass", "mu"), "B": ("mass", "mu"), "C": (), "D": ("mass", "com")}
 
 
 def true_com_frac(row: dict[str, Any]) -> float:
@@ -287,7 +287,8 @@ def cell_verdict(hits: list[bool], objects: list[str], rng: np.random.Generator,
 
 def judged_keys(probes: str | None) -> tuple[str, ...]:
     """The property cells a check judges: those its evidence reads (one attempt: all three; the push and the weigh:
-    the mass and the friction; the squeeze: none, only the damage force). The others are reported."""
+    the mass and the friction; the squeeze: none, only the damage force; identify: the mass and the CoM). The others
+    are reported."""
     return JUDGED[probes]
 
 
