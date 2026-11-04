@@ -1,0 +1,14 @@
+ladder E: 240 (case, setting) jobs to run, horizons [1, 2, 3]
+handal__red_serving_spoon 10 k100_A3_abs: H1 abstained 0s/1s, H2 abstained 2s/3s, H3 abstained 225s/229s
+hope__canned_peaches 0 k100_A3_abs: H1 abstained 0s/2s, H2 abstained 1s/2s, H3 abstained 230s/233s
+hope__canned_peaches 0 k100_A10_abs: H1 abstained 0s/2s, H2 abstained 3s/4s, H3 abstained 227s/231s
+handal__red_serving_spoon 10 k30_A3_abs: H1 abstained 0s/1s, H2 abstained 1s/2s, H3 abstained 230s/234s
+hope__canned_peaches 0 k30_A3_abs: H1 abstained 0s/2s, H2 abstained 3s/4s, H3 abstained 228s/231s
+hot3d__storage_box 7 k100_A3_abs: H1 abstained 0s/0s, H2 abstained 0s/0s, H3 abstained 0s/0s
+hot3d__storage_box 7 k30_A3_abs: H1 abstained 0s/0s, H2 abstained 0s/0s, H3 abstained 0s/0s
+hot3d__storage_box 7 k100_A10_abs: H1 abstained 0s/0s, H2 abstained 0s/0s, H3 abstained 0s/0s
+ycb__banana 0 k30_A3_abs: H1 abstained 0s/2s, H2 abstained 2s/4s, H3 abstained 302s/307s
+ycb__banana 0 k100_A3_abs: H1 abstained 0s/2s, H2 abstained 4s/5s, H3 abstained 304s/309s
+ycb__banana 0 k100_A10_abs: H1 abstained 0s/2s, H2 abstained 3s/5s, H3 abstained 310s/314s
+/home/chungyili/.local/share/uv/python/cpython-3.11.15-linux-x86_64-gnu/lib/python3.11/multiprocessing/resource_tracker.py:254: UserWarning: resource_tracker: There appear to be 6 leaked semaphore objects to clean up at shutdown
+  warnings.warn('resource_tracker: There appear to be %d '

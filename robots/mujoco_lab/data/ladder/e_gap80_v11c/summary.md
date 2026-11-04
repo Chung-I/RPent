@@ -1,0 +1,64 @@
+# E: the receding-horizon reference planner
+
+E scores every row the agents may choose with a lookahead of H attempts on the true menu, and replans at each real menu. H = 1 is the menu's own prices. The default rule's regret is its first choice's score on E's table minus the lowest score of that table (mean, object-bootstrap 95 % interval; n50: e1_gap.power_n, the cases that show half of this gap at 80 % power). A case whose reset did not reach rest in any of its runs is left out of the regrets, the horizon changes and the two lists in Checks; the H = 1 comparison, the table agreement and the wall times count every case.
+
+## E at H = 1 against the oracle rule (first decision)
+
+| setting | compared | match | mismatch by reason |
+|---|---|---|---|
+| k100_A10_abs | 80 | 79 | {"probe_margin": 1} |
+| k100_A3_abs | 80 | 80 | 0 |
+| k30_A3_abs | 80 | 79 | {"probe_margin": 1} |
+- k100_A10_abs hope__cream_cheese/0: probe_margin: E probe_squeeze (8.001), oracle rule light_grip (8.052)
+- k30_A3_abs hope__butter/0: probe_margin: E probe_squeeze (2.901), oracle rule light_grip (2.916)
+
+## The default rule's first-decision regret against E
+
+| setting | H | cases (objects) | regret | 95 % interval | n50 | cases above 0 | oracle rule's regret |
+|---|---|---|---|---|---|---|---|
+| k100_A10_abs | 1 | 77 (77) | 1.089 | [+0.366, +2.014] | 187 | 24 | +0.000 [+0.000, +0.000] |
+| k100_A10_abs | 2 | 77 (77) | 1.089 | [+0.363, +1.988] | 187 | 25 | +0.000 [+0.000, +0.001] |
+| k100_A10_abs | 3 | 77 (77) | 1.089 | [+0.382, +2.012] | 187 | 25 | +0.000 [+0.000, +0.001] |
+| k100_A3_abs | 1 | 77 (77) | 2.029 | [+1.003, +3.224] | 98 | 35 | +0.000 [+0.000, +0.000] |
+| k100_A3_abs | 2 | 77 (77) | 2.029 | [+1.053, +3.189] | 98 | 35 | +0.000 [+0.000, +0.000] |
+| k100_A3_abs | 3 | 77 (77) | 2.029 | [+1.042, +3.209] | 98 | 35 | +0.000 [+0.000, +0.000] |
+| k30_A3_abs | 1 | 77 (77) | 0.414 | [+0.180, +0.727] | 145 | 29 | +0.000 [+0.000, +0.000] |
+| k30_A3_abs | 2 | 77 (77) | 0.413 | [+0.167, +0.711] | 146 | 29 | +0.000 [+0.000, +0.000] |
+| k30_A3_abs | 3 | 77 (77) | 0.413 | [+0.172, +0.705] | 146 | 29 | +0.000 [+0.000, +0.000] |
+
+## How often a longer horizon changes E's choice
+
+| setting | H | first decisions | changed | changes | every decision of the H = 3 run | changed |
+|---|---|---|---|---|---|---|
+| k100_A10_abs | 2 | 77 | 1 | firm_grip -> probe_weigh (1) | 83 | 1 |
+| k100_A10_abs | 3 | 77 | 1 | firm_grip -> probe_weigh (1) | 83 | 1 |
+| k100_A3_abs | 2 | 77 | 0 | none | 77 | 0 |
+| k100_A3_abs | 3 | 77 | 0 | none | 77 | 0 |
+| k30_A3_abs | 2 | 77 | 0 | none | 78 | 0 |
+| k30_A3_abs | 3 | 77 | 0 | none | 78 | 0 |
+
+## Checks
+
+- k100_A10_abs: 80 cases, 0 without a menu, 0 incomplete, 3 reset artifacts; the first tables agree across the runs on 80 of 80.
+  - A policy's first choice below E's on E's own table: 0.
+  - The lowest score rises with H: 5; hope__granola_bars/5 H 3 9.776 > 9.776; hope__pitted_cherries/2 H 3 3.786 > 3.786; hot3d__frozen_vegetable_block/8 H 3 5.714 > 5.714; ycb__jello/0 H 2 9.565 > 9.563; ycb__tuna_can/9 H 3 9.802 > 9.802.
+- k100_A3_abs: 80 cases, 0 without a menu, 0 incomplete, 3 reset artifacts; the first tables agree across the runs on 80 of 80.
+  - A policy's first choice below E's on E's own table: 0.
+  - The lowest score rises with H: 1; hope__canned_tuna/0 H 3 2.184 > 2.184.
+- k30_A3_abs: 80 cases, 0 without a menu, 0 incomplete, 3 reset artifacts; the first tables agree across the runs on 80 of 80.
+  - A policy's first choice below E's on E's own table: 0.
+  - The lowest score rises with H: 1; hot3d__frozen_vegetable_block/8 H 3 2.165 > 2.165.
+
+## Wall time per case (seconds)
+
+| setting | H | E's own scoring: mean, p90, max | the whole run: mean, p90, max |
+|---|---|---|---|
+| k100_A10_abs | 1 | 0.0, 0.0, 0.0 | 1.6, 2.9, 5.4 |
+| k100_A10_abs | 2 | 1.3, 2.3, 3.0 | 3.0, 4.5, 7.6 |
+| k100_A10_abs | 3 | 112.9, 223.3, 309.8 | 116.0, 226.7, 314.4 |
+| k100_A3_abs | 1 | 0.0, 0.0, 0.0 | 1.3, 1.6, 2.7 |
+| k100_A3_abs | 2 | 1.4, 2.3, 3.7 | 2.7, 3.9, 5.4 |
+| k100_A3_abs | 3 | 118.6, 229.3, 304.3 | 121.3, 232.3, 308.7 |
+| k30_A3_abs | 1 | 0.0, 0.0, 0.0 | 1.5, 2.6, 4.8 |
+| k30_A3_abs | 2 | 1.4, 2.3, 2.9 | 2.9, 4.4, 7.6 |
+| k30_A3_abs | 3 | 115.5, 230.3, 301.9 | 118.4, 233.9, 307.2 |

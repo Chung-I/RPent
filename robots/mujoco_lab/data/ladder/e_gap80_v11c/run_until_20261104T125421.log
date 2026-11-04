@@ -1,0 +1,14 @@
+ladder E: 229 (case, setting) jobs to run, horizons [1, 2, 3]
+handal__red_serving_spoon 10 k100_A10_abs: H1 abstained 0s/1s, H2 abstained 1s/3s, H3 abstained 211s/213s
+hope__parmesan_cheese_canister 2 k100_A3_abs: H1 abstained 0s/1s, H2 abstained 2s/4s, H3 abstained 212s/216s
+handal__hammer_6 1 k30_A3_abs: H1 abstained 0s/1s, H2 abstained 2s/3s, H3 abstained 215s/218s
+handal__hammer_6 1 k100_A3_abs: H1 abstained 0s/1s, H2 abstained 2s/4s, H3 abstained 214s/217s
+handal__hammer_6 1 k100_A10_abs: H1 abstained 0s/1s, H2 abstained 2s/3s, H3 abstained 215s/219s
+hope__parmesan_cheese_canister 2 k30_A3_abs: H1 abstained 0s/1s, H2 abstained 2s/4s, H3 abstained 215s/219s
+ycb__cheez_it 0 k100_A3_abs: H1 abstained 0s/0s, H2 abstained 0s/0s, H3 abstained 0s/0s
+ycb__cheez_it 0 k30_A3_abs: H1 abstained 0s/0s, H2 abstained 0s/0s, H3 abstained 0s/0s
+hope__pineapple_slices_can 0 k100_A3_abs: H1 abstained 0s/1s, H2 abstained 2s/4s, H3 abstained 215s/219s
+hope__parmesan_cheese_canister 2 k100_A10_abs: H1 abstained 0s/1s, H2 abstained 2s/4s, H3 abstained 216s/220s
+ycb__cheez_it 0 k100_A10_abs: H1 abstained 0s/0s, H2 abstained 0s/0s, H3 abstained 0s/0s
+hope__pineapple_slices_can 0 k30_A3_abs: H1 abstained 0s/2s, H2 abstained 2s/3s, H3 abstained 191s/194s
+hope__pineapple_slices_can 0 k100_A10_abs: H1 abstained 0s/2s, H2 abstained 1s/2s, H3 abstained 229s/232s
