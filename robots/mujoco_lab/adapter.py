@@ -1505,13 +1505,14 @@ class MuJoCoLabEnv:
         return getattr(self.s["scene"], "Unreachable", ())
 
     def _probe_arm(self, trace, sensor: dict[str, Any], phases) -> dict[str, Any]:
-        """Arm port, the end of a probe: stop the log; the sidecar fields, and the per-phase summaries and the jam
-        record into ``sensor``. {} without the arm."""
+        """Arm port, the end of a probe: stop the log; the sidecar fields, and the per-phase summaries, the jam
+        record and the torque noise of the log into ``sensor``. {} without the arm."""
         log = self._log_end()
         if log is None:
             return {}
         wrench = self._wrench_cache if getattr(self, "_wrench_log", None) is log else self._joint_wrench(log)
         side, summ = self._arm_record(log, trace, wrench, phases)
+        sensor["torque_noise"] = self.torque_noise         # every arm reading says its sensor (train_models.corpus_sensor)
         sensor["arm_phases"] = summ
         sensor["jam"] = self._jam_record()
         sensor["saturation"] = getattr(self, "_saturation", None)

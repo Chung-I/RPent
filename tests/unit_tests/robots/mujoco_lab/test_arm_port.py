@@ -110,6 +110,7 @@ def test_the_weigh_reads_the_mass_from_the_joints(env):
     assert abs(res.reading["m_hat"] - m) / m < 0.03
     assert res.reading["m_hat"] == res.reading["joint"]["phi"][0]
     assert res.sensor["source"] == "joint" and "hold" in res.sensor["arm_phases"]
+    assert res.sensor["torque_noise"] == env.torque_noise
     assert "arm" not in res.to_data() and len(res.arm["t"]) > 0
 
 
@@ -117,6 +118,7 @@ def test_the_push_moves_freely_and_reads_the_joints(env):
     res = env.probe_push()
     assert res.kind in ("slid", "tipped", "no_breakaway", "no_contact"), res.kind
     assert res.sensor["source"] == "joint"
+    assert res.sensor["torque_noise"] == env.torque_noise     # every arm probe records its sensor (train_models.corpus_sensor)
     assert all("f" in x for x in res.trace)
     if res.kind == "slid":
         mg = _mass(env) * 9.81
