@@ -16,6 +16,10 @@
 """Mass and CoM estimation check: how close the belief's posterior mean comes to the truth, and how wide and how honest
 its 80 % interval is, at four stages: the prior; after the first attempt (its outcome and readouts, as
 ``posterior_check.check_rows``); after a weigh (probe corpus B); after a push (probe corpus A, the push alone).
+Arm port (v12): ``attempt_fit``, the attempt's own Real2Sim fit alone (gate R1's attempt row; the same rows and particles
+as ``attempt``), and ``identify``, one identify probe per scene-B weigh case (the weigh's cases and particles), both
+through ``identify_fit``. The identify rows and model are the bundle's own when it has them (m2b2_v12b on), else
+identify_cases's rows (``--identify``) and gate R1's fit likelihood.
 
 Held-out objects by cross-fitting (``--crossfit``): each object's cases use the bundle of the m2b2 fold that never saw the
 object (``folds/folds.json``). Without it, one bundle on ``--objects`` (the regression check against posterior_check).
@@ -46,6 +50,8 @@ from typing import Any, Callable
 import numpy as np
 
 from robots.mujoco_lab import tracking
+from robots.mujoco_lab.identify_fit import (MISSING, IdentifyFit, attempt_fit_loglik, bundle_identify_rows, identify_cases,
+                                            identify_model, identify_source, own_scene)
 from robots.mujoco_lab.posterior_check import generator_truth
 from robots.mujoco_lab.prior import lab_prior
 from robots.mujoco_lab.robot_spec import load_bundle
@@ -56,9 +62,11 @@ from rpent.skills.pick_place.evaluate import _ece, ece_ci, object_weights, row_b
 from rpent.skills.pick_place.features import model_names, particle_matrix, particle_sides
 from rpent.skills.pick_place.protocol import IRREVERSIBLE, OUTCOMES
 
-STAGES = ("prior", "attempt", "weigh", "push")
+STAGES = ("prior", "attempt", "attempt_fit", "weigh", "identify", "push")
 PROPS = (("mass", "mass"), ("mu", "mu"), ("com", "com_frac"))
 TAGS = {"weigh": ("Bweigh",), "push": ("Apush",)}
+TWIN = {"attempt_fit": "attempt", "identify": "weigh"}   # a stage that scores its twin's cases on its twin's stream
+LEGACY_INDEX = {"attempt": 0, "weigh": 1}                # the twins' places in the 3 Nov runs' stages (attempt, weigh, push)
 N_BOOT = 2000
 
 
@@ -201,6 +209,20 @@ def run_attempt(rows: list[dict[str, Any]], B: dict[str, Any], n: int, seed: int
     return out
 
 
+def case_loglik(case: list[dict[str, Any]], pms: dict[str, Any], a: dict[str, np.ndarray]) -> np.ndarray:
+    """The summed log-likelihood of a case's probe rows on the particles ``a``: each row's probe model, its features at
+    the row's own pinch (identify_fit.own_scene); a missing identify row gives none (its case keeps the prior)."""
+    ll = np.zeros(len(a["mass"]))
+    for r in case:
+        if r.get("kind") == MISSING:
+            continue
+        pm, rr = pms[r["probe"]], own_scene(r)
+        X = None if isinstance(pm, IdentifyFit) else particle_matrix(rr["base"], a, row_pose(rr), rr["force"], model_names(pm))
+        lt, _ = pm.loglik({"kind": r["kind"], "reading": r["reading"]}, X, a, float(r["force"]), thrown=r.get("thrown"))
+        ll = ll + lt
+    return ll
+
+
 def run_probes(cases: list[list[dict[str, Any]]], stage: str, B: dict[str, Any], n: int, seed: int, prior=None) -> list[dict[str, Any]]:
     """posterior_check.check_probe_cases at the probe models' temper, with the estimates."""
     pms = B["probe_models"]
@@ -210,15 +232,32 @@ def run_probes(cases: list[list[dict[str, Any]]], stage: str, B: dict[str, Any],
     for case in cases:
         first = case[0]
         b = prior(first["pose"], n, rng)
-        a = b.arrays()
-        ll = np.zeros(len(b.weights))
-        for r in case:
-            pm = pms[r["probe"]]
-            X = particle_matrix(r["base"], a, row_pose(r), r["force"], model_names(pm))
-            lt, _ = pm.loglik({"kind": r["kind"], "reading": r["reading"]}, X, a, float(r["force"]), thrown=r.get("thrown"))
-            ll = ll + lt
-        out.append(_record(stage, first, b, b.reweight(ll), B.get("classes"), "+".join(r["kind"] for r in case)))
+        out.append(_record(stage, first, b, b.reweight(case_loglik(case, pms, b.arrays())), B.get("classes"),
+                           "+".join(r["kind"] for r in case)))
     return out
+
+
+def run_attempt_fit(rows: list[dict[str, Any]], B: dict[str, Any], n: int, seed: int, prior=None) -> list[dict[str, Any]]:
+    """The attempt's own Real2Sim fit alone (gate R1's attempt row; identify_fit.attempt_fit_loglik): run_attempt's rows,
+    order and stream, so its particles; a row without a fit keeps its prior (``has_fit`` False)."""
+    prior = prior or B.get("prior") or lab_prior
+    rng = np.random.default_rng(seed)
+    out = []
+    for r in rows:
+        b = prior(r["pose"], n, rng)
+        rec = _record("attempt_fit", r, b, b.reweight(attempt_fit_loglik(r, b.arrays())), B.get("classes"), r["label"])
+        rec["has_fit"] = bool((r.get("readouts") or {}).get("joint"))
+        out.append(rec)
+    return out
+
+
+def stream_index(stages: list[str], stage: str, i: int) -> int:
+    """A stage's stream key: its place in the job's stages; a twin stage (TWIN) takes its twin's place, or the twin's
+    3 Nov place when the job runs without it."""
+    twin = TWIN.get(stage)
+    if twin is None:
+        return i
+    return stages.index(twin) if twin in stages else LEGACY_INDEX[twin]
 
 
 def case_truths(rows: list[dict[str, Any]], classes) -> dict[str, list[tuple[float, float]]]:
@@ -263,9 +302,17 @@ def job(spec: dict[str, Any]) -> list[dict[str, Any]]:
     prior, info = job_prior(spec, B)
     out = [{"stage": "prior_table", **info}] if info else []
     for i, stage in enumerate(spec["stages"]):
-        rng_seed = [int(spec["seed"]), int(spec["fold"]), i] if spec["fold"] >= 0 else spec["seed"]   # one bundle: posterior_check's
+        k = stream_index(spec["stages"], stage, i)
+        rng_seed = [int(spec["seed"]), int(spec["fold"]), k] if spec["fold"] >= 0 else spec["seed"]   # one bundle: posterior_check's
         if stage == "attempt":
             recs = run_attempt(rows_of(attempt_rows(spec["source"]), objs), B, spec["n"], rng_seed, prior)
+        elif stage == "attempt_fit":
+            recs = run_attempt_fit(rows_of(attempt_rows(spec["source"]), objs), B, spec["n"], rng_seed, prior)
+        elif stage == "identify":                      # the bundle's own rows and model when it has them, else option A's
+            rows, src = identify_source(spec["source"], spec.get("identify"))
+            Bi = {**B, "probe_models": {**B["probe_models"], "identify": identify_model(B)}}
+            cases = identify_cases(stage_cases(rows_of(probe_rows(spec["source"]), objs), "weigh"), rows)
+            recs = [{**r, "identify_source": src} for r in run_probes(cases, stage, Bi, spec["n"], rng_seed, prior)]
         else:
             recs = run_probes(stage_cases(rows_of(probe_rows(spec["source"]), objs), stage), stage, B, spec["n"], rng_seed, prior)
         for r in recs:
@@ -276,10 +323,14 @@ def job(spec: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def jobs_for(bundle_dir: str, crossfit: bool, objects: list[str] | None, stages: list[str], n: int, seed: int,
-             prior: str = "class", scenes: str | None = None, vlm: str | None = None, mass_only: bool = False) -> list[dict[str, Any]]:
+             prior: str = "class", scenes: str | None = None, vlm: str | None = None, mass_only: bool = False,
+             identify: str | None = None) -> list[dict[str, Any]]:
+    if "identify" in stages and not identify and not bundle_identify_rows(bundle_dir):
+        raise ValueError(f"the identify stage needs identify rows: {bundle_dir}'s probe corpus has none (--identify)")
     extra = {} if prior == "class" else {"prior": prior, "scenes": scenes, "vlm": vlm, **({"mass_only": True} if mass_only else {})}
     if not crossfit:
-        spec = {"bundle": bundle_dir, "source": bundle_dir, "fold": -1, "objects": objects, "stages": stages, "n": n, "seed": seed}
+        spec = {"bundle": bundle_dir, "source": bundle_dir, "fold": -1, "objects": objects, "stages": stages, "n": n, "seed": seed,
+                **({"identify": identify} if identify else {})}
         if extra:
             folds = json.load(open(os.path.join(bundle_dir, "folds", "folds.json")))
             extra["tuning"] = sorted(set(folds) - set(objects))
@@ -287,6 +338,7 @@ def jobs_for(bundle_dir: str, crossfit: bool, objects: list[str] | None, stages:
     folds = json.load(open(os.path.join(bundle_dir, "folds", "folds.json")))
     return [{"bundle": os.path.join(bundle_dir, "folds", f"fold_{k}"), "source": bundle_dir, "fold": k,
              "objects": sorted(o for o, f in folds.items() if f == k), "stages": stages, "n": n, "seed": seed,
+             **({"identify": identify} if identify else {}),
              **({"prior": prior, **extra, "tuning": tuning_objects(folds, k)} if extra else {})}
             for k in sorted(set(folds.values()))]
 
@@ -307,7 +359,7 @@ def run(a: argparse.Namespace) -> str:
         raise SystemExit(f"{path} exists: pick a new --out")
     objects = a.objects.split(",") if a.objects else None
     specs = jobs_for(a.bundle, a.crossfit, objects, a.stages.split(","), a.n_particles, a.seed, a.prior, a.scenes, a.vlm,
-                     mass_only=a.mass_only)
+                     mass_only=a.mass_only, identify=a.identify)
     with open(os.path.join(a.out, "run_config.json"), "w") as f:
         json.dump({**vars(a), **_revision(), "jobs": [{k: v for k, v in s.items() if k not in ("objects", "tuning")}
                                                       | {"n_objects": len(s["objects"] or []), "n_tuning": len(s.get("tuning") or [])}
@@ -385,6 +437,8 @@ def main(argv: list[str] | None = None) -> Any:
     r.add_argument("--mass-only", action="store_true", help="swap the mass alone: the class prior's CoM stays")
     r.add_argument("--scenes", default=None, help="the renders' scenes.json (flat or upright per object): generic and vlm")
     r.add_argument("--vlm", default=None, help="the model's query records (vlm_query.py output): vlm")
+    r.add_argument("--identify", default=None, help="identify_cases rows (one per scene-B weigh case) for the identify stage of "
+                   "a bundle whose probe corpus has none; a bundle's own identify rows come first")
     r.add_argument("--out", required=True)
     s = sub.add_parser("summary")
     s.add_argument("--dir", required=True)

@@ -273,3 +273,119 @@ def test_job_prior_real_mass_only_takes_the_real_masses_and_keeps_the_class_com(
     a = prior({"object_id": o, "pivot": {"centre": [0, 0, 0], "axis": [1, 0, 0], "lo": -0.1, "L": 0.2}}, 20,
               np.random.default_rng(0)).arrays()
     assert np.allclose(a["com_frac"], 0.75) and np.allclose(a["com_obj"], [[0.01, 0.0, 0.0]] * 20)
+
+
+def test_a_twin_stage_takes_its_twins_stream_key():
+    """attempt_fit scores the attempt's cases and identify the weigh's: each takes its twin's place in the job's stages,
+    or the twin's place in the 3 Nov runs (attempt, weigh, push) when the job runs without the twin."""
+    from robots.mujoco_lab.estimation_check import stream_index
+
+    st = ["attempt", "weigh", "attempt_fit", "identify"]
+    assert [stream_index(st, s, i) for i, s in enumerate(st)] == [0, 1, 0, 1]
+    st = ["attempt", "attempt_fit", "weigh", "identify"]
+    assert [stream_index(st, s, i) for i, s in enumerate(st)] == [0, 0, 2, 2]
+    assert stream_index(["identify"], "identify", 0) == 1 and stream_index(["push", "attempt_fit"], "attempt_fit", 1) == 0
+    assert [stream_index(["attempt", "weigh", "push"], s, i) for i, s in enumerate(["attempt", "weigh", "push"])] == [0, 1, 2]
+
+
+def test_twin_stages_draw_their_twins_particles_and_identify_reads_the_fit(monkeypatch):
+    from robots.mujoco_lab.identify_fit import IdentifyFit
+
+    ec, seeds = _seed_spy(monkeypatch)
+    models = []
+    monkeypatch.setattr(ec, "load_bundle", lambda b: {"probe_models": {"weigh": "w"}})
+    monkeypatch.setattr(ec, "run_attempt_fit", lambda rows, B, n, seed, prior=None: seeds.append(("fit", seed)) or [])
+    monkeypatch.setattr(ec, "run_probes", lambda cases, stage, B, n, seed, prior=None:
+                        seeds.append(seed) or models.append((stage, B["probe_models"])) or [])
+    sources = []
+    monkeypatch.setattr(ec, "identify_source", lambda b, e: sources.append((b, e)) or ([], e))
+    ec.job({"bundle": "b", "source": "b", "fold": 2, "objects": ["a"], "stages": ["attempt", "weigh", "attempt_fit", "identify"],
+            "n": 10, "seed": 3, "identify": "rows.jsonl"})
+    assert seeds == [[3, 2, 0], [3, 2, 1], ("fit", [3, 2, 0]), [3, 2, 1]]
+    assert sources == [("b", "rows.jsonl")]
+    assert models[0] == ("weigh", {"weigh": "w"})
+    assert models[1][0] == "identify" and models[1][1]["weigh"] == "w" and isinstance(models[1][1]["identify"], IdentifyFit)
+    mine = object()                                      # a bundle with its own identify model (m2b2_v12b on) keeps it
+    monkeypatch.setattr(ec, "load_bundle", lambda b: {"probe_models": {"weigh": "w", "identify": mine}})
+    ec.job({"bundle": "b", "source": "b", "fold": 2, "objects": ["a"], "stages": ["identify"], "n": 10, "seed": 3})
+    assert models[-1][1]["identify"] is mine and sources[-1] == ("b", None)
+
+
+def test_the_identify_stage_needs_the_identify_rows_and_every_job_carries_them(tmp_path):
+    import json
+
+    from robots.mujoco_lab.estimation_check import jobs_for
+
+    (tmp_path / "pc.jsonl").write_text(json.dumps({"key": "a__v11s0__d0__Bweigh"}) + "\n")
+    (tmp_path / "manifest.json").write_text(json.dumps({"probe_corpus": str(tmp_path / "pc.jsonl")}))
+    with pytest.raises(ValueError, match="identify"):
+        jobs_for(str(tmp_path), False, ["a"], ["weigh", "identify"], 10, 0)
+    (tmp_path / "folds").mkdir()
+    json.dump({"a": 0, "b": 1}, open(tmp_path / "folds" / "folds.json", "w"))
+    specs = jobs_for(str(tmp_path), True, None, ["weigh", "identify"], 10, 0, identify="rows.jsonl")
+    assert [s["identify"] for s in specs] == ["rows.jsonl", "rows.jsonl"]
+    assert jobs_for(str(tmp_path), False, ["a"], ["identify"], 10, 0, identify="rows.jsonl")[0]["identify"] == "rows.jsonl"
+    assert "identify" not in jobs_for(str(tmp_path), False, ["a"], ["weigh"], 10, 0)[0]
+
+
+def _attempt_row(obj, fit=None):
+    return {"object": obj, "key": f"{obj}__0", "label": "placed_stable", "readouts": {"joint": fit} if fit else {"hold": {}},
+            "pose": {"pivot": {"centre": [0, 0, 0], "axis": [1, 0, 0], "lo": 0.0, "L": 1.0}, "com_obj_nominal": [0.5, 0, 0],
+                     "nominal_mass": 1.0},
+            "theta": {"mass_scale": 1.0, "mu": 0.5, "com_s": None}, "com_end": 1}
+
+
+def _uniform_prior(pose, n, rng):
+    m, c = rng.uniform(0.5, 1.5, n), rng.uniform(0.0, 1.0, n)
+    parts = [{"mass": x, "mu": 0.5, "com_obj": [f, 0.0, 0.0], "com_frac": f} for x, f in zip(m, c)]
+    return ParticleBelief(parts, np.ones(n))
+
+
+def test_the_attempt_fit_stage_draws_the_attempts_particles_and_a_row_without_a_fit_keeps_its_prior():
+    from robots.mujoco_lab.estimation_check import estimates, run_attempt_fit
+
+    fit = {"obj_l7": {"p": [0.0, 0.0, 0.0], "R": np.eye(3).ravel().tolist()}, "phi": [1.0, 0.5, 0.0, 0.0] + [0.0] * 6,
+           "info": np.diag([400.0, 400.0, 400.0, 400.0]).tolist(), "floor": [0.001, 0.0005]}
+    rows = [_attempt_row("a"), _attempt_row("b", fit)]
+    recs = run_attempt_fit(rows, {"prior": _uniform_prior}, 400, [3, 1, 0])
+    rng = np.random.default_rng([3, 1, 0])                 # run_attempt's loop: one prior draw per row, in order
+    for r, rec in zip(rows, recs):
+        b = _uniform_prior(r["pose"], 400, rng)
+        from robots.mujoco_lab.posterior_check import generator_truth
+
+        assert rec["prior"] == estimates(b, generator_truth(r), 1.0)
+    assert [r["has_fit"] for r in recs] == [False, True] and [r["stage"] for r in recs] == ["attempt_fit"] * 2
+    assert recs[0]["post"] == recs[0]["prior"]
+    for k in ("mass", "com"):                              # the fit (sd 0.05 on m and m x c) narrows both
+        assert recs[1]["post"][k]["width"] < 0.5 * recs[1]["prior"][k]["width"]
+
+
+def _wrow(draw, **kw):
+    return {"key": f"a__v11s0__d{draw}__Bweigh", "object": "a", "draw": draw, "seed": 0, "probe": "weigh", "kind": "hold",
+            "reading": {"fz_hold_n": 3.0}, "force": 4.0, "s": 0.5, "pose": {"tag": "weigh"}, "base": {"b": 1.0},
+            "theta": {"mass_scale": 1.0}, "com_end": 1, "fill": 0.0, "theta_frag": None, **kw}
+
+
+def test_a_cases_likelihood_skips_a_missing_row_and_reads_an_identify_row_at_its_own_pinch(monkeypatch):
+    from robots.mujoco_lab import estimation_check as ec
+    from robots.mujoco_lab.identify_fit import identify_cases
+
+    seen = []
+
+    class Model:
+        def loglik(self, obs, X, arrays, force, thrown=None, **_):
+            seen.append((obs["kind"], X, force))
+            return np.full(len(arrays["mass"]), 1.0), {}
+
+    monkeypatch.setattr(ec, "particle_matrix", lambda base, a, pose, force, names: (base["b"], pose["tag"], force))
+    ident = {**_wrow(1), "key": "a__v11s0__d1__Bidentify", "probe": "identify", "kind": "measured", "reading": {"x": 1},
+             "force": 6.0, "s": 0.45, "pose": {"tag": "identify"}, "base": {"b": 2.0}}
+    cases = identify_cases([[_wrow(0)], [_wrow(1)]], [ident])
+    a = {"mass": np.ones(3), "com_obj": np.zeros((3, 3))}
+    pms = {"identify": Model(), "weigh": Model()}
+    np.testing.assert_array_equal(ec.case_loglik(cases[0], pms, a), [0.0, 0.0, 0.0])     # missing: keeps the prior
+    np.testing.assert_array_equal(ec.case_loglik(cases[1], pms, a), [1.0, 1.0, 1.0])
+    assert seen == [("measured", (2.0, "identify", 6.0), 6.0)]
+    seen.clear()
+    ec.case_loglik([_wrow(0)], pms, a)                                                       # a weigh row: as before
+    assert seen == [("hold", (1.0, "weigh", 4.0), 4.0)]
