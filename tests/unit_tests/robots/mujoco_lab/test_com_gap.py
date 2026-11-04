@@ -67,13 +67,84 @@ class _FitEnv:
         return {"attempt": True}, {"torque_noise": self.torque_noise}
 
 
+class _Log:
+    """ident.Log's fields: per sample t, q, tau, fingers, mark, step (the trace index), tau_clean and aux; per tagged
+    control step {"phase", "i", "pose", "end"}. Each trace step gets `sub` samples; `after` is added to the torques of
+    the steps after the hold (the carry and what follows)."""
+
+    def __init__(self, trace, sub=4, after=0.0):
+        self.t, self.q, self.tau, self.fingers, self.mark, self.step, self.tau_clean, self.aux, self.steps = ([] for _ in range(9))
+        last_hold = max(i for i, x in enumerate(trace) if x["phase"] == "hold")
+        for i, x in enumerate(trace):
+            for _ in range(sub):
+                k = len(self.t)
+                tau = np.array([np.sin(0.3 * k), np.cos(0.2 * k)]) + (after if i > last_hold else 0.0)
+                self.t.append(0.002 * k)
+                self.q.append(np.zeros(2))
+                self.tau.append(tau)
+                self.tau_clean.append(tau)
+                self.fingers.append(np.zeros(2))
+                self.aux.append({"qd": np.zeros(2)})
+                self.mark.append(x["phase"])
+                self.step.append(i)
+            self.steps.append({"phase": x["phase"], "i": i, "pose": None, "end": len(self.t)})
+
+    def arrays(self):
+        return (np.asarray(self.t), np.asarray(self.q), np.asarray(self.tau), np.asarray(self.fingers),
+                np.asarray(self.mark, dtype=object))
+
+    def step_index(self):
+        return np.asarray(self.step)
+
+    def __len__(self):
+        return len(self.t)
+
+
+class _FilterEnv:
+    """_joint_fit as ident.segment reads the log: the whole log low-passed with a zero-phase filter, then the window cut.
+    The attempt's readout reports how many samples it read."""
+
+    def _joint_fit(self, log, steps, params):
+        from scipy.signal import iirfilter, sosfiltfilt
+
+        sos = iirfilter(N=4, Wn=0.2, btype="lowpass", ftype="butter", output="sos")
+        tau = sosfiltfilt(sos, log.arrays()[2], axis=0)
+        return {"tau": tau[np.isin(log.step_index(), sorted(steps))].tolist(), "floor": [1.0]}, {}
+
+    def _attempt_joint(self, log, trace):
+        return {"samples": len(log)}, {}
+
+
+def test_the_lift_and_hold_fit_reads_no_sample_after_the_hold():
+    """ident.segment low-passes the whole log (zero phase) before it cuts the window, so a fit on the whole log would
+    let the carry's torques reach the hold's last samples: point (b) comes before the carry. The fit gets the log up to
+    the hold's last sample; the attempt's own readout still reads the whole log."""
+    fits = []
+    for after in (0.0, 5.0):
+        log, env = _Log(_trace(), after=after), _FilterEnv()
+        with cg.GraspTap(env) as tap:
+            out = env._attempt_joint(log, _trace())
+        assert out == ({"samples": len(log)}, {}) and len(log) == 48
+        fits.append(np.asarray(tap.fit["tau"]))
+    assert fits[0].shape == (16, 2) and np.allclose(fits[0], fits[1])
+
+
+def test_cut_log_ends_every_per_sample_list_and_the_tagged_steps_at_the_window_end():
+    log = _Log(_trace())
+    cut = cg.cut_log(log, [5, 6, 7, 8])
+    assert len(cut) == 36 and len(log) == 48 and len(log.steps) == 12           # the log itself is unchanged
+    assert cut.step_index().max() == 8 and [x["i"] for x in cut.steps] == list(range(9))
+    assert len(cut.tau_clean) == len(cut.aux) == len(cut.mark) == 36 and len(cut.arrays()[2]) == 36
+    assert cg.cut_log(log, []) is log        # no window: the log as it is (the fit then has no window either)
+
+
 def test_grasp_tap_records_the_lift_and_hold_fit_and_keeps_the_attempt_readout():
-    env = _FitEnv()
+    env, log = _FitEnv(), _Log(_trace())
     with cg.GraspTap(env) as tap:
         assert tap.fit is None and tap.calls == 0
-        out = env._attempt_joint("LOG", _trace())
+        out = env._attempt_joint(log, _trace())
     assert out == ({"attempt": True}, {"torque_noise": 0.1})
-    assert tap.fit == {"steps": [5, 6, 7, 8], "params": 4, "floor": [1.0]} and tap.calls == 1 and env.fits[0][0] == "LOG"
+    assert tap.fit == {"steps": [5, 6, 7, 8], "params": 4, "floor": [1.0]} and tap.calls == 1 and len(env.fits[0][0]) == 36
     assert "_attempt_joint" not in vars(env) and env._attempt_joint("LOG", []) == ({"attempt": True}, {"torque_noise": 0.1})
     with pytest.raises(RuntimeError):
         with cg.GraspTap(env):
@@ -473,3 +544,65 @@ def test_sample_cases_is_a_fixed_draw_of_the_case_set():
     s = cg.sample_cases(cases, 20, 0)
     assert len(s) == 20 and len(set(s)) == 20 and set(s) <= set(cases) and s == cg.sample_cases(cases, 20, 0)
     assert cg.sample_cases(cases, None, 0) == cases
+
+
+def test_run_case_refuses_a_lab_without_joint_sensing(monkeypatch):
+    """The hand sim has no joint torques: execute never calls _attempt_joint, so every lifted case would read as one
+    that never reached (b), at EVPI 0, and the run would read as a stop. The case refuses such a lab after its reset
+    (env.sim, and with it joint_sensing, exists only from the first reset on), before any setting runs."""
+    from robots.mujoco_lab import adapter
+    from robots.mujoco_lab import calibrate as cal
+
+    monkeypatch.setattr(cal, "case_draw", lambda *a, **k: ({}, None, "plate", {"fill": 0.0, "frag": None}))
+    monkeypatch.setattr(adapter, "object_props", lambda o: {"mass": 1.0})
+    monkeypatch.setattr(cg, "case_b", lambda *a, **k: pytest.fail("a setting ran"))
+    resets = []
+    env = SimpleNamespace(joint_sensing=False, reset=lambda *a, **k: resets.append(1), pose_info=lambda: {}, reset_info={})
+    with pytest.raises(RuntimeError, match="joint sensing"):
+        cg.run_case(SimpleNamespace(env=env), "x", 0, {"seed": 11, "settings": [("k100_A3", 100.0, 3.0)]}, {"class": None},
+                    None, None)
+    assert resets == [1]
+
+
+def _ended(monkeypatch, ended, probes=()):
+    fa = {"ended": ended, "recommendation": "decline", "best_option": None, "guard": None, "first_menu": None,
+          "probes": list(probes), "restores": [], "moved": bool(probes), "row": None, "assessment": None}
+    monkeypatch.setattr(cg, "first_attempt", lambda *a, **k: dict(fa))
+
+
+def test_a_skipped_full_menu_check_is_missing_not_zero(monkeypatch):
+    _ended(monkeypatch, "declined")
+    args = (None, SimpleNamespace(), "x", "plate", 100.0, 3.0, None, {}, None, None)
+    assert cg.case_b(*args, full=False)["evpi_full"] is None
+    assert cg.case_b(*args, full=True)["evpi_full"] == 0.0           # checked: a case that never reached (b) counts 0
+    recs = _recs([None, 0.3, 0.1])
+    assert cg.cell(recs, np.random.default_rng(0), 50)["checks"]["full"]["mean"] == 0.0
+    recs[0]["evpi_full"] = None
+    c = cg.cell(recs, np.random.default_rng(0), 50)
+    assert c["checks"]["full"] == {"mean": None, "ci": None} and c["checks"]["w0"]["mean"] == 0.0
+    assert "| n/a |" in cg.markdown({"cells": {"k100_A3": {"class": c}}, "verdict": {}, "verdict_all_cases": {},
+                                     "primary_prior": "class"})
+
+
+def test_a_flagged_probe_marks_the_case_as_an_artifact(monkeypatch):
+    """calibrate's case convention: a flagged probe or attempt, or a reset off rest, makes an artifact case."""
+    args = (None, SimpleNamespace(), "x", "plate", 100.0, 3.0, None, {}, None, None)
+    _ended(monkeypatch, "declined", [{"probe": "weigh", "kind": "measured", "artifact": True}])
+    assert cg.case_b(*args)["artifact"] is True
+    _ended(monkeypatch, "declined", [{"probe": "weigh", "kind": "measured", "artifact": False}])
+    assert cg.case_b(*args)["artifact"] is False
+
+
+def test_the_metrics_leave_out_and_count_errors_and_artifacts():
+    """As calibrate counts cases (errors and artifact cases left out and counted); H over every record, with those at
+    EVPI 0, is reported next to it, with the stop rule's verdict on it."""
+    recs = _recs([None, 0.3, 0.1, None])
+    recs += [dict(_recs([1.0])[0], object="o9", idx=9, artifact=True), {**_recs([None])[0], "object": "o8", "idx": 8, "error": "boom"}]
+    for r in recs[-2:]:
+        r.pop("evpi", None) if "error" in r else None
+    c = cg.cell(recs, np.random.default_rng(0), 50)
+    assert c["n"] == 4 and c["n_errors"] == 1 and c["n_artifacts"] == 1
+    assert c["evpi"]["mean"] == pytest.approx(0.1) and c["H"]["0.05"]["mean"] == pytest.approx(0.3 / 4)
+    assert c["H_all_cases"]["0.05"]["mean"] == pytest.approx(0.3 / 6)
+    s = cg.summarize(recs, n_boot=50, seed=0)
+    assert set(s["verdict_all_cases"]) == {"class"} and s["verdict_all_cases"]["class"] in ("go", "stop", "undecided")

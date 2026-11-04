@@ -46,6 +46,7 @@ max(0, EVPI_i - c), object-bootstrap intervals, the stop rule on the class prior
 from __future__ import annotations
 
 import argparse
+import copy
 import hashlib
 import json
 import multiprocessing as mp
@@ -101,11 +102,29 @@ def grasp_steps(trace: list[dict[str, Any]]) -> list[int]:
     return [i for i, x in enumerate(trace) if x["phase"] == "hold" or (x["phase"] == "lift" and x["hand_z"] - z0 >= JOINT_RISE_M)]
 
 
+def cut_log(log: Any, steps: list[int]) -> Any:
+    """A shallow copy of the joint log up to the last sample of the trace steps ``steps`` (for the lift and hold window:
+    point (b), before the carry). ident.segment low-passes the whole log with a zero-phase filter before it cuts the
+    window, so the carry's samples would otherwise reach the window's last samples. The copy's per-sample lists and its
+    tagged steps end there; the log itself is not changed. A log without any of the steps comes back as it is."""
+    k = np.flatnonzero(np.isin(log.step_index(), sorted({int(i) for i in steps})))
+    if not len(k):
+        return log
+    n, end = len(log), int(k[-1]) + 1
+    out = copy.copy(log)
+    for name, v in vars(log).items():
+        if isinstance(v, list) and len(v) == n:
+            setattr(out, name, v[:end])
+    out.steps = [x for x in log.steps if x["end"] <= end]
+    return out
+
+
 class GraspTap:
     """While open, each call of ``env._attempt_joint`` (execute makes it once the object rose) also records the joint fit
-    on the lift and hold steps alone (``env._joint_fit(log, grasp_steps(trace), 4)``) as ``fit`` and its hidden record as
-    ``record``, and counts the call; the attempt's own readout comes back unchanged. The fit draws no random numbers
-    (ident.segment adds no noise at noise_nm 0). On exit the env's own method is back."""
+    on the lift and hold steps alone (``env._joint_fit(cut_log(log, w), w, 4)``, w = grasp_steps(trace): the log ends
+    with the hold) as ``fit`` and its hidden record as ``record``, and counts the call; the attempt's own readout reads
+    the whole log and comes back unchanged. The fit draws no random numbers (ident.segment adds no noise at noise_nm 0).
+    On exit the env's own method is back."""
 
     def __init__(self, env: Any):
         self.env, self.fit, self.record, self.calls = env, None, None, 0
@@ -115,7 +134,8 @@ class GraspTap:
         self._had, self._prev = "_attempt_joint" in vars(env), vars(env).get("_attempt_joint")
 
         def tapped(log, trace):
-            self.fit, self.record = env._joint_fit(log, grasp_steps(trace), 4)
+            w = grasp_steps(trace)
+            self.fit, self.record = env._joint_fit(cut_log(log, w), w, 4)
             self.calls += 1
             return inner(log, trace)
 
@@ -492,7 +512,8 @@ def case_b(prims: Any, env: Any, o: str, destination: str, care: float, A: float
                            "guard_flag": bool((fa["guard"] or {}).get("flag")), "first_menu": fa["first_menu"],
                            "probes": [p["probe"] for p in fa["probes"]], "probe_kinds": [p["kind"] for p in fa["probes"]],
                            "restores": len(fa["restores"]), "moved": fa["moved"], "reached": False, "evpi": 0.0, "evpi_w0": 0.0,
-                           "evpi_no_inboard": 0.0, "evpi_full": 0.0, "changed": False}
+                           "evpi_no_inboard": 0.0, "evpi_full": 0.0 if full else None, "changed": False,
+                           "artifact": any(bool(p.get("artifact")) for p in fa["probes"])}
     if "error" in fa:
         out["error"] = fa["error"]
     if fa["ended"] != "attempt":
@@ -511,7 +532,7 @@ def case_b(prims: Any, env: Any, o: str, destination: str, care: float, A: float
                         a_transport=act.get("a_transport", A_TRANSPORT))
     reached = tap.calls > 0 and r.loss_phase not in HELD_TO_B
     out.update(executed=option.id, action=act, label=r.label, loss_phase=r.loss_phase, rose=tap.calls > 0,
-               artifact=bool(getattr(r, "artifact", False)), fit=_fit_summary(tap.fit), reached=bool(reached),
+               artifact=out["artifact"] or bool(getattr(r, "artifact", False)), fit=_fit_summary(tap.fit), reached=bool(reached),
                pre_ess=float(pre.effective_size()))
     if not reached:
         return out
@@ -540,9 +561,10 @@ def case_b(prims: Any, env: Any, o: str, destination: str, care: float, A: float
 
 def run_case(prims: Any, o: str, idx: int, s: dict[str, Any], priors: dict[str, Callable], base: Callable,
              world: Any) -> list[dict[str, Any]]:
-    """One W0 case: first_menus' reset, the case's truth and W0's exact_both (over the class prior ``base``), then per
-    prior and setting case_b on a fresh menu stream (calibrate._stream k 1) and refresh stream (REFRESH_STREAM); the lab
-    is reset again after a run that moved it, and every reset is checked against the first (reset_match)."""
+    """One W0 case: first_menus' reset (a lab without joint sensing is refused), the case's truth and W0's exact_both
+    (over the class prior ``base``), then per prior and setting case_b on a fresh menu stream (calibrate._stream k 1)
+    and refresh stream (REFRESH_STREAM); the lab is reset again after a run that moved it, and every reset is checked
+    against the first (reset_match). A case's artifact flag follows calibrate.case_artifact."""
     from robots.mujoco_lab import calibrate as cal
     from robots.mujoco_lab.adapter import object_props
     from robots.mujoco_lab.first_menus import exact_priors
@@ -560,6 +582,9 @@ def run_case(prims: Any, o: str, idx: int, s: dict[str, Any], priors: dict[str, 
         return fingerprint(env)
 
     fp0 = reset()
+    if not env.joint_sensing:      # env.sim exists from the first reset on
+        raise RuntimeError("the lab has no joint sensing (RPENT_MUJOCO_SIM_DIR is not the arm port's sim): execute would "
+                           "never call _attempt_joint, and every lifted case would read as one that never reached (b)")
     reset_info = dict(getattr(env, "reset_info", None) or {})
     t, exact = exact_priors(o, base, s["generic"][o], env, theta, com_end, hidden, world)
     truth = {"mass": t["mass"], "com_frac": t["com_frac"]}
@@ -582,6 +607,7 @@ def run_case(prims: Any, o: str, idx: int, s: dict[str, Any], priors: dict[str, 
                                   full=bool(s.get("full_menu", True))))
             except Exception as exc:  # noqa: BLE001  one bad case must not stop the run
                 rec.update(error=f"{type(exc).__name__}: {str(exc)[:300]}", moved=True)
+            rec["artifact"] = cal.case_artifact(rec, reset_info)     # a flagged probe or attempt, or a reset off rest
             dirty = bool(rec.get("moved", True))
             rec["seconds"] = round(time.time() - t0, 2)
             recs.append(rec)
@@ -697,17 +723,37 @@ def _h(evpi: np.ndarray, objects: list[str], rng: np.random.Generator, n_boot: i
     return {str(c): _mean_ci(np.maximum(0.0, evpi - c), objects, rng, n_boot) for c in H_COSTS}
 
 
+def _counted(recs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The cases the metrics count, as calibrate counts them: no error and no artifact flag."""
+    from robots.mujoco_lab.calibrate import _counted as counted
+
+    return counted(recs)
+
+
+def _check(recs: list[dict[str, Any]], key: str, rng: np.random.Generator, n_boot: int) -> dict[str, Any]:
+    """The mean of a check's EVPI (``evpi_<key>``); missing (mean None) when a case did not run the check (the full
+    menu under --no-full-menu), so a skipped check never reads as a measured zero."""
+    v = [r.get(f"evpi_{key}") for r in recs]
+    if any(x is None for x in v):
+        return {"mean": None, "ci": None}
+    return _mean_ci(np.array(v, dtype=float), [r["object"] for r in recs], rng, n_boot)
+
+
 def cell(recs: list[dict[str, Any]], rng: np.random.Generator, n_boot: int = N_BOOT) -> dict[str, Any]:
-    """One setting and prior: the mean EVPI over every case without an error (a case that never reached (b) counts 0),
-    H(c), the checks (w0, no inboard_place, the full menu), the share that reached (b) and the mean over those, the
-    shares with EVPI above 0 and with a changed choice, the ESS distribution and Amendment 2's ESS table."""
-    ok = [r for r in recs if "error" not in r]
+    """One setting and prior: the mean EVPI over the counted cases (no error, no artifact flag; calibrate's convention:
+    both left out and counted; a case that never reached (b) counts 0), H(c), the checks (w0, no inboard_place, the full
+    menu), the share that reached (b) and the mean over those, the shares with EVPI above 0 and with a changed choice,
+    the ESS distribution and Amendment 2's ESS table. H_all_cases is H over every record, with the errors and the
+    artifact cases at EVPI 0 (a sensitivity number next to the rule's denominator, not the rule's)."""
+    ok = _counted(recs)
     objects = [r["object"] for r in ok]
     evpi = np.array([float(r["evpi"]) for r in ok])
     reached = np.array([bool(r["reached"]) for r in ok])
     tab = [r for r in ok if _ess_ok(r)]
     tab_evpi = np.array([float(r["evpi"]) for r in tab])
-    return {"n": len(ok), "n_errors": len(recs) - len(ok), "n_artifacts": sum(bool(r.get("artifact")) for r in ok),
+    left = [0.0 if ("error" in r or r.get("artifact")) else float(r["evpi"]) for r in recs]
+    return {"n": len(ok), "n_errors": sum("error" in r for r in recs),
+            "n_artifacts": sum("error" not in r and bool(r.get("artifact")) for r in recs),
             "n_reset_mismatch": sum(not r.get("reset_match", True) for r in ok),
             "n_reached": int(reached.sum()), "share_reached": float(reached.mean()) if len(ok) else None,
             "ended": dict(Counter(str(r.get("ended")) for r in ok)),
@@ -715,8 +761,8 @@ def cell(recs: list[dict[str, Any]], rng: np.random.Generator, n_boot: int = N_B
             "share_positive": float((evpi > 0).mean()) if len(ok) else None,
             "share_changed": float(np.mean([bool(r.get("changed")) for r in ok])) if len(ok) else None,
             "H": _h(evpi, objects, rng, n_boot),
-            "checks": {k: _mean_ci(np.array([float(r.get(f"evpi_{k}") or 0.0) for r in ok]), objects, rng, n_boot)
-                       for k in ("w0", "no_inboard", "full")},
+            "H_all_cases": _h(np.array(left), [r["object"] for r in recs], rng, n_boot),
+            "checks": {k: _check(ok, k, rng, n_boot) for k in ("w0", "no_inboard", "full")},
             "ess": {k: _ess_stats([r.get(f"ess_{k}") for r in ok if r.get("reached")]) for k in ("b2", "yard")},
             "ess_raw": {k: _ess_stats([((r.get("ess") or {}).get(k) or {}).get("ess") for r in ok if r.get("reached")])
                         for k in ("b2", "yard")},
@@ -739,7 +785,7 @@ def _groups(recs: list[dict[str, Any]]) -> dict[str, Any]:
     |c - 0.5|."""
     out = {}
     for group, flat in (("upright", False), ("flat", True)):
-        rs = [r for r in recs if "error" not in r and bool(r.get("flat")) == flat]
+        rs = [r for r in _counted(recs) if bool(r.get("flat")) == flat]
         if not rs:
             continue
         x = np.array([abs(r["com_frac"] - 0.5) if flat else r["com_frac"] for r in rs], dtype=float)
@@ -753,9 +799,8 @@ def _groups(recs: list[dict[str, Any]]) -> dict[str, Any]:
 
 def _top(recs: list[dict[str, Any]], k: int = 10) -> list[dict[str, Any]]:
     by: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for r in recs:
-        if "error" not in r:
-            by[r["object"]].append(r)
+    for r in _counted(recs):
+        by[r["object"]].append(r)
     rows = [{"object": o, "n": len(v), "mean_evpi": float(np.mean([r["evpi"] for r in v])),
              "changes": dict(Counter(f"{r['choice1']} -> {r['choice2']}" for r in v if r.get("changed")))} for o, v in by.items()]
     return sorted(rows, key=lambda x: -x["mean_evpi"])[:k]
@@ -767,12 +812,13 @@ def summarize(records: list[dict[str, Any]], n_boot: int = N_BOOT, seed: int = 0
     for r in records:
         by[r["setting"]][r["prior"]].append(r)
     cells = {s: {p: cell(v, rng, n_boot) for p, v in block.items()} for s, block in by.items()}
-    verdicts = {}
+    verdicts, verdicts_all = {}, {}
     for p in sorted({p for block in cells.values() for p in block}):
-        h = {s: block[p]["H"][str(H_COSTS[0])] for s, block in cells.items() if p in block}
-        verdicts[p] = verdict(h)
+        verdicts[p] = verdict({s: block[p]["H"][str(H_COSTS[0])] for s, block in cells.items() if p in block})
+        verdicts_all[p] = verdict({s: block[p]["H_all_cases"][str(H_COSTS[0])] for s, block in cells.items() if p in block})
     primary = {s: by[s].get(PRIMARY_PRIOR, []) for s in by}
-    return {"n_records": len(records), "cells": cells, "verdict": verdicts, "primary_prior": PRIMARY_PRIOR,
+    return {"n_records": len(records), "cells": cells, "verdict": verdicts, "verdict_all_cases": verdicts_all,
+            "primary_prior": PRIMARY_PRIOR,
             "groups": {s: _groups(v) for s, v in primary.items()}, "top": {s: _top(v) for s, v in primary.items()}}
 
 
@@ -781,15 +827,20 @@ def _fmt(c: dict[str, Any]) -> str:
 
 
 def markdown(s: dict[str, Any]) -> str:
-    lines = ["| setting | prior | n | reached | EVPI [95 % CI] | H(0.05) | H(0.10) | H(0.30) | w0 check | no inboard | full menu | "
-             "ESS table n | ESS table H(0.05) |", "|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
+    lines = ["| setting | prior | n | errors | artifacts | reached | EVPI [95 % CI] | H(0.05) | H(0.10) | H(0.30) | "
+             "H(0.05), all cases | w0 check | no inboard | full menu | ESS table n | ESS table H(0.05) |",
+             "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
     for setting, block in s["cells"].items():
         for p, c in block.items():
-            lines.append(f"| {setting} | {p} | {c['n']} | {c['n_reached']} | {_fmt(c['evpi'])} | {_fmt(c['H']['0.05'])} | "
-                         f"{_fmt(c['H']['0.1'])} | {_fmt(c['H']['0.3'])} | {_fmt(c['checks']['w0'])} | {_fmt(c['checks']['no_inboard'])} | "
+            lines.append(f"| {setting} | {p} | {c['n']} | {c['n_errors']} | {c['n_artifacts']} | {c['n_reached']} | "
+                         f"{_fmt(c['evpi'])} | {_fmt(c['H']['0.05'])} | {_fmt(c['H']['0.1'])} | {_fmt(c['H']['0.3'])} | "
+                         f"{_fmt(c['H_all_cases']['0.05'])} | {_fmt(c['checks']['w0'])} | {_fmt(c['checks']['no_inboard'])} | "
                          f"{_fmt(c['checks']['full'])} | {c['ess_table']['n']} | {_fmt(c['ess_table']['H']['0.05'])} |")
     v = ", ".join(f"{p}: {x}" for p, x in s["verdict"].items())
-    return f"# The CoM oracle gap at point (b)\n\nStop rule (on {s['primary_prior']}): {v}\n\n" + "\n".join(lines) + "\n"
+    va = ", ".join(f"{p}: {x}" for p, x in s["verdict_all_cases"].items())
+    return (f"# The CoM oracle gap at point (b)\n\nStop rule (on {s['primary_prior']}): {v}\n\n"
+            f"The same rule on every record, errors and artifact cases at EVPI 0 (a sensitivity check): {va}\n\n"
+            + "\n".join(lines) + "\n")
 
 
 def summary(a: argparse.Namespace) -> dict[str, Any]:
