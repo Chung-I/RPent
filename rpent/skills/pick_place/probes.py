@@ -54,6 +54,8 @@ PROBE_SECONDS = {"weigh": 4.0, "push": 2.0, "squeeze": 3.0}
 PROBE_KINDS = {"weigh": ("measured", "lower_bound", "lost"), "push": ("slid", "tipped", "no_breakaway", "no_contact"),
                "squeeze": ("measured",)}
 UNREACHABLE = "unreachable"                  # a substrate's probe whose pose its arm cannot reach (mujoco_lab arm port)
+OBSTRUCTED = "obstructed"                    # a push with no side whose path is clear of fixtures (mujoco_lab arm port)
+NO_MOTION = (UNREACHABLE, OBSTRUCTED)         # results with no motion: shown to the agent, never learned from, no update
 DAMAGED = "damaged"                          # a probe's damage kind (milestone 2b): learned where the probe corpus has it
 READING = {"measured": "m_hat", "lower_bound": "mu_hat", "slid": "f_break"}     # the reading each kind's law is on
 SQUEEZE_READING = "k_hat"                    # the squeeze's measured reading: the stiffness, not the weigh's mass
@@ -251,6 +253,8 @@ class ProbeModel:
         t = self.temper if temper is None else float(temper)
         want = (lambda term: True) if terms is None else (lambda term: term in terms)
         kind = obs["kind"]
+        if kind in NO_MOTION:                    # nothing moved: no kind, reading or survival term
+            return np.zeros(np.asarray(X).shape[0]), {"used": [], "rejected": ["no_motion"]}
         used, rejected = [], []
         ll = np.zeros(np.asarray(X).shape[0])
         if want("kind") and kind not in self.classes:
@@ -366,6 +370,6 @@ def fit_probe_model(rows: list[dict[str, Any]], probe: str, seed: int = 0, names
 def fit_probe_models(rows: list[dict[str, Any]], seed: int = 0, names=FEATURES_M2, val_objects=None) -> dict[str, ProbeModel]:
     """One ProbeModel per probe present in the (training) probe-corpus rows, on ``names``; ``val_objects`` as in
     fit_probe_model."""
-    rows = [r for r in rows if r.get("kind") != UNREACHABLE]      # no motion: counted per probe, never learned from
+    rows = [r for r in rows if r.get("kind") not in NO_MOTION]    # no motion: counted per probe, never learned from
     return {probe: fit_probe_model([r for r in rows if r["probe"] == probe], probe, seed, names, val_objects)
             for probe in PROBE_KINDS if any(r["probe"] == probe for r in rows)}

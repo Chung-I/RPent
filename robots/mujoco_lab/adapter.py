@@ -87,6 +87,10 @@ PUSH_BREAKAWAY_M = 0.003
 PUSH_WINDOW_S = 0.3
 PUSH_TIP_DEG = 8.0
 PUSH_MIN_FORCE_N = 0.05
+PUSH_CLEAR_M = 0.002         # the arm's push: the pads pass this far above the highest fixed surface under their path
+PUSH_MAX_FRAC = 0.5          # ... and the pad centre stays at most this far up the object's height (else the side is not clear)
+PUSH_RAY_STEP_M = 0.005      # the surface under the path: one downward ray per 5 mm along it, three across the pad
+OBSTRUCTED = "obstructed"    # a push with no side whose path is clear of fixtures (decided 2026-11-04, option c)
 THROWN_M = 0.10              # a probe "throws" the object off the table top or this far from where it was
 PINCH_MARGIN_M = 0.004       # the skill pinches at most the pads' open gap less 2 mm a side (see max_pinch_width)
 REST_MIN_S = 0.2             # reset: settle at least this long, then until the object is at rest,
@@ -1685,12 +1689,13 @@ class MuJoCoLabEnv:
         return ProbeResult("push", "damaged" if damage else kind, reading, disp, tilt, thrown, steps[0] / hz, rec, **self._monitor(),
                            meter=meter, damage=damage, sensor=sensor)
 
-    def _push_geometry(self):
-        """(yaw, ex, the hand's start, its height, the object's pose): as probe_push, the push across the long axis."""
+    def _push_geometry(self, side: int = 1):
+        """(yaw, ex, the hand's start, its height, the object's pose): as probe_push, the push across the long axis;
+        ``side`` -1 pushes the other way (yaw + pi)."""
         sc, sim = self.s["scene"], self.sim
         R, p = sim.obj_mat(), sim.obj_pos()
         axis = R @ np.asarray(self.props["axis"], dtype=float)
-        yaw = float(np.arctan2(axis[1], axis[0]) + np.pi / 2)
+        yaw = float(np.arctan2(axis[1], axis[0]) + np.pi / 2 + (np.pi if side < 0 else 0.0))
         ex = np.array([np.cos(yaw), np.sin(yaw), 0.0])
         V = self._hull_vertices_world()
         lo = float((V @ ex).min())
@@ -1701,6 +1706,69 @@ class MuJoCoLabEnv:
         perp = p - ex * float(p @ ex)
         perp[2] = 0.0
         return yaw, ex, perp, start_s, hand_z, p.copy(), R.copy()
+
+    def _surface_under(self, xy) -> float:
+        """The highest fixed surface (the table, a fixture, the bin; bodies welded to the world) under the xy points:
+        a downward ray per point that passes through every moving body (the object, the arm, the hand)."""
+        import mujoco
+
+        sim, sc = self.sim, self.s["scene"]
+        m, d = sim.m, sim.d
+        gid = np.zeros(1, dtype=np.int32)
+        top = float(sc.TABLE_TOP) + 0.5
+        best = -np.inf
+        for x, y in xy:
+            z = top
+            for _ in range(16):
+                dist = mujoco.mj_ray(m, d, np.array([x, y, z], float), np.array([0.0, 0.0, -1.0]), None, 1, -1, gid)
+                if dist < 0:
+                    break
+                hit = z - dist
+                if int(m.body_weldid[int(m.geom_bodyid[int(gid[0])])]) == 0:
+                    best = max(best, hit)
+                    break
+                z = hit - 1e-4
+        return float(best)
+
+    def _push_side_surface(self, side: int) -> float:
+        """The highest fixed surface under the pads' path for a push from ``side``: both pads from the start to the
+        longest push (PUSH_V for PUSH_MAX_S), their thickness along the push and their width across it."""
+        sc = self.s["scene"]
+        _, ex, perp, start_s, _, _, _ = self._push_geometry(side)
+        ey = np.array([-ex[1], ex[0], 0.0])
+        a = start_s - sc.MAX_OPEN - sc.PAD_HALF[0]
+        b = start_s + sc.MAX_OPEN + sc.PAD_HALF[0] + PUSH_V * PUSH_MAX_S
+        n = int(math.ceil((b - a) / PUSH_RAY_STEP_M)) + 1
+        pts = [perp + ex * s_ + ey * w for s_ in np.linspace(a, b, n) for w in (-sc.PAD_HALF[1], 0.0, sc.PAD_HALF[1])]
+        return self._surface_under([(q[0], q[1]) for q in pts])
+
+    def _push_plan(self) -> dict[str, Any]:
+        """The arm's push side and height (option c, 2026-11-04): per side, the pads start PUSH_CLEAR_M above the
+        highest fixed surface under their path (never lower than probe_push's quarter height); a side is clear when
+        that keeps the pad centre at most PUSH_MAX_FRAC up the object. The first clear side wins, a side that needs no
+        rise before one that does; none clear: ``side`` None (the probe is obstructed)."""
+        sc = self.s["scene"]
+        V = self._hull_vertices_world()
+        zlo, zhi = float(V[:, 2].min()), float(V[:, 2].max())
+        cap = zlo + PUSH_MAX_FRAC * (zhi - zlo)
+        sides = []
+        for side in (1, -1):
+            hand_z = self._push_geometry(side)[4]
+            pad0 = hand_z - sc.PAD_DROP + sc.PAD_HALF[2]
+            surf = float(self._push_side_surface(side))
+            pad_z = max(pad0, surf + sc.PAD_HALF[2] + PUSH_CLEAR_M)
+            sides.append({"side": side, "surface_z": surf, "pad_z": pad_z, "raised_m": pad_z - pad0, "clear": bool(pad_z <= cap + 1e-9)})
+        ok = sorted((s_ for s_ in sides if s_["clear"]), key=lambda s_: (s_["raised_m"] > 1e-9, -s_["side"]))
+        if not ok:
+            return {"side": None, "cap_z": cap, "sides": sides}
+        return {**ok[0], "cap_z": cap, "sides": sides}
+
+    def _obstructed(self, plan: dict[str, Any]) -> ProbeResult:
+        """A push with no clear side: kind ``obstructed``, nothing moved, no time; the meter and the log stop."""
+        self._metering = False
+        self._meter_end()
+        self._log_end()
+        return ProbeResult("push", OBSTRUCTED, {}, 0.0, 0.0, False, 0.0, [], **self._monitor(), sensor={"push_plan": plan})
 
     def _probe_push_arm(self) -> ProbeResult:
         """probe_push on the arm port. The floating hand teleported to the low start pose; the arm makes a free move
@@ -1713,7 +1781,11 @@ class MuJoCoLabEnv:
         self._watch = {"rev_steps": 0, "deepest_mm": 0.0}             # the open hand never squeezes
         self._meter_begin()
         self._log_begin()
-        yaw, ex, perp, start_s, hand_z, p_start, R_start = self._push_geometry()
+        push_plan = self._push_plan()
+        if push_plan["side"] is None:
+            return self._obstructed(push_plan)
+        yaw, ex, perp, start_s, hand_z, p_start, R_start = self._push_geometry(push_plan["side"])
+        hand_z += push_plan["raised_m"]
         start = perp + ex * start_s + np.array([0.0, 0.0, hand_z])
         sim.grip(-20.0)
         plan = sim.free_move(start + np.array([0.0, 0.0, APPROACH_M]), yaw)
@@ -1770,6 +1842,7 @@ class MuJoCoLabEnv:
         disp, tilt, thrown = self._probe_cost(p_start, R_start)
         reading, sensor = self._force_reading(reading, sd=0.0)
         sensor["source"] = "joint"
+        sensor["push_plan"] = push_plan
         arm = self._probe_arm(rec, sensor, ("push",))
         return ProbeResult("push", "damaged" if damage else kind, reading, disp, tilt, thrown, steps[0] / hz, rec, **self._monitor(),
                            meter=meter, damage=damage, sensor=sensor, arm=arm)

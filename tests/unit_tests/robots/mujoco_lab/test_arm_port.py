@@ -203,7 +203,48 @@ def test_unreachable_probe_rows_are_not_learned_from():
     from robots.mujoco_lab.corpus import trainable
 
     assert not trainable({"kind": "unreachable", "probe": "push"})
+    assert not trainable({"kind": "obstructed", "probe": "push"})
     assert trainable({"kind": "slid", "probe": "push"})
+
+
+def test_the_surface_under_the_push_skips_moving_bodies_and_sees_fixtures(env):
+    sc, sim = env.s["scene"], env.sim
+    p = sim.obj_pos()
+    assert abs(env._surface_under([(p[0], p[1])]) - sc.TABLE_TOP) < 1e-6      # the object itself is not a surface
+    g = next(i for i in range(sim.m.ngeom) if sim.m.geom(i).name.startswith("fx_mouse_pad"))
+    x, y, _ = sim.d.geom_xpos[g]
+    assert env._surface_under([(x, y)]) > sc.TABLE_TOP + 0.001
+
+
+def _surfaces(env, monkeypatch, plus, minus):
+    sc = env.s["scene"]
+    monkeypatch.setattr(env, "_push_side_surface", lambda side: sc.TABLE_TOP + (plus if side > 0 else minus))
+
+
+def test_the_push_rises_over_a_low_fixture(env, monkeypatch):
+    from robots.mujoco_lab.adapter import PUSH_CLEAR_M
+
+    sc = env.s["scene"]
+    _surfaces(env, monkeypatch, 0.004, 0.004)
+    plan = env._push_plan()
+    assert plan["side"] == 1 and plan["surface_z"] == sc.TABLE_TOP + 0.004
+    assert abs(plan["pad_z"] - (sc.TABLE_TOP + 0.004 + sc.PAD_HALF[2] + PUSH_CLEAR_M)) < 1e-9 or plan["raised_m"] == 0.0
+    assert plan["pad_z"] - sc.PAD_HALF[2] >= sc.TABLE_TOP + 0.004 + PUSH_CLEAR_M - 1e-9
+
+
+def test_the_push_turns_to_the_clear_side(env, monkeypatch):
+    _surfaces(env, monkeypatch, 0.2, 0.0)
+    res = env.probe_push()
+    assert res.kind != "obstructed" and res.sensor["push_plan"]["side"] == -1
+
+
+def test_a_push_with_no_clear_side_is_obstructed_and_does_not_move(env, monkeypatch):
+    _surfaces(env, monkeypatch, 0.2, 0.2)
+    p0 = env.sim.obj_pos().copy()
+    res = env.probe_push()
+    assert res.kind == "obstructed" and res.seconds == 0.0 and res.reading == {}
+    assert len(res.sensor["push_plan"]["sides"]) == 2
+    assert np.allclose(env.sim.obj_pos(), p0)
 
 
 def test_the_bin_destination_follows_the_scene(env):

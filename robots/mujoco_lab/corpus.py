@@ -115,7 +115,7 @@ def trainable(row: dict[str, Any]) -> bool:
     """A row the models may learn from: it ran (no error), the skill would have offered its pinch, and its
     contacts were physical (no artifact flag)."""
     return ("error" not in row and "declined" not in row and not row.get("artifact")
-            and row.get("kind") != "unreachable")             # a probe the arm could not reach: no motion, nothing to learn
+            and row.get("kind") not in ("unreachable", "obstructed"))   # a probe with no motion: nothing to learn
 
 
 def case_rng(seed: int, object_id: str, idx: int) -> np.random.Generator:

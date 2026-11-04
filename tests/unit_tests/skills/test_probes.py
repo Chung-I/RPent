@@ -430,3 +430,15 @@ def test_probe_kinds_are_learned_on_the_results_not_thrown():
     assert pm.stats["kinds"]["damaged"] == sum(r["kind"] == "damaged" for r in push if not r["thrown"])
     ended = float(np.mean([r["thrown"] or r["kind"] == "damaged" for r in push]))
     assert float(np.mean(pm.terminal_risk(true_matrix(push, pm.feature_names)))) == pytest.approx(ended, abs=0.03)
+
+
+def test_a_result_without_motion_tells_nothing():
+    from rpent.skills.pick_place.probes import NO_MOTION, OBSTRUCTED, UNREACHABLE
+
+    assert NO_MOTION == (UNREACHABLE, OBSTRUCTED) and OBSTRUCTED == "obstructed"
+    pm = _const_model("push", PROBE_KINDS["push"], [0.7, 0.1, 0.1, 0.1], p_thrown=0.2)
+    X = np.zeros((5, 3))
+    arrays = {"mass": np.ones(5), "mu": np.full(5, 0.5)}
+    for kind in NO_MOTION:
+        ll, terms = pm.loglik({"kind": kind, "reading": {}}, X, arrays, 10.0, thrown=False)
+        assert np.all(ll == 0.0) and terms["used"] == []
