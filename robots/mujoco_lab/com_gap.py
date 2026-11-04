@@ -82,6 +82,7 @@ N_BOOT = 2000
 GRASP_FIT, TRUTH = "grasp_fit", "truth"     # the history entries com_gap adds: the lift-and-hold fit, a truth term
 CUT_HOLD_S = 1.0                  # the held last sample after the cut at (b) (0.5 s gave the same fits on four arm-sim cases)
 REFRESH_STREAM = 3                # calibrate._stream k of the refreshes at (b) (1: the menus, 2: the random row)
+WHOLE_LOG_STREAM = 4              # calibrate._stream k of the whole-log check's refreshes
 HELD_TO_B = ("lift", "hold")      # a loss in these phases: the object is not in the hand at (b)
 BASE_S = 8.0                      # commit_std's time; the executed grasp's own charge is the same for every choice at (b)
 SLOW_LIFT = {"v_lift": 0.05, "v_transport": 0.2}   # slow_lift's lift and carry
@@ -137,12 +138,13 @@ def cut_log(log: Any, steps: list[int], hold_s: float = None) -> Any:
 class GraspTap:
     """While open, each call of ``env._attempt_joint`` (execute makes it once the object rose) also records the joint fit
     on the lift and hold steps alone (``env._joint_fit(cut_log(log, w), w, 4)``, w = grasp_steps(trace): the log ends
-    with the hold) as ``fit`` and its hidden record as ``record``, and counts the call; the attempt's own readout reads
-    the whole log and comes back unchanged. The fit draws no random numbers (ident.segment adds no noise at noise_nm 0).
-    On exit the env's own method is back."""
+    with the hold) as ``fit`` and its hidden record as ``record``, the same window's fit on the whole log (the check
+    column: the carry reaches it through the filter) as ``fit_whole_log``, and counts the call; the attempt's own readout
+    reads the whole log and comes back unchanged. The fits draw no random numbers (ident.segment adds no noise at
+    noise_nm 0). On exit the env's own method is back."""
 
     def __init__(self, env: Any):
-        self.env, self.fit, self.record, self.calls = env, None, None, 0
+        self.env, self.fit, self.record, self.fit_whole_log, self.calls = env, None, None, None, 0
 
     def __enter__(self) -> GraspTap:
         env, inner = self.env, self.env._attempt_joint
@@ -151,6 +153,7 @@ class GraspTap:
         def tapped(log, trace):
             w = grasp_steps(trace)
             self.fit, self.record = env._joint_fit(cut_log(log, w), w, 4)
+            self.fit_whole_log, _ = env._joint_fit(log, w, 4)
             self.calls += 1
             return inner(log, trace)
 
@@ -515,9 +518,11 @@ def _fit_summary(fit: dict[str, Any] | None) -> dict[str, Any] | None:
 
 
 def case_b(prims: Any, env: Any, o: str, destination: str, care: float, A: float, prior_fn: Callable, truth: dict[str, Any],
-           w0: ParticleBelief | None, rng: np.random.Generator, full: bool = True) -> dict[str, Any]:
+           w0: ParticleBelief | None, rng: np.random.Generator, full: bool = True,
+           rng_whole_log: np.random.Generator | None = None) -> dict[str, Any]:
     """One case under one prior and setting (``prims`` holds them, a fresh menu stream, the lab at the case's reset): the
-    policy to its first attempt, the attempt with the lift-and-hold fit, and point (b)."""
+    policy to its first attempt, the attempt with the lift-and-hold fit, and point (b); then the check column, point (b)
+    with the whole-log fit on its own stream ``rng_whole_log`` (after the primary, which never reads it)."""
     from robots.mujoco_lab.adapter import A_TRANSPORT
     from rpent.skills.pick_place.tools import _menu_recovery, _spread_kw, standard_force
 
@@ -528,6 +533,7 @@ def case_b(prims: Any, env: Any, o: str, destination: str, care: float, A: float
                            "probes": [p["probe"] for p in fa["probes"]], "probe_kinds": [p["kind"] for p in fa["probes"]],
                            "restores": len(fa["restores"]), "moved": fa["moved"], "reached": False, "evpi": 0.0, "evpi_w0": 0.0,
                            "evpi_no_inboard": 0.0, "evpi_full": 0.0 if full else None, "changed": False,
+                           "evpi_whole_log": 0.0, "changed_whole_log": False,
                            "artifact": any(bool(p.get("artifact")) for p in fa["probes"])}
     if "error" in fa:
         out["error"] = fa["error"]
@@ -571,6 +577,12 @@ def case_b(prims: Any, env: Any, o: str, destination: str, care: float, A: float
     if full:
         fm = full_menu(prims.model, b1, keep["b2"], keep["yard"], scene, destination, f_std, care, A, reset_s, price, rng)
         out.update(full=fm, evpi_full=fm["evpi"])
+    gw = rng_whole_log if rng_whole_log is not None else np.random.default_rng(0)
+    bw, iw = condition(pre, [fit_entry(tap.fit_whole_log)] if tap.fit_whole_log else [], replay, draw, gw)
+    pw = point_b(prims.model, bw, scene, rows, truth, care, A, replay, draw, gw, reset_s=reset_s, reset_price=price)
+    out.update(evpi_whole_log=pw["primary"]["evpi"], choice1_whole_log=pw["primary"]["choice1"],
+               changed_whole_log=pw["primary"]["changed"], fit_whole_log=_fit_summary(tap.fit_whole_log),
+               ess_whole_log={"b1": iw["ess_final"], "b2": pw["ess"]["b2"]["ess_final"], "yard": pw["ess"]["yard"]["ess_final"]})
     return out
 
 
@@ -619,7 +631,8 @@ def run_case(prims: Any, o: str, idx: int, s: dict[str, Any], priors: dict[str, 
                    "fill": hidden["fill"]}
             try:
                 rec.update(case_b(prims, env, o, destination, care, A, fn, truth, w0, cal._stream(seed, o, idx, REFRESH_STREAM),
-                                  full=bool(s.get("full_menu", True))))
+                                  full=bool(s.get("full_menu", True)),
+                                  rng_whole_log=cal._stream(seed, o, idx, WHOLE_LOG_STREAM)))
             except Exception as exc:  # noqa: BLE001  one bad case must not stop the run
                 rec.update(error=f"{type(exc).__name__}: {str(exc)[:300]}", moved=True)
             rec["artifact"] = cal.case_artifact(rec, reset_info)     # a flagged probe or attempt, or a reset off rest
@@ -777,7 +790,9 @@ def cell(recs: list[dict[str, Any]], rng: np.random.Generator, n_boot: int = N_B
             "share_changed": float(np.mean([bool(r.get("changed")) for r in ok])) if len(ok) else None,
             "H": _h(evpi, objects, rng, n_boot),
             "H_all_cases": _h(np.array(left), [r["object"] for r in recs], rng, n_boot),
-            "checks": {k: _check(ok, k, rng, n_boot) for k in ("w0", "no_inboard", "full")},
+            "checks": {k: _check(ok, k, rng, n_boot) for k in ("w0", "no_inboard", "full", "whole_log")},
+            "H_whole_log": (None if any(r.get("evpi_whole_log") is None for r in ok)
+                            else _h(np.array([float(r["evpi_whole_log"]) for r in ok]), objects, rng, n_boot)),
             "ess": {k: _ess_stats([r.get(f"ess_{k}") for r in ok if r.get("reached")]) for k in ("b2", "yard")},
             "ess_raw": {k: _ess_stats([((r.get("ess") or {}).get(k) or {}).get("ess") for r in ok if r.get("reached")])
                         for k in ("b2", "yard")},
@@ -827,12 +842,15 @@ def summarize(records: list[dict[str, Any]], n_boot: int = N_BOOT, seed: int = 0
     for r in records:
         by[r["setting"]][r["prior"]].append(r)
     cells = {s: {p: cell(v, rng, n_boot) for p, v in block.items()} for s, block in by.items()}
-    verdicts, verdicts_all = {}, {}
+    verdicts, verdicts_all, verdicts_whole = {}, {}, {}
     for p in sorted({p for block in cells.values() for p in block}):
         verdicts[p] = verdict({s: block[p]["H"][str(H_COSTS[0])] for s, block in cells.items() if p in block})
         verdicts_all[p] = verdict({s: block[p]["H_all_cases"][str(H_COSTS[0])] for s, block in cells.items() if p in block})
+        hw = {s: block[p]["H_whole_log"] for s, block in cells.items() if p in block}
+        verdicts_whole[p] = None if any(v is None for v in hw.values()) else verdict({s: v[str(H_COSTS[0])] for s, v in hw.items()})
     primary = {s: by[s].get(PRIMARY_PRIOR, []) for s in by}
     return {"n_records": len(records), "cells": cells, "verdict": verdicts, "verdict_all_cases": verdicts_all,
+            "verdict_whole_log": verdicts_whole,
             "primary_prior": PRIMARY_PRIOR,
             "groups": {s: _groups(v) for s, v in primary.items()}, "top": {s: _top(v) for s, v in primary.items()}}
 
@@ -843,18 +861,22 @@ def _fmt(c: dict[str, Any]) -> str:
 
 def markdown(s: dict[str, Any]) -> str:
     lines = ["| setting | prior | n | errors | artifacts | reached | EVPI [95 % CI] | H(0.05) | H(0.10) | H(0.30) | "
-             "H(0.05), all cases | w0 check | no inboard | full menu | ESS table n | ESS table H(0.05) |",
-             "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
+             "H(0.05), all cases | w0 check | no inboard | full menu | EVPI, whole-log fit | H(0.05), whole-log fit | "
+             "ESS table n | ESS table H(0.05) |", "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
     for setting, block in s["cells"].items():
         for p, c in block.items():
             lines.append(f"| {setting} | {p} | {c['n']} | {c['n_errors']} | {c['n_artifacts']} | {c['n_reached']} | "
                          f"{_fmt(c['evpi'])} | {_fmt(c['H']['0.05'])} | {_fmt(c['H']['0.1'])} | {_fmt(c['H']['0.3'])} | "
                          f"{_fmt(c['H_all_cases']['0.05'])} | {_fmt(c['checks']['w0'])} | {_fmt(c['checks']['no_inboard'])} | "
-                         f"{_fmt(c['checks']['full'])} | {c['ess_table']['n']} | {_fmt(c['ess_table']['H']['0.05'])} |")
+                         f"{_fmt(c['checks']['full'])} | {_fmt(c['checks']['whole_log'])} | "
+                         f"{'n/a' if c['H_whole_log'] is None else _fmt(c['H_whole_log']['0.05'])} | "
+                         f"{c['ess_table']['n']} | {_fmt(c['ess_table']['H']['0.05'])} |")
     v = ", ".join(f"{p}: {x}" for p, x in s["verdict"].items())
     va = ", ".join(f"{p}: {x}" for p, x in s["verdict_all_cases"].items())
+    vw = ", ".join(f"{p}: {x}" for p, x in s.get("verdict_whole_log", {}).items())
     return (f"# The CoM oracle gap at point (b)\n\nStop rule (on {s['primary_prior']}): {v}\n\n"
             f"The same rule on every record, errors and artifact cases at EVPI 0 (a sensitivity check): {va}\n\n"
+            f"The same rule with belief 1 from the whole-log fit (the carry reaches it through the filter; a check): {vw}\n\n"
             + "\n".join(lines) + "\n")
 
 

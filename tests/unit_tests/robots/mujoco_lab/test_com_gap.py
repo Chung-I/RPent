@@ -125,8 +125,9 @@ def test_the_lift_and_hold_fit_reads_no_sample_after_the_hold():
         with cg.GraspTap(env) as tap:
             out = env._attempt_joint(log, _trace())
         assert out == ({"samples": len(log)}, {}) and len(log) == 48
-        fits.append(np.asarray(tap.fit["tau"]))
-    assert fits[0].shape == (16, 2) and np.allclose(fits[0], fits[1])
+        fits.append((np.asarray(tap.fit["tau"]), np.asarray(tap.fit_whole_log["tau"])))
+    assert fits[0][0].shape == (16, 2) and np.allclose(fits[0][0], fits[1][0])
+    assert not np.allclose(fits[0][1], fits[1][1])          # the check's whole-log fit reads the carry, as the adapter's does
 
 
 def test_cut_log_ends_the_log_at_the_window_and_holds_its_last_sample():
@@ -616,3 +617,55 @@ def test_the_metrics_leave_out_and_count_errors_and_artifacts():
     assert c["H_all_cases"]["0.05"]["mean"] == pytest.approx(0.3 / 6)
     s = cg.summarize(recs, n_boot=50, seed=0)
     assert set(s["verdict_all_cases"]) == {"class"} and s["verdict_all_cases"]["class"] in ("go", "stop", "undecided")
+
+
+def test_case_b_reports_the_whole_log_fit_as_a_check(monkeypatch):
+    """The check column: the same point (b) with the fit on the whole log (the carry reaches it through the filter).
+    Here the cut log's fit says nothing, so belief 1 stays split and pays for the gentle carry (EVPI 0.05, as in the
+    point_b test); the whole log's fit puts the CoM at the pinch, so belief 1 takes belief 2's carry (EVPI 0). The
+    primary result does not read the check's stream."""
+
+    def fit(info_cy):
+        return {"floor": [0.001, 0.0005], "obj_l7": {"p": [0.0, 0.0, 0.0], "R": np.eye(3).tolist()},
+                "phi": [0.2, 0.0, 0.0, 0.006], "info": np.diag([0.0, 0.0, info_cy, 0.0]).tolist(), "window_s": 1.0, "n": 100,
+                "phases": ["hold", "lift"]}
+
+    env, b = _SceneEnv(), _lever_belief(1000)
+    env.nominal_mass = lambda o: 0.2
+    env._attempt_joint = lambda log, trace: (None, {})
+    env._joint_fit = lambda log, steps, params: (fit(0.0) if max(log.step) == 8 else fit(1.0 / 0.002 ** 2), {})
+
+    def execute(*a, **k):
+        env._attempt_joint(_Log(_trace()), _trace())
+        return SimpleNamespace(label="placed_stable", loss_phase=None, artifact=False)
+
+    env.execute = execute
+
+    def first(prims, destination, care, store):
+        store["pick_place"] = {"x": {"menu": {"commit_std": SimpleNamespace(id="commit_std", action=EXECUTED)}, "belief": b}}
+        return {"ended": "attempt", "recommendation": "commit", "best_option": "commit_std", "guard": None, "first_menu": {},
+                "probes": [], "restores": [], "moved": False, "row": {"id": "commit_std"}}
+
+    monkeypatch.setattr(cg, "first_attempt", first)
+    prims, truth = SimpleNamespace(model=_CarryModel()), {"mass": 0.2, "com_frac": 0.5}
+    runs = [cg.case_b(prims, env, "x", "plate", 100.0, 3.0, None, truth, b, np.random.default_rng(0), full=False,
+                      rng_whole_log=np.random.default_rng(k)) for k in (1, 2)]
+    r = runs[0]
+    assert r["reached"] and r["evpi"] == pytest.approx(0.05) and r["choice1"] == "gentle|drop_release"
+    assert r["evpi_whole_log"] == pytest.approx(0.0) and r["choice1_whole_log"] == "standard|drop_release"
+    assert not r["changed_whole_log"] and r["fit_whole_log"]["phi4"] == [0.2, 0.0, 0.0, 0.006]
+    assert set(r["ess_whole_log"]) == {"b1", "b2", "yard"}
+    assert runs[1]["evpi"] == r["evpi"] and runs[1]["costs"] == r["costs"]     # the check's stream leaves the primary alone
+
+
+def test_the_whole_log_check_gets_its_own_H_and_verdict():
+    recs = _recs([None, 0.3, 0.1, None])
+    for r, w in zip(recs, (0.0, 0.0, 0.2, 0.0)):
+        r["evpi_whole_log"] = w
+    c = cg.cell(recs, np.random.default_rng(0), 50)
+    assert c["checks"]["whole_log"]["mean"] == pytest.approx(0.05)
+    assert c["H_whole_log"]["0.05"]["mean"] == pytest.approx(0.15 / 4) and c["H"]["0.05"]["mean"] == pytest.approx(0.3 / 4)
+    s = cg.summarize(recs, n_boot=50, seed=0)
+    assert set(s["verdict_whole_log"]) == {"class"}
+    md = cg.markdown(s)
+    assert "whole-log fit" in md and md.count("|") > 0
