@@ -251,6 +251,31 @@ def test_the_planner_runs_the_lowest_score_and_counts_its_attempts():
     assert e.attempts == (0 if first.startswith("probe_") or first == "decline" else 1)
 
 
+def test_the_belief_state_names_the_count_the_ess_and_the_last_refresh():
+    b = _belief(300, seed=4)
+    assert ladder_e.belief_state(b) == {"n": 300, "ess": round(b.effective_size(), 1), "importance_ess": None,
+                                        "n_ancestors": b.n_ancestors(), "n_observations": 0, "refreshed": None,
+                                        "degenerate": False}
+    flag = "refreshed from 20000 prior draws: importance ESS 55, 40 ancestors"
+    s = ladder_e.belief_state(b._replace(importance_ess=55.04, flags=["x", flag]))
+    assert s["importance_ess"] == 55.0 and s["refreshed"] == flag
+
+
+def test_the_planner_logs_the_belief_it_decided_on():
+    entry, prims, ids = _menu_entry(estimator="plugin", A=10.0)
+    tools = SimpleNamespace(store={"pick_place": {("object", "table_centre", KAPPA, 0): entry}}, prims=prims)
+    schema = __import__("robots.mujoco_lab.e1", fromlist=["tool_schema"]).tool_schema(list(reversed(ids)))
+    e = ladder_e.EPlanner(tools, 2, KAPPA, 10.0, seed=(3,))
+    e([], schema)
+    assert e.log[0]["belief"] == ladder_e.belief_state(entry["belief"])
+
+
+def test_the_episodes_last_belief_is_read_from_the_tools_store():
+    b = _belief(50, seed=1)
+    assert ladder_e.end_belief({"beliefs": {"obj": {"episode": 0, "belief": b}}}) == ladder_e.belief_state(b)
+    assert ladder_e.end_belief({}) is None
+
+
 # ---------------------------------------------------------------- the run
 
 def test_a_pool_that_recycles_after_one_job_runs_each_job_in_a_new_process():
@@ -344,3 +369,98 @@ def test_the_summary_leaves_out_a_case_whose_reset_failed_in_any_run():
     rows[3]["reset_artifact"] = True          # case b: only its H = 1 run's reset did not reach rest
     s = ladder_e.summarize(rows, n_boot=200)["settings"]["k100_A3_abs"]
     assert s["artifact"] == 1 and s["regret"]["1"]["n"] == 1
+
+
+def _run_dir(tmp_path, monkeypatch, manifest=None):
+    """A one-fold crossfit folder (its manifest ``manifest``), the bundle check stubbed, and an e_job stub that keeps each
+    job's particle count."""
+    import json
+
+    from robots.mujoco_lab import e1
+
+    d = tmp_path / "folds"
+    (d / "fold_0").mkdir(parents=True)
+    json.dump(manifest or {}, open(d / "fold_0" / "manifest.json", "w"))
+    json.dump({"obj": 0}, open(d / "folds.json", "w"))
+    monkeypatch.setattr(e1, "check_bundle", lambda *a: None)
+    seen = []
+
+    def job(item):
+        (case, name), cfg = item
+        seen.append(cfg["particles"])
+        return [{"object": case["object"], "idx": case["idx"], "seed": case["seed"], "setting": name, "H": 1,
+                 "particles": cfg["particles"]}]
+
+    monkeypatch.setattr(ladder_e, "e_job", job)
+    return str(d), seen
+
+
+def _config(out):
+    import glob
+    import json
+
+    return [json.load(open(p)) for p in sorted(glob.glob(os.path.join(out, "run_config_*.json")))]
+
+
+CASE = [{"object": "obj", "idx": 0, "seed": 13, "setting": "k100_A3_abs"}]
+
+
+def test_a_run_records_its_particle_count_and_its_source(tmp_path, monkeypatch):
+    """The run config's count and source are the resolver's (e1_expected.resolve_particles, as tools.resolve_particles)."""
+    from robots.mujoco_lab import e1_expected, ladder
+
+    settings = ladder.parse_settings("k100_A3_abs")
+    crossfit, seen = _run_dir(tmp_path, monkeypatch, manifest={"n_particles": 20000})
+    out = str(tmp_path / "manifest_run")
+    ladder_e.run(CASE, settings, crossfit, (1,), 1, out, "cases.json")
+    got = [(c["particles"], c["particles_source"]) for c in _config(out)]
+    assert got == [(20000, "manifest")] == [e1_expected.resolve_particles(None, crossfit)] and seen == [20000]
+    out = str(tmp_path / "override_run")
+    ladder_e.run(CASE, settings, crossfit, (1,), 1, out, "cases.json", particles=5000)
+    got = [(c["particles"], c["particles_source"]) for c in _config(out)]
+    assert got == [(5000, "override")] == [e1_expected.resolve_particles(5000, crossfit)] and seen[-1] == 5000
+
+
+def test_a_resume_at_another_particle_count_is_refused(tmp_path, monkeypatch):
+    import json
+
+    from robots.mujoco_lab import ladder
+    from robots.mujoco_lab.corpus import lab_generator
+    from rpent.skills.pick_place.belief import N_PARTICLES
+
+    settings = ladder.parse_settings("k100_A3_abs")
+    crossfit, seen = _run_dir(tmp_path, monkeypatch)
+    out = tmp_path / "run"
+    out.mkdir()
+    json.dump({"settings": settings, "horizons": [1], "generator": lab_generator()},      # before the option
+              open(out / "run_config_20261104T000000.json", "w"))
+    with pytest.raises(ValueError, match="particle"):
+        ladder_e.run(CASE, settings, crossfit, (1,), 1, str(out), "cases.json", particles=20000)
+    ladder_e.run(CASE, settings, crossfit, (1,), 1, str(out), "cases.json")       # the default, as that run had
+    assert seen == [N_PARTICLES]
+
+
+def test_the_summary_refuses_rows_of_different_particle_counts():
+    T = {1: {"commit_std": 2.0, "decline": 3.0}, 2: {"commit_std": 1.0, "decline": 3.0}, 3: {"commit_std": 1.0, "decline": 3.0}}
+    rows = _case("a", T, oracle="commit_std", default="commit_std") + _case("b", T, oracle="commit_std", default="decline")
+    old = ladder_e.summarize(rows, n_boot=50)                                # rows from before the option
+    assert old["particles"] is None and "not recorded" in ladder_e.markdown(old)
+    for r in rows:
+        r["particles"] = 20000
+    s = ladder_e.summarize(rows, n_boot=50)
+    assert s["particles"] == 20000 and "20000 particles per belief" in ladder_e.markdown(s)
+    rows[0]["particles"] = 2000
+    with pytest.raises(ValueError, match="particle"):
+        ladder_e.summarize(rows, n_boot=50)
+
+
+def test_the_cli_passes_the_particle_count(tmp_path, monkeypatch):
+    import json
+
+    got = []
+    monkeypatch.setattr(ladder_e, "run", lambda *a, **k: got.append(a[8] if len(a) > 8 else k.get("particles")))
+    cases = tmp_path / "cases.json"
+    json.dump([CASE[0]], open(cases, "w"))
+    ladder_e.main(["run", "--cases", str(cases), "--crossfit", "f", "--out", "o", "--particles", "20000"])
+    ladder_e.main(["run", "--cases", str(cases), "--crossfit", "f", "--out", "o"])
+    assert got == [20000, None]

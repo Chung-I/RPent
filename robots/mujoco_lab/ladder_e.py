@@ -66,7 +66,7 @@ from typing import Any, Callable
 
 import numpy as np
 
-from rpent.skills.pick_place.belief import ParticleBelief
+from rpent.skills.pick_place.belief import N_PARTICLES, ParticleBelief
 from rpent.skills.pick_place.costs import COST, TIME_COST_PER_S, care_scale, cost_vector, prediction_matrix
 from rpent.skills.pick_place.features import model_names, particle_matrix
 from rpent.skills.pick_place.menu import EVOI_EPS, EVOI_K, HELDOUT_REST, estimate
@@ -328,6 +328,21 @@ def live_entry(store: dict[str, Any]) -> dict[str, Any]:
     return next(iter(cache.values()))
 
 
+def belief_state(b: Any) -> dict[str, Any]:
+    """A belief's size and health for the rows: its particle count, ESS (effective_size), the last refresh's importance ESS
+    and flag (None before any refresh), its ancestor count, its observations and the degenerate mark."""
+    return {"n": len(b), "ess": round(float(b.effective_size()), 1),
+            "importance_ess": None if b.importance_ess is None else round(float(b.importance_ess), 1),
+            "n_ancestors": int(b.n_ancestors()), "n_observations": len(b.history),
+            "refreshed": next((f for f in reversed(b.flags) if f.startswith("refreshed")), None), "degenerate": bool(b.degenerate)}
+
+
+def end_belief(store: dict[str, Any]) -> dict[str, Any] | None:
+    """belief_state of the episode's last belief in the skill tools' store (after its last update); None without one."""
+    recs = list((store.get("beliefs") or {}).values())
+    return belief_state(recs[-1]["belief"]) if recs else None
+
+
 class EPlanner:
     """e1.planner_loop's model: E at horizon ``H`` on the live menu of ``tools`` (its store and primitives), priced at
     (care, abstain_cost). Each call scores the listed rows at every horizon of ``horizons`` (default 1 to H) and runs
@@ -350,7 +365,7 @@ class EPlanner:
         choices = {H: lowest(t, d["order"]) for H, t in d["tables"].items()}
         choice = choices[self.H]
         self.log.append({"step": len(self.log), "attempts": self.attempts, "h": d["h"], "tables": d["tables"],
-                         "probes": d["probes"], "choices": choices, "seconds": d["seconds"]})
+                         "probes": d["probes"], "choices": choices, "seconds": d["seconds"], "belief": belief_state(entry["belief"])})
         if choice != "decline" and entry["menu"][choice].kind in ATTEMPT_KINDS:
             self.attempts += 1
         return {"tool": "choose", "args": {"option_id": choice, "reason": f"E at H = {self.H}: the lowest score, "
@@ -412,7 +427,8 @@ def e_job(item: tuple[dict[str, Any], dict[str, Any]]) -> list[dict[str, Any]]:
                               "oracle_choice": oracle, "guard_flag": bool((rec.get("guard") or {}).get("flag"))},
                     "ended": rec.get("ended"), "error": rec.get("error"), "probes": rec.get("probes"), "attempts": rec.get("attempts"),
                     "decisions": rec.get("decisions"), "e_log": planner.log, "cost": e1.realized_cost(rec, setting),
-                    "e_seconds": round(sum(x["seconds"][H] for x in planner.log), 3), "seconds": round(time.time() - t0, 2)})
+                    "e_seconds": round(sum(x["seconds"][H] for x in planner.log), 3), "seconds": round(time.time() - t0, 2),
+                    "particles": int(prims.n_particles), "belief_end": end_belief(tools.store)})
     prims.menu_recovery = None
     print(f"{obj} {idx} {name}: " + ", ".join(f"H{r['H']} {r['ended']} {r['e_seconds']:.0f}s/{r['seconds']:.0f}s" for r in out),
           file=sys.stderr, flush=True)
@@ -431,30 +447,35 @@ def _pool(workers: int, max_tasks: int | None = None) -> Any:
 
 
 def run(cases: list[dict[str, Any]], settings: dict[str, dict[str, Any]], crossfit: str, horizons: tuple[int, ...], workers: int,
-        out_dir: str, cases_path: str, max_tasks: int | None = None) -> str:
+        out_dir: str, cases_path: str, max_tasks: int | None = None, particles: int | None = None) -> str:
     """Every (case, setting) job into ``out_dir``/rows.jsonl (resuming: a job with every horizon's row is skipped; a directory
-    of another bundle, generator, setting list or horizon list is an error); returns the path. ``max_tasks``: ``_pool``."""
+    of another bundle, generator, setting list, horizon list or particle count is an error); returns the path.
+    ``max_tasks``: ``_pool``. ``particles``: the count per belief (e1_expected.resolve_particles: this override, else the
+    bundle's, else belief.N_PARTICLES; a run config from before the option counts as N_PARTICLES)."""
+    from robots.mujoco_lab import e1_expected, ladder
     from robots.mujoco_lab.calibrate import code_revision
     from robots.mujoco_lab.corpus import lab_generator
 
     generator = e1.run_generator(out_dir)
     e1.check_bundle(out_dir, crossfit, generator)
+    n_particles, source = e1_expected.resolve_particles(particles, crossfit)
     for held in sorted(p for p in os.listdir(out_dir) if p.startswith("run_config_")) if os.path.isdir(out_dir) else []:
         c = json.load(open(os.path.join(out_dir, held)))
         if c.get("settings") != settings or c.get("horizons") != list(horizons):
             raise ValueError(f"{out_dir} holds a run of other settings or horizons ({held}); give a new directory")
+    ladder.check_particles(out_dir, n_particles)
     os.makedirs(out_dir, exist_ok=True)
     with open(os.path.join(out_dir, f"run_config_{time.strftime('%Y%m%dT%H%M%S')}.json"), "w") as f:
         json.dump({"cases": cases_path, "n_cases": len(cases), "settings": settings, "horizons": list(horizons), "crossfit": crossfit,
-                   "generator": lab_generator(), "workers": workers, "max_tasks_per_worker": max_tasks, "code": code_revision()},
-                  f, indent=1)
+                   "generator": lab_generator(), "workers": workers, "max_tasks_per_worker": max_tasks, "particles": n_particles,
+                   "particles_source": source, "code": code_revision()}, f, indent=1)
     path = os.path.join(out_dir, "rows.jsonl")
     done: Counter = Counter()
     if os.path.exists(path):
         with open(path) as f:
             done = Counter(_key(json.loads(line)) for line in f if line.strip())
     cfg = {"crossfit": crossfit, "folds": json.load(open(os.path.join(crossfit, "folds.json"))), "settings": settings,
-           "horizons": list(horizons)}
+           "horizons": list(horizons), "particles": n_particles}
     todo = [((c, n), cfg) for c in cases for n in ([c["setting"]] if c.get("setting") else list(settings))
             if done[(c["object"], c["idx"], c["seed"], n)] < len(horizons)]
     print(f"ladder E: {len(todo)} (case, setting) jobs to run, horizons {list(horizons)}", file=sys.stderr, flush=True)
@@ -493,11 +514,14 @@ def summarize(rows: list[dict[str, Any]], n_boot: int = 2000) -> dict[str, Any]:
     """Per setting: E at H = 1 against the oracle rule's first choice; the default rule's (and the oracle rule's) first-decision
     regret on each horizon's table; how often a horizon above 1 changes E's choice; the policies scored below E on E's
     own table; the cases whose lowest score rises with H; the first tables' agreement across the runs; the wall times."""
+    counts = {r.get("particles") for r in rows}
+    if len(counts) > 1:
+        raise ValueError(f"rows of different particle counts per belief: {sorted(counts, key=str)}")
     groups: dict[tuple, dict[int, dict[str, Any]]] = {}
     for r in rows:
         groups.setdefault(_key(r), {})[int(r["H"])] = r
     Hs = sorted({int(r["H"]) for r in rows})
-    out: dict[str, Any] = {"horizons": Hs, "settings": {}}
+    out: dict[str, Any] = {"horizons": Hs, "particles": next(iter(counts), None), "settings": {}}
     acc: dict[str, dict[str, Any]] = {}
     for key in sorted(groups):
         runs = groups[key]
@@ -600,6 +624,8 @@ def markdown(summ: dict[str, Any], title: str = "E: the receding-horizon referen
          "this gap at 80 % power). A case whose reset did not reach rest in any of its runs is left out of the regrets, the "
          "horizon changes and the two lists in Checks; the H = 1 comparison, the table agreement and the wall times count "
          "every case.", "",
+         (f"{summ['particles']} particles per belief." if summ.get("particles") is not None
+          else f"Particles per belief: not recorded (rows from before the option: belief.N_PARTICLES, {N_PARTICLES})."), "",
          "## E at H = 1 against the oracle rule (first decision)", "",
          "| setting | compared | match | mismatch by reason |", "|---|---|---|---|"]
     for name, s in summ["settings"].items():
@@ -661,6 +687,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--horizons", default="1,2,3")
     p.add_argument("--workers", type=int, default=8)
     p.add_argument("--max-tasks-per-worker", type=int, default=None, help="replace a worker after this many jobs (memory)")
+    p.add_argument("--particles", type=int, default=None, help="particles per belief (default: the bundle's, else 2000)")
     p.add_argument("--out", required=True)
     p = sub.add_parser("summary", help="the report")
     p.add_argument("--dir", required=True)
@@ -672,7 +699,7 @@ def main(argv: list[str] | None = None) -> int:
         if not horizons or min(horizons) < 1 or 1 not in horizons:
             ap.error("horizons: positive integers, 1 among them")
         print(run(ladder.load_cases(a.cases), ladder.parse_settings(a.settings), a.crossfit, horizons, a.workers, a.out, a.cases,
-                  a.max_tasks_per_worker))
+                  a.max_tasks_per_worker, a.particles))
         return 0
     with open(os.path.join(a.dir, "rows.jsonl")) as f:
         rows = [json.loads(line) for line in f if line.strip()]

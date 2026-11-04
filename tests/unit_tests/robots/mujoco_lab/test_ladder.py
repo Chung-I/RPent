@@ -353,3 +353,138 @@ def test_ops_markdown_gives_both_gpu_hour_estimates():
     md = ladder.ops_markdown(ladder.ops(rows), [{"started": 0.0, "ended": 600.0, "jobs": 8, "runs": 8, "workers": 4}], 6.0, "T")
     assert "about 35.6 GPU-hours" in md          # wall: 1.25 min per rung run x 1704 runs, plus the 6 min start
     assert "about 14.3 GPU-hours" in md          # per run: 2 min x 1704 runs / 4 workers, plus the 6 min start
+
+
+# ---------------------------------------------------------------- the particle count per belief
+def _folds(tmp_path, monkeypatch, manifest=None):
+    """A one-fold crossfit folder (its manifest ``manifest``), the bundle check stubbed."""
+    d = tmp_path / "folds"
+    (d / "fold_0").mkdir(parents=True)
+    json.dump(manifest or {}, open(d / "fold_0" / "manifest.json", "w"))
+    json.dump({"obj": 0}, open(d / "folds.json", "w"))
+    monkeypatch.setattr(e1, "check_bundle", lambda *a: None)
+    return str(d)
+
+
+def _configs(out):
+    import glob
+    import os
+
+    return [json.load(open(p)) for p in sorted(glob.glob(os.path.join(out, "run_config_*.json")))]
+
+
+def _counting(monkeypatch, name):
+    """Replace ladder.<name> (first_job or pilot_job) by a stub that keeps each job's particle count."""
+    seen = []
+
+    def job(item):
+        case, cfg = item
+        seen.append(cfg["particles"])
+        return [dict(case, setting=case.get("setting") or next(iter(cfg["settings"])), rung=(cfg.get("rungs") or ["A"])[0])]
+
+    monkeypatch.setattr(ladder, name, job)
+    return seen
+
+
+CASE = {"object": "obj", "idx": 0, "seed": 13, "setting": "k100_A3_abs"}
+
+
+def test_the_inputs_record_their_particle_count_and_refuse_another_on_resume(tmp_path, monkeypatch):
+    seen = _counting(monkeypatch, "first_job")
+    settings = ladder.parse_settings("k100_A3_abs")
+    crossfit = _folds(tmp_path, monkeypatch, manifest={"n_particles": 20000})
+    out = str(tmp_path / "inputs")
+    ladder.run_inputs([CASE], settings, crossfit, 1, out, "cases.json")
+    c = _configs(out)[-1]
+    assert seen == [20000] and (c["particles"], c["particles_source"]) == (20000, "manifest")
+    with pytest.raises(ValueError, match="particle"):
+        ladder.run_inputs([CASE], settings, crossfit, 1, out, "cases.json", particles=5000)
+    override = str(tmp_path / "override")
+    ladder.run_inputs([CASE], settings, crossfit, 1, override, "cases.json", particles=5000)
+    c = _configs(override)[-1]
+    assert seen == [20000, 5000] and (c["particles"], c["particles_source"]) == (5000, "override")
+
+
+def test_an_inputs_run_from_before_the_option_resumes_only_at_the_default(tmp_path, monkeypatch):
+    from robots.mujoco_lab.corpus import lab_generator
+    from rpent.skills.pick_place.belief import N_PARTICLES
+
+    seen = _counting(monkeypatch, "first_job")
+    settings = ladder.parse_settings("k100_A3_abs")
+    crossfit = _folds(tmp_path, monkeypatch)
+    out = tmp_path / "inputs"
+    out.mkdir()
+    json.dump({"settings": settings, "generator": lab_generator()}, open(out / "run_config_20261104T000000.json", "w"))
+    with pytest.raises(ValueError, match="particle"):
+        ladder.run_inputs([CASE], settings, crossfit, 1, str(out), "cases.json", particles=20000)
+    ladder.run_inputs([CASE], settings, crossfit, 1, str(out), "cases.json")
+    assert seen == [N_PARTICLES] and _configs(str(out))[-1]["particles_source"] == "default"
+
+
+def _pilot_files(tmp_path):
+    cases, tpl = tmp_path / "cases.json", tmp_path / "templates.json"
+    json.dump([CASE], open(cases, "w"))
+    json.dump({"system": "s", "rungs": {r: "" for r in ladder.RUNGS}, "task": "t", "settings": {}}, open(tpl, "w"))
+    return str(cases), str(tpl)
+
+
+def test_the_pilot_records_its_particle_count_and_refuses_another_on_resume(tmp_path, monkeypatch):
+    from rpent.skills.pick_place.belief import N_PARTICLES
+
+    seen = _counting(monkeypatch, "pilot_job")
+    cases, tpl = _pilot_files(tmp_path)
+    crossfit = _folds(tmp_path, monkeypatch)
+    out = str(tmp_path / "pilot")
+    ladder.run_pilot(cases, ["A"], tpl, crossfit, None, "m", True, 1, out)
+    c = _configs(out)[-1]
+    assert seen == [N_PARTICLES] and (c["particles"], c["particles_source"]) == (N_PARTICLES, "default")
+    with pytest.raises(ValueError, match="particle"):
+        ladder.run_pilot(cases, ["B"], tpl, crossfit, None, "m", True, 1, out, particles=20000)
+    ladder.run_pilot(cases, ["B"], tpl, crossfit, None, "m", True, 1, str(tmp_path / "override"), particles=20000)
+    assert seen == [N_PARTICLES, 20000] and _configs(str(tmp_path / "override"))[-1]["particles_source"] == "override"
+
+
+def _one_lab(monkeypatch, n):
+    """The skill's lab stubbed: a bundle whose beliefs hold ``n`` particles, a reset at rest and tools without a menu."""
+    from types import SimpleNamespace
+
+    from robots.mujoco_lab import e1_expected
+
+    monkeypatch.setattr(e1_expected, "_prims", lambda cfg, obj: SimpleNamespace(n_particles=n))
+    monkeypatch.setattr(e1, "reset_case", lambda *a: ("table_edge", {"at_rest": True}, {}))
+
+    class Tools:
+        store: dict = {}
+
+        def __init__(self, *a):
+            pass
+
+        def assess(self):
+            return {"error": "stub"}
+
+    monkeypatch.setattr(e1, "LabTools", Tools)
+
+
+def test_a_first_decision_row_records_its_workers_particle_count(monkeypatch):
+    _one_lab(monkeypatch, 20000)
+    rows = ladder.first_job((CASE, {"settings": ladder.parse_settings("k100_A3_abs")}))
+    assert [r["particles"] for r in rows] == [20000]
+
+
+def test_a_pilot_row_records_its_workers_particle_count(monkeypatch):
+    _one_lab(monkeypatch, 20000)
+    monkeypatch.setattr(ladder, "_pilot_model", lambda cfg: None)
+    monkeypatch.setattr(ladder, "ladder_loop", lambda *a, **k: {"rung": "A", "ended": "abstained", "probes": [], "attempts": []})
+    cfg = {"settings": ladder.parse_settings("k100_A3_abs"), "rungs": ["A"], "templates": {}, "max_calls": 6}
+    assert [r["particles"] for r in ladder.pilot_job((CASE, cfg))] == [20000]
+
+
+def test_the_cli_passes_the_particle_count(tmp_path, monkeypatch):
+    got = []
+    monkeypatch.setattr(ladder, "run_inputs", lambda *a, **k: got.append(("inputs", a[6] if len(a) > 6 else k.get("particles"))))
+    monkeypatch.setattr(ladder, "run_pilot", lambda *a, **k: got.append(("run", k.get("particles"))))
+    cases, tpl = _pilot_files(tmp_path)
+    ladder.main(["inputs", "--cases", cases, "--crossfit", "f", "--out", "o", "--particles", "20000"])
+    ladder.main(["run", "--cases", cases, "--templates", tpl, "--crossfit", "f", "--stub", "--out", "o", "--particles", "20000"])
+    ladder.main(["inputs", "--cases", cases, "--crossfit", "f", "--out", "o"])
+    assert got == [("inputs", 20000), ("run", 20000), ("inputs", None)]

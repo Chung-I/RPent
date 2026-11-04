@@ -378,3 +378,86 @@ def test_the_rescore_summary_records_the_generator_and_the_bundle(tmp_path, monk
     summ = json.load(open(d / "summary.json"))
     assert summ["generator"] == "v11" and summ["bundle"] == ex.e1.bundle_path(str(tmp_path / "folds"))
     assert seen["generator"] == "v11" and seen["bundle"] == summ["bundle"]
+
+
+# ---------------------------------------------------------------- the particle count
+
+@pytest.fixture
+def prior_default():
+    """The skill tools, with the prior belief's default count restored after the test (ex.use_particles sets it for the
+    whole process)."""
+    from rpent.skills.pick_place import tools
+
+    held = tools._prior_belief.__defaults__
+    yield tools
+    tools._prior_belief.__defaults__ = held
+
+
+def _folds(d, counts):
+    """A crossfit folder whose fold k's manifest names n_particles counts[k] (None: no field)."""
+    import json
+
+    for k, n in enumerate(counts):
+        (d / f"fold_{k}").mkdir(parents=True)
+        json.dump({} if n is None else {"n_particles": n}, open(d / f"fold_{k}" / "manifest.json", "w"))
+    json.dump({f"obj{k}": k for k in range(len(counts))}, open(d / "folds.json", "w"))
+    return str(d)
+
+
+def test_the_particle_count_is_the_override_else_the_bundles_else_the_skills_default(tmp_path):
+    from rpent.skills.pick_place.belief import N_PARTICLES
+
+    plain = _folds(tmp_path / "a", [None, None])
+    assert ex.resolve_particles(None, plain) == (N_PARTICLES, "default")
+    assert ex.resolve_particles(20000, plain) == (20000, "override")
+    named = _folds(tmp_path / "b", [20000, 20000])
+    assert ex.resolve_particles(None, named) == (20000, "manifest")
+    assert ex.resolve_particles(5000, named) == (5000, "override")
+
+
+def test_the_particle_count_refuses_folds_that_disagree_and_a_count_that_is_not_a_positive_integer(tmp_path):
+    """As tools.resolve_particles on arm-port (a44da29): the same order, source labels and errors."""
+    with pytest.raises(ValueError, match="disagree"):
+        ex.resolve_particles(None, _folds(tmp_path / "a", [20000, 2000]))
+    with pytest.raises(ValueError, match="disagree"):
+        ex.resolve_particles(None, _folds(tmp_path / "b", [20000, None]))
+    plain = _folds(tmp_path / "c", [None])
+    for bad in (0, -5, 2.5, True, "20000"):
+        with pytest.raises(ValueError, match="the override's n_particles must be a positive integer"):
+            ex.resolve_particles(bad, plain)
+    assert ex.resolve_particles(20000.0, plain) == (20000, "override")
+    for i, bad in enumerate((0, 2.5, "x")):
+        with pytest.raises(ValueError, match="the manifest's n_particles must be a positive integer"):
+            ex.resolve_particles(None, _folds(tmp_path / f"m{i}", [bad]))
+    with pytest.raises(ValueError, match="positive integer"):
+        ex.use_particles(0)
+
+
+def test_the_bundle_loader_sets_the_prior_beliefs_count_from_the_run_else_the_bundle(monkeypatch, prior_default):
+    from types import SimpleNamespace
+
+    from robots.mujoco_lab import calibrate
+    from rpent.skills.pick_place.belief import N_PARTICLES
+
+    tools, manifest = prior_default, {}
+    monkeypatch.setattr(calibrate, "_primitives", lambda d, *a: SimpleNamespace(manifest=manifest))
+    monkeypatch.setattr(calibrate, "job_force_noise", lambda override, m: 0.05)
+    cfg = {"crossfit": "folds", "folds": {"obj": 0}}
+    assert ex._prims(dict(cfg, particles=20000), "obj").n_particles == 20000
+    assert tools._prior_belief.__defaults__[0] == 20000
+    manifest["n_particles"] = 7000
+    assert ex._prims(cfg, "obj").n_particles == 7000 and tools._prior_belief.__defaults__[0] == 7000
+    manifest.clear()                     # a later job without a count does not keep the earlier job's
+    assert ex._prims(cfg, "obj").n_particles == N_PARTICLES and tools._prior_belief.__defaults__[0] == N_PARTICLES
+
+
+def test_a_new_belief_takes_the_count_and_a_refresh_keeps_its_own_draw_sizes(prior_default):
+    from types import SimpleNamespace
+
+    tools, seen = prior_default, []
+    prims = SimpleNamespace(prior=lambda pose, n, rng, **kw: seen.append(n), rng=np.random.default_rng(0))
+    env = SimpleNamespace(pose_info=lambda: {})
+    ex.use_particles(20000)
+    tools._prior_belief({}, env, prims)                    # a new episode's belief
+    tools._prior_belief({}, env, prims, 100000, None)      # a refresh's draw (update_belief passes its size)
+    assert seen == [20000, 100000]

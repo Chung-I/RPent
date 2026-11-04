@@ -61,6 +61,7 @@ from typing import Any
 import numpy as np
 
 from robots.mujoco_lab import e1, e1_expected, e1_gap
+from rpent.skills.pick_place.belief import N_PARTICLES
 from rpent.skills.pick_place.features import DAMAGE_PARTICLE_KEYS
 from rpent.skills.pick_place.protocol import IRREVERSIBLE, RECOVERABLE
 
@@ -344,7 +345,7 @@ def first_job(item: tuple[dict[str, Any], dict[str, Any]]) -> list[dict[str, Any
         artifact = calibrate.case_artifact({"probes": [], "attempts": []}, reset_info)
         out.append({"object": case["object"], "idx": int(case["idx"]), "seed": int(case["seed"]), "setting": name,
                     "destination": destination, "truth": truth, "reset": reset_info, "reset_artifact": bool(artifact),
-                    **rec, "seconds": round(time.time() - t0, 2)})
+                    **rec, "particles": int(prims.n_particles), "seconds": round(time.time() - t0, 2)})
     prims.menu_recovery = None
     print(f"{case['object']} {case['idx']}: {len(out)} first decisions, {sum(r['seconds'] for r in out):.0f}s", file=sys.stderr,
           flush=True)
@@ -355,29 +356,45 @@ def _key(r: dict[str, Any]) -> tuple[str, int, int, str]:
     return r["object"], int(r["idx"]), int(r["seed"]), r["setting"]
 
 
+def check_particles(out_dir: str, n_particles: int) -> None:
+    """A ValueError when ``out_dir`` holds a run at another particle count per belief (a run config from before the
+    option counts as belief.N_PARTICLES), so a resumed run never mixes counts."""
+    for held in sorted(p for p in os.listdir(out_dir) if p.startswith("run_config_")) if os.path.isdir(out_dir) else []:
+        n = int(json.load(open(os.path.join(out_dir, held))).get("particles", N_PARTICLES))
+        if n != n_particles:
+            raise ValueError(f"{out_dir} holds a run at {n} particles per belief ({held}), not {n_particles}; give a new "
+                             "directory")
+
+
 def run_inputs(cases: list[dict[str, Any]], settings: dict[str, dict[str, Any]], crossfit: str, workers: int, out_dir: str,
-               cases_path: str) -> str:
+               cases_path: str, particles: int | None = None) -> str:
     """Every case's first decisions into ``out_dir``/inputs.jsonl (resuming: a (case, setting) with a record is skipped;
-    a directory of another bundle, generator or setting list is an error); returns the path."""
+    a directory of another bundle, generator, setting list or particle count is an error); returns the path.
+    ``particles``: the count per belief (e1_expected.resolve_particles: this override, else the bundle's, else
+    belief.N_PARTICLES), the same rule as ladder_e.run, so B to D and E read one count."""
     from robots.mujoco_lab.calibrate import code_revision
     from robots.mujoco_lab.corpus import lab_generator
 
     generator = e1.run_generator(out_dir)
     e1.check_bundle(out_dir, crossfit, generator)
+    n_particles, source = e1_expected.resolve_particles(particles, crossfit)
     for held in sorted(p for p in os.listdir(out_dir) if p.startswith("run_config_")) if os.path.isdir(out_dir) else []:
         c = json.load(open(os.path.join(out_dir, held)))
         if c.get("settings") != settings:
             raise ValueError(f"{out_dir} holds a run of other settings ({held}); give a new directory")
+    check_particles(out_dir, n_particles)
     os.makedirs(out_dir, exist_ok=True)
     with open(os.path.join(out_dir, f"run_config_{time.strftime('%Y%m%dT%H%M%S')}.json"), "w") as f:
         json.dump({"cases": cases_path, "n_cases": len(cases), "settings": settings, "crossfit": crossfit,
-                   "generator": lab_generator(), "workers": workers, "code": code_revision()}, f, indent=1)
+                   "generator": lab_generator(), "workers": workers, "particles": n_particles, "particles_source": source,
+                   "code": code_revision()}, f, indent=1)
     path = os.path.join(out_dir, "inputs.jsonl")
     done = set()
     if os.path.exists(path):
         with open(path) as f:
             done = {_key(json.loads(line)) for line in f if line.strip()}
-    cfg = {"crossfit": crossfit, "folds": json.load(open(os.path.join(crossfit, "folds.json"))), "settings": settings}
+    cfg = {"crossfit": crossfit, "folds": json.load(open(os.path.join(crossfit, "folds.json"))), "settings": settings,
+           "particles": n_particles}
     todo = []
     for c in cases:
         names = [c["setting"]] if c.get("setting") else list(settings)
@@ -641,7 +658,8 @@ def pilot_job(item: tuple[dict[str, Any], dict[str, Any]]) -> list[dict[str, Any
             rec = {"rung": rung, "ended": "error", "error": f"{type(exc).__name__}: {exc}"[:300], "probes": [], "attempts": [],
                    "calls": [], "decisions": [], "malformed": 0, "no_tool_call": 0, "refusals": 0, "failed_calls": 0}
         rec["artifact"] = calibrate.case_artifact(rec, reset_info)
-        out.append(dict(case, destination=destination, truth=truth, reset=reset_info, **rec, seconds=round(time.time() - t0, 2)))
+        out.append(dict(case, destination=destination, truth=truth, reset=reset_info, **rec, particles=int(prims.n_particles),
+                        seconds=round(time.time() - t0, 2)))
         print(f"{case['object']} {case['idx']} {case['setting']} rung {rung}: {len(rec.get('calls') or [])} calls, "
               f"{out[-1]['seconds']:.0f} s", file=sys.stderr, flush=True)
     prims.menu_recovery = None
@@ -650,10 +668,11 @@ def pilot_job(item: tuple[dict[str, Any], dict[str, Any]]) -> list[dict[str, Any
 
 def run_pilot(cases_path: str, rungs: list[str], templates_path: str, crossfit: str, base_url: str | None, model: str,
               stub: bool, workers: int, out_dir: str, max_calls: int = e1.MAX_CALLS, max_tokens: int = 6144,
-              sampling: dict[str, Any] | None = None) -> str:
+              sampling: dict[str, Any] | None = None, particles: int | None = None) -> str:
     """Every smoke case at every rung (resuming: a (case, rung) in rows.jsonl is skipped; a directory of another
-    bundle, generator, templates file, model or sampling is an error); each run segment's start and end in
-    run_times.jsonl. ``sampling``: temperature (default 0, as e1), top_p and top_k (sent only when given)."""
+    bundle, generator, templates file, model, sampling or particle count is an error); each run segment's start and end
+    in run_times.jsonl. ``sampling``: temperature (default 0, as e1), top_p and top_k (sent only when given).
+    ``particles``: as run_inputs."""
     sampling = {"temperature": 0.0, "top_p": None, "top_k": None, **(sampling or {})}
     from robots.mujoco_lab.calibrate import code_revision
     from robots.mujoco_lab.corpus import lab_generator
@@ -665,12 +684,14 @@ def run_pilot(cases_path: str, rungs: list[str], templates_path: str, crossfit: 
     sha = hashlib.sha256(open(templates_path, "rb").read()).hexdigest()
     generator = e1.run_generator(out_dir)
     e1.check_bundle(out_dir, crossfit, generator)
+    n_particles, source = e1_expected.resolve_particles(particles, crossfit)
     if os.path.isdir(out_dir):
         for held in sorted(p for p in os.listdir(out_dir) if p.startswith("run_config_")):
             c = json.load(open(os.path.join(out_dir, held)))
             held_sampling = {k: (c.get("planner") or {}).get(k) for k in sampling}
             if (c.get("templates_sha256"), c.get("model"), c.get("stub"), held_sampling) != (sha, model, stub, sampling):
                 raise ValueError(f"{out_dir} holds a run of other templates, another model, stub mode or sampling ({held})")
+    check_particles(out_dir, n_particles)
     os.makedirs(out_dir, exist_ok=True)
     settings = {c["setting"]: e1_gap.grid()[c["setting"]] for c in cases}
     with open(os.path.join(out_dir, f"run_config_{time.strftime('%Y%m%dT%H%M%S')}.json"), "w") as f:
@@ -678,7 +699,8 @@ def run_pilot(cases_path: str, rungs: list[str], templates_path: str, crossfit: 
                    "templates_sha256": sha, "templates_version": tpl.get("version"), "crossfit": crossfit, "generator": lab_generator(),
                    "base_url": base_url, "model": model, "stub": stub, "workers": workers, "max_calls": max_calls,
                    "max_attempts": e1.MAX_ATTEMPTS, "planner": {**sampling, "max_tokens": max_tokens, "thinking": True},
-                   "settings": settings, "code": code_revision()}, f, indent=1)
+                   "settings": settings, "particles": n_particles, "particles_source": source, "code": code_revision()}, f,
+                  indent=1)
     path = os.path.join(out_dir, "rows.jsonl")
     done = set()
     if os.path.exists(path):
@@ -686,7 +708,7 @@ def run_pilot(cases_path: str, rungs: list[str], templates_path: str, crossfit: 
             done = {(r["object"], r["idx"], r["seed"], r["setting"], r["rung"]) for r in map(json.loads, filter(str.strip, f))}
     cfg = {"crossfit": crossfit, "folds": json.load(open(os.path.join(crossfit, "folds.json"))), "settings": settings,
            "templates": tpl, "base_url": base_url, "model": model, "stub": stub, "max_calls": max_calls, "max_tokens": max_tokens,
-           **sampling}
+           "particles": n_particles, **sampling}
     todo = [(c, dict(cfg, rungs=[r])) for c in cases for r in rungs      # one job per (case, rung): an even load
             if (c["object"], c["idx"], c["seed"], c["setting"], r) not in done]
     print(f"ladder pilot: {len(todo)} of {len(cases) * len(rungs)} rung runs to do, rungs {rungs}", file=sys.stderr, flush=True)
@@ -789,6 +811,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--settings", default=",".join(SETTINGS))
     p.add_argument("--crossfit", required=True)
     p.add_argument("--workers", type=int, default=8)
+    p.add_argument("--particles", type=int, default=None, help="particles per belief (default: the bundle's, else 2000)")
     p.add_argument("--out", required=True)
     p = sub.add_parser("smoke-cases", help="the pilot's smoke cases, written before any model call")
     p.add_argument("--never", required=True, help="an H3 never run (its cohort)")
@@ -816,6 +839,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--temperature", type=float, default=0.0)
     p.add_argument("--top-p", type=float, default=None)
     p.add_argument("--top-k", type=int, default=None)
+    p.add_argument("--particles", type=int, default=None, help="particles per belief (default: the bundle's, else 2000)")
     p.add_argument("--out", required=True)
     p = sub.add_parser("ops", help="the pilot's operational numbers (no choice, outcome or cost)")
     p.add_argument("--dir", required=True)
@@ -830,7 +854,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--seed", type=int, default=0, help="the row order's rng seed")
     a = ap.parse_args(argv)
     if a.cmd == "inputs":
-        path = run_inputs(load_cases(a.cases), parse_settings(a.settings), a.crossfit, a.workers, a.out, a.cases)
+        path = run_inputs(load_cases(a.cases), parse_settings(a.settings), a.crossfit, a.workers, a.out, a.cases, a.particles)
         print(path)
         return 0
     if a.cmd == "smoke-cases":
@@ -855,7 +879,7 @@ def main(argv: list[str] | None = None) -> int:
         if any(r not in RUNGS for r in rungs):
             ap.error(f"rungs must be among {RUNGS}")
         print(run_pilot(a.cases, rungs, a.templates, a.crossfit, a.base_url, a.model, a.stub, a.workers, a.out, a.max_calls,
-                        a.max_tokens, {"temperature": a.temperature, "top_p": a.top_p, "top_k": a.top_k}))
+                        a.max_tokens, {"temperature": a.temperature, "top_p": a.top_p, "top_k": a.top_k}, particles=a.particles))
         return 0
     if a.cmd == "ops":
         with open(os.path.join(a.dir, "rows.jsonl")) as f:

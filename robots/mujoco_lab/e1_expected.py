@@ -297,13 +297,57 @@ def score_run(row: dict[str, Any], arm: str, setting: str, first_true: dict[str,
 
 # ---------------------------------------------------------------- the jobs on the lab
 
+def _count(value: Any, what: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not float(value).is_integer() or value < 1:
+        raise ValueError(f"{what} n_particles must be a positive integer, not {value!r}")
+    return int(value)
+
+
+def particles_of(manifest: dict[str, Any] | None, override: int | None = None) -> tuple[int, str]:
+    """The particle count per belief and its source, the one reader of a manifest's n_particles on this branch: the
+    override ("override"), else the manifest's n_particles ("manifest"), else belief.N_PARTICLES ("default"). The same
+    order, source labels and errors as tools.resolve_particles on arm-port (a44da29), which replaces it when the branches
+    merge. A count that is not a positive integer raises ValueError."""
+    from rpent.skills.pick_place.belief import N_PARTICLES
+
+    if override is not None:
+        return _count(override, "the override's"), "override"
+    if (manifest or {}).get("n_particles") is not None:
+        return _count(manifest["n_particles"], "the manifest's"), "manifest"
+    return int(N_PARTICLES), "default"
+
+
+def use_particles(n: int) -> None:
+    """This process's particle count for a new episode's belief: the default of the skill's tools._prior_belief, which
+    reads belief.N_PARTICLES (every job sets it through _prims). A refresh passes its own draw sizes and keeps the
+    belief's count. A count that is not a positive integer raises ValueError."""
+    from rpent.skills.pick_place import tools
+
+    tools._prior_belief.__defaults__ = (_count(n, "the belief's"), None)
+
+
+def resolve_particles(override: int | None, crossfit: str) -> tuple[int, str]:
+    """A run's particle count per belief and its source: particles_of over the manifests of the folds that
+    ``crossfit``'s folds.json names. A ValueError when the folds disagree (a fold without the field among them)."""
+    folds = sorted(set(json.load(open(os.path.join(crossfit, "folds.json"))).values()))
+    got = {particles_of(json.load(open(os.path.join(crossfit, f"fold_{k}", "manifest.json"))), override) for k in folds}
+    if len(got) > 1:
+        raise ValueError(f"{crossfit}: the folds' n_particles disagree ({sorted(got)})")
+    return next(iter(got)) if got else particles_of(None, override)
+
+
 def _prims(cfg: dict[str, Any], obj: str) -> Any:
+    """The fold bundle of ``obj`` set up for a job. Its particle count per new belief (``n_particles``, applied by
+    use_particles) is particles_of(the fold manifest, cfg["particles"]): the run's count (resolve_particles), else the
+    fold manifest's, else belief.N_PARTICLES, so a job never keeps an earlier job's count."""
     from robots.mujoco_lab import calibrate
 
     prims = calibrate._primitives(os.path.join(cfg["crossfit"], f"fold_{cfg['folds'][obj]}"), None, None)
     prims.force_noise = calibrate.job_force_noise(None, prims.manifest)
     prims.probe_time_scale = 1.0
     prims.truth_spread = prims.prior_spread = 1.0
+    prims.n_particles = particles_of(prims.manifest, cfg.get("particles"))[0]
+    use_particles(prims.n_particles)
     return prims
 
 
