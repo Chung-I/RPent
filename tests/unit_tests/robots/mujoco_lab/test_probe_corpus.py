@@ -130,3 +130,24 @@ def test_probe_rows_set_the_slosh_scale_of_their_thresholds():
     with pytest.raises(Stop):
         probe_rows(env, "ycb__mug", 0, 7, classes=load_classes(), thresholds=th)
     assert env.slosh_zeta == 0.02 and env.slosh_scale == {"carry": {"0.6": 0.5}}
+
+
+def test_probe_corpus_writes_one_sidecar_file_per_object(tmp_path):
+    """Arm port: as the corpus, the probe corpus writes each object's 50 Hz arm fields to sidecar_dir(out)/<object>.npz
+    before its rows, and a resume adds the new draws to that file (the hand sim has no arm fields: no file)."""
+    from robots.mujoco_lab.corpus import load_sidecar, sidecar_dir, sidecar_path
+    from robots.mujoco_lab.probe_corpus import main
+
+    from .conftest import arm_sim
+
+    out = tmp_path / "probe_corpus_v12.jsonl"
+    main(["--out", str(out), "--draws", "1", "--workers", "1", "--objects", "ycb__brick", "--seed", "7"])
+    main(["--out", str(out), "--draws", "2", "--workers", "1", "--objects", "ycb__brick", "--seed", "7", "--resume"])
+    assert not os.path.exists(sidecar_path(str(out)))
+    keys = [json.loads(line)["key"] for line in open(out)]
+    if not arm_sim():
+        assert not os.path.exists(os.path.join(sidecar_dir(str(out)), "ycb__brick.npz"))
+        return
+    side = load_sidecar(sidecar_dir(str(out)))
+    assert os.listdir(sidecar_dir(str(out))) == ["ycb__brick.npz"]
+    assert {k.split("|")[1] for k in side} <= set(keys) and {k.split("|")[1] for k in side} & {k for k in keys if k.endswith("d1__Bweigh")}

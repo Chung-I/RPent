@@ -101,7 +101,7 @@ from rpent.skills.pick_place.evaluate import (_ece, coverage_design, ece_ci, ece
 from rpent.skills.pick_place.features import extract
 from rpent.skills.pick_place.probes import DAMAGED, PROBE_KINDS, PROBE_SECONDS
 from rpent.skills.pick_place.protocol import DAMAGE, IRREVERSIBLE, MOTION_OUTCOMES, OUTCOMES, RECOVERABLE, Prediction
-from rpent.skills.pick_place.tools import MAX_PROBES, PROBE_OPTIONS, _threshold, assess_pick, pick_and_place, sham_probe
+from rpent.skills.pick_place.tools import MAX_PROBES, PROBE_OPTIONS, _particles, _threshold, assess_pick, pick_and_place, sham_probe
 
 PROTOCOLS = ("commit", "probe_first", "repair", "random_row", "probe_all", "policy", "policy_no_probe", "policy_probe_one",
              "probe_once", "sham_once")
@@ -461,6 +461,7 @@ def run_case(prims: Any, object_id: str, idx: int, seed: int, protocol: str = "c
            "evoi": getattr(prims, "evoi", "plugin"), "probe_time_scale": getattr(prims, "probe_time_scale", 1.0),
            "reset_s": getattr(prims, "reset_s", None), "reset_price": getattr(prims, "reset_price", "time"),
            "truth_spread": getattr(prims, "truth_spread", 1.0), "prior_spread": getattr(prims, "prior_spread", 1.0),
+           "n_particles": _particles(prims),
            "truth": {k: truth[k] for k in ("mass", "mu", "com_s")}, "reset": reset_info, **case}
     first = case["attempts"][0] if case["attempts"] else None
     row.update(executed=first is not None, option=first and first["option"], outcome=first and first["outcome"],
@@ -521,6 +522,11 @@ def run_generator(rows: list[dict[str, Any]]) -> str | list[str] | None:
 def run_probe_time_scale(rows: list[dict[str, Any]]) -> float | list[float] | None:
     """The probe time scale a run's cases were charged with."""
     return _run_value(rows, "probe_time_scale", float)
+
+
+def run_n_particles(rows: list[dict[str, Any]]) -> int | list[int] | None:
+    """The belief particle count a run's cases ran with (tools.resolve_particles, resolved once per process)."""
+    return _run_value(rows, "n_particles", int)
 
 
 def run_reset_s(rows: list[dict[str, Any]]) -> float | list[float] | None:
@@ -1154,7 +1160,7 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
                care=a.care, care_scale=care_scale(a.care), abstain_cost=run_abstain_cost(a, plan), force_noise=run_force_noise(rows),
                evoi=run_evoi(rows), probe_time_scale=run_probe_time_scale(rows), reset_s=run_reset_s(rows),
                reset_price=run_reset_price(rows), truth_spread=run_truth_spread(rows), prior_spread=run_prior_spread(rows),
-               generator=run_generator(rows),
+               generator=run_generator(rows), n_particles=run_n_particles(rows),
                source={"crossfit": a.crossfit, "bundle": a.bundle, "metrics": a.metrics}, seconds=round(time.time() - t0, 1),
                cases=None if not a.cases else {"path": a.cases, "n": len(rows), "sha256": cases_hash},
                forced_rule=FORCED_RULE if a.protocol in FORCED else None, code=dict(code, changed_during_run=code_revision() != code))

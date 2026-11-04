@@ -907,6 +907,7 @@ def test_the_output_records_its_code_revision(tmp_path):
     assert (rev is None or re.fullmatch(r"[0-9a-f]{40}", rev)) and saved["code"]["dirty"] in (True, False, None)
     assert saved["cases"] is None and not list(tmp_path.glob("*.tmp"))
     assert saved["protocol"] == "commit" and saved["forced_rule"] is None
+    assert saved["n_particles"] == 2000                   # arm port: the resolved particle count (here the default)
 
 
 
