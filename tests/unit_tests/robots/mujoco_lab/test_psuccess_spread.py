@@ -146,3 +146,36 @@ def test_paired_is_reproducible_for_a_seed():
 
     x, y, o = [0.1, 0.4, 0.3, 0.8, 0.2], [0.2, 0.1, 0.3, 0.5, 0.0], ["a", "b", "c", "d", "e"]
     assert paired(x, y, o, n_boot=300, seed=4) == paired(x, y, o, n_boot=300, seed=4)
+
+
+def test_replication_matches_records_that_share_a_key_in_file_order(tmp_path):
+    """The corpus and fixtures files reuse keys for different rollouts, so a key's records pair by their order."""
+    import json
+
+    from robots.mujoco_lab.psuccess_spread import replication
+
+    def post(mass):
+        return {"mass": {"mean": mass}, "mu": {"mean": 0.5}, "com": {"mean": 0.4}}
+
+    def mine(mass, label):
+        return {"prior": "class", "stage": "attempt", "key": "k", "label": label,
+                "means": {"attempt": {"mass": mass, "mu": 0.5, "com": 0.4}}}
+
+    ref = [{"stage": "attempt", "key": "k", "label": "missed", "post": post(1.3)},
+           {"stage": "attempt", "key": "k", "label": "placed_stable", "post": post(0.4)}]
+    (tmp_path / "records.jsonl").write_text("".join(json.dumps(r) + "\n" for r in ref))
+    out = replication([mine(1.3, "missed"), mine(0.4, "placed_stable"), mine(0.9, "tipped")], {"class": str(tmp_path)})
+    assert out["class"] == {"compared": 2, "missing": 1, "label_mismatch": 0, "maxdiff": 0.0}
+
+
+def test_replication_compares_labels_only_where_the_record_has_one(tmp_path):
+    """A weigh record carries no label, and estimation_check's weigh label is the probe's outcome."""
+    import json
+
+    from robots.mujoco_lab.psuccess_spread import replication
+
+    ref = {"stage": "weigh", "key": "w", "label": "measured",
+           "post": {"mass": {"mean": 0.2}, "mu": {"mean": 0.5}, "com": {"mean": 0.4}}}
+    (tmp_path / "records.jsonl").write_text(json.dumps(ref) + "\n")
+    mine = {"prior": "class", "stage": "weigh", "key": "w", "means": {"weigh": {"mass": 0.2, "mu": 0.5, "com": 0.4}}}
+    assert replication([mine], {"class": str(tmp_path)})["class"]["label_mismatch"] == 0

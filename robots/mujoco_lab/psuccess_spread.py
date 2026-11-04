@@ -489,23 +489,32 @@ def summarize(recs: list[dict[str, Any]], n_boot: int = N_BOOT, seed: int = 0) -
 
 def replication(recs: list[dict[str, Any]], checks: dict[str, str]) -> dict[str, Any]:
     """The rebuilt beliefs against estimation_check's records (its posterior means of mass, friction and CoM fraction,
-    per prior, joined by stage and key): the largest absolute difference and the cases compared."""
+    per prior): the largest absolute difference, the cases compared and the label mismatches. The corpus and fixtures
+    files reuse keys for different rollouts, so the records of one stage and key pair in file order."""
     out = {}
     for prior, d in checks.items():
         path = os.path.join(d, "records.jsonl.gz") if os.path.exists(os.path.join(d, "records.jsonl.gz")) else os.path.join(d, "records.jsonl")
+        ref: dict[tuple[str, str], list[dict[str, Any]]] = {}
         with (gzip.open if path.endswith(".gz") else open)(path, "rt") as f:
-            ref = {(r["stage"], r["key"]): r for r in map(json.loads, f) if r.get("stage") in ("attempt", "weigh")}
+            for r in map(json.loads, f):
+                if r.get("stage") in ("attempt", "weigh"):
+                    ref.setdefault((r["stage"], r["key"]), []).append(r)
         mine = [r for r in recs if r["prior"] == prior]
-        diffs, missing = [], 0
+        diffs, missing, mismatch, used = [], 0, 0, {}
         for r in mine:
-            e = ref.get((r["stage"], r["key"]))
-            if e is None:
+            k = (r["stage"], r["key"])
+            i = used.get(k, 0)
+            if i >= len(ref.get(k, ())):
                 missing += 1
                 continue
+            used[k] = i + 1
+            e = ref[k][i]
+            mismatch += int("label" in r and r["label"] != e.get("label"))
             m = r["means"][r["stage"]]
             diffs.append(max(abs(m["mass"] - e["post"]["mass"]["mean"]), abs(m["mu"] - e["post"]["mu"]["mean"]),
                              abs(m["com"] - e["post"]["com"]["mean"])))
-        out[prior] = {"compared": len(diffs), "missing": missing, "maxdiff": max(diffs) if diffs else None}
+        out[prior] = {"compared": len(diffs), "missing": missing, "label_mismatch": mismatch,
+                      "maxdiff": max(diffs) if diffs else None}
     return out
 
 
@@ -554,7 +563,7 @@ def markdown(s: dict[str, Any], rep: dict[str, Any]) -> str:
             L.append("")
     if rep:
         L += ["Replication of estimation_check's posterior means (mass, friction, CoM fraction): "
-              + "; ".join(f"{p}: {v['compared']} compared, {v['missing']} missing, max diff {v['maxdiff']}" for p, v in rep.items()), ""]
+              + "; ".join(f"{p}: {v['compared']} compared, {v['missing']} missing, {v['label_mismatch']} label mismatches, max diff {v['maxdiff']}" for p, v in rep.items()), ""]
     return "\n".join(L)
 
 
