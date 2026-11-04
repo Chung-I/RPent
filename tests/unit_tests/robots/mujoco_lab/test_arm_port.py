@@ -232,6 +232,15 @@ def test_the_push_rises_over_a_low_fixture(env, monkeypatch):
     assert plan["pad_z"] - sc.PAD_HALF[2] >= sc.TABLE_TOP + 0.004 + PUSH_CLEAR_M - 1e-9
 
 
+def test_a_push_needing_no_rise_is_clear_even_on_a_flat_object(env, monkeypatch):
+    from robots.mujoco_lab import adapter as Ad
+
+    _surfaces(env, monkeypatch, 0.0, 0.0)
+    monkeypatch.setattr(Ad, "PUSH_MAX_FRAC", 0.0)       # the nominal pad is above the cap, as on a 2 cm box
+    plan = env._push_plan()
+    assert plan["side"] == 1 and plan["raised_m"] == 0.0
+
+
 def test_the_push_turns_to_the_clear_side(env, monkeypatch):
     _surfaces(env, monkeypatch, 0.2, 0.0)
     res = env.probe_push()

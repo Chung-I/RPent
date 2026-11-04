@@ -1744,9 +1744,10 @@ class MuJoCoLabEnv:
 
     def _push_plan(self) -> dict[str, Any]:
         """The arm's push side and height (option c, 2026-11-04): per side, the pads start PUSH_CLEAR_M above the
-        highest fixed surface under their path (never lower than probe_push's quarter height); a side is clear when
-        that keeps the pad centre at most PUSH_MAX_FRAC up the object. The first clear side wins, a side that needs no
-        rise before one that does; none clear: ``side`` None (the probe is obstructed)."""
+        highest fixed surface under their path (never lower than probe_push's quarter height); a side is clear when it
+        needs no rise (probe_push's own height, even on a flat object) or the rise keeps the pad centre at most
+        PUSH_MAX_FRAC up the object. The first clear side wins, a side that needs no rise before one that does; none
+        clear: ``side`` None (the probe is obstructed)."""
         sc = self.s["scene"]
         V = self._hull_vertices_world()
         zlo, zhi = float(V[:, 2].min()), float(V[:, 2].max())
@@ -1757,7 +1758,9 @@ class MuJoCoLabEnv:
             pad0 = hand_z - sc.PAD_DROP + sc.PAD_HALF[2]
             surf = float(self._push_side_surface(side))
             pad_z = max(pad0, surf + sc.PAD_HALF[2] + PUSH_CLEAR_M)
-            sides.append({"side": side, "surface_z": surf, "pad_z": pad_z, "raised_m": pad_z - pad0, "clear": bool(pad_z <= cap + 1e-9)})
+            raised = pad_z - pad0
+            sides.append({"side": side, "surface_z": surf, "pad_z": pad_z, "raised_m": raised,
+                          "clear": bool(raised <= 1e-9 or pad_z <= cap + 1e-9)})
         ok = sorted((s_ for s_ in sides if s_["clear"]), key=lambda s_: (s_["raised_m"] > 1e-9, -s_["side"]))
         if not ok:
             return {"side": None, "cap_z": cap, "sides": sides}
