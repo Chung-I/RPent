@@ -1,0 +1,215 @@
+# Copyright 2026 The RPent Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+
+"""The generic and VLM priors of the mass and CoM check: the VLM's centres, the spreads fitted on tuning objects, and
+the particles (the class prior's, with the mass and the CoM replaced)."""
+
+import numpy as np
+import pytest
+
+from rpent.skills.pick_place.belief import ParticleBelief
+
+PIVOT = {"centre": [0.0, 0.0, 0.0], "axis": [1.0, 0.0, 0.0], "lo": -0.1, "L": 0.2}
+
+
+def _base(pose, n, rng):
+    """A stand-in class prior: it draws from rng and carries a fill and a fragility key the replacement must keep."""
+    u = rng.random(n)
+    parts = [{"mass": 1.0, "mu": 0.1 + 0.8 * u[i], "com_obj": [0.05, 0.01, 0.02], "com_frac": 0.75, "mass_scale": 1.0,
+              "com_branch": True, "com_s": 0.7, "com_end": 1, "f": 0.3, "fill": 0.5, "f_damage_n": 20.0 + i, "ancestor": i}
+             for i in range(n)]
+    return ParticleBelief(parts, np.ones(n))
+
+
+def test_vlm_centres_take_the_median_answers_and_drop_bad_samples():
+    from robots.mujoco_lab.vision_prior import vlm_centres
+
+    recs = [{"object": "a", "flat": True, "mass": [{"mass_kg": 0.5}, {"mass_kg": "0.7"}, {"mass_kg": 0.6}, None, {"mass_kg": -1}],
+             "structured": [{"com_marker": 1}, {"com_marker": 2}, {"com_marker": "1"}, {"com_marker": 9}, None]},
+            {"object": "b", "flat": False, "mass": [{"mass_kg": 2.0}]},
+            {"object": "c", "flat": True, "mass": [None], "structured": [{"com_marker": None}]}]
+    c = vlm_centres(recs)
+    assert c["a"]["mass"] == pytest.approx(0.6) and c["a"]["n_mass"] == 3
+    assert c["a"]["com"] == pytest.approx(0.1) and c["a"]["n_com"] == 3          # markers 1, 2, 1 -> fraction 0.1
+    assert c["b"]["mass"] == 2.0 and c["b"]["com"] is None
+    assert c["c"]["mass"] is None and c["c"]["com"] is None
+
+
+def test_fit_spreads_weights_each_object_equally():
+    from robots.mujoco_lab.vision_prior import fit_spreads
+
+    truths = {"a": [(1.0, 0.5), (np.e, 0.5)], "b": [(1.0, 0.9)]}            # a: log residuals 0, 1; b: 0
+    centres = {"a": {"mass": 1.0, "com": 0.5}, "b": {"mass": 1.0, "com": 0.5}}
+    s = fit_spreads(truths, centres, {"a": True, "b": True})
+    assert s["mass"] == pytest.approx(np.sqrt((0.5 + 0.0) / 2))                # a's mean square 0.5, b's 0
+    assert s["com_flat"] == pytest.approx(np.sqrt((0.0 + 0.16) / 2)) and s["com_upright"] is None
+
+
+def test_generic_centres_are_the_tuning_population_and_the_middle():
+    from robots.mujoco_lab.vision_prior import generic_centres
+
+    truths = {"a": [(1.0, 0.2), (1.0, 0.4)], "b": [(np.e ** 2, 0.6)]}
+    c = generic_centres(truths, ["x", "y"])
+    assert c["x"] == {"mass": pytest.approx(np.e), "com": 0.5} and c["y"] == c["x"]   # exp of the object-weighted mean log mass
+
+
+def test_shape_prior_replaces_the_mass_and_the_com_and_keeps_the_rest():
+    from robots.mujoco_lab.vision_prior import shape_prior
+
+    prior = shape_prior(_base, {"o": {"mass": 0.4, "com": 0.3, "sigma_mass": 1e-6, "sigma_com": 1e-6}})
+    pose = {"object_id": "o", "pivot": PIVOT}
+    b = prior(pose, 50, np.random.default_rng(0))
+    ref = _base(pose, 50, np.random.default_rng(0))
+    a = b.arrays()
+    assert np.allclose(a["mass"], 0.4) and np.allclose(a["com_frac"], 0.3)
+    assert np.allclose(a["com_obj"], [[-0.1 + 0.3 * 0.2, 0.0, 0.0]] * 50, atol=1e-5)   # on the pivot's centre line (sigma 1e-6)
+    assert np.allclose(a["mu"], ref.arrays()["mu"]) and np.allclose(a["fill"], 0.5) and np.allclose(a["f_damage_n"], ref.arrays()["f_damage_n"])
+    assert not a["com_branch"].any() and np.allclose(a["f"], 0.0)
+
+
+def test_shape_prior_spreads_follow_sigma_and_stay_in_the_pivot():
+    from robots.mujoco_lab.vision_prior import COM_RANGE, shape_prior
+
+    prior = shape_prior(_base, {"o": {"mass": 1.0, "com": 0.9, "sigma_mass": 0.5, "sigma_com": 0.3}})
+    a = prior({"object_id": "o", "pivot": PIVOT}, 4000, np.random.default_rng(1)).arrays()
+    assert np.std(np.log(a["mass"])) == pytest.approx(0.5, rel=0.05) and abs(np.mean(np.log(a["mass"]))) < 0.03
+    assert a["com_frac"].min() >= COM_RANGE[0] and a["com_frac"].max() <= COM_RANGE[1]
+
+
+def test_shape_prior_refuses_an_object_it_has_no_centre_for():
+    from robots.mujoco_lab.vision_prior import shape_prior
+
+    with pytest.raises(KeyError):
+        shape_prior(_base, {})({"object_id": "o", "pivot": PIVOT}, 5, np.random.default_rng(0))
+
+
+def test_prior_table_generic_and_vlm_fit_on_the_tuning_objects_only():
+    from robots.mujoco_lab.vision_prior import prior_table
+
+    truths = {"t1": [(1.0, 0.5)], "t2": [(np.e ** 2, 0.7)], "h": [(100.0, 0.1)]}       # h is held out: never fitted on
+    flat = {"t1": True, "t2": True, "h": True}
+    gen, s = prior_table("generic", ["h"], ["t1", "t2"], truths, flat)
+    assert gen["h"]["mass"] == pytest.approx(np.e) and gen["h"]["com"] == 0.5
+    assert s["mass"] == pytest.approx(1.0) and gen["h"]["sigma_mass"] == pytest.approx(1.0)   # log residuals -1, +1
+    recs = [{"object": "t1", "flat": True, "mass": [{"mass_kg": 1.0}], "structured": [{"com_marker": 3}]},
+            {"object": "t2", "flat": True, "mass": [{"mass_kg": 1.0}], "structured": [{"com_marker": 3}]},
+            {"object": "h", "flat": True, "mass": [{"mass_kg": 50.0}], "structured": [{"com_marker": 1}]}]
+    vlm, s = prior_table("vlm", ["h"], ["t1", "t2"], truths, flat, recs)
+    assert vlm["h"]["mass"] == 50.0 and vlm["h"]["com"] == pytest.approx(0.1)
+    assert s["mass"] == pytest.approx(np.sqrt((0.0 + 4.0) / 2)) and vlm["h"]["sigma_com"] == pytest.approx(np.sqrt((0.0 + 0.04) / 2))
+
+
+def test_prior_table_vlm_falls_back_to_the_generic_centre_and_says_so():
+    from robots.mujoco_lab.vision_prior import prior_table
+
+    truths = {"t1": [(1.0, 0.5)], "t2": [(np.e ** 2, 0.7)], "t3": [(1.0, 0.6)], "h": [(2.0, 0.5)], "u": [(2.0, 0.5)]}
+    flat = {"t1": True, "t2": True, "t3": False, "h": True, "u": False}
+    recs = [{"object": "t1", "flat": True, "mass": [{"mass_kg": 1.0}], "structured": [{"com_marker": 3}]},
+            {"object": "t2", "flat": True, "mass": [{"mass_kg": np.e}], "structured": [{"com_marker": 3}]},
+            {"object": "t3", "flat": False, "mass": [{"mass_kg": 1.0}]},
+            {"object": "h", "flat": True, "mass": [None], "structured": [None]},
+            {"object": "u", "flat": False, "mass": [{"mass_kg": 3.0}]}]
+    vlm, s = prior_table("vlm", ["h", "u"], ["t1", "t2", "t3"], truths, flat, recs)
+    assert vlm["u"]["sigma_com"] == pytest.approx(0.1) and s["mass"] == pytest.approx(np.sqrt(1 / 3))
+    assert vlm["h"]["mass"] == pytest.approx(np.exp(2 / 3)) and vlm["h"]["com"] == 0.5 and vlm["h"]["fallback"] == ["mass", "com"]
+    assert vlm["u"]["mass"] == 3.0 and vlm["u"]["com"] == 0.5 and vlm["u"]["fallback"] == []
+
+
+def test_prior_table_refuses_a_spread_it_cannot_fit():
+    from robots.mujoco_lab.vision_prior import prior_table
+
+    truths = {"t1": [(1.0, 0.5)], "h": [(2.0, 0.5)]}
+    with pytest.raises(ValueError):
+        prior_table("generic", ["h"], ["t1"], truths, {"t1": True, "h": False})     # no upright tuning object
+
+
+def test_shape_prior_mass_only_replaces_the_mass_and_keeps_the_base_com():
+    """The mass-only swap (2026-11-04, cause (c) of the v11c check): the mass alone is replaced; the CoM and every other
+    key stay the base prior's draws."""
+    from robots.mujoco_lab.vision_prior import shape_prior
+
+    prior = shape_prior(_base, {"o": {"mass": 0.4, "com": 0.3, "sigma_mass": 1e-6, "sigma_com": 1e-6}}, mass_only=True)
+    pose = {"object_id": "o", "pivot": PIVOT}
+    a = prior(pose, 50, np.random.default_rng(0)).arrays()
+    ref = _base(pose, 50, np.random.default_rng(0)).arrays()
+    assert np.allclose(a["mass"], 0.4) and np.isnan(a["mass_scale"]).all()
+    for k in ("com_obj", "com_frac", "com_s", "f", "mu", "fill", "f_damage_n"):
+        assert np.allclose(a[k], ref[k]), k
+    assert a["com_branch"].all()
+
+
+def test_prior_table_real_centres_on_the_real_masses_and_fits_its_spread():
+    """The exact-answer prior (cause (b)): the centre is the object's real mass, the CoM centre the pivot's middle, the
+    spread fitted on the tuning objects around their real masses."""
+    from robots.mujoco_lab.vision_prior import prior_table
+
+    truths = {"t1": [(2.0, 0.5)], "t2": [(np.e, 0.7)], "h": [(100.0, 0.1)]}
+    flat = {"t1": True, "t2": True, "h": True}
+    t, s = prior_table("real", ["h"], ["t1", "t2"], truths, flat, real={"t1": 2.0, "t2": 1.0, "h": 50.0})
+    assert t["h"]["mass"] == 50.0 and t["h"]["com"] == 0.5 and t["h"]["fallback"] == []
+    assert s["mass"] == pytest.approx(np.sqrt((0.0 + 1.0) / 2))                 # log residuals 0 (t1) and 1 (t2)
+    with pytest.raises(ValueError):
+        prior_table("real", ["h"], ["t1", "t2"], truths, flat, real={"t1": 2.0, "t2": 1.0})   # h has no real mass
+
+
+TRUTH = {"mass": 2.0, "com_obj": [0.03, 0.004, -0.002], "com_frac": 0.65}
+GENERIC = {"o": {"mass": 0.4, "com": 0.5, "sigma_mass": 0.8, "sigma_com": 0.2}}
+
+
+def test_exact_prior_centres_the_mass_and_the_com_on_the_case_truth():
+    """W0: both exact: the mass log-normal around the truth (log-sd 0.01), the CoM fraction normal around the truth's
+    (sd 0.005), the point moved along the pivot axis from the true CoM, so its off-axis part stays."""
+    from robots.mujoco_lab.vision_prior import EXACT_SD, shape_prior
+
+    assert EXACT_SD == {"mass": 0.01, "com": 0.005}
+    prior = shape_prior(_base, GENERIC, truth=TRUTH, exact=("mass", "com"))
+    a = prior({"object_id": "o", "pivot": PIVOT}, 4000, np.random.default_rng(0)).arrays()
+    lm = np.log(a["mass"] / 2.0)
+    assert abs(lm.mean()) < 0.001 and lm.std() == pytest.approx(0.01, rel=0.05)
+    assert a["com_frac"].mean() == pytest.approx(0.65, abs=0.0005) and a["com_frac"].std() == pytest.approx(0.005, rel=0.05)
+    com = np.asarray(a["com_obj"])
+    assert np.allclose(com[:, 1:], [0.004, -0.002])                                   # the off-axis part of the truth
+    assert np.allclose(com[:, 0], 0.03 + (a["com_frac"] - 0.65) * 0.2)                # moved along the axis (L 0.2)
+    assert not a["com_branch"].any() and np.allclose(a["f"], 0.0) and np.allclose(a["fill"], 0.5)
+
+
+def test_exact_prior_takes_the_generic_draws_of_the_key_it_does_not_fix():
+    """Same stream as the generic shape prior: an exact CoM keeps the generic mass draws, an exact mass the generic CoM
+    draws, and no exact key is the generic shape prior itself."""
+    from robots.mujoco_lab.vision_prior import shape_prior
+
+    pose = {"object_id": "o", "pivot": PIVOT}
+
+    def draw(**kw):
+        return shape_prior(_base, GENERIC, **kw)(pose, 200, np.random.default_rng(3)).arrays()
+
+    g = draw()
+    com_only, mass_only, none = draw(truth=TRUTH, exact=("com",)), draw(truth=TRUTH, exact=("mass",)), draw(truth=TRUTH, exact=())
+    assert np.array_equal(com_only["mass"], g["mass"]) and not np.allclose(com_only["com_frac"], g["com_frac"])
+    assert np.array_equal(mass_only["com_frac"], g["com_frac"]) and np.array_equal(mass_only["com_obj"], g["com_obj"])
+    assert np.allclose(np.log(mass_only["mass"] / 2.0), 0.0, atol=0.05)
+    for k in ("mass", "com_frac", "com_obj", "mu"):
+        assert np.array_equal(none[k], g[k])
+
+
+def test_exact_prior_refuses_an_exact_com_with_mass_only_a_missing_truth_and_an_unknown_key():
+    from robots.mujoco_lab.vision_prior import shape_prior
+
+    with pytest.raises(ValueError):
+        shape_prior(_base, GENERIC, mass_only=True, truth=TRUTH, exact=("com",))
+    with pytest.raises(ValueError):
+        shape_prior(_base, GENERIC, exact=("mass",))
+    with pytest.raises(ValueError):
+        shape_prior(_base, GENERIC, truth=TRUTH, exact=("mu",))

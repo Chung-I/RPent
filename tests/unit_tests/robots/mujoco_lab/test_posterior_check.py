@@ -107,6 +107,19 @@ def test_generator_truth_is_the_row_theta_in_the_prior_space():
     assert s["mass"] == pytest.approx(g["mass"] * 1.001, rel=1e-12)
 
 
+def test_generator_truth_gives_the_com_point_of_its_fraction():
+    """W0's exact CoM centre: the generator's CoM point in the object frame, whose pivot fraction is ``com``."""
+    import numpy as np
+
+    from robots.mujoco_lab.posterior_check import generator_truth
+
+    row, _ = _row(0.7, 1)
+    g = generator_truth(row)
+    pv = row["pose"]["pivot"]
+    frac = ((np.asarray(g["com_obj"]) - np.asarray(pv["centre"])) @ np.asarray(pv["axis"]) - pv["lo"]) / pv["L"]
+    assert len(g["com_obj"]) == 3 and frac == pytest.approx(g["com"], abs=1e-12)
+
+
 def test_an_atom_posterior_covers_the_generator_truth_not_the_sim_truth():
     """All weight on the unshifted hypotheses (f = 0): a zero-width CoM interval at the nominal fraction.
     The generator's CoM is that point; the sim's sits 0.5 mm away and falls outside."""

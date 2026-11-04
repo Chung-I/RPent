@@ -1,0 +1,96 @@
+{
+ "cmd": "run",
+ "bundle": "robots/mujoco_lab/data/m2b2_v11c",
+ "scenes": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-11-03-mass-com-estimation/scenes.json",
+ "priors": "class,generic",
+ "stages": "weigh,attempt",
+ "objects": null,
+ "n": 2000,
+ "seed": 0,
+ "workers": 2,
+ "out": "/home/chungyili/Codes/RPent-psuccess/logs/psuccess_v11c/full",
+ "settings": [
+  [
+   "k100_A3",
+   100.0,
+   3.0
+  ],
+  [
+   "k30_A3",
+   30.0,
+   3.0
+  ],
+  [
+   "k100_A10",
+   100.0,
+   10.0
+  ]
+ ],
+ "destination": "table_centre",
+ "thresholds": {
+  "half": 0.5,
+  "small_sd": 0.05,
+  "low_p": 0.2,
+  "bad_luck": [
+   0.3,
+   0.7
+  ],
+  "min_prior_sd": 0.02
+ },
+ "code_revision": "42d4bc713cccca0b82cab60bf584cd8f5bf1d52e",
+ "dirty": false,
+ "generator": "v11",
+ "jobs": [
+  {
+   "stage": "weigh",
+   "fold": 0,
+   "bundle": "robots/mujoco_lab/data/m2b2_v11c/folds/fold_0"
+  },
+  {
+   "stage": "weigh",
+   "fold": 1,
+   "bundle": "robots/mujoco_lab/data/m2b2_v11c/folds/fold_1"
+  },
+  {
+   "stage": "weigh",
+   "fold": 2,
+   "bundle": "robots/mujoco_lab/data/m2b2_v11c/folds/fold_2"
+  },
+  {
+   "stage": "weigh",
+   "fold": 3,
+   "bundle": "robots/mujoco_lab/data/m2b2_v11c/folds/fold_3"
+  },
+  {
+   "stage": "weigh",
+   "fold": 4,
+   "bundle": "robots/mujoco_lab/data/m2b2_v11c/folds/fold_4"
+  },
+  {
+   "stage": "attempt",
+   "fold": 0,
+   "bundle": "robots/mujoco_lab/data/m2b2_v11c/folds/fold_0"
+  },
+  {
+   "stage": "attempt",
+   "fold": 1,
+   "bundle": "robots/mujoco_lab/data/m2b2_v11c/folds/fold_1"
+  },
+  {
+   "stage": "attempt",
+   "fold": 2,
+   "bundle": "robots/mujoco_lab/data/m2b2_v11c/folds/fold_2"
+  },
+  {
+   "stage": "attempt",
+   "fold": 3,
+   "bundle": "robots/mujoco_lab/data/m2b2_v11c/folds/fold_3"
+  },
+  {
+   "stage": "attempt",
+   "fold": 4,
+   "bundle": "robots/mujoco_lab/data/m2b2_v11c/folds/fold_4"
+  }
+ ],
+ "todo": 10
+}

@@ -1,0 +1,420 @@
+{
+ "n_records": 3135,
+ "rates": {
+  "k100_A3": {
+   "exact_both": {
+    "n": 1045,
+    "n_left_out": 0,
+    "recommendation": {
+     "rate": 0.0354066985645933,
+     "ci": [
+      0.01818181818181818,
+      0.05550239234449761
+     ]
+    },
+    "option": {
+     "rate": 0.03923444976076555,
+     "ci": [
+      0.021985645933014355,
+      0.059354066985645805
+     ]
+    },
+    "transitions": {
+     "decline->commit": 31,
+     "commit->decline": 5,
+     "decline->probe": 1
+    },
+    "class_recommendations": {
+     "decline": 989,
+     "commit": 56
+    },
+    "prior_recommendations": {
+     "decline": 962,
+     "commit": 82,
+     "probe": 1
+    }
+   },
+   "exact_com": {
+    "n": 1045,
+    "n_left_out": 0,
+    "recommendation": {
+     "rate": 0.019138755980861243,
+     "ci": [
+      0.004784688995215311,
+      0.03827751196172249
+     ]
+    },
+    "option": {
+     "rate": 0.021052631578947368,
+     "ci": [
+      0.005741626794258373,
+      0.04019138755980861
+     ]
+    },
+    "transitions": {
+     "commit->decline": 12,
+     "decline->commit": 8
+    },
+    "class_recommendations": {
+     "decline": 989,
+     "commit": 56
+    },
+    "prior_recommendations": {
+     "decline": 993,
+     "commit": 52
+    }
+   },
+   "exact_mass": {
+    "n": 1045,
+    "n_left_out": 0,
+    "recommendation": {
+     "rate": 0.01818181818181818,
+     "ci": [
+      0.0066985645933014355,
+      0.03253588516746411
+     ]
+    },
+    "option": {
+     "rate": 0.021052631578947368,
+     "ci": [
+      0.007655502392344498,
+      0.03636363636363636
+     ]
+    },
+    "transitions": {
+     "commit->decline": 15,
+     "decline->commit": 4
+    },
+    "class_recommendations": {
+     "decline": 989,
+     "commit": 56
+    },
+    "prior_recommendations": {
+     "decline": 1000,
+     "commit": 45
+    }
+   },
+   "generic": {
+    "n": 1045,
+    "n_left_out": 0,
+    "recommendation": {
+     "rate": 0.0354066985645933,
+     "ci": [
+      0.016267942583732056,
+      0.05933014354066986
+     ]
+    },
+    "option": {
+     "rate": 0.03827751196172249,
+     "ci": [
+      0.01722488038277512,
+      0.06222488038277499
+     ]
+    },
+    "transitions": {
+     "commit->decline": 37
+    },
+    "class_recommendations": {
+     "decline": 989,
+     "commit": 56
+    },
+    "prior_recommendations": {
+     "decline": 1026,
+     "commit": 19
+    }
+   }
+  },
+  "k30_A3": {
+   "exact_both": {
+    "n": 1045,
+    "n_left_out": 0,
+    "recommendation": {
+     "rate": 0.05454545454545454,
+     "ci": [
+      0.034425837320574165,
+      0.07655502392344497
+     ]
+    },
+    "option": {
+     "rate": 0.06698564593301436,
+     "ci": [
+      0.04401913875598086,
+      0.0937799043062201
+     ]
+    },
+    "transitions": {
+     "decline->commit": 22,
+     "commit->decline": 8,
+     "commit->probe": 9,
+     "probe->commit": 9,
+     "decline->probe": 8,
+     "probe->decline": 1
+    },
+    "class_recommendations": {
+     "decline": 805,
+     "commit": 215,
+     "probe": 25
+    },
+    "prior_recommendations": {
+     "decline": 784,
+     "commit": 229,
+     "probe": 32
+    }
+   },
+   "exact_com": {
+    "n": 1045,
+    "n_left_out": 0,
+    "recommendation": {
+     "rate": 0.07942583732057416,
+     "ci": [
+      0.04688995215311005,
+      0.11866028708133972
+     ]
+    },
+    "option": {
+     "rate": 0.0937799043062201,
+     "ci": [
+      0.05837320574162679,
+      0.1320574162679426
+     ]
+    },
+    "transitions": {
+     "commit->decline": 47,
+     "decline->probe": 1,
+     "probe->decline": 19,
+     "decline->commit": 13,
+     "probe->commit": 1,
+     "commit->probe": 2
+    },
+    "class_recommendations": {
+     "decline": 805,
+     "commit": 215,
+     "probe": 25
+    },
+    "prior_recommendations": {
+     "decline": 857,
+     "probe": 8,
+     "commit": 180
+    }
+   },
+   "exact_mass": {
+    "n": 1045,
+    "n_left_out": 0,
+    "recommendation": {
+     "rate": 0.053588516746411484,
+     "ci": [
+      0.030598086124401916,
+      0.07942583732057416
+     ]
+    },
+    "option": {
+     "rate": 0.05741626794258373,
+     "ci": [
+      0.0354066985645933,
+      0.08421052631578947
+     ]
+    },
+    "transitions": {
+     "commit->decline": 30,
+     "decline->commit": 4,
+     "probe->commit": 7,
+     "probe->decline": 7,
+     "commit->probe": 5,
+     "decline->probe": 3
+    },
+    "class_recommendations": {
+     "decline": 805,
+     "commit": 215,
+     "probe": 25
+    },
+    "prior_recommendations": {
+     "decline": 835,
+     "commit": 191,
+     "probe": 19
+    }
+   },
+   "generic": {
+    "n": 1045,
+    "n_left_out": 0,
+    "recommendation": {
+     "rate": 0.09856459330143541,
+     "ci": [
+      0.05933014354066986,
+      0.14258373205741626
+     ]
+    },
+    "option": {
+     "rate": 0.10047846889952153,
+     "ci": [
+      0.06028708133971292,
+      0.14354066985645933
+     ]
+    },
+    "transitions": {
+     "commit->decline": 67,
+     "probe->decline": 23,
+     "probe->commit": 1,
+     "commit->probe": 9,
+     "decline->commit": 3
+    },
+    "class_recommendations": {
+     "decline": 805,
+     "commit": 215,
+     "probe": 25
+    },
+    "prior_recommendations": {
+     "decline": 892,
+     "commit": 143,
+     "probe": 10
+    }
+   }
+  },
+  "k100_A10": {
+   "exact_both": {
+    "n": 1045,
+    "n_left_out": 0,
+    "recommendation": {
+     "rate": 0.07559808612440191,
+     "ci": [
+      0.049760765550239235,
+      0.10239234449760766
+     ]
+    },
+    "option": {
+     "rate": 0.08995215311004785,
+     "ci": [
+      0.06220095693779904,
+      0.11961722488038277
+     ]
+    },
+    "transitions": {
+     "decline->commit": 18,
+     "commit->decline": 10,
+     "probe->commit": 19,
+     "decline->probe": 13,
+     "commit->probe": 11,
+     "probe->decline": 8
+    },
+    "class_recommendations": {
+     "decline": 770,
+     "commit": 207,
+     "probe": 68
+    },
+    "prior_recommendations": {
+     "decline": 757,
+     "commit": 223,
+     "probe": 65
+    }
+   },
+   "exact_com": {
+    "n": 1045,
+    "n_left_out": 0,
+    "recommendation": {
+     "rate": 0.07751196172248803,
+     "ci": [
+      0.04880382775119617,
+      0.11004784688995216
+     ]
+    },
+    "option": {
+     "rate": 0.09473684210526316,
+     "ci": [
+      0.06220095693779904,
+      0.1291866028708134
+     ]
+    },
+    "transitions": {
+     "decline->commit": 8,
+     "commit->decline": 21,
+     "commit->probe": 17,
+     "probe->decline": 19,
+     "decline->probe": 10,
+     "probe->commit": 6
+    },
+    "class_recommendations": {
+     "decline": 770,
+     "commit": 207,
+     "probe": 68
+    },
+    "prior_recommendations": {
+     "decline": 792,
+     "commit": 183,
+     "probe": 70
+    }
+   },
+   "exact_mass": {
+    "n": 1045,
+    "n_left_out": 0,
+    "recommendation": {
+     "rate": 0.07559808612440191,
+     "ci": [
+      0.04784688995215311,
+      0.10430622009569378
+     ]
+    },
+    "option": {
+     "rate": 0.08421052631578947,
+     "ci": [
+      0.056435406698564596,
+      0.11291866028708133
+     ]
+    },
+    "transitions": {
+     "decline->commit": 4,
+     "commit->decline": 26,
+     "probe->commit": 11,
+     "probe->decline": 20,
+     "commit->probe": 12,
+     "decline->probe": 6
+    },
+    "class_recommendations": {
+     "decline": 770,
+     "commit": 207,
+     "probe": 68
+    },
+    "prior_recommendations": {
+     "decline": 806,
+     "commit": 184,
+     "probe": 55
+    }
+   },
+   "generic": {
+    "n": 1045,
+    "n_left_out": 0,
+    "recommendation": {
+     "rate": 0.11291866028708133,
+     "ci": [
+      0.07272727272727272,
+      0.1560047846889951
+     ]
+    },
+    "option": {
+     "rate": 0.11770334928229666,
+     "ci": [
+      0.07559808612440191,
+      0.1645933014354067
+     ]
+    },
+    "transitions": {
+     "commit->decline": 43,
+     "probe->decline": 51,
+     "commit->probe": 17,
+     "probe->commit": 2,
+     "decline->probe": 2,
+     "decline->commit": 3
+    },
+    "class_recommendations": {
+     "decline": 770,
+     "commit": 207,
+     "probe": 68
+    },
+    "prior_recommendations": {
+     "decline": 859,
+     "commit": 152,
+     "probe": 34
+    }
+   }
+  }
+ },
+ "wandb": "https://forge.coreweave.com/wandb/leon129506/rpent-pick-place/runs/d9n18nnm"
+}

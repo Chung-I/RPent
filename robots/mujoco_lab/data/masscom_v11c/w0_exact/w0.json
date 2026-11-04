@@ -1,0 +1,5549 @@
+{
+ "dir": "/home/chungyili/Codes/RPent-masscom-v11/logs/w0_v11c/menus_exact",
+ "n_records": 3135,
+ "truth_check": {
+  "cases": 1045,
+  "with_truth": 1045,
+  "not_at_rest": 38,
+  "max_mass_rel_gap": 0.0026322899298245606,
+  "max_com_frac_gap": 0.0011421770692364719
+ },
+ "rates": {
+  "k100_A3": {
+   "class": {
+    "n": 1045,
+    "n_left_out": 0,
+    "recommendation": {
+     "rate": 0.0354066985645933,
+     "ci": [
+      0.016267942583732056,
+      0.05933014354066986
+     ]
+    },
+    "option": {
+     "rate": 0.03827751196172249,
+     "ci": [
+      0.016267942583732056,
+      0.06124401913875598
+     ]
+    },
+    "transitions": {
+     "decline->commit": 37
+    },
+    "generic_recommendations": {
+     "decline": 1026,
+     "commit": 19
+    },
+    "prior_recommendations": {
+     "decline": 989,
+     "commit": 56
+    }
+   },
+   "exact_both": {
+    "n": 1045,
+    "n_left_out": 0,
+    "recommendation": {
+     "rate": 0.06698564593301436,
+     "ci": [
+      0.03827751196172249,
+      0.09760765550239234
+     ]
+    },
+    "option": {
+     "rate": 0.06889952153110047,
+     "ci": [
+      0.04019138755980861,
+      0.10143540669856459
+     ]
+    },
+    "transitions": {
+     "decline->commit": 66,
+     "commit->decline": 3,
+     "decline->probe": 1
+    },
+    "generic_recommendations": {
+     "decline": 1026,
+     "commit": 19
+    },
+    "prior_recommendations": {
+     "decline": 962,
+     "commit": 82,
+     "probe": 1
+    }
+   },
+   "exact_com": {
+    "n": 1045,
+    "n_left_out": 0,
+    "recommendation": {
+     "rate": 0.03732057416267943,
+     "ci": [
+      0.01722488038277512,
+      0.06028708133971292
+     ]
+    },
+    "option": {
+     "rate": 0.04019138755980861,
+     "ci": [
+      0.019138755980861243,
+      0.06507177033492823
+     ]
+    },
+    "transitions": {
+     "decline->commit": 36,
+     "commit->decline": 3
+    },
+    "generic_recommendations": {
+     "decline": 1026,
+     "commit": 19
+    },
+    "prior_recommendations": {
+     "decline": 993,
+     "commit": 52
+    }
+   },
+   "exact_mass": {
+    "n": 1045,
+    "n_left_out": 0,
+    "recommendation": {
+     "rate": 0.026794258373205742,
+     "ci": [
+      0.010526315789473684,
+      0.04688995215311005
+     ]
+    },
+    "option": {
+     "rate": 0.027751196172248804,
+     "ci": [
+      0.011483253588516746,
+      0.04880382775119617
+     ]
+    },
+    "transitions": {
+     "decline->commit": 27,
+     "commit->decline": 1
+    },
+    "generic_recommendations": {
+     "decline": 1026,
+     "commit": 19
+    },
+    "prior_recommendations": {
+     "decline": 1000,
+     "commit": 45
+    }
+   }
+  },
+  "k30_A3": {
+   "class": {
+    "n": 1045,
+    "n_left_out": 0,
+    "recommendation": {
+     "rate": 0.09856459330143541,
+     "ci": [
+      0.05741626794258373,
+      0.1416267942583732
+     ]
+    },
+    "option": {
+     "rate": 0.10047846889952153,
+     "ci": [
+      0.06028708133971292,
+      0.14641148325358852
+     ]
+    },
+    "transitions": {
+     "decline->commit": 67,
+     "decline->probe": 23,
+     "commit->probe": 1,
+     "probe->commit": 9,
+     "commit->decline": 3
+    },
+    "generic_recommendations": {
+     "decline": 892,
+     "commit": 143,
+     "probe": 10
+    },
+    "prior_recommendations": {
+     "decline": 805,
+     "commit": 215,
+     "probe": 25
+    }
+   },
+   "exact_both": {
+    "n": 1045,
+    "n_left_out": 0,
+    "recommendation": {
+     "rate": 0.11578947368421053,
+     "ci": [
+      0.07655502392344497,
+      0.1598086124401914
+     ]
+    },
+    "option": {
+     "rate": 0.12440191387559808,
+     "ci": [
+      0.08229665071770335,
+      0.1674641148325359
+     ]
+    },
+    "transitions": {
+     "decline->commit": 82,
+     "decline->probe": 29,
+     "probe->commit": 7,
+     "commit->decline": 3
+    },
+    "generic_recommendations": {
+     "decline": 892,
+     "commit": 143,
+     "probe": 10
+    },
+    "prior_recommendations": {
+     "decline": 784,
+     "commit": 229,
+     "probe": 32
+    }
+   },
+   "exact_com": {
+    "n": 1045,
+    "n_left_out": 0,
+    "recommendation": {
+     "rate": 0.04784688995215311,
+     "ci": [
+      0.026794258373205742,
+      0.0708133971291866
+     ]
+    },
+    "option": {
+     "rate": 0.053588516746411484,
+     "ci": [
+      0.03062200956937799,
+      0.07751196172248803
+     ]
+    },
+    "transitions": {
+     "decline->probe": 5,
+     "decline->commit": 34,
+     "commit->decline": 4,
+     "probe->commit": 7
+    },
+    "generic_recommendations": {
+     "decline": 892,
+     "commit": 143,
+     "probe": 10
+    },
+    "prior_recommendations": {
+     "decline": 857,
+     "probe": 8,
+     "commit": 180
+    }
+   },
+   "exact_mass": {
+    "n": 1045,
+    "n_left_out": 0,
+    "recommendation": {
+     "rate": 0.07559808612440191,
+     "ci": [
+      0.044976076555023926,
+      0.11102870813397116
+     ]
+    },
+    "option": {
+     "rate": 0.08038277511961722,
+     "ci": [
+      0.04880382775119617,
+      0.11578947368421053
+     ]
+    },
+    "transitions": {
+     "decline->commit": 48,
+     "decline->probe": 16,
+     "commit->probe": 1,
+     "probe->commit": 7,
+     "probe->decline": 1,
+     "commit->decline": 6
+    },
+    "generic_recommendations": {
+     "decline": 892,
+     "commit": 143,
+     "probe": 10
+    },
+    "prior_recommendations": {
+     "decline": 835,
+     "commit": 191,
+     "probe": 19
+    }
+   }
+  },
+  "k100_A10": {
+   "class": {
+    "n": 1045,
+    "n_left_out": 0,
+    "recommendation": {
+     "rate": 0.11291866028708133,
+     "ci": [
+      0.07177033492822966,
+      0.15598086124401914
+     ]
+    },
+    "option": {
+     "rate": 0.11770334928229666,
+     "ci": [
+      0.07655502392344497,
+      0.1636602870813396
+     ]
+    },
+    "transitions": {
+     "decline->commit": 43,
+     "decline->probe": 51,
+     "probe->commit": 17,
+     "commit->probe": 2,
+     "probe->decline": 2,
+     "commit->decline": 3
+    },
+    "generic_recommendations": {
+     "decline": 859,
+     "commit": 152,
+     "probe": 34
+    },
+    "prior_recommendations": {
+     "decline": 770,
+     "commit": 207,
+     "probe": 68
+    }
+   },
+   "exact_both": {
+    "n": 1045,
+    "n_left_out": 0,
+    "recommendation": {
+     "rate": 0.12631578947368421,
+     "ci": [
+      0.08516746411483253,
+      0.17129186602870813
+     ]
+    },
+    "option": {
+     "rate": 0.1397129186602871,
+     "ci": [
+      0.09569377990430622,
+      0.1875598086124402
+     ]
+    },
+    "transitions": {
+     "decline->commit": 57,
+     "decline->probe": 50,
+     "probe->commit": 19,
+     "commit->probe": 1,
+     "commit->decline": 4,
+     "probe->decline": 1
+    },
+    "generic_recommendations": {
+     "decline": 859,
+     "commit": 152,
+     "probe": 34
+    },
+    "prior_recommendations": {
+     "decline": 757,
+     "commit": 223,
+     "probe": 65
+    }
+   },
+   "exact_com": {
+    "n": 1045,
+    "n_left_out": 0,
+    "recommendation": {
+     "rate": 0.0784688995215311,
+     "ci": [
+      0.04880382775119617,
+      0.11387559808612441
+     ]
+    },
+    "option": {
+     "rate": 0.08708133971291866,
+     "ci": [
+      0.05550239234449761,
+      0.12248803827751197
+     ]
+    },
+    "transitions": {
+     "decline->commit": 23,
+     "decline->probe": 46,
+     "probe->commit": 10,
+     "commit->probe": 1,
+     "probe->decline": 1,
+     "commit->decline": 1
+    },
+    "generic_recommendations": {
+     "decline": 859,
+     "commit": 152,
+     "probe": 34
+    },
+    "prior_recommendations": {
+     "decline": 792,
+     "commit": 183,
+     "probe": 70
+    }
+   },
+   "exact_mass": {
+    "n": 1045,
+    "n_left_out": 0,
+    "recommendation": {
+     "rate": 0.07751196172248803,
+     "ci": [
+      0.044976076555023926,
+      0.11291866028708133
+     ]
+    },
+    "option": {
+     "rate": 0.08516746411483253,
+     "ci": [
+      0.05167464114832536,
+      0.1225119617224879
+     ]
+    },
+    "transitions": {
+     "decline->commit": 25,
+     "decline->probe": 34,
+     "probe->commit": 14,
+     "commit->probe": 2,
+     "commit->decline": 5,
+     "probe->decline": 1
+    },
+    "generic_recommendations": {
+     "decline": 859,
+     "commit": 152,
+     "probe": 34
+    },
+    "prior_recommendations": {
+     "decline": 806,
+     "commit": 184,
+     "probe": 55
+    }
+   }
+  }
+ },
+ "rates_by_group": {
+  "flat": {
+   "k100_A3": {
+    "class": {
+     "n": 539,
+     "n_left_out": 0,
+     "recommendation": {
+      "rate": 0.022263450834879406,
+      "ci": [
+       0.0018552875695732839,
+       0.05199443413729103
+      ]
+     },
+     "option": {
+      "rate": 0.022263450834879406,
+      "ci": [
+       0.0018552875695732839,
+       0.05194805194805195
+      ]
+     },
+     "transitions": {
+      "decline->commit": 12
+     },
+     "generic_recommendations": {
+      "decline": 539
+     },
+     "prior_recommendations": {
+      "decline": 527,
+      "commit": 12
+     }
+    },
+    "exact_both": {
+     "n": 539,
+     "n_left_out": 0,
+     "recommendation": {
+      "rate": 0.04823747680890538,
+      "ci": [
+       0.014842300556586271,
+       0.08905380333951762
+      ]
+     },
+     "option": {
+      "rate": 0.04823747680890538,
+      "ci": [
+       0.014842300556586271,
+       0.08719851576994433
+      ]
+     },
+     "transitions": {
+      "decline->commit": 26
+     },
+     "generic_recommendations": {
+      "decline": 539
+     },
+     "prior_recommendations": {
+      "decline": 513,
+      "commit": 26
+     }
+    },
+    "exact_com": {
+     "n": 539,
+     "n_left_out": 0,
+     "recommendation": {
+      "rate": 0.012987012987012988,
+      "ci": [
+       0.0018552875695732839,
+       0.029684601113172542
+      ]
+     },
+     "option": {
+      "rate": 0.012987012987012988,
+      "ci": [
+       0.0018552875695732839,
+       0.029684601113172542
+      ]
+     },
+     "transitions": {
+      "decline->commit": 7
+     },
+     "generic_recommendations": {
+      "decline": 539
+     },
+     "prior_recommendations": {
+      "decline": 532,
+      "commit": 7
+     }
+    },
+    "exact_mass": {
+     "n": 539,
+     "n_left_out": 0,
+     "recommendation": {
+      "rate": 0.022263450834879406,
+      "ci": [
+       0.0018552875695732839,
+       0.05009276437847866
+      ]
+     },
+     "option": {
+      "rate": 0.022263450834879406,
+      "ci": [
+       0.0018089053803339544,
+       0.05380333951762523
+      ]
+     },
+     "transitions": {
+      "decline->commit": 12
+     },
+     "generic_recommendations": {
+      "decline": 539
+     },
+     "prior_recommendations": {
+      "decline": 527,
+      "commit": 12
+     }
+    }
+   },
+   "k30_A3": {
+    "class": {
+     "n": 539,
+     "n_left_out": 0,
+     "recommendation": {
+      "rate": 0.11873840445269017,
+      "ci": [
+       0.059369202226345084,
+       0.19109461966604824
+      ]
+     },
+     "option": {
+      "rate": 0.12244897959183673,
+      "ci": [
+       0.061224489795918366,
+       0.19294990723562153
+      ]
+     },
+     "transitions": {
+      "decline->commit": 37,
+      "decline->probe": 19,
+      "commit->decline": 3,
+      "probe->commit": 5
+     },
+     "generic_recommendations": {
+      "decline": 482,
+      "commit": 52,
+      "probe": 5
+     },
+     "prior_recommendations": {
+      "decline": 429,
+      "commit": 91,
+      "probe": 19
+     }
+    },
+    "exact_both": {
+     "n": 539,
+     "n_left_out": 0,
+     "recommendation": {
+      "rate": 0.1391465677179963,
+      "ci": [
+       0.07606679035250463,
+       0.20964749536178107
+      ]
+     },
+     "option": {
+      "rate": 0.150278293135436,
+      "ci": [
+       0.08534322820037106,
+       0.22263450834879406
+      ]
+     },
+     "transitions": {
+      "decline->commit": 50,
+      "decline->probe": 17,
+      "commit->decline": 3,
+      "probe->commit": 5
+     },
+     "generic_recommendations": {
+      "decline": 482,
+      "commit": 52,
+      "probe": 5
+     },
+     "prior_recommendations": {
+      "decline": 418,
+      "commit": 104,
+      "probe": 17
+     }
+    },
+    "exact_com": {
+     "n": 539,
+     "n_left_out": 0,
+     "recommendation": {
+      "rate": 0.05194805194805195,
+      "ci": [
+       0.02411873840445269,
+       0.08719851576994433
+      ]
+     },
+     "option": {
+      "rate": 0.055658627087198514,
+      "ci": [
+       0.025974025974025976,
+       0.08905380333951762
+      ]
+     },
+     "transitions": {
+      "decline->probe": 2,
+      "decline->commit": 20,
+      "commit->decline": 1,
+      "probe->commit": 5
+     },
+     "generic_recommendations": {
+      "decline": 482,
+      "commit": 52,
+      "probe": 5
+     },
+     "prior_recommendations": {
+      "decline": 461,
+      "probe": 2,
+      "commit": 76
+     }
+    },
+    "exact_mass": {
+     "n": 539,
+     "n_left_out": 0,
+     "recommendation": {
+      "rate": 0.09647495361781076,
+      "ci": [
+       0.04823747680890538,
+       0.15769944341372913
+      ]
+     },
+     "option": {
+      "rate": 0.1038961038961039,
+      "ci": [
+       0.05194805194805195,
+       0.16516697588126134
+      ]
+     },
+     "transitions": {
+      "decline->commit": 34,
+      "commit->decline": 5,
+      "decline->probe": 8,
+      "probe->commit": 5
+     },
+     "generic_recommendations": {
+      "decline": 482,
+      "commit": 52,
+      "probe": 5
+     },
+     "prior_recommendations": {
+      "decline": 445,
+      "commit": 86,
+      "probe": 8
+     }
+    }
+   },
+   "k100_A10": {
+    "class": {
+     "n": 539,
+     "n_left_out": 0,
+     "recommendation": {
+      "rate": 0.13172541743970315,
+      "ci": [
+       0.07235621521335807,
+       0.20408163265306123
+      ]
+     },
+     "option": {
+      "rate": 0.137291280148423,
+      "ci": [
+       0.07230983302411874,
+       0.20969387755102015
+      ]
+     },
+     "transitions": {
+      "decline->commit": 26,
+      "decline->probe": 34,
+      "commit->decline": 3,
+      "probe->commit": 7,
+      "probe->decline": 1
+     },
+     "generic_recommendations": {
+      "decline": 466,
+      "probe": 11,
+      "commit": 62
+     },
+     "prior_recommendations": {
+      "decline": 410,
+      "commit": 92,
+      "probe": 37
+     }
+    },
+    "exact_both": {
+     "n": 539,
+     "n_left_out": 0,
+     "recommendation": {
+      "rate": 0.15398886827458255,
+      "ci": [
+       0.08534322820037106,
+       0.22634508348794063
+      ]
+     },
+     "option": {
+      "rate": 0.16883116883116883,
+      "ci": [
+       0.10018552875695733,
+       0.24675324675324675
+      ]
+     },
+     "transitions": {
+      "decline->commit": 39,
+      "decline->probe": 29,
+      "probe->commit": 10,
+      "commit->decline": 4,
+      "probe->decline": 1
+     },
+     "generic_recommendations": {
+      "decline": 466,
+      "probe": 11,
+      "commit": 62
+     },
+     "prior_recommendations": {
+      "decline": 403,
+      "commit": 107,
+      "probe": 29
+     }
+    },
+    "exact_com": {
+     "n": 539,
+     "n_left_out": 0,
+     "recommendation": {
+      "rate": 0.09090909090909091,
+      "ci": [
+       0.04823747680890538,
+       0.1391465677179963
+      ]
+     },
+     "option": {
+      "rate": 0.09647495361781076,
+      "ci": [
+       0.05009276437847866,
+       0.14842300556586271
+      ]
+     },
+     "transitions": {
+      "decline->commit": 15,
+      "decline->probe": 26,
+      "probe->commit": 7,
+      "commit->decline": 1
+     },
+     "generic_recommendations": {
+      "decline": 466,
+      "probe": 11,
+      "commit": 62
+     },
+     "prior_recommendations": {
+      "decline": 426,
+      "commit": 83,
+      "probe": 30
+     }
+    },
+    "exact_mass": {
+     "n": 539,
+     "n_left_out": 0,
+     "recommendation": {
+      "rate": 0.10946196660482375,
+      "ci": [
+       0.059322820037105754,
+       0.16512059369202226
+      ]
+     },
+     "option": {
+      "rate": 0.12059369202226346,
+      "ci": [
+       0.06674397031539889,
+       0.17810760667903525
+      ]
+     },
+     "transitions": {
+      "decline->commit": 22,
+      "decline->probe": 23,
+      "probe->commit": 8,
+      "commit->decline": 5,
+      "probe->decline": 1
+     },
+     "generic_recommendations": {
+      "decline": 466,
+      "probe": 11,
+      "commit": 62
+     },
+     "prior_recommendations": {
+      "decline": 427,
+      "commit": 87,
+      "probe": 25
+     }
+    }
+   }
+  },
+  "upright": {
+   "k100_A3": {
+    "class": {
+     "n": 506,
+     "n_left_out": 0,
+     "recommendation": {
+      "rate": 0.04940711462450593,
+      "ci": [
+       0.015810276679841896,
+       0.08695652173913043
+      ]
+     },
+     "option": {
+      "rate": 0.05533596837944664,
+      "ci": [
+       0.021739130434782608,
+       0.09881422924901186
+      ]
+     },
+     "transitions": {
+      "decline->commit": 25
+     },
+     "generic_recommendations": {
+      "decline": 487,
+      "commit": 19
+     },
+     "prior_recommendations": {
+      "decline": 462,
+      "commit": 44
+     }
+    },
+    "exact_both": {
+     "n": 506,
+     "n_left_out": 0,
+     "recommendation": {
+      "rate": 0.08695652173913043,
+      "ci": [
+       0.043478260869565216,
+       0.1383399209486166
+      ]
+     },
+     "option": {
+      "rate": 0.09090909090909091,
+      "ci": [
+       0.04743083003952569,
+       0.1442687747035573
+      ]
+     },
+     "transitions": {
+      "decline->commit": 40,
+      "commit->decline": 3,
+      "decline->probe": 1
+     },
+     "generic_recommendations": {
+      "decline": 487,
+      "commit": 19
+     },
+     "prior_recommendations": {
+      "decline": 449,
+      "commit": 56,
+      "probe": 1
+     }
+    },
+    "exact_com": {
+     "n": 506,
+     "n_left_out": 0,
+     "recommendation": {
+      "rate": 0.06324110671936758,
+      "ci": [
+       0.025691699604743084,
+       0.10474308300395258
+      ]
+     },
+     "option": {
+      "rate": 0.0691699604743083,
+      "ci": [
+       0.03157114624505929,
+       0.116600790513834
+      ]
+     },
+     "transitions": {
+      "decline->commit": 29,
+      "commit->decline": 3
+     },
+     "generic_recommendations": {
+      "decline": 487,
+      "commit": 19
+     },
+     "prior_recommendations": {
+      "decline": 461,
+      "commit": 45
+     }
+    },
+    "exact_mass": {
+     "n": 506,
+     "n_left_out": 0,
+     "recommendation": {
+      "rate": 0.03162055335968379,
+      "ci": [
+       0.007905138339920948,
+       0.05933794466403135
+      ]
+     },
+     "option": {
+      "rate": 0.03359683794466403,
+      "ci": [
+       0.009881422924901186,
+       0.06324110671936758
+      ]
+     },
+     "transitions": {
+      "decline->commit": 15,
+      "commit->decline": 1
+     },
+     "generic_recommendations": {
+      "decline": 487,
+      "commit": 19
+     },
+     "prior_recommendations": {
+      "decline": 473,
+      "commit": 33
+     }
+    }
+   },
+   "k30_A3": {
+    "class": {
+     "n": 506,
+     "n_left_out": 0,
+     "recommendation": {
+      "rate": 0.07707509881422925,
+      "ci": [
+       0.029644268774703556,
+       0.1324110671936759
+      ]
+     },
+     "option": {
+      "rate": 0.07707509881422925,
+      "ci": [
+       0.03162055335968379,
+       0.13043478260869565
+      ]
+     },
+     "transitions": {
+      "decline->commit": 30,
+      "decline->probe": 4,
+      "commit->probe": 1,
+      "probe->commit": 4
+     },
+     "generic_recommendations": {
+      "decline": 410,
+      "commit": 91,
+      "probe": 5
+     },
+     "prior_recommendations": {
+      "decline": 376,
+      "commit": 124,
+      "probe": 6
+     }
+    },
+    "exact_both": {
+     "n": 506,
+     "n_left_out": 0,
+     "recommendation": {
+      "rate": 0.09090909090909091,
+      "ci": [
+       0.045454545454545456,
+       0.13636363636363635
+      ]
+     },
+     "option": {
+      "rate": 0.09683794466403162,
+      "ci": [
+       0.05138339920948617,
+       0.14624505928853754
+      ]
+     },
+     "transitions": {
+      "decline->commit": 32,
+      "decline->probe": 12,
+      "probe->commit": 2
+     },
+     "generic_recommendations": {
+      "decline": 410,
+      "commit": 91,
+      "probe": 5
+     },
+     "prior_recommendations": {
+      "decline": 366,
+      "commit": 125,
+      "probe": 15
+     }
+    },
+    "exact_com": {
+     "n": 506,
+     "n_left_out": 0,
+     "recommendation": {
+      "rate": 0.043478260869565216,
+      "ci": [
+       0.011857707509881422,
+       0.07905138339920949
+      ]
+     },
+     "option": {
+      "rate": 0.05138339920948617,
+      "ci": [
+       0.019762845849802372,
+       0.08893280632411067
+      ]
+     },
+     "transitions": {
+      "commit->decline": 3,
+      "decline->commit": 14,
+      "decline->probe": 3,
+      "probe->commit": 2
+     },
+     "generic_recommendations": {
+      "decline": 410,
+      "commit": 91,
+      "probe": 5
+     },
+     "prior_recommendations": {
+      "decline": 396,
+      "commit": 104,
+      "probe": 6
+     }
+    },
+    "exact_mass": {
+     "n": 506,
+     "n_left_out": 0,
+     "recommendation": {
+      "rate": 0.0533596837944664,
+      "ci": [
+       0.021739130434782608,
+       0.09486166007905138
+      ]
+     },
+     "option": {
+      "rate": 0.05533596837944664,
+      "ci": [
+       0.021739130434782608,
+       0.09288537549407115
+      ]
+     },
+     "transitions": {
+      "decline->commit": 14,
+      "decline->probe": 8,
+      "commit->probe": 1,
+      "probe->commit": 2,
+      "probe->decline": 1,
+      "commit->decline": 1
+     },
+     "generic_recommendations": {
+      "decline": 410,
+      "commit": 91,
+      "probe": 5
+     },
+     "prior_recommendations": {
+      "decline": 390,
+      "commit": 105,
+      "probe": 11
+     }
+    }
+   },
+   "k100_A10": {
+    "class": {
+     "n": 506,
+     "n_left_out": 0,
+     "recommendation": {
+      "rate": 0.09288537549407115,
+      "ci": [
+       0.04743083003952569,
+       0.1442687747035573
+      ]
+     },
+     "option": {
+      "rate": 0.09683794466403162,
+      "ci": [
+       0.0533596837944664,
+       0.15019762845849802
+      ]
+     },
+     "transitions": {
+      "decline->commit": 17,
+      "probe->commit": 10,
+      "decline->probe": 17,
+      "commit->probe": 2,
+      "probe->decline": 1
+     },
+     "generic_recommendations": {
+      "decline": 393,
+      "commit": 90,
+      "probe": 23
+     },
+     "prior_recommendations": {
+      "decline": 360,
+      "commit": 115,
+      "probe": 31
+     }
+    },
+    "exact_both": {
+     "n": 506,
+     "n_left_out": 0,
+     "recommendation": {
+      "rate": 0.09683794466403162,
+      "ci": [
+       0.05138339920948617,
+       0.14624505928853754
+      ]
+     },
+     "option": {
+      "rate": 0.10869565217391304,
+      "ci": [
+       0.05928853754940711,
+       0.15810276679841898
+      ]
+     },
+     "transitions": {
+      "decline->commit": 18,
+      "decline->probe": 21,
+      "probe->commit": 9,
+      "commit->probe": 1
+     },
+     "generic_recommendations": {
+      "decline": 393,
+      "commit": 90,
+      "probe": 23
+     },
+     "prior_recommendations": {
+      "decline": 354,
+      "commit": 116,
+      "probe": 36
+     }
+    },
+    "exact_com": {
+     "n": 506,
+     "n_left_out": 0,
+     "recommendation": {
+      "rate": 0.06521739130434782,
+      "ci": [
+       0.02766798418972332,
+       0.11264822134387352
+      ]
+     },
+     "option": {
+      "rate": 0.07707509881422925,
+      "ci": [
+       0.037549407114624504,
+       0.1225296442687747
+      ]
+     },
+     "transitions": {
+      "decline->probe": 20,
+      "decline->commit": 8,
+      "probe->commit": 3,
+      "commit->probe": 1,
+      "probe->decline": 1
+     },
+     "generic_recommendations": {
+      "decline": 393,
+      "commit": 90,
+      "probe": 23
+     },
+     "prior_recommendations": {
+      "decline": 366,
+      "probe": 40,
+      "commit": 100
+     }
+    },
+    "exact_mass": {
+     "n": 506,
+     "n_left_out": 0,
+     "recommendation": {
+      "rate": 0.043478260869565216,
+      "ci": [
+       0.01383399209486166,
+       0.07707509881422925
+      ]
+     },
+     "option": {
+      "rate": 0.04743083003952569,
+      "ci": [
+       0.017786561264822136,
+       0.08300395256916997
+      ]
+     },
+     "transitions": {
+      "decline->commit": 3,
+      "probe->commit": 6,
+      "commit->probe": 2,
+      "decline->probe": 11
+     },
+     "generic_recommendations": {
+      "decline": 393,
+      "commit": 90,
+      "probe": 23
+     },
+     "prior_recommendations": {
+      "decline": 379,
+      "commit": 97,
+      "probe": 30
+     }
+    }
+   }
+  }
+ },
+ "cost": {
+  "ii": {
+   "k100_A10": {
+    "class": {
+     "n": 1045,
+     "n_left_out": 0,
+     "n_unmatched": 0,
+     "mean": -0.20702679425837323,
+     "ci": [
+      -0.32982964114832536,
+      -0.09877380382775122
+     ],
+     "groups": {
+      "flat": {
+       "n": 539,
+       "mean": -0.3021168831168831,
+       "ci": [
+        -0.5479590445269017,
+        -0.1092898886827461
+       ]
+      },
+      "upright": {
+       "n": 506,
+       "mean": -0.10573517786561265,
+       "ci": [
+        -0.19063537549407114,
+        -0.030691501976284598
+       ]
+      }
+     }
+    },
+    "exact_both": {
+     "n": 1045,
+     "n_left_out": 0,
+     "n_unmatched": 0,
+     "mean": -0.30224497607655504,
+     "ci": [
+      -0.45753679425837324,
+      -0.1753711961722488
+     ],
+     "groups": {
+      "flat": {
+       "n": 539,
+       "mean": -0.3860816326530612,
+       "ci": [
+        -0.6384679499072357,
+        -0.17974239332096506
+       ]
+      },
+      "upright": {
+       "n": 506,
+       "mean": -0.21294071146245058,
+       "ci": [
+        -0.35740741106719365,
+        -0.0945380928853756
+       ]
+      }
+     }
+    },
+    "exact_com": {
+     "n": 1045,
+     "n_left_out": 0,
+     "n_unmatched": 0,
+     "mean": -0.181222009569378,
+     "ci": [
+      -0.29063210526315786,
+      -0.09044150717703363
+     ],
+     "groups": {
+      "flat": {
+       "n": 539,
+       "mean": -0.2314100185528757,
+       "ci": [
+        -0.4071280612244898,
+        -0.08595593692022264
+       ]
+      },
+      "upright": {
+       "n": 506,
+       "mean": -0.12776086956521737,
+       "ci": [
+        -0.262082114624506,
+        -0.03473013833992096
+       ]
+      }
+     }
+    },
+    "exact_mass": {
+     "n": 1045,
+     "n_left_out": 0,
+     "n_unmatched": 0,
+     "mean": -0.17488899521531098,
+     "ci": [
+      -0.30460815789473683,
+      -0.0722543301435407
+     ],
+     "groups": {
+      "flat": {
+       "n": 539,
+       "mean": -0.2689146567717996,
+       "ci": [
+        -0.5054287569573283,
+        -0.07663631725417441
+       ]
+      },
+      "upright": {
+       "n": 506,
+       "mean": -0.07473122529644267,
+       "ci": [
+        -0.1428967885375494,
+        -0.020122826086956532
+       ]
+      }
+     }
+    }
+   },
+   "k100_A3": {
+    "class": {
+     "n": 1045,
+     "n_left_out": 0,
+     "n_unmatched": 0,
+     "mean": -0.024480382775119616,
+     "ci": [
+      -0.04145200956937799,
+      -0.009851315789473696
+     ],
+     "groups": {
+      "flat": {
+       "n": 539,
+       "mean": -0.01464935064935065,
+       "ci": [
+        -0.03657068645640075,
+        -0.0006586270871985157
+       ]
+      },
+      "upright": {
+       "n": 506,
+       "mean": -0.03495256916996047,
+       "ci": [
+        -0.06424510869565217,
+        -0.010558250988142321
+       ]
+      }
+     }
+    },
+    "exact_both": {
+     "n": 1045,
+     "n_left_out": 0,
+     "n_unmatched": 0,
+     "mean": -0.03762105263157895,
+     "ci": [
+      -0.05773787081339712,
+      -0.018767727272727283
+     ],
+     "groups": {
+      "flat": {
+       "n": 539,
+       "mean": -0.02487198515769944,
+       "ci": [
+        -0.051896660482374776,
+        -0.004836317254174399
+       ]
+      },
+      "upright": {
+       "n": 506,
+       "mean": -0.05120158102766799,
+       "ci": [
+        -0.08636156126482213,
+        -0.021489673913043492
+       ]
+      }
+     }
+    },
+    "exact_com": {
+     "n": 1045,
+     "n_left_out": 0,
+     "n_unmatched": 0,
+     "mean": -0.024001913875598087,
+     "ci": [
+      -0.03867095693779904,
+      -0.010363253588516747
+     ],
+     "groups": {
+      "flat": {
+       "n": 539,
+       "mean": -0.011183673469387754,
+       "ci": [
+        -0.0245012987012987,
+        -0.0006586270871985157
+       ]
+      },
+      "upright": {
+       "n": 506,
+       "mean": -0.03765612648221344,
+       "ci": [
+        -0.0659818675889328,
+        -0.01351333992094862
+       ]
+      }
+     }
+    },
+    "exact_mass": {
+     "n": 1045,
+     "n_left_out": 0,
+     "n_unmatched": 0,
+     "mean": -0.021194258373205738,
+     "ci": [
+      -0.03782782296650717,
+      -0.007105574162679434
+     ],
+     "groups": {
+      "flat": {
+       "n": 539,
+       "mean": -0.017489795918367346,
+       "ci": [
+        -0.04169202226345084,
+        -0.0010556586270871985
+       ]
+      },
+      "upright": {
+       "n": 506,
+       "mean": -0.025140316205533596,
+       "ci": [
+        -0.050909337944664027,
+        -0.004209486166007905
+       ]
+      }
+     }
+    }
+   },
+   "k30_A3": {
+    "class": {
+     "n": 1045,
+     "n_left_out": 0,
+     "n_unmatched": 0,
+     "mean": -0.05391196172248804,
+     "ci": [
+      -0.08359933014354066,
+      -0.029213205741626835
+     ],
+     "groups": {
+      "flat": {
+       "n": 539,
+       "mean": -0.06240074211502783,
+       "ci": [
+        -0.11347152133580705,
+        -0.021888497217068648
+       ]
+      },
+      "upright": {
+       "n": 506,
+       "mean": -0.044869565217391306,
+       "ci": [
+        -0.07547099802371543,
+        -0.02092727272727274
+       ]
+      }
+     }
+    },
+    "exact_both": {
+     "n": 1045,
+     "n_left_out": 0,
+     "n_unmatched": 0,
+     "mean": -0.08448612440191389,
+     "ci": [
+      -0.12517887559808613,
+      -0.04905612440191391
+     ],
+     "groups": {
+      "flat": {
+       "n": 539,
+       "mean": -0.09588311688311688,
+       "ci": [
+        -0.15482073283859,
+        -0.04980208719851578
+       ]
+      },
+      "upright": {
+       "n": 506,
+       "mean": -0.07234584980237153,
+       "ci": [
+        -0.12672811264822137,
+        -0.03207509881422926
+       ]
+      }
+     }
+    },
+    "exact_com": {
+     "n": 1045,
+     "n_left_out": 0,
+     "n_unmatched": 0,
+     "mean": -0.02443349282296651,
+     "ci": [
+      -0.05014464114832535,
+      -0.005822511961722492
+     ],
+     "groups": {
+      "flat": {
+       "n": 539,
+       "mean": -0.021860853432282005,
+       "ci": [
+        -0.0378232374768089,
+        -0.009155426716141026
+       ]
+      },
+      "upright": {
+       "n": 506,
+       "mean": -0.027173913043478264,
+       "ci": [
+        -0.0788,
+        0.008677223320158094
+       ]
+      }
+     }
+    },
+    "exact_mass": {
+     "n": 1045,
+     "n_left_out": 0,
+     "n_unmatched": 0,
+     "mean": -0.052277511961722485,
+     "ci": [
+      -0.08645715311004784,
+      -0.02496600478468901
+     ],
+     "groups": {
+      "flat": {
+       "n": 539,
+       "mean": -0.06533580705009277,
+       "ci": [
+        -0.11689095547309832,
+        -0.02407277365491661
+       ]
+      },
+      "upright": {
+       "n": 506,
+       "mean": -0.038367588932806326,
+       "ci": [
+        -0.07075138339920947,
+        -0.011013191699604746
+       ]
+      }
+     }
+    }
+   }
+  },
+  "i": {
+   "k100_A10": {
+    "class": {
+     "n": 1045,
+     "n_left_out": 0,
+     "n_unmatched": 0,
+     "mean": -0.19595023923444976,
+     "ci": [
+      -0.31892916267942584,
+      -0.09361255980861247
+     ],
+     "groups": {
+      "flat": {
+       "n": 539,
+       "mean": -0.2715992578849722,
+       "ci": [
+        -0.4803464285714286,
+        -0.09317124304267163
+       ]
+      },
+      "upright": {
+       "n": 506,
+       "mean": -0.11536758893280633,
+       "ci": [
+        -0.22357865612648217,
+        -0.034504594861660125
+       ]
+      }
+     }
+    },
+    "exact_both": {
+     "n": 1045,
+     "n_left_out": 0,
+     "n_unmatched": 0,
+     "mean": -0.1262239234449761,
+     "ci": [
+      -0.2474088277511962,
+      -0.028987320574162742
+     ],
+     "groups": {
+      "flat": {
+       "n": 539,
+       "mean": -0.17549165120593693,
+       "ci": [
+        -0.40330412801484233,
+        -0.0018235621521336134
+       ]
+      },
+      "upright": {
+       "n": 506,
+       "mean": -0.07374308300395258,
+       "ci": [
+        -0.15928843873517784,
+        -0.0031092885375494077
+       ]
+      }
+     }
+    },
+    "exact_com": {
+     "n": 1045,
+     "n_left_out": 0,
+     "n_unmatched": 0,
+     "mean": -0.09680765550239236,
+     "ci": [
+      -0.1716097607655502,
+      -0.02985035885167469
+     ],
+     "groups": {
+      "flat": {
+       "n": 539,
+       "mean": -0.12308534322820038,
+       "ci": [
+        -0.2551058905380334,
+        -0.020378664192949984
+       ]
+      },
+      "upright": {
+       "n": 506,
+       "mean": -0.06881620553359685,
+       "ci": [
+        -0.15394244071146246,
+        -0.009706225296442697
+       ]
+      }
+     }
+    },
+    "exact_mass": {
+     "n": 1045,
+     "n_left_out": 0,
+     "n_unmatched": 0,
+     "mean": -0.1116976076555024,
+     "ci": [
+      -0.22426600478468897,
+      -0.02327861244019139
+     ],
+     "groups": {
+      "flat": {
+       "n": 539,
+       "mean": -0.1907513914656772,
+       "ci": [
+        -0.4060498144712431,
+        -0.02650551948051953
+       ]
+      },
+      "upright": {
+       "n": 506,
+       "mean": -0.02748814229249012,
+       "ci": [
+        -0.07033344861660078,
+        0.0058387351778655915
+       ]
+      }
+     }
+    }
+   },
+   "k100_A3": {
+    "class": {
+     "n": 1045,
+     "n_left_out": 0,
+     "n_unmatched": 0,
+     "mean": -0.02056172248803828,
+     "ci": [
+      -0.0349671052631579,
+      -0.008609688995215317
+     ],
+     "groups": {
+      "flat": {
+       "n": 539,
+       "mean": -0.014471243042671616,
+       "ci": [
+        -0.03537017625231911,
+        -0.0008515769944341374
+       ]
+      },
+      "upright": {
+       "n": 506,
+       "mean": -0.02704940711462451,
+       "ci": [
+        -0.049343379446640315,
+        -0.008262994071146256
+       ]
+      }
+     }
+    },
+    "exact_both": {
+     "n": 1045,
+     "n_left_out": 0,
+     "n_unmatched": 0,
+     "mean": -0.0005741626794258366,
+     "ci": [
+      -0.017459736842105267,
+      0.01599047846889952
+     ],
+     "groups": {
+      "flat": {
+       "n": 539,
+       "mean": -0.0016975881261595532,
+       "ci": [
+        -0.02331614100185529,
+        0.015582792207792209
+       ]
+      },
+      "upright": {
+       "n": 506,
+       "mean": 0.0006225296442687728,
+       "ci": [
+        -0.027848270750988145,
+        0.029778013833992076
+       ]
+      }
+     }
+    },
+    "exact_com": {
+     "n": 1045,
+     "n_left_out": 0,
+     "n_unmatched": 0,
+     "mean": -0.011754066985645933,
+     "ci": [
+      -0.02193892344497608,
+      -0.0022027272727272733
+     ],
+     "groups": {
+      "flat": {
+       "n": 539,
+       "mean": -0.008089053803339519,
+       "ci": [
+        -0.017962894248608537,
+        -0.0008515769944341374
+       ]
+      },
+      "upright": {
+       "n": 506,
+       "mean": -0.01565810276679842,
+       "ci": [
+        -0.0360832509881423,
+        0.0021633399209486075
+       ]
+      }
+     }
+    },
+    "exact_mass": {
+     "n": 1045,
+     "n_left_out": 0,
+     "n_unmatched": 0,
+     "mean": -0.012905263157894737,
+     "ci": [
+      -0.02634358851674641,
+      -0.002618014354066987
+     ],
+     "groups": {
+      "flat": {
+       "n": 539,
+       "mean": -0.010679035250463821,
+       "ci": [
+        -0.02881447124304267,
+        -0.00019109461966604861
+       ]
+      },
+      "upright": {
+       "n": 506,
+       "mean": -0.015276679841897234,
+       "ci": [
+        -0.03398280632411067,
+        1.037549407108958e-06
+       ]
+      }
+     }
+    }
+   },
+   "k30_A3": {
+    "class": {
+     "n": 1045,
+     "n_left_out": 0,
+     "n_unmatched": 0,
+     "mean": -0.0542066985645933,
+     "ci": [
+      -0.08587514354066987,
+      -0.02750531100478471
+     ],
+     "groups": {
+      "flat": {
+       "n": 539,
+       "mean": -0.06299072356215213,
+       "ci": [
+        -0.1178275974025974,
+        -0.024259137291280184
+       ]
+      },
+      "upright": {
+       "n": 506,
+       "mean": -0.04484980237154151,
+       "ci": [
+        -0.08779298418972331,
+        -0.01355676877470356
+       ]
+      }
+     }
+    },
+    "exact_both": {
+     "n": 1045,
+     "n_left_out": 0,
+     "n_unmatched": 0,
+     "mean": -0.030804784688995217,
+     "ci": [
+      -0.06176399521531101,
+      -0.0032715550239234533
+     ],
+     "groups": {
+      "flat": {
+       "n": 539,
+       "mean": -0.031081632653061225,
+       "ci": [
+        -0.08118826530612243,
+        0.009531307977736509
+       ]
+      },
+      "upright": {
+       "n": 506,
+       "mean": -0.030509881422924903,
+       "ci": [
+        -0.07103586956521739,
+        0.002315019762845779
+       ]
+      }
+     }
+    },
+    "exact_com": {
+     "n": 1045,
+     "n_left_out": 0,
+     "n_unmatched": 0,
+     "mean": -0.007354066985645934,
+     "ci": [
+      -0.02645624401913876,
+      0.009794210526315777
+     ],
+     "groups": {
+      "flat": {
+       "n": 539,
+       "mean": -0.0016474953617810783,
+       "ci": [
+        -0.01248506493506494,
+        0.009229638218923922
+       ]
+      },
+      "upright": {
+       "n": 506,
+       "mean": -0.013432806324110674,
+       "ci": [
+        -0.05304006916996047,
+        0.0192421442687747
+       ]
+      }
+     }
+    },
+    "exact_mass": {
+     "n": 1045,
+     "n_left_out": 0,
+     "n_unmatched": 0,
+     "mean": -0.03654258373205741,
+     "ci": [
+      -0.06698172248803828,
+      -0.014680789473684232
+     ],
+     "groups": {
+      "flat": {
+       "n": 539,
+       "mean": -0.0485064935064935,
+       "ci": [
+        -0.09952365491651206,
+        -0.011053571428571437
+       ]
+      },
+      "upright": {
+       "n": 506,
+       "mean": -0.023798418972332015,
+       "ci": [
+        -0.049881126482213434,
+        -0.004313883399209493
+       ]
+      }
+     }
+    }
+   }
+  }
+ },
+ "proxy_rates": {
+  "k100_A3": {
+   "class": {
+    "n": 1045,
+    "n_left_out": 0,
+    "recommendation": {
+     "rate": 0.0354066985645933,
+     "ci": [
+      0.01818181818181818,
+      0.05550239234449761
+     ]
+    },
+    "option": {
+     "rate": 0.03923444976076555,
+     "ci": [
+      0.020095693779904306,
+      0.05933014354066986
+     ]
+    },
+    "transitions": {
+     "commit->decline": 31,
+     "decline->commit": 5,
+     "probe->decline": 1
+    },
+    "exact_both_recommendations": {
+     "decline": 962,
+     "commit": 82,
+     "probe": 1
+    },
+    "prior_recommendations": {
+     "decline": 989,
+     "commit": 56
+    }
+   },
+   "exact_com": {
+    "n": 1045,
+    "n_left_out": 0,
+    "recommendation": {
+     "rate": 0.03732057416267943,
+     "ci": [
+      0.020095693779904306,
+      0.05645933014354067
+     ]
+    },
+    "option": {
+     "rate": 0.04019138755980861,
+     "ci": [
+      0.021052631578947368,
+      0.06124401913875598
+     ]
+    },
+    "transitions": {
+     "commit->decline": 34,
+     "decline->commit": 4,
+     "probe->decline": 1
+    },
+    "exact_both_recommendations": {
+     "decline": 962,
+     "commit": 82,
+     "probe": 1
+    },
+    "prior_recommendations": {
+     "decline": 993,
+     "commit": 52
+    }
+   },
+   "exact_mass": {
+    "n": 1045,
+    "n_left_out": 0,
+    "recommendation": {
+     "rate": 0.04019138755980861,
+     "ci": [
+      0.019138755980861243,
+      0.06605263157894724
+     ]
+    },
+    "option": {
+     "rate": 0.04401913875598086,
+     "ci": [
+      0.023923444976076555,
+      0.06796650717703336
+     ]
+    },
+    "transitions": {
+     "commit->decline": 39,
+     "decline->commit": 2,
+     "probe->decline": 1
+    },
+    "exact_both_recommendations": {
+     "decline": 962,
+     "commit": 82,
+     "probe": 1
+    },
+    "prior_recommendations": {
+     "decline": 1000,
+     "commit": 45
+    }
+   },
+   "generic": {
+    "n": 1045,
+    "n_left_out": 0,
+    "recommendation": {
+     "rate": 0.06698564593301436,
+     "ci": [
+      0.03732057416267943,
+      0.09763157894736828
+     ]
+    },
+    "option": {
+     "rate": 0.06889952153110047,
+     "ci": [
+      0.04019138755980861,
+      0.09954545454545441
+     ]
+    },
+    "transitions": {
+     "commit->decline": 66,
+     "decline->commit": 3,
+     "probe->decline": 1
+    },
+    "exact_both_recommendations": {
+     "decline": 962,
+     "commit": 82,
+     "probe": 1
+    },
+    "prior_recommendations": {
+     "decline": 1026,
+     "commit": 19
+    }
+   }
+  },
+  "k30_A3": {
+   "class": {
+    "n": 1045,
+    "n_left_out": 0,
+    "recommendation": {
+     "rate": 0.05454545454545454,
+     "ci": [
+      0.03444976076555024,
+      0.07655502392344497
+     ]
+    },
+    "option": {
+     "rate": 0.06698564593301436,
+     "ci": [
+      0.044976076555023926,
+      0.09282296650717703
+     ]
+    },
+    "transitions": {
+     "commit->decline": 22,
+     "decline->commit": 8,
+     "probe->commit": 9,
+     "commit->probe": 9,
+     "probe->decline": 8,
+     "decline->probe": 1
+    },
+    "exact_both_recommendations": {
+     "decline": 784,
+     "commit": 229,
+     "probe": 32
+    },
+    "prior_recommendations": {
+     "decline": 805,
+     "commit": 215,
+     "probe": 25
+    }
+   },
+   "exact_com": {
+    "n": 1045,
+    "n_left_out": 0,
+    "recommendation": {
+     "rate": 0.09186602870813397,
+     "ci": [
+      0.053588516746411484,
+      0.13014354066985645
+     ]
+    },
+    "option": {
+     "rate": 0.10813397129186603,
+     "ci": [
+      0.07177033492822966,
+      0.15023923444976076
+     ]
+    },
+    "transitions": {
+     "commit->decline": 56,
+     "commit->probe": 4,
+     "probe->decline": 25,
+     "probe->commit": 3,
+     "decline->commit": 8
+    },
+    "exact_both_recommendations": {
+     "decline": 784,
+     "commit": 229,
+     "probe": 32
+    },
+    "prior_recommendations": {
+     "decline": 857,
+     "probe": 8,
+     "commit": 180
+    }
+   },
+   "exact_mass": {
+    "n": 1045,
+    "n_left_out": 0,
+    "recommendation": {
+     "rate": 0.0660287081339713,
+     "ci": [
+      0.0430622009569378,
+      0.09569377990430622
+     ]
+    },
+    "option": {
+     "rate": 0.07272727272727272,
+     "ci": [
+      0.045933014354066985,
+      0.10047846889952153
+     ]
+    },
+    "transitions": {
+     "commit->decline": 39,
+     "decline->commit": 3,
+     "probe->commit": 5,
+     "probe->decline": 15,
+     "commit->probe": 7
+    },
+    "exact_both_recommendations": {
+     "decline": 784,
+     "commit": 229,
+     "probe": 32
+    },
+    "prior_recommendations": {
+     "decline": 835,
+     "commit": 191,
+     "probe": 19
+    }
+   },
+   "generic": {
+    "n": 1045,
+    "n_left_out": 0,
+    "recommendation": {
+     "rate": 0.11578947368421053,
+     "ci": [
+      0.07464114832535886,
+      0.15885167464114833
+     ]
+    },
+    "option": {
+     "rate": 0.12440191387559808,
+     "ci": [
+      0.08421052631578947,
+      0.1674641148325359
+     ]
+    },
+    "transitions": {
+     "commit->decline": 82,
+     "probe->decline": 29,
+     "commit->probe": 7,
+     "decline->commit": 3
+    },
+    "exact_both_recommendations": {
+     "decline": 784,
+     "commit": 229,
+     "probe": 32
+    },
+    "prior_recommendations": {
+     "decline": 892,
+     "commit": 143,
+     "probe": 10
+    }
+   }
+  },
+  "k100_A10": {
+   "class": {
+    "n": 1045,
+    "n_left_out": 0,
+    "recommendation": {
+     "rate": 0.07559808612440191,
+     "ci": [
+      0.05071770334928229,
+      0.10239234449760766
+     ]
+    },
+    "option": {
+     "rate": 0.08995215311004785,
+     "ci": [
+      0.06220095693779904,
+      0.11868421052631566
+     ]
+    },
+    "transitions": {
+     "commit->decline": 18,
+     "decline->commit": 10,
+     "commit->probe": 19,
+     "probe->decline": 13,
+     "probe->commit": 11,
+     "decline->probe": 8
+    },
+    "exact_both_recommendations": {
+     "decline": 757,
+     "commit": 223,
+     "probe": 65
+    },
+    "prior_recommendations": {
+     "decline": 770,
+     "commit": 207,
+     "probe": 68
+    }
+   },
+   "exact_com": {
+    "n": 1045,
+    "n_left_out": 0,
+    "recommendation": {
+     "rate": 0.09090909090909091,
+     "ci": [
+      0.06124401913875598,
+      0.12346889952153096
+     ]
+    },
+    "option": {
+     "rate": 0.10813397129186603,
+     "ci": [
+      0.07559808612440191,
+      0.14641148325358852
+     ]
+    },
+    "transitions": {
+     "commit->decline": 26,
+     "decline->commit": 8,
+     "commit->probe": 24,
+     "probe->decline": 26,
+     "decline->probe": 9,
+     "probe->commit": 2
+    },
+    "exact_both_recommendations": {
+     "decline": 757,
+     "commit": 223,
+     "probe": 65
+    },
+    "prior_recommendations": {
+     "decline": 792,
+     "commit": 183,
+     "probe": 70
+    }
+   },
+   "exact_mass": {
+    "n": 1045,
+    "n_left_out": 0,
+    "recommendation": {
+     "rate": 0.07272727272727272,
+     "ci": [
+      0.04880382775119617,
+      0.09952153110047847
+     ]
+    },
+    "option": {
+     "rate": 0.08708133971291866,
+     "ci": [
+      0.06028708133971292,
+      0.11578947368421053
+     ]
+    },
+    "transitions": {
+     "commit->decline": 36,
+     "decline->commit": 4,
+     "probe->commit": 6,
+     "probe->decline": 17,
+     "commit->probe": 13
+    },
+    "exact_both_recommendations": {
+     "decline": 757,
+     "commit": 223,
+     "probe": 65
+    },
+    "prior_recommendations": {
+     "decline": 806,
+     "commit": 184,
+     "probe": 55
+    }
+   },
+   "generic": {
+    "n": 1045,
+    "n_left_out": 0,
+    "recommendation": {
+     "rate": 0.12631578947368421,
+     "ci": [
+      0.08421052631578947,
+      0.17320574162679425
+     ]
+    },
+    "option": {
+     "rate": 0.1397129186602871,
+     "ci": [
+      0.09566985645933014,
+      0.18851674641148325
+     ]
+    },
+    "transitions": {
+     "commit->decline": 57,
+     "probe->decline": 50,
+     "commit->probe": 19,
+     "probe->commit": 1,
+     "decline->commit": 4,
+     "decline->probe": 1
+    },
+    "exact_both_recommendations": {
+     "decline": 757,
+     "commit": 223,
+     "probe": 65
+    },
+    "prior_recommendations": {
+     "decline": 859,
+     "commit": 152,
+     "probe": 34
+    }
+   }
+  }
+ },
+ "proxy_cost": {
+  "ii": {
+   "k100_A10": {
+    "class": {
+     "n": 1045,
+     "n_left_out": 0,
+     "n_unmatched": 0,
+     "mean": 0.09521818181818181,
+     "ci": [
+      0.04417669856459331,
+      0.1681288277511961
+     ],
+     "groups": {
+      "flat": {
+       "n": 539,
+       "mean": 0.08396474953617812,
+       "ci": [
+        0.036987662337662326,
+        0.1446136827458256
+       ]
+      },
+      "upright": {
+       "n": 506,
+       "mean": 0.10720553359683793,
+       "ci": [
+        0.026037351778656126,
+        0.23621684782608693
+       ]
+      }
+     }
+    },
+    "exact_com": {
+     "n": 1045,
+     "n_left_out": 0,
+     "n_unmatched": 0,
+     "mean": 0.12102296650717705,
+     "ci": [
+      0.06336576555023925,
+      0.18723495215311
+     ],
+     "groups": {
+      "flat": {
+       "n": 539,
+       "mean": 0.15467161410018554,
+       "ci": [
+        0.06420853432282003,
+        0.2692820964749536
+       ]
+      },
+      "upright": {
+       "n": 506,
+       "mean": 0.08517984189723321,
+       "ci": [
+        0.030595948616600803,
+        0.1558171442687747
+       ]
+      }
+     }
+    },
+    "exact_mass": {
+     "n": 1045,
+     "n_left_out": 0,
+     "n_unmatched": 0,
+     "mean": 0.127355980861244,
+     "ci": [
+      0.07146,
+      0.2015895215311004
+     ],
+     "groups": {
+      "flat": {
+       "n": 539,
+       "mean": 0.11716697588126161,
+       "ci": [
+        0.06632379406307977,
+        0.1776648886827458
+       ]
+      },
+      "upright": {
+       "n": 506,
+       "mean": 0.13820948616600792,
+       "ci": [
+        0.03974145256916997,
+        0.2676420454545454
+       ]
+      }
+     }
+    },
+    "generic": {
+     "n": 1045,
+     "n_left_out": 0,
+     "n_unmatched": 0,
+     "mean": 0.30224497607655504,
+     "ci": [
+      0.17827210526315787,
+      0.4484762200956937
+     ],
+     "groups": {
+      "flat": {
+       "n": 539,
+       "mean": 0.3860816326530612,
+       "ci": [
+        0.18899619666048234,
+        0.640358024118738
+       ]
+      },
+      "upright": {
+       "n": 506,
+       "mean": 0.21294071146245058,
+       "ci": [
+        0.10477440711462453,
+        0.36091111660079034
+       ]
+      }
+     }
+    }
+   },
+   "k100_A3": {
+    "class": {
+     "n": 1045,
+     "n_left_out": 0,
+     "n_unmatched": 0,
+     "mean": 0.01314066985645933,
+     "ci": [
+      0.005552822966507177,
+      0.02183112440191387
+     ],
+     "groups": {
+      "flat": {
+       "n": 539,
+       "mean": 0.010222634508348793,
+       "ci": [
+        0.0013116883116883113,
+        0.021990723562152134
+       ]
+      },
+      "upright": {
+       "n": 506,
+       "mean": 0.01624901185770751,
+       "ci": [
+        0.004595998023715414,
+        0.03129387351778649
+       ]
+      }
+     }
+    },
+    "exact_com": {
+     "n": 1045,
+     "n_left_out": 0,
+     "n_unmatched": 0,
+     "mean": 0.013619138755980862,
+     "ci": [
+      0.005879090909090909,
+      0.02243846889952153
+     ],
+     "groups": {
+      "flat": {
+       "n": 539,
+       "mean": 0.01368831168831169,
+       "ci": [
+        0.00210009276437848,
+        0.029434972170686444
+       ]
+      },
+      "upright": {
+       "n": 506,
+       "mean": 0.013545454545454545,
+       "ci": [
+        0.004893033596837943,
+        0.023927223320158102
+       ]
+      }
+     }
+    },
+    "exact_mass": {
+     "n": 1045,
+     "n_left_out": 0,
+     "n_unmatched": 0,
+     "mean": 0.016426794258373206,
+     "ci": [
+      0.0062545454545454545,
+      0.031101076555023904
+     ],
+     "groups": {
+      "flat": {
+       "n": 539,
+       "mean": 0.0073821892393320975,
+       "ci": [
+        0.0008941558441558437,
+        0.01688896103896101
+       ]
+      },
+      "upright": {
+       "n": 506,
+       "mean": 0.026061264822134386,
+       "ci": [
+        0.007391106719367589,
+        0.054573567193675815
+       ]
+      }
+     }
+    },
+    "generic": {
+     "n": 1045,
+     "n_left_out": 0,
+     "n_unmatched": 0,
+     "mean": 0.03762105263157895,
+     "ci": [
+      0.019114377990430625,
+      0.05827511961722486
+     ],
+     "groups": {
+      "flat": {
+       "n": 539,
+       "mean": 0.02487198515769944,
+       "ci": [
+        0.004751298701298703,
+        0.05146767161410019
+       ]
+      },
+      "upright": {
+       "n": 506,
+       "mean": 0.05120158102766799,
+       "ci": [
+        0.021978063241106717,
+        0.08681225296442685
+       ]
+      }
+     }
+    }
+   },
+   "k30_A3": {
+    "class": {
+     "n": 1045,
+     "n_left_out": 0,
+     "n_unmatched": 0,
+     "mean": 0.030574162679425834,
+     "ci": [
+      0.014333421052631579,
+      0.05190363636363634
+     ],
+     "groups": {
+      "flat": {
+       "n": 539,
+       "mean": 0.033482374768089046,
+       "ci": [
+        0.01725009276437848,
+        0.05280890538033394
+       ]
+      },
+      "upright": {
+       "n": 506,
+       "mean": 0.027476284584980238,
+       "ci": [
+        0.003911314229249012,
+        0.06854234189723317
+       ]
+      }
+     }
+    },
+    "exact_com": {
+     "n": 1045,
+     "n_left_out": 0,
+     "n_unmatched": 0,
+     "mean": 0.060052631578947364,
+     "ci": [
+      0.03210717703349282,
+      0.09578215311004783
+     ],
+     "groups": {
+      "flat": {
+       "n": 539,
+       "mean": 0.07402226345083489,
+       "ci": [
+        0.0314752319109462,
+        0.13392319109461964
+       ]
+      },
+      "upright": {
+       "n": 506,
+       "mean": 0.04517193675889328,
+       "ci": [
+        0.014863389328063244,
+        0.08523542490118576
+       ]
+      }
+     }
+    },
+    "exact_mass": {
+     "n": 1045,
+     "n_left_out": 0,
+     "n_unmatched": 0,
+     "mean": 0.03220861244019139,
+     "ci": [
+      0.018470980861244022,
+      0.04953165071770335
+     ],
+     "groups": {
+      "flat": {
+       "n": 539,
+       "mean": 0.03054730983302412,
+       "ci": [
+        0.016399118738404456,
+        0.04697360853432276
+       ]
+      },
+      "upright": {
+       "n": 506,
+       "mean": 0.03397826086956522,
+       "ci": [
+        0.01137455533596838,
+        0.06732934782608695
+       ]
+      }
+     }
+    },
+    "generic": {
+     "n": 1045,
+     "n_left_out": 0,
+     "n_unmatched": 0,
+     "mean": 0.08448612440191389,
+     "ci": [
+      0.051836913875598085,
+      0.1231905023923445
+     ],
+     "groups": {
+      "flat": {
+       "n": 539,
+       "mean": 0.09588311688311688,
+       "ci": [
+        0.04834823747680891,
+        0.15506256957328385
+       ]
+      },
+      "upright": {
+       "n": 506,
+       "mean": 0.07234584980237153,
+       "ci": [
+        0.032036758893280635,
+        0.12765370553359678
+       ]
+      }
+     }
+    }
+   }
+  },
+  "i": {
+   "k100_A10": {
+    "class": {
+     "n": 1045,
+     "n_left_out": 0,
+     "n_unmatched": 0,
+     "mean": -0.06972631578947369,
+     "ci": [
+      -0.1083023923444976,
+      -0.0374206220095694
+     ],
+     "groups": {
+      "flat": {
+       "n": 539,
+       "mean": -0.09610760667903524,
+       "ci": [
+        -0.1651840909090909,
+        -0.04244587198515772
+       ]
+      },
+      "upright": {
+       "n": 506,
+       "mean": -0.04162450592885375,
+       "ci": [
+        -0.08028952569169959,
+        -0.00932213438735182
+       ]
+      }
+     }
+    },
+    "exact_com": {
+     "n": 1045,
+     "n_left_out": 0,
+     "n_unmatched": 0,
+     "mean": 0.02941626794258374,
+     "ci": [
+      -0.029688971291866015,
+      0.10242942583732056
+     ],
+     "groups": {
+      "flat": {
+       "n": 539,
+       "mean": 0.05240630797773655,
+       "ci": [
+        -0.051165816326530576,
+        0.18336525974025972
+       ]
+      },
+      "upright": {
+       "n": 506,
+       "mean": 0.004926877470355736,
+       "ci": [
+        -0.03907751976284585,
+        0.04889036561264822
+       ]
+      }
+     }
+    },
+    "exact_mass": {
+     "n": 1045,
+     "n_left_out": 0,
+     "n_unmatched": 0,
+     "mean": 0.014526315789473701,
+     "ci": [
+      -0.029848851674641137,
+      0.06368373205741622
+     ],
+     "groups": {
+      "flat": {
+       "n": 539,
+       "mean": -0.015259740259740239,
+       "ci": [
+        -0.07305667903525045,
+        0.04120064935064937
+       ]
+      },
+      "upright": {
+       "n": 506,
+       "mean": 0.04625494071146245,
+       "ci": [
+        -0.01345968379446639,
+        0.12605721343873502
+       ]
+      }
+     }
+    },
+    "generic": {
+     "n": 1045,
+     "n_left_out": 0,
+     "n_unmatched": 0,
+     "mean": 0.1262239234449761,
+     "ci": [
+      0.030421052631578967,
+      0.25519210526315783
+     ],
+     "groups": {
+      "flat": {
+       "n": 539,
+       "mean": 0.17549165120593693,
+       "ci": [
+        -0.0012223098330240978,
+        0.41789276437847855
+       ]
+      },
+      "upright": {
+       "n": 506,
+       "mean": 0.07374308300395258,
+       "ci": [
+        0.00016595849802373354,
+        0.1550134881422924
+       ]
+      }
+     }
+    }
+   },
+   "k100_A3": {
+    "class": {
+     "n": 1045,
+     "n_left_out": 0,
+     "n_unmatched": 0,
+     "mean": -0.01998755980861244,
+     "ci": [
+      -0.03647531100478469,
+      -0.007094186602870827
+     ],
+     "groups": {
+      "flat": {
+       "n": 539,
+       "mean": -0.012773654916512063,
+       "ci": [
+        -0.025503571428571434,
+        -0.0029570500927643796
+       ]
+      },
+      "upright": {
+       "n": 506,
+       "mean": -0.027671936758893286,
+       "ci": [
+        -0.05968221343873519,
+        -0.004974308300395257
+       ]
+      }
+     }
+    },
+    "exact_com": {
+     "n": 1045,
+     "n_left_out": 0,
+     "n_unmatched": 0,
+     "mean": -0.011179904306220097,
+     "ci": [
+      -0.025396913875598087,
+      0.0011055023923444904
+     ],
+     "groups": {
+      "flat": {
+       "n": 539,
+       "mean": -0.006391465677179965,
+       "ci": [
+        -0.020617717996289427,
+        0.007880612244897951
+       ]
+      },
+      "upright": {
+       "n": 506,
+       "mean": -0.016280632411067197,
+       "ci": [
+        -0.04345064229249013,
+        0.002749456521739127
+       ]
+      }
+     }
+    },
+    "exact_mass": {
+     "n": 1045,
+     "n_left_out": 0,
+     "n_unmatched": 0,
+     "mean": -0.012331100478468901,
+     "ci": [
+      -0.025435502392344496,
+      -0.0025978708133971313
+     ],
+     "groups": {
+      "flat": {
+       "n": 539,
+       "mean": -0.008981447124304268,
+       "ci": [
+        -0.020390677179962898,
+        -0.0015304730983302431
+       ]
+      },
+      "upright": {
+       "n": 506,
+       "mean": -0.015899209486166008,
+       "ci": [
+        -0.03792080039525692,
+        0.0016584486166007885
+       ]
+      }
+     }
+    },
+    "generic": {
+     "n": 1045,
+     "n_left_out": 0,
+     "n_unmatched": 0,
+     "mean": 0.0005741626794258366,
+     "ci": [
+      -0.016208325358851677,
+      0.017476004784688984
+     ],
+     "groups": {
+      "flat": {
+       "n": 539,
+       "mean": 0.0016975881261595532,
+       "ci": [
+        -0.01557026901669759,
+        0.022595408163265274
+       ]
+      },
+      "upright": {
+       "n": 506,
+       "mean": -0.0006225296442687728,
+       "ci": [
+        -0.030014525691699608,
+        0.02671926877470355
+       ]
+      }
+     }
+    }
+   },
+   "k30_A3": {
+    "class": {
+     "n": 1045,
+     "n_left_out": 0,
+     "n_unmatched": 0,
+     "mean": -0.02340191387559808,
+     "ci": [
+      -0.03591885167464115,
+      -0.012271076555023925
+     ],
+     "groups": {
+      "flat": {
+       "n": 539,
+       "mean": -0.03190909090909091,
+       "ci": [
+        -0.05277699443413729,
+        -0.01614935064935066
+       ]
+      },
+      "upright": {
+       "n": 506,
+       "mean": -0.0143399209486166,
+       "ci": [
+        -0.029830583003952565,
+        -0.0032965909090909296
+       ]
+      }
+     }
+    },
+    "exact_com": {
+     "n": 1045,
+     "n_left_out": 0,
+     "n_unmatched": 0,
+     "mean": 0.02345071770334928,
+     "ci": [
+      -0.0024105023923444973,
+      0.05378332535885166
+     ],
+     "groups": {
+      "flat": {
+       "n": 539,
+       "mean": 0.029434137291280145,
+       "ci": [
+        -0.009073608534322819,
+        0.07863650278293131
+       ]
+      },
+      "upright": {
+       "n": 506,
+       "mean": 0.017077075098814225,
+       "ci": [
+        -0.01187030632411067,
+        0.058248418972331996
+       ]
+      }
+     }
+    },
+    "exact_mass": {
+     "n": 1045,
+     "n_left_out": 0,
+     "n_unmatched": 0,
+     "mean": -0.0057377990430622,
+     "ci": [
+      -0.02003930622009569,
+      0.00807557416267941
+     ],
+     "groups": {
+      "flat": {
+       "n": 539,
+       "mean": -0.017424860853432277,
+       "ci": [
+        -0.0366595547309833,
+        -0.000785389610389613
+       ]
+      },
+      "upright": {
+       "n": 506,
+       "mean": 0.006711462450592887,
+       "ci": [
+        -0.01308438735177865,
+        0.028232460474308274
+       ]
+      }
+     }
+    },
+    "generic": {
+     "n": 1045,
+     "n_left_out": 0,
+     "n_unmatched": 0,
+     "mean": 0.030804784688995217,
+     "ci": [
+      0.004229234449760766,
+      0.06180169856459328
+     ],
+     "groups": {
+      "flat": {
+       "n": 539,
+       "mean": 0.031081632653061225,
+       "ci": [
+        -0.008262476808905374,
+        0.08437411873840442
+       ]
+      },
+      "upright": {
+       "n": 506,
+       "mean": 0.030509881422924903,
+       "ci": [
+        -0.002244911067193674,
+        0.07072885375494063
+       ]
+      }
+     }
+    }
+   }
+  }
+ },
+ "com_gain_objects": [
+  {
+   "object": "hope__parmesan_cheese_canister",
+   "name": "parmesan cheese canister",
+   "group": "upright",
+   "mean_gain": 1.2313636363636364,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 2.3633636363636366,
+     "changes": {
+      "decline->firm_grip": 4
+     }
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.3620909090909091,
+     "changes": {
+      "decline->firm_grip": 4
+     }
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.9686363636363636,
+     "changes": {
+      "decline->firm_grip": 6
+     }
+    }
+   },
+   "com_frac_mean": 0.5076462188560911,
+   "com_off_middle": 0.04839978126128033
+  },
+  {
+   "object": "hope__butter",
+   "name": "butter",
+   "group": "flat",
+   "mean_gain": 0.7951818181818182,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 2.2383636363636366,
+     "changes": {
+      "decline->probe_squeeze": 7
+     }
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.14718181818181816,
+     "changes": {
+      "decline->light_grip": 2
+     }
+    }
+   },
+   "com_frac_mean": 0.5249643404433024,
+   "com_off_middle": 0.10248729824133891
+  },
+  {
+   "object": "hot3d__frozen_vegetable_block",
+   "name": "frozen vegetable block",
+   "group": "flat",
+   "mean_gain": 0.6161515151515152,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 1.8484545454545456,
+     "changes": {
+      "decline->probe_squeeze": 4
+     }
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.485902785540617,
+   "com_off_middle": 0.02019222814316438
+  },
+  {
+   "object": "hope__cream_cheese",
+   "name": "cream cheese",
+   "group": "flat",
+   "mean_gain": 0.615,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 1.6125454545454545,
+     "changes": {
+      "decline->probe_squeeze": 7
+     }
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.2324545454545455,
+     "changes": {
+      "decline->light_grip": 1,
+      "decline->probe_squeeze": 1
+     }
+    }
+   },
+   "com_frac_mean": 0.49534154691599747,
+   "com_off_middle": 0.057888655464665595
+  },
+  {
+   "object": "hot3d__frozen_waffles",
+   "name": "frozen waffles",
+   "group": "flat",
+   "mean_gain": 0.5165757575757576,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 1.5497272727272728,
+     "changes": {
+      "decline->probe_squeeze": 3
+     }
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.48114279118799247,
+   "com_off_middle": 0.0709555897144256
+  },
+  {
+   "object": "ycb__jello",
+   "name": "jello",
+   "group": "flat",
+   "mean_gain": 0.47439393939393937,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 1.423181818181818,
+     "changes": {
+      "decline->probe_squeeze": 3
+     }
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.4719077200712554,
+   "com_off_middle": 0.028092279928744676
+  },
+  {
+   "object": "hot3d__foam_roller",
+   "name": "whiteboard eraser",
+   "group": "flat",
+   "mean_gain": 0.4666060606060605,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 1.3384545454545453,
+     "changes": {
+      "decline->regrasp_com": 1,
+      "decline->firm_grip": 3
+     }
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.06136363636363635,
+     "changes": {
+      "decline->firm_grip": 1
+     }
+    }
+   },
+   "com_frac_mean": 0.5011055579223542,
+   "com_off_middle": 0.061308233628015366
+  },
+  {
+   "object": "hope__ranch_dressing",
+   "name": "ranch dressing",
+   "group": "upright",
+   "mean_gain": 0.39699999999999996,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 1.1909999999999998,
+     "changes": {
+      "decline->probe_squeeze": 8
+     }
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.5034712504792361,
+   "com_off_middle": 0.006305237672657085
+  },
+  {
+   "object": "hope__canned_peaches",
+   "name": "canned peaches",
+   "group": "upright",
+   "mean_gain": 0.3498787878787879,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.6634545454545454,
+     "changes": {
+      "decline->firm_grip": 2
+     }
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.2400909090909091,
+     "changes": {
+      "decline->firm_grip": 3
+     }
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.1460909090909091,
+     "changes": {
+      "decline->firm_grip": 2
+     }
+    }
+   },
+   "com_frac_mean": 0.4661050756905709,
+   "com_off_middle": 0.05808550447054332
+  },
+  {
+   "object": "hope__raisin_box",
+   "name": "raisin box",
+   "group": "upright",
+   "mean_gain": 0.2855757575757576,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.6678181818181819,
+     "changes": {
+      "probe_squeeze->light_grip": 2,
+      "decline->probe_squeeze": 2
+     }
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.1889090909090909,
+     "changes": {
+      "decline->probe_squeeze": 3,
+      "probe_squeeze->light_grip": 2
+     }
+    }
+   },
+   "com_frac_mean": 0.5357123800383942,
+   "com_off_middle": 0.048314678362854385
+  },
+  {
+   "object": "hope__pitted_cherries",
+   "name": "pitted cherries",
+   "group": "flat",
+   "mean_gain": 0.18751515151515152,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.2531818181818182,
+     "changes": {
+      "decline->firm_grip": 2,
+      "probe_weigh->firm_grip": 1
+     }
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.23899999999999996,
+     "changes": {
+      "decline->firm_grip": 3
+     }
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.07036363636363636,
+     "changes": {
+      "decline->firm_grip": 3
+     }
+    }
+   },
+   "com_frac_mean": 0.4651775163053502,
+   "com_off_middle": 0.062007621110041385
+  },
+  {
+   "object": "handal__measuring_spoon",
+   "name": "measuring spoon",
+   "group": "flat",
+   "mean_gain": 0.1381818181818182,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.36909090909090914,
+     "changes": {
+      "decline->probe_weigh": 2
+     }
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.045454545454545456,
+     "changes": {
+      "decline->probe_weigh": 1
+     }
+    }
+   },
+   "com_frac_mean": 0.3533704244641085,
+   "com_off_middle": 0.15636675680718806
+  },
+  {
+   "object": "hope__popcorn_box",
+   "name": "popcorn box",
+   "group": "upright",
+   "mean_gain": 0.1367878787878788,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.3070909090909091,
+     "changes": {
+      "decline->probe_squeeze": 1,
+      "probe_squeeze->light_grip": 1,
+      "light_grip->probe_squeeze": 1
+     }
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.10327272727272728,
+     "changes": {
+      "decline->light_grip": 2
+     }
+    }
+   },
+   "com_frac_mean": 0.5233233817936582,
+   "com_off_middle": 0.023323381793658317
+  },
+  {
+   "object": "ycb__tuna_can",
+   "name": "tuna can",
+   "group": "flat",
+   "mean_gain": 0.12803030303030308,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.36227272727272736,
+     "changes": {
+      "probe_weigh->firm_grip": 1,
+      "decline->firm_grip": 3,
+      "firm_grip->regrasp_com": 1
+     }
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.021818181818181837,
+     "changes": {
+      "decline->firm_grip": 3,
+      "firm_grip->regrasp_com": 1
+     }
+    }
+   },
+   "com_frac_mean": 0.5049982649657743,
+   "com_off_middle": 0.02253752999373406
+  },
+  {
+   "object": "hot3d__potato_masher",
+   "name": "potato masher",
+   "group": "flat",
+   "mean_gain": 0.12236363636363638,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.36709090909090913,
+     "changes": {
+      "decline->regrasp_com": 1
+     }
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.4075256860283791,
+   "com_off_middle": 0.12048403644699747
+  },
+  {
+   "object": "ycb__tomato_soup_can",
+   "name": "tomato soup can",
+   "group": "upright",
+   "mean_gain": 0.1207272727272727,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.19827272727272713,
+     "changes": {
+      "decline->regrasp_com": 2,
+      "regrasp_com->firm_grip": 1
+     }
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.07136363636363638,
+     "changes": {
+      "decline->firm_grip": 2
+     }
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.09254545454545458,
+     "changes": {
+      "decline->regrasp_com": 2,
+      "decline->firm_grip": 1
+     }
+    }
+   },
+   "com_frac_mean": 0.4549935661074434,
+   "com_off_middle": 0.057474515695917126
+  },
+  {
+   "object": "ycb__clamp",
+   "name": "clamp",
+   "group": "flat",
+   "mean_gain": 0.11863636363636364,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.15209090909090903,
+     "changes": {
+      "firm_grip->decline": 1,
+      "firm_grip->regrasp_com": 1
+     }
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.20381818181818187,
+     "changes": {
+      "decline->firm_grip": 3,
+      "firm_grip->decline": 1
+     }
+    }
+   },
+   "com_frac_mean": 0.5396023277364924,
+   "com_off_middle": 0.08567652625856688
+  },
+  {
+   "object": "hope__canned_tuna",
+   "name": "canned tuna",
+   "group": "upright",
+   "mean_gain": 0.109,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.327,
+     "changes": {
+      "decline->firm_grip": 4
+     }
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.5073157074393232,
+   "com_off_middle": 0.007659467548655985
+  },
+  {
+   "object": "hot3d__computer_mouse",
+   "name": "computer mouse",
+   "group": "flat",
+   "mean_gain": 0.1041515151515151,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.1867272727272726,
+     "changes": {
+      "decline->firm_grip": 1,
+      "firm_grip->regrasp_com": 1
+     }
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.08890909090909092,
+     "changes": {
+      "decline->firm_grip": 1
+     }
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.03681818181818182,
+     "changes": {
+      "firm_grip->regrasp_com": 1
+     }
+    }
+   },
+   "com_frac_mean": 0.535134936747001,
+   "com_off_middle": 0.046374448267010586
+  },
+  {
+   "object": "hope__canned_mushrooms",
+   "name": "canned mushrooms",
+   "group": "upright",
+   "mean_gain": 0.09296969696969697,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.2789090909090909,
+     "changes": {
+      "decline->firm_grip": 4
+     }
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.45981165121969364,
+   "com_off_middle": 0.06822523270317594
+  },
+  {
+   "object": "hope__tomato_sauce_can",
+   "name": "tomato sauce can",
+   "group": "upright",
+   "mean_gain": 0.08475757575757575,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.1091818181818181,
+     "changes": {
+      "firm_grip->regrasp_com": 2,
+      "regrasp_com->firm_grip": 1
+     }
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.14972727272727274,
+     "changes": {
+      "regrasp_com->firm_grip": 3,
+      "decline->firm_grip": 1
+     }
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": -0.00463636363636363,
+     "changes": {
+      "firm_grip->regrasp_com": 2
+     }
+    }
+   },
+   "com_frac_mean": 0.4486475339617541,
+   "com_off_middle": 0.051352466038245954
+  },
+  {
+   "object": "hope__peas_and_carrots",
+   "name": "peas and carrots",
+   "group": "flat",
+   "mean_gain": 0.08433333333333333,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.21890909090909094,
+     "changes": {
+      "decline->firm_grip": 1
+     }
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.03409090909090909,
+     "changes": {
+      "decline->firm_grip": 1
+     }
+    }
+   },
+   "com_frac_mean": 0.5517939853379829,
+   "com_off_middle": 0.05179398533798297
+  },
+  {
+   "object": "hot3d__bbq_sauce_bottle",
+   "name": "bbq sauce bottle",
+   "group": "upright",
+   "mean_gain": 0.07745454545454546,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.23236363636363636,
+     "changes": {
+      "probe_squeeze->decline": 1,
+      "decline->probe_squeeze": 2
+     }
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.4499816731373787,
+   "com_off_middle": 0.06418916106097004
+  },
+  {
+   "object": "hope__pineapple_slices_can",
+   "name": "pineapple slices can",
+   "group": "upright",
+   "mean_gain": 0.0676969696969697,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.10736363636363637,
+     "changes": {
+      "decline->firm_grip": 3
+     }
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.09572727272727272,
+     "changes": {
+      "decline->firm_grip": 1
+     }
+    }
+   },
+   "com_frac_mean": 0.5027332420511063,
+   "com_off_middle": 0.05090948942419924
+  },
+  {
+   "object": "ycb__brick",
+   "name": "brick",
+   "group": "flat",
+   "mean_gain": 0.0626060606060606,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.1878181818181818,
+     "changes": {
+      "decline->firm_grip": 2
+     }
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.5141337638907063,
+   "com_off_middle": 0.03172130082123748
+  },
+  {
+   "object": "hope__green_beans_can",
+   "name": "green beans can",
+   "group": "upright",
+   "mean_gain": 0.04215151515151516,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0422727272727273,
+     "changes": {
+      "firm_grip->regrasp_com": 2
+     }
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.08445454545454543,
+     "changes": {
+      "decline->firm_grip": 3,
+      "firm_grip->decline": 1
+     }
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": -0.00027272727272726287,
+     "changes": {
+      "firm_grip->regrasp_com": 2
+     }
+    }
+   },
+   "com_frac_mean": 0.517077651247016,
+   "com_off_middle": 0.08539161558047886
+  },
+  {
+   "object": "handal__measuring_cups",
+   "name": "measuring cups",
+   "group": "upright",
+   "mean_gain": 0.03906060606060605,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.11718181818181815,
+     "changes": {
+      "decline->probe_weigh": 1
+     }
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.5000275347194231,
+   "com_off_middle": 0.04611797297958117
+  },
+  {
+   "object": "hot3d__soup_can",
+   "name": "soup can",
+   "group": "upright",
+   "mean_gain": 0.03706060606060607,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.11118181818181821,
+     "changes": {
+      "decline->firm_grip": 5,
+      "firm_grip->decline": 2
+     }
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.4978468286028818,
+   "com_off_middle": 0.055562105520669765
+  },
+  {
+   "object": "hot3d__glasses",
+   "name": "glasses",
+   "group": "flat",
+   "mean_gain": 0.030060606060606062,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.09018181818181818,
+     "changes": {
+      "decline->firm_grip": 1
+     }
+    }
+   },
+   "com_frac_mean": 0.47111383732857204,
+   "com_off_middle": 0.028886162671428073
+  },
+  {
+   "object": "ycb__spam_can",
+   "name": "spam can",
+   "group": "flat",
+   "mean_gain": 0.025424242424242422,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.07627272727272727,
+     "changes": {
+      "decline->firm_grip": 4
+     }
+    }
+   },
+   "com_frac_mean": 0.5160622157174772,
+   "com_off_middle": 0.030832398853590827
+  },
+  {
+   "object": "hope__bbq_sauce_bottle",
+   "name": "bbq sauce bottle",
+   "group": "upright",
+   "mean_gain": 0.01109090909090908,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.03327272727272724,
+     "changes": {
+      "decline->probe_squeeze": 2
+     }
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.45901846712910993,
+   "com_off_middle": 0.04568102014625285
+  },
+  {
+   "object": "hot3d__rubiks_cube",
+   "name": "rubiks cube",
+   "group": "flat",
+   "mean_gain": 0.010757575757575757,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.03227272727272727,
+     "changes": {
+      "decline->firm_grip": 1
+     }
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.5437659522219819,
+   "com_off_middle": 0.046293627159301944
+  },
+  {
+   "object": "handal__hammer",
+   "name": "hammer",
+   "group": "flat",
+   "mean_gain": 0.0,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.3232929228395862,
+   "com_off_middle": 0.2258022412050569
+  },
+  {
+   "object": "handal__green_serving_spoon",
+   "name": "green serving spoon",
+   "group": "flat",
+   "mean_gain": 0.0,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.48354427457893157,
+   "com_off_middle": 0.13240592178410074
+  },
+  {
+   "object": "fruits_veggies__avocado",
+   "name": "avocado",
+   "group": "flat",
+   "mean_gain": 0.0,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.5557900748643214,
+   "com_off_middle": 0.08938253205909269
+  },
+  {
+   "object": "fruits_veggies__orange1",
+   "name": "orange",
+   "group": "flat",
+   "mean_gain": 0.0,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.44927966314972795,
+   "com_off_middle": 0.08012296931522832
+  },
+  {
+   "object": "handal__hammer_1",
+   "name": "hammer",
+   "group": "flat",
+   "mean_gain": 0.0,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.4576960387303121,
+   "com_off_middle": 0.0666635586181234
+  },
+  {
+   "object": "fruits_veggies__lemon1",
+   "name": "lemon",
+   "group": "flat",
+   "mean_gain": 0.0,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.5170686114249794,
+   "com_off_middle": 0.05695281304508013
+  },
+  {
+   "object": "fruits_veggies__lime",
+   "name": "lime",
+   "group": "flat",
+   "mean_gain": 0.0,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.44017134604203945,
+   "com_off_middle": 0.09992240634051473
+  },
+  {
+   "object": "fruits_veggies__red_onion",
+   "name": "red onion",
+   "group": "flat",
+   "mean_gain": 0.0,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.46205177710891115,
+   "com_off_middle": 0.08891735796972741
+  },
+  {
+   "object": "handal__hammer_2",
+   "name": "hammer",
+   "group": "flat",
+   "mean_gain": 0.0,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.2830975609605083,
+   "com_off_middle": 0.2889690956420194
+  },
+  {
+   "object": "handal__hammer_3",
+   "name": "hammer",
+   "group": "flat",
+   "mean_gain": 0.0,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.24361253784669124,
+   "com_off_middle": 0.28554230659861896
+  },
+  {
+   "object": "handal__hammer_7",
+   "name": "hammer",
+   "group": "flat",
+   "mean_gain": 0.0,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.3574327960920399,
+   "com_off_middle": 0.17443155585270695
+  },
+  {
+   "object": "handal__hammer_5",
+   "name": "hammer",
+   "group": "flat",
+   "mean_gain": 0.0,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.36414552209198897,
+   "com_off_middle": 0.1503595450164684
+  },
+  {
+   "object": "handal__hammer_6",
+   "name": "hammer",
+   "group": "flat",
+   "mean_gain": 0.0,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.45757374205456536,
+   "com_off_middle": 0.042426257945434684
+  },
+  {
+   "object": "handal__hammer_8",
+   "name": "hammer",
+   "group": "flat",
+   "mean_gain": 0.0,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.3356554366001863,
+   "com_off_middle": 0.23602614964055474
+  },
+  {
+   "object": "handal__ladle",
+   "name": "ladle",
+   "group": "flat",
+   "mean_gain": 0.0,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.4063941799654645,
+   "com_off_middle": 0.19379697076477262
+  },
+  {
+   "object": "handal__pink_spaghetti_spoon",
+   "name": "pink spaghetti spoon",
+   "group": "upright",
+   "mean_gain": 0.0,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.5264267302034857,
+   "com_off_middle": 0.02642673020348577
+  },
+  {
+   "object": "handal__red_serving_spoon",
+   "name": "red serving spoon",
+   "group": "flat",
+   "mean_gain": 0.0,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.4525943056072795,
+   "com_off_middle": 0.1389347585171829
+  },
+  {
+   "object": "handal__measuring_cups_1",
+   "name": "measuring cups",
+   "group": "upright",
+   "mean_gain": 0.0,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.4883410353523112,
+   "com_off_middle": 0.05675735791062036
+  },
+  {
+   "object": "hope__macaroni_and_cheese",
+   "name": "macaroni and cheese",
+   "group": "upright",
+   "mean_gain": 0.0,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.5300523038003615,
+   "com_off_middle": 0.061726461231532775
+  },
+  {
+   "object": "hope__corn_can",
+   "name": "corn can",
+   "group": "upright",
+   "mean_gain": 0.0,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.5373716768503705,
+   "com_off_middle": 0.03737167685037041
+  },
+  {
+   "object": "hope__oatmeal_raisin_cookies",
+   "name": "oatmeal raisin cookies",
+   "group": "upright",
+   "mean_gain": 0.0,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.48759934655262865,
+   "com_off_middle": 0.019076236018515044
+  },
+  {
+   "object": "hope__milk_carton",
+   "name": "milk carton",
+   "group": "upright",
+   "mean_gain": 0.0,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.5251375240056073,
+   "com_off_middle": 0.06485753944113627
+  },
+  {
+   "object": "hope__ketchup_bottle",
+   "name": "ketchup bottle",
+   "group": "upright",
+   "mean_gain": 0.0,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.5172144570226298,
+   "com_off_middle": 0.01946034358011506
+  },
+  {
+   "object": "hope__mustard_bottle",
+   "name": "mustard bottle",
+   "group": "upright",
+   "mean_gain": 0.0,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.4982894170023997,
+   "com_off_middle": 0.0486278280573073
+  },
+  {
+   "object": "hope__mayonnaise_bottle",
+   "name": "mayonnaise bottle",
+   "group": "upright",
+   "mean_gain": 0.0,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.4773749821578777,
+   "com_off_middle": 0.03289807675726016
+  },
+  {
+   "object": "hot3d__birdhouse",
+   "name": "birdhouse",
+   "group": "flat",
+   "mean_gain": 0.0,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.4805186796267655,
+   "com_off_middle": 0.03154292128380788
+  },
+  {
+   "object": "hot3d__clay_plates",
+   "name": "spun-bamboo tray",
+   "group": "flat",
+   "mean_gain": 0.0,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.49494109254614127,
+   "com_off_middle": 0.05474459696499976
+  },
+  {
+   "object": "hope__spaghetti",
+   "name": "spaghetti",
+   "group": "upright",
+   "mean_gain": 0.0,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.531749515946922,
+   "com_off_middle": 0.05508739149595039
+  },
+  {
+   "object": "hope__yogurt_cup",
+   "name": "yogurt cup",
+   "group": "upright",
+   "mean_gain": 0.0,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.5071069163325558,
+   "com_off_middle": 0.04715561196896398
+  },
+  {
+   "object": "hot3d__ceramic_mug",
+   "name": "ceramic mug",
+   "group": "upright",
+   "mean_gain": 0.0,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.47039592928791,
+   "com_off_middle": 0.08090919067816685
+  },
+  {
+   "object": "hot3d__keyboard",
+   "name": "keyboard",
+   "group": "flat",
+   "mean_gain": 0.0,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.5227679234470419,
+   "com_off_middle": 0.05999869888909346
+  },
+  {
+   "object": "hot3d__coffee_pot",
+   "name": "coffee pot",
+   "group": "upright",
+   "mean_gain": 0.0,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.5109829093704195,
+   "com_off_middle": 0.0782856988267811
+  },
+  {
+   "object": "hot3d__megaphone",
+   "name": "vacuum jug",
+   "group": "upright",
+   "mean_gain": 0.0,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.4539176012822466,
+   "com_off_middle": 0.0558480900911199
+  },
+  {
+   "object": "hot3d__lizard_figurine",
+   "name": "dinosaur figure",
+   "group": "flat",
+   "mean_gain": 0.0,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.5046505582511117,
+   "com_off_middle": 0.11071287988158172
+  },
+  {
+   "object": "hot3d__mug",
+   "name": "mug",
+   "group": "upright",
+   "mean_gain": 0.0,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.43037658470141493,
+   "com_off_middle": 0.06962341529858503
+  },
+  {
+   "object": "hot3d__storage_box",
+   "name": "toothbrush holder",
+   "group": "upright",
+   "mean_gain": 0.0,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.5168609294850792,
+   "com_off_middle": 0.06714728332198205
+  },
+  {
+   "object": "hot3d__wooden_bowl",
+   "name": "wooden bowl",
+   "group": "upright",
+   "mean_gain": 0.0,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.45412670272089883,
+   "com_off_middle": 0.047943789222318414
+  },
+  {
+   "object": "hot3d__remote_control",
+   "name": "remote control",
+   "group": "flat",
+   "mean_gain": 0.0,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.5581401429189774,
+   "com_off_middle": 0.05814014291897743
+  },
+  {
+   "object": "hot3d__pitcher",
+   "name": "vase",
+   "group": "upright",
+   "mean_gain": 0.0,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.48339407124837863,
+   "com_off_middle": 0.018817954755971786
+  },
+  {
+   "object": "ycb__bowl",
+   "name": "bowl",
+   "group": "upright",
+   "mean_gain": 0.0,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.5167782873504141,
+   "com_off_middle": 0.01677828735041413
+  },
+  {
+   "object": "ycb__bowl2",
+   "name": "bowl",
+   "group": "upright",
+   "mean_gain": 0.0,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.4938168988013345,
+   "com_off_middle": 0.03728026145154836
+  },
+  {
+   "object": "hot3d__smartphone",
+   "name": "smartphone",
+   "group": "flat",
+   "mean_gain": 0.0,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.5071572378965968,
+   "com_off_middle": 0.025245600038205477
+  },
+  {
+   "object": "ycb__cheez_it",
+   "name": "cheez it",
+   "group": "upright",
+   "mean_gain": 0.0,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.5079341403592591,
+   "com_off_middle": 0.021720637854550764
+  },
+  {
+   "object": "hot3d__spatula",
+   "name": "spatula",
+   "group": "flat",
+   "mean_gain": 0.0,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.5511997452666443,
+   "com_off_middle": 0.09298563522606593
+  },
+  {
+   "object": "ycb__coffee_can",
+   "name": "coffee can",
+   "group": "upright",
+   "mean_gain": 0.0,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.515237940185438,
+   "com_off_middle": 0.03869516485551916
+  },
+  {
+   "object": "hot3d__wooden_spoons",
+   "name": "wooden spoons",
+   "group": "flat",
+   "mean_gain": 0.0,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.4566842426946607,
+   "com_off_middle": 0.08692338240374942
+  },
+  {
+   "object": "ycb__banana",
+   "name": "banana",
+   "group": "flat",
+   "mean_gain": 0.0,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.49785381493537106,
+   "com_off_middle": 0.03908852700872328
+  },
+  {
+   "object": "ycb__chocolate_pudding",
+   "name": "chocolate pudding",
+   "group": "upright",
+   "mean_gain": 0.0,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.5230597133177962,
+   "com_off_middle": 0.07063547417873424
+  },
+  {
+   "object": "ycb__pitcher",
+   "name": "pitcher",
+   "group": "upright",
+   "mean_gain": 0.0,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.4953321798467057,
+   "com_off_middle": 0.04474606675102592
+  },
+  {
+   "object": "ycb__cordless_drill",
+   "name": "cordless drill",
+   "group": "flat",
+   "mean_gain": 0.0,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.6314355863848475,
+   "com_off_middle": 0.1792269913116324
+  },
+  {
+   "object": "ycb__sugar_box",
+   "name": "sugar box",
+   "group": "upright",
+   "mean_gain": 0.0,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.4980458730260041,
+   "com_off_middle": 0.025647738963277013
+  },
+  {
+   "object": "ycb__mug",
+   "name": "mug",
+   "group": "upright",
+   "mean_gain": 0.0,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.5292939985525595,
+   "com_off_middle": 0.053978271044386544
+  },
+  {
+   "object": "ycb__wood_block",
+   "name": "wood block",
+   "group": "flat",
+   "mean_gain": 0.0,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.45224463819381544,
+   "com_off_middle": 0.09286733987428293
+  },
+  {
+   "object": "ycb__mustard",
+   "name": "mustard",
+   "group": "upright",
+   "mean_gain": 0.0,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.48621815343170405,
+   "com_off_middle": 0.013781846568296063
+  },
+  {
+   "object": "ycb__soft_scrub",
+   "name": "soft scrub",
+   "group": "upright",
+   "mean_gain": 0.0,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.5572160369573119,
+   "com_off_middle": 0.10082638534983479
+  },
+  {
+   "object": "ycb__scissors",
+   "name": "scissors",
+   "group": "flat",
+   "mean_gain": 0.0,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.5372815509738538,
+   "com_off_middle": 0.17779487746137151
+  },
+  {
+   "object": "ycb__spring_clamp",
+   "name": "spring clamp",
+   "group": "flat",
+   "mean_gain": 0.0,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.4993760351904999,
+   "com_off_middle": 0.06291383052433447
+  },
+  {
+   "object": "hope__granola_bars",
+   "name": "granola bars",
+   "group": "upright",
+   "mean_gain": -0.0016363636363636443,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": -0.004909090909090933,
+     "changes": {
+      "decline->probe_squeeze": 1
+     }
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.48190457719803786,
+   "com_off_middle": 0.03306410781516397
+  },
+  {
+   "object": "ycb__dry_erase_marker",
+   "name": "dry erase marker",
+   "group": "flat",
+   "mean_gain": -0.007303030303030335,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": -0.07845454545454554,
+     "changes": {
+      "probe_weigh->firm_grip": 5
+     }
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.05654545454545454,
+     "changes": {
+      "probe_weigh->firm_grip": 5
+     }
+    }
+   },
+   "com_frac_mean": 0.490614735865794,
+   "com_off_middle": 0.0458091698766575
+  },
+  {
+   "object": "hope__orange_juice_carton",
+   "name": "orange juice carton",
+   "group": "upright",
+   "mean_gain": -0.014454545454545463,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": -0.04336363636363639,
+     "changes": {
+      "decline->probe_squeeze": 3
+     }
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.5154355411066716,
+   "com_off_middle": 0.0861736713107501
+  },
+  {
+   "object": "handal__hammer_4",
+   "name": "hammer",
+   "group": "flat",
+   "mean_gain": -0.04560606060606063,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": -0.1368181818181819,
+     "changes": {
+      "decline->regrasp_com": 1
+     }
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    }
+   },
+   "com_frac_mean": 0.35521062307984075,
+   "com_off_middle": 0.18057211157019026
+  },
+  {
+   "object": "hope__chocolate_pudding_mix",
+   "name": "chocolate pudding mix",
+   "group": "upright",
+   "mean_gain": -0.11342424242424243,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": -0.3402727272727273,
+     "changes": {
+      "light_grip->decline": 3
+     }
+    }
+   },
+   "com_frac_mean": 0.5354024812681426,
+   "com_off_middle": 0.03540248126814247
+  },
+  {
+   "object": "hot3d__dumbbell",
+   "name": "dumbbell",
+   "group": "flat",
+   "mean_gain": -0.12363636363636361,
+   "settings": {
+    "k100_A10": {
+     "n": 11,
+     "gain": -0.3657272727272727,
+     "changes": {
+      "decline->firm_grip": 2
+     }
+    },
+    "k100_A3": {
+     "n": 11,
+     "gain": 0.0,
+     "changes": {}
+    },
+    "k30_A3": {
+     "n": 11,
+     "gain": -0.005181818181818176,
+     "changes": {
+      "decline->firm_grip": 1
+     }
+    }
+   },
+   "com_frac_mean": 0.5026260818469265,
+   "com_off_middle": 0.050042675174248166
+  }
+ ],
+ "wandb": "https://forge.coreweave.com/wandb/leon129506/rpent-pick-place/runs/7wnalmcm"
+}

@@ -1,0 +1,151 @@
+{
+ "n_records": 4180,
+ "rates": {
+  "k10_A10": {
+   "generic": {
+    "n": 1045,
+    "n_left_out": 0,
+    "recommendation": {
+     "rate": 0.24497607655502393,
+     "ci": [
+      0.18083732057416269,
+      0.3138755980861244
+     ]
+    },
+    "option": {
+     "rate": 0.2794258373205742,
+     "ci": [
+      0.21720095693779906,
+      0.3473684210526316
+     ]
+    },
+    "transitions": {
+     "decline->commit": 56,
+     "decline->probe": 48,
+     "commit->probe": 120,
+     "probe->decline": 12,
+     "commit->decline": 10,
+     "probe->commit": 10
+    },
+    "class_recommendations": {
+     "decline": 458,
+     "commit": 489,
+     "probe": 98
+    },
+    "prior_recommendations": {
+     "commit": 425,
+     "probe": 244,
+     "decline": 376
+    }
+   }
+  },
+  "k100_A3": {
+   "generic": {
+    "n": 1045,
+    "n_left_out": 0,
+    "recommendation": {
+     "rate": 0.07655502392344497,
+     "ci": [
+      0.04784688995215311,
+      0.11102870813397116
+     ]
+    },
+    "option": {
+     "rate": 0.08421052631578947,
+     "ci": [
+      0.05263157894736842,
+      0.11770334928229666
+     ]
+    },
+    "transitions": {
+     "commit->decline": 70,
+     "commit->probe": 10
+    },
+    "class_recommendations": {
+     "decline": 933,
+     "commit": 112
+    },
+    "prior_recommendations": {
+     "decline": 1003,
+     "commit": 32,
+     "probe": 10
+    }
+   }
+  },
+  "k100_A10": {
+   "generic": {
+    "n": 1045,
+    "n_left_out": 0,
+    "recommendation": {
+     "rate": 0.19904306220095694,
+     "ci": [
+      0.14832535885167464,
+      0.2535885167464115
+     ]
+    },
+    "option": {
+     "rate": 0.21052631578947367,
+     "ci": [
+      0.15789473684210525,
+      0.26507177033492824
+     ]
+    },
+    "transitions": {
+     "decline->probe": 22,
+     "decline->commit": 9,
+     "commit->decline": 55,
+     "probe->decline": 37,
+     "commit->probe": 85
+    },
+    "class_recommendations": {
+     "decline": 691,
+     "commit": 280,
+     "probe": 74
+    },
+    "prior_recommendations": {
+     "probe": 144,
+     "decline": 752,
+     "commit": 149
+    }
+   }
+  },
+  "k30_A3": {
+   "generic": {
+    "n": 1045,
+    "n_left_out": 0,
+    "recommendation": {
+     "rate": 0.17416267942583732,
+     "ci": [
+      0.12535885167464114,
+      0.22870813397129186
+     ]
+    },
+    "option": {
+     "rate": 0.18277511961722487,
+     "ci": [
+      0.13588516746411483,
+      0.24019138755980862
+     ]
+    },
+    "transitions": {
+     "decline->probe": 12,
+     "commit->decline": 106,
+     "commit->probe": 41,
+     "decline->commit": 3,
+     "probe->decline": 20
+    },
+    "class_recommendations": {
+     "decline": 727,
+     "commit": 294,
+     "probe": 24
+    },
+    "prior_recommendations": {
+     "decline": 838,
+     "probe": 57,
+     "commit": 150
+    }
+   }
+  }
+ },
+ "wandb": "https://forge.coreweave.com/wandb/leon129506/rpent-pick-place/runs/q64hnj5f"
+}

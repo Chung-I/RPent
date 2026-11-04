@@ -1,0 +1,45 @@
+# First-menu decisions under each prior, against the class prior
+
+| setting | prior | n | recommendation changed [95 % CI] | recommended row changed [95 % CI] | transitions |
+|---|---|---|---|---|---|
+| k100_A3 | exact_both | 1045 | 0.035 [0.018, 0.056] | 0.039 [0.022, 0.059] | {"decline->commit": 31, "commit->decline": 5, "decline->probe": 1} |
+| k100_A3 | exact_com | 1045 | 0.019 [0.005, 0.038] | 0.021 [0.006, 0.040] | {"commit->decline": 12, "decline->commit": 8} |
+| k100_A3 | exact_mass | 1045 | 0.018 [0.007, 0.033] | 0.021 [0.008, 0.036] | {"commit->decline": 15, "decline->commit": 4} |
+| k100_A3 | generic | 1045 | 0.035 [0.016, 0.059] | 0.038 [0.017, 0.062] | {"commit->decline": 37} |
+| k30_A3 | exact_both | 1045 | 0.055 [0.034, 0.077] | 0.067 [0.044, 0.094] | {"decline->commit": 22, "commit->decline": 8, "commit->probe": 9, "probe->commit": 9, "decline->probe": 8, "probe->decline": 1} |
+| k30_A3 | exact_com | 1045 | 0.079 [0.047, 0.119] | 0.094 [0.058, 0.132] | {"commit->decline": 47, "decline->probe": 1, "probe->decline": 19, "decline->commit": 13, "probe->commit": 1, "commit->probe": 2} |
+| k30_A3 | exact_mass | 1045 | 0.054 [0.031, 0.079] | 0.057 [0.035, 0.084] | {"commit->decline": 30, "decline->commit": 4, "probe->commit": 7, "probe->decline": 7, "commit->probe": 5, "decline->probe": 3} |
+| k30_A3 | generic | 1045 | 0.099 [0.059, 0.143] | 0.100 [0.060, 0.144] | {"commit->decline": 67, "probe->decline": 23, "probe->commit": 1, "commit->probe": 9, "decline->commit": 3} |
+| k100_A10 | exact_both | 1045 | 0.076 [0.050, 0.102] | 0.090 [0.062, 0.120] | {"decline->commit": 18, "commit->decline": 10, "probe->commit": 19, "decline->probe": 13, "commit->probe": 11, "probe->decline": 8} |
+| k100_A10 | exact_com | 1045 | 0.078 [0.049, 0.110] | 0.095 [0.062, 0.129] | {"decline->commit": 8, "commit->decline": 21, "commit->probe": 17, "probe->decline": 19, "decline->probe": 10, "probe->commit": 6} |
+| k100_A10 | exact_mass | 1045 | 0.076 [0.048, 0.104] | 0.084 [0.056, 0.113] | {"decline->commit": 4, "commit->decline": 26, "probe->commit": 11, "probe->decline": 20, "commit->probe": 12, "decline->probe": 6} |
+| k100_A10 | generic | 1045 | 0.113 [0.073, 0.156] | 0.118 [0.076, 0.165] | {"commit->decline": 43, "probe->decline": 51, "commit->probe": 17, "probe->commit": 2, "decline->probe": 2, "decline->commit": 3} |
+
+wandb: [wandb.login()] Loaded credentials for https://api.forge.coreweave.com from /home/chungyili/.netrc.
+wandb: Currently logged in as: leon129506 to https://api.forge.coreweave.com. Use `wandb login --relogin` to force relogin
+wandb: Tracking run with wandb version 0.31.0
+wandb: Run data is saved locally in /home/chungyili/Codes/RPent-masscom-v11/logs/wandb/wandb/run-20261104_035855-d9n18nnm
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Syncing run atomic-rain-2097
+wandb: ⭐️ View project at https://forge.coreweave.com/wandb/leon129506/rpent-pick-place
+wandb: 🚀 View run at https://forge.coreweave.com/wandb/leon129506/rpent-pick-place/runs/d9n18nnm
+wandb: updating run metadata; uploading data
+wandb: uploading requirements.txt; uploading wandb-summary.json; uploading config.yaml; uploading wandb-metadata.json
+wandb: 
+wandb: Run summary:
+wandb:         k100_A10/exact_both/option 0.08995
+wandb: k100_A10/exact_both/recommendation 0.0756
+wandb:          k100_A10/exact_com/option 0.09474
+wandb:  k100_A10/exact_com/recommendation 0.07751
+wandb:         k100_A10/exact_mass/option 0.08421
+wandb: k100_A10/exact_mass/recommendation 0.0756
+wandb:            k100_A10/generic/option 0.1177
+wandb:    k100_A10/generic/recommendation 0.11292
+wandb:          k100_A3/exact_both/option 0.03923
+wandb:  k100_A3/exact_both/recommendation 0.03541
+wandb:                                +14 ...
+wandb: 
+wandb: 🚀 View run atomic-rain-2097 at: https://forge.coreweave.com/wandb/leon129506/rpent-pick-place/runs/d9n18nnm
+wandb: ⭐️ View project at: https://forge.coreweave.com/wandb/leon129506/rpent-pick-place
+wandb: Synced 4 W&B file(s), 0 media file(s), 0 artifact file(s) and 0 other file(s)
+wandb: Find logs at: ./logs/wandb/wandb/run-20261104_035855-d9n18nnm/logs

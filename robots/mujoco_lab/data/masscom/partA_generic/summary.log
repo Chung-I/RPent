@@ -1,0 +1,54 @@
+# Mass and CoM estimation check
+
+Errors: mass |m̂ − m| / m, friction |μ̂ − μ|, CoM along the pivot |ĉ − c| (fraction of the length; cm). Widths: the 80 % interval (mass relative to the posterior mean). 95 % object-bootstrap intervals (2000 draws). The prior row is the attempt cases' prior.
+
+| stage | property | n (objects) | error median (IQR) [95 % CI] | 80 % width median [95 % CI] | coverage [95 % CI] |
+|---|---|---|---|---|---|
+| prior | mass | 10137 (84) | 4.040 [2.563, 6.203] (0.887–13.309) | 2.121 [2.115, 2.125] | 0.774 [0.707, 0.841] |
+| prior | mu | 10137 (84) | 0.201 [0.196, 0.204] (0.102–0.300) | 0.640 [0.639, 0.640] | 0.799 [0.791, 0.806] |
+| prior | com | 10137 (84) | 0.041 [0.021, 0.053] (0.006–0.142); 0.44 [0.21, 0.74] cm (0.06–2.16) | 0.371 [0.325, 0.399]; 3.69 [3.30, 4.55] cm | 0.804 [0.754, 0.847] |
+| attempt | mass | 10137 (84) | 0.053 [0.047, 0.062] (0.023–0.236) | 0.136 [0.133, 0.140] | 0.779 [0.759, 0.797] |
+| attempt | mu | 10137 (84) | 0.162 [0.153, 0.171] (0.070–0.262) | 0.578 [0.571, 0.585] | 0.772 [0.759, 0.785] |
+| attempt | com | 10137 (84) | 0.048 [0.040, 0.057] (0.017–0.124); 0.58 [0.41, 0.80] cm (0.16–1.81) | 0.323 [0.313, 0.333]; 3.32 [2.84, 4.05] cm | 0.813 [0.771, 0.848] |
+| weigh | mass | 1834 (83) | 0.068 [0.058, 0.084] (0.027–0.809) | 0.139 [0.135, 0.150] | 0.758 [0.720, 0.796] |
+| weigh | mu | 1834 (83) | 0.187 [0.178, 0.199] (0.096–0.290) | 0.624 [0.620, 0.628] | 0.784 [0.760, 0.807] |
+| weigh | com | 1834 (83) | 0.044 [0.033, 0.057] (0.013–0.143); 0.48 [0.34, 0.76] cm (0.12–2.18) | 0.343 [0.326, 0.370]; 3.48 [3.16, 4.12] cm | 0.807 [0.762, 0.849] |
+| push | mass | 1832 (83) | 0.541 [0.494, 0.624] (0.262–1.441) | 1.589 [1.569, 1.605] | 0.743 [0.716, 0.770] |
+| push | mu | 1832 (83) | 0.180 [0.173, 0.189] (0.091–0.268) | 0.614 [0.610, 0.618] | 0.805 [0.781, 0.827] |
+| push | com | 1832 (83) | 0.041 [0.024, 0.053] (0.009–0.141); 0.45 [0.23, 0.75] cm (0.07–2.15) | 0.371 [0.331, 0.388]; 3.74 [3.32, 4.69] cm | 0.806 [0.758, 0.850] |
+
+
+Downstream: each attempt row's own action, predicted from the prior's particles, against its label (10137 rows, 84 objects).
+
+| Brier | ECE irreversible | ECE placed_stable | mean P(irreversible) | irreversible rate |
+|---|---|---|---|---|
+| 0.5239 [0.4810, 0.5665] | 0.0136 [0.0102, 0.0238] | 0.0739 [0.0546, 0.1095] | 0.1532 | 0.1596 |
+
+wandb: [wandb.login()] Loaded credentials for https://api.forge.coreweave.com from /home/chungyili/.netrc.
+wandb: Currently logged in as: leon129506 to https://api.forge.coreweave.com. Use `wandb login --relogin` to force relogin
+wandb: Tracking run with wandb version 0.31.0
+wandb: Run data is saved locally in /home/chungyili/Codes/RPent-masscom/logs/wandb/wandb/run-20261102_171456-43fzbu7j
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Syncing run clean-dragon-1088
+wandb: ⭐️ View project at https://forge.coreweave.com/wandb/leon129506/rpent-pick-place
+wandb: 🚀 View run at https://forge.coreweave.com/wandb/leon129506/rpent-pick-place/runs/43fzbu7j
+wandb: updating run metadata; uploading data
+wandb: uploading wandb-summary.json; uploading config.yaml; uploading wandb-metadata.json
+wandb: 
+wandb: Run summary:
+wandb:  attempt/com/coverage 0.81286
+wandb:       attempt/com/err 0.0482
+wandb:    attempt/com/err_cm 0.58431
+wandb:     attempt/com/width 0.32269
+wandb:  attempt/com/width_cm 3.32236
+wandb: attempt/mass/coverage 0.77853
+wandb:      attempt/mass/err 0.05294
+wandb:    attempt/mass/width 0.13569
+wandb:   attempt/mu/coverage 0.77212
+wandb:        attempt/mu/err 0.16209
+wandb:                   +37 ...
+wandb: 
+wandb: 🚀 View run clean-dragon-1088 at: https://forge.coreweave.com/wandb/leon129506/rpent-pick-place/runs/43fzbu7j
+wandb: ⭐️ View project at: https://forge.coreweave.com/wandb/leon129506/rpent-pick-place
+wandb: Synced 4 W&B file(s), 0 media file(s), 0 artifact file(s) and 0 other file(s)
+wandb: Find logs at: ./logs/wandb/wandb/run-20261102_171456-43fzbu7j/logs
