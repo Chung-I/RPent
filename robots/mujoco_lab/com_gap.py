@@ -83,6 +83,9 @@ GRASP_FIT, TRUTH = "grasp_fit", "truth"     # the history entries com_gap adds: 
 CUT_HOLD_S = 1.0                  # the held last sample after the cut at (b) (0.5 s gave the same fits on four arm-sim cases)
 REFRESH_STREAM = 3                # calibrate._stream k of the refreshes at (b) (1: the menus, 2: the random row)
 WHOLE_LOG_STREAM = 4              # calibrate._stream k of the whole-log check's refreshes
+Z_KEYS = ("m", "m_cx", "m_cy", "m_cz")      # the fit's first four parameters (link 7's frame), for belief 1's diagnostic
+COVER_BELOW = 0.7                 # belief 1's diagnostic (coordinator, 2026-11-05): a flag below this CoM-fraction coverage
+UNDER_COVERS = "belief 1 under-covers; EVPI on a calibrated belief may differ"
 HELD_TO_B = ("lift", "hold")      # a loss in these phases: the object is not in the hand at (b)
 BASE_S = 8.0                      # commit_std's time; the executed grasp's own charge is the same for every choice at (b)
 SLOW_LIFT = {"v_lift": 0.05, "v_transport": 0.2}   # slow_lift's lift and carry
@@ -517,6 +520,21 @@ def _fit_summary(fit: dict[str, Any] | None) -> dict[str, Any] | None:
     return {"window_s": fit.get("window_s"), "n": fit.get("n"), "phases": fit.get("phases"), "phi4": list(fit["phi"][:4])}
 
 
+def fit_z(fit: dict[str, Any] | None, record: dict[str, Any] | None) -> list[float] | None:
+    """The fit's (m, m cx, m cy, m cz) against the window's hidden truth (``record["joint_truth_l7"]``, link 7's frame), in
+    the floored sds that the belief's likelihood uses (the fit's cov); None without a fit or a truth."""
+    truth = (record or {}).get("joint_truth_l7")
+    if not fit or truth is None:
+        return None
+    sd = np.sqrt(np.diag(np.asarray(fit["cov"], dtype=float))[:4])
+    return ((np.asarray(fit["phi"][:4], dtype=float) - np.asarray(truth[:4], dtype=float)) / sd).tolist()
+
+
+def cover80(b: ParticleBelief, truth: dict[str, Any]) -> dict[str, bool]:
+    """Whether belief ``b``'s weighted 80 % interval (10th to 90th percentile) holds the case's truth: mass, CoM fraction."""
+    return {k: bool(b.quantile(k, 0.1) <= float(truth[k]) <= b.quantile(k, 0.9)) for k in ("mass", "com_frac")}
+
+
 def case_b(prims: Any, env: Any, o: str, destination: str, care: float, A: float, prior_fn: Callable, truth: dict[str, Any],
            w0: ParticleBelief | None, rng: np.random.Generator, full: bool = True,
            rng_whole_log: np.random.Generator | None = None) -> dict[str, Any]:
@@ -564,6 +582,8 @@ def case_b(prims: Any, env: Any, o: str, destination: str, care: float, A: float
         return prior_fn(scene.pose_info, n, g, **spread)
 
     b1, i1 = condition(pre, [fit_entry(tap.fit)] if tap.fit else [], replay, draw, rng)
+    out.update(fit_z=fit_z(tap.fit, tap.record), fit_z_whole_log=fit_z(tap.fit_whole_log, tap.record),
+               cover80_b1=cover80(b1, truth))           # belief 1's calibration at (b): a diagnostic, not in the stop rule
     rows = finishing_rows(act, destination, scene_slow_s(scene, act, destination))
     reset_s, price = _menu_recovery(prims)
     keep: dict[str, Any] = {}
@@ -580,7 +600,7 @@ def case_b(prims: Any, env: Any, o: str, destination: str, care: float, A: float
     gw = rng_whole_log if rng_whole_log is not None else np.random.default_rng(0)
     bw, iw = condition(pre, [fit_entry(tap.fit_whole_log)] if tap.fit_whole_log else [], replay, draw, gw)
     pw = point_b(prims.model, bw, scene, rows, truth, care, A, replay, draw, gw, reset_s=reset_s, reset_price=price)
-    out.update(evpi_whole_log=pw["primary"]["evpi"], choice1_whole_log=pw["primary"]["choice1"],
+    out.update(evpi_whole_log=pw["primary"]["evpi"], choice1_whole_log=pw["primary"]["choice1"], cover80_whole_log=cover80(bw, truth),
                changed_whole_log=pw["primary"]["changed"], fit_whole_log=_fit_summary(tap.fit_whole_log),
                ess_whole_log={"b1": iw["ess_final"], "b2": pw["ess"]["b2"]["ess_final"], "yard": pw["ess"]["yard"]["ess_final"]})
     return out
@@ -767,6 +787,19 @@ def _check(recs: list[dict[str, Any]], key: str, rng: np.random.Generator, n_boo
     return _mean_ci(np.array(v, dtype=float), [r["object"] for r in recs], rng, n_boot)
 
 
+def _b1_diagnostic(recs: list[dict[str, Any]], z_key: str = "fit_z", cover_key: str = "cover80_b1") -> dict[str, Any]:
+    """Belief 1 at (b), a diagnostic (coordinator, 2026-11-05; not in the stop rule): over the counted cases, each fit
+    parameter's median z-score against the window's truth and its share above 0 (the cases with a fit), and the share
+    of cases whose 80 % interval of belief 1 holds the truth (mass, CoM fraction)."""
+    ok = _counted(recs)
+    z = np.array([r[z_key] for r in ok if r.get(z_key) is not None], dtype=float).reshape(-1, len(Z_KEYS))
+    cover = [r[cover_key] for r in ok if r.get(cover_key) is not None]
+    return {"n_z": int(len(z)), "n_cover": len(cover),
+            "z": {k: ({"median": float(np.median(z[:, i])), "share_positive": float((z[:, i] > 0).mean())} if len(z) else None)
+                  for i, k in enumerate(Z_KEYS)},
+            "cover80": {k: (float(np.mean([bool(c[k]) for c in cover])) if cover else None) for k in ("mass", "com_frac")}}
+
+
 def cell(recs: list[dict[str, Any]], rng: np.random.Generator, n_boot: int = N_BOOT) -> dict[str, Any]:
     """One setting and prior: the mean EVPI over the counted cases (no error, no artifact flag; calibrate's convention:
     both left out and counted; a case that never reached (b) counts 0), H(c), the checks (w0, no inboard_place, the full
@@ -793,6 +826,8 @@ def cell(recs: list[dict[str, Any]], rng: np.random.Generator, n_boot: int = N_B
             "checks": {k: _check(ok, k, rng, n_boot) for k in ("w0", "no_inboard", "full", "whole_log")},
             "H_whole_log": (None if any(r.get("evpi_whole_log") is None for r in ok)
                             else _h(np.array([float(r["evpi_whole_log"]) for r in ok]), objects, rng, n_boot)),
+            "b1_diagnostic": _b1_diagnostic(recs),
+            "b1_diagnostic_whole_log": _b1_diagnostic(recs, "fit_z_whole_log", "cover80_whole_log"),
             "ess": {k: _ess_stats([r.get(f"ess_{k}") for r in ok if r.get("reached")]) for k in ("b2", "yard")},
             "ess_raw": {k: _ess_stats([((r.get("ess") or {}).get(k) or {}).get("ess") for r in ok if r.get("reached")])
                         for k in ("b2", "yard")},
@@ -849,14 +884,28 @@ def summarize(records: list[dict[str, Any]], n_boot: int = N_BOOT, seed: int = 0
         hw = {s: block[p]["H_whole_log"] for s, block in cells.items() if p in block}
         verdicts_whole[p] = None if any(v is None for v in hw.values()) else verdict({s: v[str(H_COSTS[0])] for s, v in hw.items()})
     primary = {s: by[s].get(PRIMARY_PRIOR, []) for s in by}
+    per_prior: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for r in records:
+        per_prior[r["prior"]].append(r)
+    diag = {p: _b1_diagnostic(v) for p, v in per_prior.items()}
+    flags = {p: UNDER_COVERS for p, d in diag.items() if d["cover80"]["com_frac"] is not None and d["cover80"]["com_frac"] < COVER_BELOW}
     return {"n_records": len(records), "cells": cells, "verdict": verdicts, "verdict_all_cases": verdicts_all,
-            "verdict_whole_log": verdicts_whole,
+            "verdict_whole_log": verdicts_whole, "b1_diagnostic": diag, "flags": flags,
+            "b1_diagnostic_whole_log": {p: _b1_diagnostic(v, "fit_z_whole_log", "cover80_whole_log") for p, v in per_prior.items()},
             "primary_prior": PRIMARY_PRIOR,
             "groups": {s: _groups(v) for s, v in primary.items()}, "top": {s: _top(v) for s, v in primary.items()}}
 
 
 def _fmt(c: dict[str, Any]) -> str:
     return "n/a" if c["mean"] is None else f"{c['mean']:+.4f} [{c['ci'][0]:+.4f}, {c['ci'][1]:+.4f}]"
+
+
+def _diag_cells(d: dict[str, Any] | None) -> str:
+    if not d:
+        return "n/a | n/a | n/a | n/a | n/a | n/a"
+    z = [("n/a" if d["z"][k] is None else f"{d['z'][k]['median']:+.2f} ({d['z'][k]['share_positive']:.2f})") for k in ("m", "m_cx", "m_cz")]
+    cv = [("n/a" if d["cover80"][k] is None else f"{d['cover80'][k]:.2f}") for k in ("mass", "com_frac")]
+    return " | ".join([f"{d['n_z']}/{d['n_cover']}"] + z + cv)
 
 
 def markdown(s: dict[str, Any]) -> str:
@@ -871,13 +920,24 @@ def markdown(s: dict[str, Any]) -> str:
                          f"{_fmt(c['checks']['full'])} | {_fmt(c['checks']['whole_log'])} | "
                          f"{'n/a' if c['H_whole_log'] is None else _fmt(c['H_whole_log']['0.05'])} | "
                          f"{c['ess_table']['n']} | {_fmt(c['ess_table']['H']['0.05'])} |")
-    v = ", ".join(f"{p}: {x}" for p, x in s["verdict"].items())
+    flags, diag = s.get("flags", {}), s.get("b1_diagnostic", {})
+    v = ", ".join(f"{p}: {x}" + (f" ({flags[p]}: its CoM-fraction 80 % coverage at (b) is {diag[p]['cover80']['com_frac']:.2f}, "
+                                 f"below {COVER_BELOW}; higher or lower)" if p in flags else "") for p, x in s["verdict"].items())
+    dl = ["| setting | prior | n z / n cover | z(m) median (share > 0) | z(m cx) | z(m cz) | 80 % coverage, mass | "
+          "80 % coverage, CoM fraction |", "|---|---|---|---|---|---|---|---|"]
+    for setting, block in s["cells"].items():
+        for p, c in block.items():
+            dl.append(f"| {setting} | {p} | {_diag_cells(c.get('b1_diagnostic'))} |")
+    for p, d in diag.items():
+        dl.append(f"| all settings | {p} | {_diag_cells(d)} |")
     va = ", ".join(f"{p}: {x}" for p, x in s["verdict_all_cases"].items())
     vw = ", ".join(f"{p}: {x}" for p, x in s.get("verdict_whole_log", {}).items())
     return (f"# The CoM oracle gap at point (b)\n\nStop rule (on {s['primary_prior']}): {v}\n\n"
             f"The same rule on every record, errors and artifact cases at EVPI 0 (a sensitivity check): {va}\n\n"
             f"The same rule with belief 1 from the whole-log fit (the carry reaches it through the filter; a check): {vw}\n\n"
-            + "\n".join(lines) + "\n")
+            + "\n".join(lines) + "\n\n## Belief 1 at (b), a diagnostic (not in the stop rule)\n\n"
+            "z: the lift-and-hold fit against the window's hidden truth (joint_truth_l7), in the fit's floored sds. Coverage: "
+            "the share of cases whose 80 % interval of belief 1 holds the truth.\n\n" + "\n".join(dl) + "\n")
 
 
 def summary(a: argparse.Namespace) -> dict[str, Any]:
@@ -892,6 +952,10 @@ def summary(a: argparse.Namespace) -> dict[str, Any]:
         flat = {f"{setting}/{p}/{m}": v for setting, block in out["cells"].items() for p, c in block.items()
                 for m, v in (("evpi", c["evpi"]["mean"]), ("H05", c["H"]["0.05"]["mean"]), ("share_reached", c["share_reached"]))}
         flat.update({f"verdict/{p}": x for p, x in out["verdict"].items()})
+        flat.update({f"b1_diagnostic/{p}/{m}": v for p, d in out["b1_diagnostic"].items()
+                     for m, v in (("cover80_mass", d["cover80"]["mass"]), ("cover80_com", d["cover80"]["com_frac"]),
+                                  *((f"z_{k}_median", None if d["z"][k] is None else d["z"][k]["median"]) for k in ("m", "m_cx", "m_cz")))})
+        flat.update({f"flag/{p}": x for p, x in out["flags"].items()})
         out["wandb"] = tracking.log_run("com_gap", cfg, flat)
     with open(os.path.join(a.dir, "summary.json"), "w") as f:
         json.dump(out, f, indent=1)

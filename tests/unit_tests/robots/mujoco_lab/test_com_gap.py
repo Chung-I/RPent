@@ -619,21 +619,19 @@ def test_the_metrics_leave_out_and_count_errors_and_artifacts():
     assert set(s["verdict_all_cases"]) == {"class"} and s["verdict_all_cases"]["class"] in ("go", "stop", "undecided")
 
 
-def test_case_b_reports_the_whole_log_fit_as_a_check(monkeypatch):
-    """The check column: the same point (b) with the fit on the whole log (the carry reaches it through the filter).
-    Here the cut log's fit says nothing, so belief 1 stays split and pays for the gentle carry (EVPI 0.05, as in the
-    point_b test); the whole log's fit puts the CoM at the pinch, so belief 1 takes belief 2's carry (EVPI 0). The
-    primary result does not read the check's stream."""
+def _b_case(monkeypatch, record=None):
+    """A case that reaches (b) on the lever belief (CoM fraction 0.5 or 1.0): the cut log's fit says nothing, the whole
+    log's fit puts the CoM at the pinch (m cy 0, sd 2 mm). ``record`` is the fits' hidden record. Returns (prims, env, b)."""
 
     def fit(info_cy):
         return {"floor": [0.001, 0.0005], "obj_l7": {"p": [0.0, 0.0, 0.0], "R": np.eye(3).tolist()},
-                "phi": [0.2, 0.0, 0.0, 0.006], "info": np.diag([0.0, 0.0, info_cy, 0.0]).tolist(), "window_s": 1.0, "n": 100,
-                "phases": ["hold", "lift"]}
+                "phi": [0.2, 0.0, 0.0, 0.006], "info": np.diag([0.0, 0.0, info_cy, 0.0]).tolist(),
+                "cov": np.diag([0.01, 1e-4, 1e-4, 1e-4]).tolist(), "window_s": 1.0, "n": 100, "phases": ["hold", "lift"]}
 
     env, b = _SceneEnv(), _lever_belief(1000)
     env.nominal_mass = lambda o: 0.2
     env._attempt_joint = lambda log, trace: (None, {})
-    env._joint_fit = lambda log, steps, params: (fit(0.0) if max(log.step) == 8 else fit(1.0 / 0.002 ** 2), {})
+    env._joint_fit = lambda log, steps, params: (fit(0.0) if max(log.step) == 8 else fit(1.0 / 0.002 ** 2), dict(record or {}))
 
     def execute(*a, **k):
         env._attempt_joint(_Log(_trace()), _trace())
@@ -647,7 +645,16 @@ def test_case_b_reports_the_whole_log_fit_as_a_check(monkeypatch):
                 "probes": [], "restores": [], "moved": False, "row": {"id": "commit_std"}}
 
     monkeypatch.setattr(cg, "first_attempt", first)
-    prims, truth = SimpleNamespace(model=_CarryModel()), {"mass": 0.2, "com_frac": 0.5}
+    return SimpleNamespace(model=_CarryModel()), env, b
+
+
+def test_case_b_reports_the_whole_log_fit_as_a_check(monkeypatch):
+    """The check column: the same point (b) with the fit on the whole log (the carry reaches it through the filter).
+    Here the cut log's fit says nothing, so belief 1 stays split and pays for the gentle carry (EVPI 0.05, as in the
+    point_b test); the whole log's fit puts the CoM at the pinch, so belief 1 takes belief 2's carry (EVPI 0). The
+    primary result does not read the check's stream."""
+    prims, env, b = _b_case(monkeypatch)
+    truth = {"mass": 0.2, "com_frac": 0.5}
     runs = [cg.case_b(prims, env, "x", "plate", 100.0, 3.0, None, truth, b, np.random.default_rng(0), full=False,
                       rng_whole_log=np.random.default_rng(k)) for k in (1, 2)]
     r = runs[0]
@@ -669,3 +676,73 @@ def test_the_whole_log_check_gets_its_own_H_and_verdict():
     assert set(s["verdict_whole_log"]) == {"class"}
     md = cg.markdown(s)
     assert "whole-log fit" in md and md.count("|") > 0
+
+
+def test_fit_z_scores_the_fit_against_the_window_truth():
+    """Belief 1's diagnostic at (b) (coordinator, 2026-11-05): the fit's (m, m cx, m cy, m cz) against the window's hidden
+    truth (joint_truth_l7), in the floored sds that the belief's likelihood uses; None without a fit or a truth."""
+    fit = {"phi": [0.6, 0.01, 0.0, -0.02, 9.0], "cov": np.diag([0.01, 1e-4, 4e-4, 4e-4, 1.0]).tolist()}
+    rec = {"joint_truth_l7": [0.5, 0.0, 0.0, 0.0, 0.0]}
+    assert cg.fit_z(fit, rec) == pytest.approx([1.0, 1.0, 0.0, -1.0])
+    assert cg.fit_z(None, rec) is None and cg.fit_z(fit, {}) is None and cg.fit_z(fit, None) is None
+
+
+def test_cover80_is_the_truth_inside_the_weighted_10_to_90_percent_interval():
+    b = _lever_belief(100)                                   # mass 0.2; CoM fraction 0.5 or 1.0, half each
+    assert cg.cover80(b, {"mass": 0.2, "com_frac": 0.75}) == {"mass": True, "com_frac": True}
+    assert cg.cover80(b, {"mass": 0.3, "com_frac": 0.4}) == {"mass": False, "com_frac": False}
+    w = ParticleBelief(b.particles, np.array([1.0, 0.0] * 50))     # all the weight on CoM fraction 0.5
+    assert cg.cover80(w, {"mass": 0.2, "com_frac": 0.75})["com_frac"] is False
+
+
+def test_case_b_records_the_z_scores_and_belief_ones_coverage_at_b(monkeypatch):
+    """Per reached case: both fits' z-scores against the window's truth, and whether the 80 % intervals of belief 1 (and
+    of the whole-log check's belief) hold the case's truth. The lever belief's interval of CoM fraction is [0.5, 1.0];
+    the whole-log fit collapses it to 0.5."""
+    prims, env, b = _b_case(monkeypatch, {"joint_truth_l7": [0.1, 0.0, 0.0, 0.006]})
+    r = cg.case_b(prims, env, "x", "plate", 100.0, 3.0, None, {"mass": 0.2, "com_frac": 0.75}, b, np.random.default_rng(0),
+                  full=False, rng_whole_log=np.random.default_rng(1))
+    assert r["reached"]
+    assert r["fit_z"] == pytest.approx([1.0, 0.0, 0.0, 0.0]) and r["fit_z_whole_log"] == pytest.approx([1.0, 0.0, 0.0, 0.0])
+    assert r["cover80_b1"] == {"mass": True, "com_frac": True}
+    assert r["cover80_whole_log"] == {"mass": True, "com_frac": False}
+
+
+def test_the_cell_reports_the_z_scores_and_belief_ones_coverage():
+    """Over the counted cases at (b) (the artifact case and the case that never reached (b) are not in it): each fit
+    parameter's median z-score and its share above 0, and the share of cases whose 80 % interval holds the truth."""
+    recs = _recs([None, 0.3, 0.1, 0.0, 0.2])
+    z = [[1.0, 2.0, 0.5, 1.5], [-1.0, 1.0, 0.0, 2.5], [0.5, 3.0, -0.5, -1.0], [2.0, 1.0, 1.0, 1.0]]
+    cover = [(True, False), (True, True), (False, False), (True, False)]
+    for r, zz, (m, c) in zip(recs[1:], z, cover):
+        r["fit_z"], r["cover80_b1"] = zz, {"mass": m, "com_frac": c}
+    recs.append(dict(recs[1], object="o9", idx=9, artifact=True, fit_z=[9.0] * 4, cover80_b1={"mass": False, "com_frac": False}))
+    c = cg.cell(recs, np.random.default_rng(0), 50)
+    d = c["b1_diagnostic"]
+    assert d["n_z"] == 4 and d["n_cover"] == 4
+    assert d["z"]["m"] == {"median": pytest.approx(0.75), "share_positive": pytest.approx(0.75)}
+    assert d["z"]["m_cx"] == {"median": pytest.approx(1.5), "share_positive": pytest.approx(1.0)}
+    assert d["z"]["m_cy"] == {"median": pytest.approx(0.25), "share_positive": pytest.approx(0.5)}
+    assert d["z"]["m_cz"] == {"median": pytest.approx(1.25), "share_positive": pytest.approx(0.75)}
+    assert d["cover80"] == {"mass": pytest.approx(0.75), "com_frac": pytest.approx(0.25)}
+    assert c["b1_diagnostic_whole_log"]["n_z"] == 0 and c["b1_diagnostic_whole_log"]["cover80"]["com_frac"] is None
+
+
+def test_the_verdict_is_flagged_when_belief_one_under_covers_the_com_fraction():
+    """Below 0.7, the 80 % coverage of the CoM fraction at (b) (pooled over the settings, per prior) puts the
+    coordinator's flag next to that prior's verdict; the stop rule does not change."""
+
+    def recs(cover_com):
+        rs = _recs([0.3, 0.1, 0.0, 0.2]) + _recs([0.3, 0.1, 0.0, 0.2], setting="k30_A3")
+        for r, c in zip(rs, cover_com):
+            r["fit_z"], r["cover80_b1"] = [0.0] * 4, {"mass": True, "com_frac": c}
+        return rs
+
+    low = cg.summarize(recs([True, False, False, True, True, False, True, False]), n_boot=50, seed=0)    # 4 of 8
+    ok = cg.summarize(recs([True] * 6 + [False] * 2), n_boot=50, seed=0)                                   # 6 of 8
+    assert low["b1_diagnostic"]["class"]["cover80"]["com_frac"] == pytest.approx(0.5)
+    assert low["flags"] == {"class": cg.UNDER_COVERS} and ok["flags"] == {}
+    assert low["verdict"] == ok["verdict"]
+    md = cg.markdown(low)
+    assert cg.UNDER_COVERS in next(line for line in md.splitlines() if line.startswith("Stop rule"))
+    assert cg.UNDER_COVERS not in cg.markdown(ok) and "80 % coverage" in md
