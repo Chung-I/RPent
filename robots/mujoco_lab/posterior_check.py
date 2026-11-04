@@ -349,7 +349,8 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
     ap.add_argument("--bundle", required=True)
     ap.add_argument("--split", default="val", choices=("train", "val", "test"))
     ap.add_argument("--objects", default=None, help="comma-separated ids in place of the split's")
-    ap.add_argument("--n-particles", type=int, default=2000)
+    ap.add_argument("--n-particles", type=int, default=None,
+                    help="override the particle count (default: robot_spec.bundle_particles, the manifest's n_particles or 2000)")
     ap.add_argument("--temper-grid", default=None, help="comma-separated tempers (always with 1 and the bundle's)")
     ap.add_argument("--choose-on", default=None, choices=("train", "val"), help="choose the temper on this split; write it into the bundle")
     ap.add_argument("--seed", type=int, default=0)
@@ -358,6 +359,10 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
     a = ap.parse_args(argv)
     B = load_bundle(a.bundle)
     man = B["manifest"]
+    if a.n_particles is None:                      # resolved once: the env override, the manifest, else 2000
+        from robots.mujoco_lab.robot_spec import bundle_particles
+
+        a.n_particles = bundle_particles(man)[0]
     metrics = json.load(open(os.path.join(a.bundle, man["metrics"])))
 
     if a.probes:

@@ -97,10 +97,34 @@ def _spread_kw(primitives: Any) -> dict[str, float]:
     return {} if f is None or float(f) == 1.0 else {"spread": float(f)}
 
 
-def _prior_belief(loc: dict[str, Any], env: Any, primitives: Any, n: int = N_PARTICLES,
+def _count(value: Any, what: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not float(value).is_integer() or value < 1:
+        raise ValueError(f"{what} n_particles must be a positive integer, not {value!r}")
+    return int(value)
+
+
+def resolve_particles(manifest: dict[str, Any] | None, override: int | None = None) -> tuple[int, str]:
+    """The particle count of a process's beliefs and its source, the one reader of a bundle's ``n_particles``: the
+    override ("override"), else the manifest's ``n_particles`` ("manifest"), else belief.N_PARTICLES ("default").
+    Callers resolve once per process and pass n on (primitives.n_particles); the belief constructors take n explicitly.
+    A count that is not a positive integer raises ValueError."""
+    if override is not None:
+        return _count(override, "the override's"), "override"
+    if (manifest or {}).get("n_particles") is not None:
+        return _count(manifest["n_particles"], "the manifest's"), "manifest"
+    return N_PARTICLES, "default"
+
+
+def _particles(primitives: Any) -> int:
+    """The count the caller resolved into the primitives (resolve_particles); belief.N_PARTICLES without one."""
+    n = getattr(primitives, "n_particles", None)
+    return N_PARTICLES if n is None else int(n)
+
+
+def _prior_belief(loc: dict[str, Any], env: Any, primitives: Any, n: int,
                   rng: np.random.Generator | None = None) -> ParticleBelief:
-    """The substrate's prior (``primitives.prior``) when it has one, else the milestone 1 prior as
-    particles at the nominal CoM."""
+    """n particles from the substrate's prior (``primitives.prior``) when it has one, else from the milestone 1 prior
+    at the nominal CoM."""
     rng = primitives.rng if rng is None else rng
     prior = getattr(primitives, "prior", None)
     if prior is not None and hasattr(env, "pose_info"):
@@ -122,7 +146,7 @@ def _belief_record(loc: dict[str, Any], env: Any, primitives: Any, store: dict[s
     episode = int(getattr(env, "episode", 0))
     rec = _beliefs(store).get(loc["object_id"])
     if rec is None or rec["episode"] != episode:
-        rec = {"episode": episode, "belief": _prior_belief(loc, env, primitives), "probes_run": set(), "probe_seq": [],
+        rec = {"episode": episode, "belief": _prior_belief(loc, env, primitives, _particles(primitives)), "probes_run": set(), "probe_seq": [],
                "attempted": False}
         _beliefs(store)[loc["object_id"]] = rec
     return rec
@@ -269,7 +293,7 @@ def _assess(object: str, destination: str, care: str | float, primitives: Any,
                                          threshold=getattr(primitives, "threshold", None), probe_models=probes or None,
                                          guard=getattr(primitives, "guard", None), abstain_cost=abstain,
                                          evoi=getattr(primitives, "evoi", "plugin"), probe_time_scale=time_scale, reset_s=reset_s,
-                                         reset_price=price)
+                                         reset_price=price, n=_particles(primitives))
     evidence = belief.summary() + [f"standard squeeze {f_std:.0f} N per pad", f"{len(proposals)} pinch proposals along the long axis"]
     if n_out:
         evidence.append(f"{n_out} more pinch proposals out of the arm's reach for {destination}")

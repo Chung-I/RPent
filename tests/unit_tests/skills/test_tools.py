@@ -1122,3 +1122,42 @@ def test_a_menu_recovery_prices_the_menu_apart_from_the_restore():
     assert env.restores == 1 and out["restored"]["event"] == "dropped_high" and out["assessment"]["reset_s"] is None
     prims.menu_recovery = (-1.0, "time")
     assert "reset" in assess_pick(object="mug", destination="table_centre", primitives=prims, store={}).data["error"]
+
+
+def test_the_particle_count_resolves_override_then_manifest_then_default():
+    """Arm port: resolve_particles(manifest, override) is the one reader of a bundle's n_particles: the override, else
+    the manifest's n_particles, else belief.N_PARTICLES; a count that is not a positive integer is an error."""
+    from rpent.skills.pick_place.belief import N_PARTICLES
+    from rpent.skills.pick_place.tools import resolve_particles
+
+    assert resolve_particles(None) == (N_PARTICLES, "default") and resolve_particles({}) == (N_PARTICLES, "default")
+    assert resolve_particles({"n_particles": 20000}) == (20000, "manifest")
+    assert resolve_particles({"n_particles": 20000}, 500) == (500, "override")
+    assert resolve_particles({}, 500) == (500, "override") and resolve_particles(None, 500) == (500, "override")
+    for bad in (0, -5, 1.5, "x", True, float("nan")):
+        with pytest.raises(ValueError, match="n_particles"):
+            resolve_particles({"n_particles": bad})
+        with pytest.raises(ValueError, match="n_particles"):
+            resolve_particles({}, bad)
+
+
+def test_the_m2b2_v11c_bundle_has_no_particle_count_so_the_default_2000():
+    import json
+    import os
+
+    from rpent.skills.pick_place.tools import resolve_particles
+
+    path = os.path.join(os.path.dirname(__file__), "..", "..", "..", "robots", "mujoco_lab", "data", "m2b2_v11c", "manifest.json")
+    assert resolve_particles(json.load(open(path))) == (2000, "default")
+
+
+def test_the_belief_takes_the_particle_count_the_caller_resolved():
+    """The prior belief and the menu use primitives.n_particles (set once per process by the caller from
+    resolve_particles); primitives without it (stubs) use belief.N_PARTICLES."""
+    from tests.unit_tests.skills.synthetic import synthetic_pose
+
+    prior = _RecordingPrior()
+    prims = SimpleNamespace(env=_PoseEnv(), model=StubModel(), rng=np.random.default_rng(0), prior=prior, n_particles=300)
+    d = assess_pick(object="mug", destination="table_centre", primitives=prims, store={}).data
+    assert prior.calls == [(synthetic_pose(), 300)]
+    assert any("effective particles of 300" in e for e in d["evidence"])

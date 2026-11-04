@@ -478,6 +478,28 @@ def test_bundle_decision_sets_the_probe_time_scale(tmp_path):
             main(["--corpus", str(corpus), "--out-dir", str(tmp_path / "x"), "--n-belief", "4", "--probe-time-scale", bad])
 
 
+def test_a_bundle_declares_its_particle_count(tmp_path, monkeypatch):
+    """Arm port: --n-particles writes the manifest's n_particles; build_lab resolves it once (tools.resolve_particles:
+    RPENT_PICK_PLACE_N_PARTICLES overrides) into the primitives; a count that is not a positive integer is an error."""
+    from robots.mujoco_lab.robot_spec import build_lab
+    from robots.mujoco_lab.train_models import main
+    from tests.unit_tests.skills.synthetic import synthetic_rows, with_pose
+
+    corpus = tmp_path / "c.jsonl"
+    _write(with_pose(synthetic_rows(300)), corpus)
+    main(["--corpus", str(corpus), "--out-dir", str(tmp_path / "p"), "--n-belief", "4"])
+    main(["--corpus", str(corpus), "--out-dir", str(tmp_path / "n"), "--n-belief", "4", "--n-particles", "20000"])
+    assert "n_particles" not in json.load(open(tmp_path / "p" / "manifest.json"))
+    assert json.load(open(tmp_path / "n" / "manifest.json"))["n_particles"] == 20000
+    monkeypatch.delenv("RPENT_PICK_PLACE_N_PARTICLES", raising=False)
+    assert build_lab(bundle=str(tmp_path / "p")).n_particles == 2000
+    assert build_lab(bundle=str(tmp_path / "n")).n_particles == 20000
+    monkeypatch.setenv("RPENT_PICK_PLACE_N_PARTICLES", "700")
+    assert build_lab(bundle=str(tmp_path / "n")).n_particles == 700
+    with pytest.raises(SystemExit):
+        main(["--corpus", str(corpus), "--out-dir", str(tmp_path / "x"), "--n-belief", "4", "--n-particles", "0"])
+
+
 def test_a_bundle_records_its_corpus_relative_to_the_repository(tmp_path, monkeypatch):
     """The final review of plan 2b2: a corpus inside the repository is recorded relative to its root, so the bundle
     finds it on any checkout; a corpus outside it keeps its absolute path."""

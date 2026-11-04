@@ -548,7 +548,7 @@ def _primitives(bundle: str | None, threshold: float | None, model_kind: str | N
     bundle's abstain cost, force noise and probe time scale: a job sets its own after the call, and none stays for the
     next caller."""
     from robots.mujoco_lab.adapter import MuJoCoLabEnv
-    from robots.mujoco_lab.robot_spec import load_bundle, load_model
+    from robots.mujoco_lab.robot_spec import bundle_particles, load_bundle, load_model
     from robots.mujoco_lab.toolkit import MuJoCoLabPrimitives
 
     if "env" not in _STATE:
@@ -557,13 +557,15 @@ def _primitives(bundle: str | None, threshold: float | None, model_kind: str | N
     if key not in _STATE["prims"]:
         env = _STATE["env"]
         if bundle is None:
-            prims = MuJoCoLabPrimitives(env=env, model=load_model(None, model_kind), threshold=threshold)
+            prims = MuJoCoLabPrimitives(env=env, model=load_model(None, model_kind), threshold=threshold,
+                                        n_particles=bundle_particles(None)[0])
         else:
             B = load_bundle(bundle, model_kind)
             prims = MuJoCoLabPrimitives(env=env, model=B["model"], prior=B["prior"], readout_model=B["readout_model"],
                                         probe_models=B["probe_models"], threshold=threshold, manifest=B["manifest"],
                                         guard=B["guard"], abstain_cost=B["abstain_cost"], force_noise=B["force_noise"],
-                                        evoi=B["evoi"], probe_time_scale=B["probe_time_scale"])
+                                        evoi=B["evoi"], probe_time_scale=B["probe_time_scale"],
+                                        n_particles=bundle_particles(B["manifest"])[0])
         _STATE["prims"][key] = (prims, {"abstain_cost": prims.abstain_cost, "force_noise": prims.force_noise,
                                         "probe_time_scale": prims.probe_time_scale})
     prims, own = _STATE["prims"][key]

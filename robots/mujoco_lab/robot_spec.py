@@ -109,6 +109,15 @@ def manifest_probe_time_scale(manifest: dict[str, Any]) -> float:
     return probe_time_scale((manifest.get("decision") or {}).get("probe_time_scale", 1.0))
 
 
+def bundle_particles(manifest: dict[str, Any] | None) -> tuple[int, str]:
+    """The process's particle count and its source (tools.resolve_particles): RPENT_PICK_PLACE_N_PARTICLES overrides,
+    else the manifest's n_particles, else belief.N_PARTICLES. Resolve once per process."""
+    from rpent.skills.pick_place.tools import resolve_particles
+
+    env = os.environ.get("RPENT_PICK_PLACE_N_PARTICLES")
+    return resolve_particles(manifest, None if env in (None, "") else float(env))
+
+
 def load_bundle(bundle_dir: str, kind: str | None = None) -> dict[str, Any]:
     """The models a bundle's manifest names: the success model of its kind (or ``kind``), the prior (and an m2b
     prior's fragility classes), and the readout and probe models and the novelty guard when present, the decision's
@@ -219,8 +228,9 @@ def build_lab(sim_dir: str | None = None, model_path: str | None = None, render:
         return MuJoCoLabPrimitives(env=env, model=B["model"], rng=rng, prior=B["prior"], readout_model=B["readout_model"],
                                    probe_models=B["probe_models"], threshold=threshold, manifest=B["manifest"], guard=B["guard"],
                                    abstain_cost=B["abstain_cost"], force_noise=B["force_noise"], evoi=B["evoi"],
-                                   probe_time_scale=B["probe_time_scale"])
-    return MuJoCoLabPrimitives(env=env, model=load_model(model_path, model_kind), rng=rng, threshold=threshold)
+                                   probe_time_scale=B["probe_time_scale"], n_particles=bundle_particles(B["manifest"])[0])
+    return MuJoCoLabPrimitives(env=env, model=load_model(model_path, model_kind), rng=rng, threshold=threshold,
+                               n_particles=bundle_particles(None)[0])
 
 
 def get_toolkit(*, runtime_kwargs: dict[str, Any], dashboard_events: DashboardEventSink, config: RunConfig):

@@ -143,6 +143,16 @@ def bundle_decision(schema: str, evoi: str | None, probe_time_scale: float | Non
     return decision or None
 
 
+def _particles_arg(text: str) -> int:
+    """--n-particles: a positive integer (tools.resolve_particles' rule)."""
+    from rpent.skills.pick_place.tools import resolve_particles
+
+    try:
+        return resolve_particles(None, float(text))[0]
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
+
+
 def _time_scale_arg(text: str) -> float:
     """--probe-time-scale: a finite number at least 0."""
     from rpent.skills.pick_place.costs import probe_time_scale
@@ -311,6 +321,9 @@ def main(argv: list[str] | None = None) -> dict:
                     help="the probe-value estimator the bundle declares (plan 2b2 decision 2); default: none, the plug-in")
     ap.add_argument("--probe-time-scale", type=_time_scale_arg, default=None,
                     help="the factor on every probe's time charge the bundle declares (plan 2b2 decision 4); default: none, 1")
+    ap.add_argument("--n-particles", type=_particles_arg, default=None,
+                    help="the beliefs' particle count the bundle declares (manifest n_particles; arm port); default: none, "
+                         "belief.N_PARTICLES")
     a = ap.parse_args(argv)
     if a.features == "nominal" and a.feature_schema == "m2b":
         raise SystemExit("--features nominal is milestone 1's recipe: the stored features have no damage features, so the "
@@ -467,7 +480,8 @@ def train_bundle(a: argparse.Namespace, split: dict | None = None, rows: list[di
                    decision=bundle_decision(schema, getattr(a, "evoi", None), getattr(a, "probe_time_scale", None)),
                    sensor=corpus_sensor(rows), generator=generator,
                    readout_model=READOUT_MODEL if readout else None, guard=GUARD if guard else None,
-                   tempers={}, **world)                                                # new models: tempers are re-chosen
+                   tempers={}, **world,                                                # new models: tempers are re-chosen
+                   **({} if getattr(a, "n_particles", None) is None else {"n_particles": a.n_particles}))
     out["wandb"] = tracking.log_run("train_models", {"corpus": out["corpus"], "features": a.features, "prior": prior,
                                                      "seed": a.seed, "n_belief": a.n_belief, "out_dir": a.out_dir},
                                     {"acceptance_val_belief": out["acceptance_val_belief"], "kind_hazard": kind == "hazard",
