@@ -1,0 +1,39 @@
+{
+ "cases": "robots/mujoco_lab/data/e1/gap/cases.json",
+ "n_cases": 80,
+ "settings": {
+  "k100_A3_abs": {
+   "care_scale": 100.0,
+   "abstain_cost": 3.0,
+   "recovery": "absorbing"
+  },
+  "k30_A3_abs": {
+   "care_scale": 30.0,
+   "abstain_cost": 3.0,
+   "recovery": "absorbing"
+  },
+  "k100_A10_abs": {
+   "care_scale": 100.0,
+   "abstain_cost": 10.0,
+   "recovery": "absorbing"
+  }
+ },
+ "horizons": [
+  1,
+  2,
+  3
+ ],
+ "crossfit": "robots/mujoco_lab/data/m2b2_v11c/folds",
+ "generator": "v11",
+ "workers": 4,
+ "max_tasks_per_worker": 1,
+ "particles": 20000,
+ "particles_source": "override",
+ "chunk": 1,
+ "code": {
+  "revision": "263b874adc5f2bd285841ce8f31f5713d7c5c578",
+  "dirty": false,
+  "sim_revision": "89aa86351d73ffb35de0de0a0c41bdb05b92a222",
+  "sim_dirty": false
+ }
+}

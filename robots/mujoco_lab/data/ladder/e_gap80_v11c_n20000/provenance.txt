@@ -1,0 +1,1 @@
+branch 263b874adc5f2bd285841ce8f31f5713d7c5c578, dirty files 0, 2026-11-04T15:53:01, workers 4, max tasks per worker 1, particles 20000, chunk 1, MemoryMax 9G, MemorySwapMax 0, NUMPY_MADVISE_HUGEPAGE=0, pressure guard 25 % x 2
