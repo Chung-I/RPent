@@ -394,6 +394,34 @@ def test_train_writes_the_corpus_sensor(tmp_path):
         assert prims.force_noise == 0.05 and prims.env.force_noise == 0.05
 
 
+def test_an_arm_corpus_declares_its_joint_sensor(tmp_path):
+    """Arm port: rows read through the joint torques (sensor source "joint", force_noise 0, torque_noise t) give the
+    manifest sensor {"force_noise": 0.0, "torque_noise_nm": t, "source": "joint"}; two sources or two torque noise
+    levels are an error; fit_probes refuses a probe corpus whose sensor is not the bundle's."""
+    from robots.mujoco_lab.train_models import corpus_sensor, fit_probes, write_manifest
+    from tests.unit_tests.skills.synthetic import synthetic_rows, with_pose
+    from tests.unit_tests.skills.test_probes import _probe_rows
+
+    joint = {"force_noise": 0.0, "torque_noise": 0.055, "source": "joint", "eps": {}, "clean": {}}
+    rows = [dict(r, sensor=dict(joint)) for r in with_pose(synthetic_rows(50))]
+    want = {"force_noise": 0.0, "torque_noise_nm": 0.055, "source": "joint"}
+    assert corpus_sensor(rows) == want
+    with pytest.raises(ValueError, match="torque noise"):
+        corpus_sensor(rows[:25] + [dict(r, sensor=dict(joint, torque_noise=0.11)) for r in rows[25:]])
+    with pytest.raises(ValueError, match="source"):
+        corpus_sensor(rows[:25] + [dict(r, sensor={"force_noise": 0.0, "eps": {}, "clean": {}}) for r in rows[25:]])
+    probes = [dict(r, sensor=dict(joint)) for r in _probe_rows(400)]
+    _write(probes, tmp_path / "p.jsonl")
+    objects = sorted({r["object"] for r in probes})
+    split = {"train": objects[:17], "val": objects[17:]}
+    os.makedirs(tmp_path / "b")
+    write_manifest(str(tmp_path / "b"), split_seed=0, sensor={"force_noise": 0.0})
+    with pytest.raises(ValueError, match="sensor"):
+        fit_probes(str(tmp_path / "p.jsonl"), str(tmp_path / "b"), split)
+    write_manifest(str(tmp_path / "b"), sensor=want)
+    fit_probes(str(tmp_path / "p.jsonl"), str(tmp_path / "b"), split)
+
+
 def test_manifest_force_noise_reads_the_sensor():
     from robots.mujoco_lab.robot_spec import manifest_force_noise
 

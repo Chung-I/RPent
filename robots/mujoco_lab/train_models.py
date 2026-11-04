@@ -121,15 +121,26 @@ def corpus_objects(paths) -> list[str]:
     return sorted({r["object"] for path in paths for r in map(json.loads, open(repo_path(path))) if "error" not in r})
 
 
-def corpus_sensor(rows: list[dict]) -> dict[str, float]:
+def corpus_sensor(rows: list[dict]) -> dict[str, Any]:
     """The sensor of a corpus's rows, for the manifest (plan 2b2 decision 8): {"force_noise": x}. A row without a
     sensor record reads 0 (corpora from before plan 2b2 read clean forces); a record without a force noise (a squeeze:
-    no force reading) has no say; rows of two noise levels are an error."""
-    levels = {float(r["sensor"]["force_noise"]) if "sensor" in r else 0.0
-              for r in rows if "sensor" not in r or "force_noise" in (r["sensor"] or {})}
+    no force reading) has no say; rows of two noise levels are an error. Arm port: rows read through the joint torques
+    (record source "joint") add {"torque_noise_nm": t, "source": "joint"}; two sources or two torque noise levels among
+    the rows that have a say are an error."""
+    said = [r.get("sensor") for r in rows if "sensor" not in r or "force_noise" in (r["sensor"] or {})]
+    levels = {float(s["force_noise"]) if s is not None else 0.0 for s in said}
     if len(levels) > 1:
         raise ValueError(f"the rows mix force noise levels {sorted(levels)}: a bundle learns from one sensor")
-    return {"force_noise": levels.pop() if levels else 0.0}
+    out: dict[str, Any] = {"force_noise": levels.pop() if levels else 0.0}
+    sources = {(s or {}).get("source", "pads") for s in said}
+    if len(sources) > 1:
+        raise ValueError(f"the rows mix sensor sources {sorted(sources)}: a bundle learns from one sensor")
+    if sources == {"joint"}:
+        torque = {float(s["torque_noise"]) for s in said}
+        if len(torque) > 1:
+            raise ValueError(f"the rows mix torque noise levels {sorted(torque)}: a bundle learns from one sensor")
+        out.update(torque_noise_nm=torque.pop(), source="joint")
+    return out
 
 
 def bundle_decision(schema: str, evoi: str | None, probe_time_scale: float | None = None) -> dict | None:
@@ -225,8 +236,13 @@ def fit_probes(path: str, out_dir: str, split: dict, seed: int = 0, schema: str 
     man_path = os.path.join(out_dir, MANIFEST)
     man = json.load(open(man_path)) if os.path.exists(man_path) else {}
     declared = manifest_force_noise(man) if man else 0.0
-    if corpus_sensor(rows)["force_noise"] != declared:
-        raise ValueError(f"the probe corpus's force noise {corpus_sensor(rows)['force_noise']} is not the bundle's {declared}")
+    sensor = corpus_sensor(rows)
+    if sensor["force_noise"] != declared:
+        raise ValueError(f"the probe corpus's force noise {sensor['force_noise']} is not the bundle's {declared}")
+    bundle_sensor = (man.get("sensor") or {}) if man else {}
+    joint = {k: sensor.get(k) for k in ("torque_noise_nm", "source")}
+    if joint != {k: bundle_sensor.get(k) for k in ("torque_noise_nm", "source")}:
+        raise ValueError(f"the probe corpus's sensor {sensor} is not the bundle's {bundle_sensor}")
     if corpus_generator(rows) != manifest_generator(man):
         raise ValueError(f"the probe corpus's generator {corpus_generator(rows)} is not the bundle's {manifest_generator(man)}")
     tr, va = rows_of(rows, split["train"]), rows_of(rows, split["val"])
