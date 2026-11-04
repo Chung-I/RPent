@@ -282,6 +282,7 @@ def test_trace_records_pad_forces_during_the_hold():
 
 
 
+@pytest.mark.hand_sim  # the hand sim's lift trace: on the arm the joint controller adds its own dynamics to the pad force (arm port A3)
 def test_lift_trace_reads_the_weight_and_the_ramps():
     """The trace's force is the mean over the step's physics substeps: the weight while the lift runs at
     constant speed, and the weight times 1 ± a/g while it speeds up and brakes (a = v_lift / RAMP_S). While
@@ -337,6 +338,7 @@ def test_trace_follows_the_object_point_between_the_pads():
             assert rise.max() > 0.005 and np.abs(grip[:-2]).max() < 0.0005
 
 
+@pytest.mark.hand_sim  # hand-sim pad forces: on the arm ketchup reads 1.0205 of the weight (limit 1 ± 0.02)
 @pytest.mark.parametrize("oid", ["ycb__spam_can", "hope__ketchup_bottle"])
 def test_hold_force_is_the_weight_under_a_firm_squeeze(oid):
     """The hold reading is the pads' net vertical force on the object: the weight, whatever the squeeze

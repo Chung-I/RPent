@@ -146,6 +146,7 @@ def test_draw_damage_ranges():
     assert draw_damage(damage_rng(0, "ycb__mug", 3), mug, th, 10.0) == d[3]          # deterministic
 
 
+@pytest.mark.hand_sim  # corpus v8 rows come from the hand sim; the arm sim does not reproduce them (corpus v12 is its own corpus)
 def test_control_rows_reproduce_v8():
     """Three rows of corpus v8 rerun as control rows (v8's draws and actions, a_transport 2.0, no liquid): the meter and
     the fragility change no motion, so the motion labels are v8's."""

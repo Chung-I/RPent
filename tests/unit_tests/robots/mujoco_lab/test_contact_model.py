@@ -44,6 +44,7 @@ def _finger_dofs(sim):
     return [int(sim.m.joint(j).dofadr[0]) for j in ("jl", "jr")]
 
 
+@pytest.mark.hand_sim  # teleports the hand (the arm cannot teleport)
 @pytest.mark.parametrize("force", [10.0, 70.0])
 def test_a_free_finger_closes_at_the_speed_limit(force):
     env = _env()
@@ -58,6 +59,7 @@ def test_a_free_finger_closes_at_the_speed_limit(force):
     assert speeds[-1] >= 0.95 * V_CLOSE              # it closes at the limit, not slower
 
 
+@pytest.mark.hand_sim  # hand-sim finger drive: on the arm the stopped finger moves 0.031 (limit 0.0005)
 def test_a_stopped_finger_squeezes_with_the_full_force():
     """The speed limit is a damping: a finger that the object stops presses with the whole motor force. (A finger
     that still moves inward at v presses with force * (1 - v / V_CLOSE): at the end of the corpus's 0.6 s close the

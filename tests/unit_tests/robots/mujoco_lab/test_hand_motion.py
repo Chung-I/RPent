@@ -36,6 +36,7 @@ def _env():
     return MuJoCoLabEnv()
 
 
+@pytest.mark.hand_sim  # teleports the hand (the arm cannot teleport)
 def test_set_hand_moves_the_target_across_the_substeps():
     """A new target is reached at the end of the control step, on a straight line from the old one."""
     env = _env()
@@ -51,6 +52,7 @@ def test_set_hand_moves_the_target_across_the_substeps():
     assert np.allclose(dz, 0.003 * np.arange(1, sub + 1) / sub)
 
 
+@pytest.mark.hand_sim  # teleports the hand (the arm cannot teleport)
 def test_teleport_hand_leaves_no_motion_pending():
     env = _env()
     env.reset(SHORT, seed=0)

@@ -210,9 +210,11 @@ def test_set_down_on_the_place_goes_to_the_release_rules():
 
 def test_set_down_that_then_falls_ten_cm_is_a_drop():
     """The pads lose the object on the bin's rim and it falls 25 cm to the bin floor before the lower ends
-    (potato_masher d30 of corpus v6): a drop from the rim."""
-    tr, dest, floor = _lowered("bin", "bin", fall=0.25, low_at_loss=0.30)
-    final = Final(zone="bin", pos=[dest["xy"][0], dest["xy"][1], 0.03], low_z=0.05, tipped=False, held=False,
+    (potato_masher d30 of corpus v6): a drop from the rim. Heights from the bin's floor (since the arm port's A2 the bin
+    stands on a 0.45 m stand, a9ded28)."""
+    floor = float(DESTINATIONS["bin"]["surface_z"])
+    tr, dest, floor = _lowered("bin", "bin", fall=0.25, low_at_loss=floor + 0.30)
+    final = Final(zone="bin", pos=[dest["xy"][0], dest["xy"][1], floor + 0.03], low_z=floor + 0.05, tipped=False, held=False,
                   com_xy=list(dest["xy"]))
     out = label_rollout(tr, dest, {"tilt_deg": 0.0, "displacement_xy_m": 0.0}, final)
     assert out["label"] == "dropped_high" and out["loss_phase"] == "lower"

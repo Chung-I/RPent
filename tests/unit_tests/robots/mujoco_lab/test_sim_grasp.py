@@ -80,6 +80,7 @@ def _grasp():
     return load_sim()["grasp"]
 
 
+@pytest.mark.hand_sim  # the scripted hand sim (no free_move)
 def test_a_close_that_raises_the_object_with_no_lift_and_no_hold_labels_held():
     """The squeeze probe's call: the close raises the object 3 cm and it stays in both pads. There is no lift or hold
     step, so no turn during a lift or a hold: the label is held, not an error."""
@@ -111,6 +112,7 @@ def _slipped(stage, k, lift):
     return _held(stage, k, lift)
 
 
+@pytest.mark.hand_sim  # the scripted hand sim (no free_move)
 @pytest.mark.parametrize("motion, label", [(_held, "held"), (_turned_in_the_lift, "rotated"),
                                            (_turned_in_the_close_only, "held"), (_slipped, "slipped_out")])
 def test_a_lift_with_no_hold_step_labels_as_before(motion, label):

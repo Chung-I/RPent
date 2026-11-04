@@ -79,6 +79,7 @@ def _close(a, b, path=""):
         assert a == b, f"{path}: {b!r} != {a!r}"
 
 
+@pytest.mark.hand_sim  # menus frozen on the hand sim
 def test_m2_bundle_menus_unchanged():
     want = json.load(open(FIXTURE))
     got = menus()

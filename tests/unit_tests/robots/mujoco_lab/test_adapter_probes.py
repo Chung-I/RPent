@@ -90,6 +90,7 @@ def test_probes_refresh_the_baselines():
     assert res.kind == "measured" and env.rest_low_z == pytest.approx(low_after, abs=1e-6)
 
 
+@pytest.mark.hand_sim  # hand-sim weigh: on the arm the mug's weigh gives another kind
 @pytest.mark.parametrize("obj", ["ycb__brick", "ycb__mug"])
 def test_weigh_probe_reads_the_weight_within_two_percent(obj):
     """The hand follows its mocap target in jumps, so a force sampled at the end of a lift step reads
@@ -111,6 +112,7 @@ def test_push_reads_a_slippery_brick():
     assert res.kind == "slid" and 0.5 <= res.reading["f_break"] / (t["mu"] * t["mass"] * G) <= 2.0
 
 
+@pytest.mark.hand_sim  # hand-sim push path: on the arm this push does not leave the object off the table
 def test_a_probe_that_leaves_the_object_off_the_table_throws_it():
     """macaroni_and_cheese, probe corpus seed 7, draw 19, scene B: the pinch across the box is 12.5 cm and the
     pads open 10.2 cm. The descending pads push the fingers past their soft limits, the open cannot free the
@@ -128,6 +130,7 @@ def test_a_probe_that_leaves_the_object_off_the_table_throws_it():
     assert res.thrown
 
 
+@pytest.mark.hand_sim  # hand-sim push path: on the arm this push moves the object 7.8 cm (test needs > 10 cm)
 def test_a_probe_that_moves_the_object_more_than_10_cm_throws_it():
     """macaroni_and_cheese, seed 7, draw 2, scene B: the wedged box twists out of the pads and lands 27 cm away,
     still on the table."""

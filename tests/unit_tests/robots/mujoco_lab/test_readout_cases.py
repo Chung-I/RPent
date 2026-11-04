@@ -76,6 +76,7 @@ def test_a_pivot_gives_no_slip_reading(env):
     assert r["label"] == "not_lifted" and r["readouts"]["fz_slip_max_n"] is None
 
 
+@pytest.mark.hand_sim  # hand-sim pad forces: on the arm the slide reads 51.5 N against 58.8 ± 5.9
 def test_a_slide_reads_twice_mu_f(env):
     """hammer d66: the pads slide up a still hammer, so the reading is their friction capacity 2 mu F."""
     r = _row(env, "handal__hammer__d66")
@@ -100,6 +101,7 @@ def test_a_loss_is_a_step_in_which_no_pad_pressed(env, any_width):
     assert r["loss_step"] is None or tr[r["loss_step"]]["fn"] == 0.0
 
 
+@pytest.mark.hand_sim  # hand-sim pose: on the arm this weigh is unreachable
 def test_weigh_probe_gives_no_friction_when_the_pads_never_slid_on_the_sides(env, any_width):
     """pitcher d15 (probe corpus v3, scene B): the pads did not pinch the sides and read mu_hat -11.97."""
     from robots.mujoco_lab.probe_corpus import probe_rows

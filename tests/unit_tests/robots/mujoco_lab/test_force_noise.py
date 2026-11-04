@@ -57,6 +57,7 @@ def _weigh(env):
     return env.probe_weigh(_mid(env), weigh_force(env.s["t3_make"].std_force(env.nominal_mass())))
 
 
+@pytest.mark.hand_sim  # pad force noise: the arm's sensor is the joint torques (rows record force_noise 0, torque_noise 0.055)
 def test_force_readings_carry_the_declared_noise():
     """A placed banana: each present readout is its clean value x exp(0.05 eps); the hold is among them."""
     from robots.mujoco_lab.adapter import PAD_FORCE_NOISE
@@ -108,6 +109,7 @@ def test_force_stream_leaves_the_squeeze_noise_unchanged():
     assert res.reading["eps"] == float(np.random.default_rng([5, zlib.crc32(CRUSHABLE.encode())]).standard_normal())
 
 
+@pytest.mark.hand_sim  # pad force noise
 def test_weigh_reading_carries_the_noise():
     env = _env()
     env.reset(BRICK, {"mu": 0.8, "mass_scale": 1.0, "com_s": None, "v_lift": 0.15}, seed=0)
@@ -117,6 +119,7 @@ def test_weigh_reading_carries_the_noise():
     assert res.reading["m_hat"] == pytest.approx(res.sensor["clean"]["m_hat"] * math.exp(0.05 * res.sensor["eps"]), rel=1e-12)
 
 
+@pytest.mark.hand_sim  # pad force noise
 def test_weigh_slide_readings_share_one_eps():
     """A brick that cannot rise (mu 0.1, mass scale 3): mu_hat and m_lower come from one slide force, so one eps
     scales both."""
@@ -129,6 +132,7 @@ def test_weigh_slide_readings_share_one_eps():
         assert res.reading[k] == pytest.approx(res.sensor["clean"][k] * f, rel=1e-12)
 
 
+@pytest.mark.hand_sim  # pad force noise
 def test_push_break_force_carries_the_noise():
     env = _env()
     env.reset(BRICK, {"mu": 0.5, "mass_scale": 1.0, "com_s": None, "v_lift": 0.15}, seed=0)
@@ -149,6 +153,7 @@ def test_bad_force_noise_is_rejected(monkeypatch):
         MuJoCoLabEnv()
 
 
+@pytest.mark.hand_sim  # pad force noise
 def test_rows_keep_the_sensor_record(tmp_path):
     """A corpus row and a probe corpus row keep the sensor record: the noise level, the eps and the clean readings."""
     from robots.mujoco_lab.corpus import main as corpus_main
