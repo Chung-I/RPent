@@ -1,0 +1,7 @@
+code 42d4bc713cccca0b82cab60bf584cd8f5bf1d52e (branch psuccess-spread)
+bundle /home/chungyili/Codes/RPent-real/robots/mujoco_lab/data/m2b2_v11c
+NUMPY_MADVISE_HUGEPAGE=0 OMP_NUM_THREADS=1 RPENT_LAB_GENERATOR=v11
+objects all, workers 2, unit MemoryMax 4G MemorySwapMax 0
+start 2026-11-04 16:47:31
+pid 1707200 cgroup /user.slice/user-1000.slice/user@1000.service/app.slice/run-ra1b80bbcc4004574a9d4e853869b1126.scope
+end 2026-11-04 18:35:18
