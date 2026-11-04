@@ -237,6 +237,16 @@ def test_e_scores_a_probe_with_the_same_draws_at_every_horizon():
     assert set(a["probes"][2]) == {"probe_push", "probe_weigh"}
 
 
+def test_the_tables_are_the_same_at_every_chunk():
+    """The chunk (beliefs per batch in a probe's preposterior) changes memory and time only: the tables and the probe
+    values at chunk 1, 3 and 8 are equal, not close."""
+    entry, prims, ids = _menu_entry()
+    got = [ladder_e.decide(entry, prims, ids, (1, 2, 3), KAPPA, A, attempts_done=0, seed=(5,), chunk=c) for c in (1, 3, 8)]
+    assert got[0]["probes"][3]
+    for d in got[1:]:
+        assert d["tables"] == got[0]["tables"] and d["probes"] == got[0]["probes"]
+
+
 def test_the_planner_runs_the_lowest_score_and_counts_its_attempts():
     entry, prims, ids = _menu_entry(estimator="plugin", A=10.0)
     tools = SimpleNamespace(store={"pick_place": {("object", "table_centre", KAPPA, 0): entry}}, prims=prims)
@@ -371,9 +381,9 @@ def test_the_summary_leaves_out_a_case_whose_reset_failed_in_any_run():
     assert s["artifact"] == 1 and s["regret"]["1"]["n"] == 1
 
 
-def _run_dir(tmp_path, monkeypatch, manifest=None):
+def _run_dir(tmp_path, monkeypatch, manifest=None, key="particles"):
     """A one-fold crossfit folder (its manifest ``manifest``), the bundle check stubbed, and an e_job stub that keeps each
-    job's particle count."""
+    job's config value ``key`` (the particle count by default)."""
     import json
 
     from robots.mujoco_lab import e1
@@ -387,7 +397,7 @@ def _run_dir(tmp_path, monkeypatch, manifest=None):
 
     def job(item):
         (case, name), cfg = item
-        seen.append(cfg["particles"])
+        seen.append(cfg.get(key))
         return [{"object": case["object"], "idx": case["idx"], "seed": case["seed"], "setting": name, "H": 1,
                  "particles": cfg["particles"]}]
 
@@ -435,8 +445,8 @@ def test_a_resume_at_another_particle_count_is_refused(tmp_path, monkeypatch):
     json.dump({"settings": settings, "horizons": [1], "generator": lab_generator()},      # before the option
               open(out / "run_config_20261104T000000.json", "w"))
     with pytest.raises(ValueError, match="particle"):
-        ladder_e.run(CASE, settings, crossfit, (1,), 1, str(out), "cases.json", particles=20000)
-    ladder_e.run(CASE, settings, crossfit, (1,), 1, str(out), "cases.json")       # the default, as that run had
+        ladder_e.run(CASE, settings, crossfit, (1,), 1, str(out), "cases.json", particles=20000, chunk=8)
+    ladder_e.run(CASE, settings, crossfit, (1,), 1, str(out), "cases.json", chunk=8)    # the defaults that run had
     assert seen == [N_PARTICLES]
 
 
@@ -464,3 +474,84 @@ def test_the_cli_passes_the_particle_count(tmp_path, monkeypatch):
     ladder_e.main(["run", "--cases", str(cases), "--crossfit", "f", "--out", "o", "--particles", "20000"])
     ladder_e.main(["run", "--cases", str(cases), "--crossfit", "f", "--out", "o"])
     assert got == [20000, None]
+
+
+def test_a_run_records_its_chunk_and_hands_it_to_the_jobs(tmp_path, monkeypatch):
+    """--chunk (default 1 since 4 Nov; 8 before the option): the run config and every job's config hold it."""
+    from robots.mujoco_lab import ladder
+
+    settings = ladder.parse_settings("k100_A3_abs")
+    crossfit, seen = _run_dir(tmp_path, monkeypatch, key="chunk")
+    ladder_e.run(CASE, settings, crossfit, (1,), 1, str(tmp_path / "new"), "cases.json")
+    ladder_e.run(CASE, settings, crossfit, (1,), 1, str(tmp_path / "old"), "cases.json", chunk=8)
+    assert ladder_e.CHUNK == 1
+    assert [c["chunk"] for c in _config(str(tmp_path / "new"))] == [1]
+    assert [c["chunk"] for c in _config(str(tmp_path / "old"))] == [8]
+    assert seen == [1, 8]
+
+
+def test_a_resume_at_another_chunk_is_refused(tmp_path, monkeypatch):
+    """A run config from before the option ran at chunk 8: its directory resumes at --chunk 8 only."""
+    import json
+
+    from robots.mujoco_lab import ladder
+    from robots.mujoco_lab.corpus import lab_generator
+
+    settings = ladder.parse_settings("k100_A3_abs")
+    crossfit, seen = _run_dir(tmp_path, monkeypatch, key="chunk")
+    out = tmp_path / "run"
+    out.mkdir()
+    json.dump({"settings": settings, "horizons": [1], "generator": lab_generator()},      # before the option
+              open(out / "run_config_20261104T000000.json", "w"))
+    with pytest.raises(ValueError, match="chunk"):
+        ladder_e.run(CASE, settings, crossfit, (1,), 1, str(out), "cases.json")
+    ladder_e.run(CASE, settings, crossfit, (1,), 1, str(out), "cases.json", chunk=8)
+    assert seen == [8]
+
+
+@pytest.mark.parametrize("bad", [0, -1, 2.5, True])
+def test_a_run_refuses_a_chunk_that_is_not_a_positive_integer(tmp_path, monkeypatch, bad):
+    from robots.mujoco_lab import ladder
+
+    crossfit, seen = _run_dir(tmp_path, monkeypatch, key="chunk")
+    with pytest.raises(ValueError, match="chunk"):
+        ladder_e.run(CASE, ladder.parse_settings("k100_A3_abs"), crossfit, (1,), 1, str(tmp_path / "r"), "cases.json",
+                     chunk=bad)
+    assert seen == [] and not (tmp_path / "r").exists()
+
+
+def test_the_cli_passes_the_chunk(tmp_path, monkeypatch):
+    import json
+
+    got = []
+    monkeypatch.setattr(ladder_e, "run", lambda *a, **k: got.append(k.get("chunk")))
+    cases = tmp_path / "cases.json"
+    json.dump([CASE[0]], open(cases, "w"))
+    ladder_e.main(["run", "--cases", str(cases), "--crossfit", "f", "--out", "o", "--chunk", "8"])
+    ladder_e.main(["run", "--cases", str(cases), "--crossfit", "f", "--out", "o"])
+    assert got == [8, 1]
+
+
+def test_a_job_hands_its_configs_chunk_to_the_planner(monkeypatch):
+    """e_job builds E with the run's chunk (a config without one: CHUNK)."""
+    from robots.mujoco_lab import calibrate, e1, e1_expected, ladder
+
+    got = []
+
+    class Planner:
+        def __init__(self, *a, chunk=None, **k):
+            got.append(chunk)
+            self.log = []
+
+    monkeypatch.setattr(ladder_e, "EPlanner", Planner)
+    monkeypatch.setattr(e1_expected, "_prims", lambda cfg, obj: SimpleNamespace(n_particles=2000))
+    monkeypatch.setattr(e1, "reset_case", lambda *a: ("table_centre", {"at_rest": True}, {}))
+    monkeypatch.setattr(e1, "LabTools", lambda *a: SimpleNamespace(assess=lambda: {"error": "stub"}, store={}))
+    monkeypatch.setattr(e1, "planner_loop", lambda *a: {"ended": "abstained", "probes": [], "attempts": [], "decisions": []})
+    monkeypatch.setattr(calibrate, "case_artifact", lambda *a: False)
+    monkeypatch.setattr(e1, "realized_cost", lambda *a: 0.0)
+    settings = ladder.parse_settings("k100_A3_abs")
+    case = {"object": "ycb__tuna_can", "idx": 0, "seed": 13}
+    for cfg in ({"settings": settings, "horizons": [1]}, {"settings": settings, "horizons": [1], "chunk": 8}):
+        assert ladder_e.e_job(((case, "k100_A3_abs"), cfg))[0]["ended"] == "abstained"
+    assert got == [1, 8]

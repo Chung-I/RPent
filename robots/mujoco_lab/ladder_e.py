@@ -45,7 +45,9 @@ reason), the default rule's first-decision regret at each horizon's table (an ob
 n50), how often H 2 and 3 change E's choice (the first decision, and every decision of the longest run), every case
 where a policy's first choice scores below E's on E's own table, every case where the lowest score rises with H, and
 the wall time per case. A case whose reset did not reach rest is left out of the metrics (as the gap check does), not of
-the H = 1 check.
+the H = 1 check. ``--chunk`` sets how many simulated probe results are scored per batch (default 1; 8 before the option,
+recorded in the run config). It sets memory and time: the tables at chunk 1 and 8 were bitwise equal on the largest gap
+menu at 2,000 and 20,000 particles.
 
     python -P -m robots.mujoco_lab.ladder_e run --cases FILE --crossfit DIR [--settings ...] [--horizons 1,2,3] --workers 8 --out DIR
     python -P -m robots.mujoco_lab.ladder_e summary --dir DIR [--wandb]
@@ -78,7 +80,8 @@ from robots.mujoco_lab import e1, e1_gap
 ESTIMATORS = ("plugin", "heldout")
 ATTEMPT_KINDS = ("commit", "lower_risk")
 TOL = 1e-9                # a score within this of the lowest ties with it (ladder.TOL); the menu's order breaks a tie
-CHUNK = 8                 # simulated probe results scored per batch (memory: about 100 MB per batch at H = 3, 2000 particles)
+CHUNK = 1                 # simulated probe results scored per batch (--chunk; H = 3 memory: 784 x particles per belief)
+CHUNK_BEFORE_OPTION = 8   # the batch of the runs before --chunk (4 Nov): a run config without "chunk" ran at 8
 PLACED = OUTCOMES.index("placed_stable")
 REC = [OUTCOMES.index(k) for k in RECOVERABLE]
 
@@ -410,7 +413,7 @@ def e_job(item: tuple[dict[str, Any], dict[str, Any]]) -> list[dict[str, Any]]:
         destination, reset_info, truth = e1.reset_case(prims, obj, idx, seed)
         tools = e1.LabTools(prims, destination, conf["care"])
         planner = EPlanner(tools, H, conf["care"], conf["abstain_cost"], seed=(seed, zlib.crc32(obj.encode()), idx, zlib.crc32(name.encode())),
-                           horizons=tuple(h for h in cfg["horizons"] if h <= H))
+                           horizons=tuple(h for h in cfg["horizons"] if h <= H), chunk=cfg.get("chunk", CHUNK))
         rng = np.random.default_rng([seed, zlib.crc32(obj.encode()), idx, 7])
         try:
             rec = e1.planner_loop(tools, planner, "menu_planner", f"Please put the {e1.display_object(obj)} at the "
@@ -446,16 +449,24 @@ def _pool(workers: int, max_tasks: int | None = None) -> Any:
     return mp.get_context("spawn").Pool(workers, maxtasksperchild=max_tasks)
 
 
+def _chunk(value: Any) -> int:
+    if isinstance(value, bool) or not isinstance(value, (int, np.integer)) or value < 1:
+        raise ValueError(f"the chunk must be a positive integer, not {value!r}")
+    return int(value)
+
+
 def run(cases: list[dict[str, Any]], settings: dict[str, dict[str, Any]], crossfit: str, horizons: tuple[int, ...], workers: int,
-        out_dir: str, cases_path: str, max_tasks: int | None = None, particles: int | None = None) -> str:
+        out_dir: str, cases_path: str, max_tasks: int | None = None, particles: int | None = None, chunk: int = CHUNK) -> str:
     """Every (case, setting) job into ``out_dir``/rows.jsonl (resuming: a job with every horizon's row is skipped; a directory
-    of another bundle, generator, setting list, horizon list or particle count is an error); returns the path.
+    of another bundle, generator, setting list, horizon list, particle count or chunk is an error); returns the path.
     ``max_tasks``: ``_pool``. ``particles``: the count per belief (e1_expected.resolve_particles: this override, else the
-    bundle's, else belief.N_PARTICLES; a run config from before the option counts as N_PARTICLES)."""
+    bundle's, else belief.N_PARTICLES; a run config from before the option counts as N_PARTICLES). ``chunk``: the simulated
+    probe results per batch (a run config from before the option counts as CHUNK_BEFORE_OPTION)."""
     from robots.mujoco_lab import e1_expected, ladder
     from robots.mujoco_lab.calibrate import code_revision
     from robots.mujoco_lab.corpus import lab_generator
 
+    chunk = _chunk(chunk)
     generator = e1.run_generator(out_dir)
     e1.check_bundle(out_dir, crossfit, generator)
     n_particles, source = e1_expected.resolve_particles(particles, crossfit)
@@ -463,19 +474,23 @@ def run(cases: list[dict[str, Any]], settings: dict[str, dict[str, Any]], crossf
         c = json.load(open(os.path.join(out_dir, held)))
         if c.get("settings") != settings or c.get("horizons") != list(horizons):
             raise ValueError(f"{out_dir} holds a run of other settings or horizons ({held}); give a new directory")
+        if c.get("chunk", CHUNK_BEFORE_OPTION) != chunk:
+            held_chunk = c.get("chunk", CHUNK_BEFORE_OPTION)
+            raise ValueError(f"{out_dir} holds a run at chunk {held_chunk} ({held}); resume it with --chunk {held_chunk} or "
+                             f"give a new directory")
     ladder.check_particles(out_dir, n_particles)
     os.makedirs(out_dir, exist_ok=True)
     with open(os.path.join(out_dir, f"run_config_{time.strftime('%Y%m%dT%H%M%S')}.json"), "w") as f:
         json.dump({"cases": cases_path, "n_cases": len(cases), "settings": settings, "horizons": list(horizons), "crossfit": crossfit,
                    "generator": lab_generator(), "workers": workers, "max_tasks_per_worker": max_tasks, "particles": n_particles,
-                   "particles_source": source, "code": code_revision()}, f, indent=1)
+                   "particles_source": source, "chunk": chunk, "code": code_revision()}, f, indent=1)
     path = os.path.join(out_dir, "rows.jsonl")
     done: Counter = Counter()
     if os.path.exists(path):
         with open(path) as f:
             done = Counter(_key(json.loads(line)) for line in f if line.strip())
     cfg = {"crossfit": crossfit, "folds": json.load(open(os.path.join(crossfit, "folds.json"))), "settings": settings,
-           "horizons": list(horizons), "particles": n_particles}
+           "horizons": list(horizons), "particles": n_particles, "chunk": chunk}
     todo = [((c, n), cfg) for c in cases for n in ([c["setting"]] if c.get("setting") else list(settings))
             if done[(c["object"], c["idx"], c["seed"], n)] < len(horizons)]
     print(f"ladder E: {len(todo)} (case, setting) jobs to run, horizons {list(horizons)}", file=sys.stderr, flush=True)
@@ -688,6 +703,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--workers", type=int, default=8)
     p.add_argument("--max-tasks-per-worker", type=int, default=None, help="replace a worker after this many jobs (memory)")
     p.add_argument("--particles", type=int, default=None, help="particles per belief (default: the bundle's, else 2000)")
+    p.add_argument("--chunk", type=int, default=CHUNK, help="simulated probe results per batch (memory; 8 before the option)")
     p.add_argument("--out", required=True)
     p = sub.add_parser("summary", help="the report")
     p.add_argument("--dir", required=True)
@@ -699,7 +715,7 @@ def main(argv: list[str] | None = None) -> int:
         if not horizons or min(horizons) < 1 or 1 not in horizons:
             ap.error("horizons: positive integers, 1 among them")
         print(run(ladder.load_cases(a.cases), ladder.parse_settings(a.settings), a.crossfit, horizons, a.workers, a.out, a.cases,
-                  a.max_tasks_per_worker, a.particles))
+                  a.max_tasks_per_worker, a.particles, chunk=a.chunk))
         return 0
     with open(os.path.join(a.dir, "rows.jsonl")) as f:
         rows = [json.loads(line) for line in f if line.strip()]
