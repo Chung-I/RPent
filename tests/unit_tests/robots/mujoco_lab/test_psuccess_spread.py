@@ -219,3 +219,59 @@ def test_memo_passes_a_hazard_models_plan_through_uncached():
     assert memo.predict_matrix(X, ["plan"])[2] == ["plan"]
     memo.predict_matrix(X, ["plan"])
     assert model.calls == 2
+
+
+def _probe_record(stage, obj, p_prior, w_after, prior="class"):
+    """A weigh-shaped record: commit_std's chances of every variant (the truth variants shrink the spread) and each
+    setting's best row, at the prior's weights and at ``stage``'s."""
+    from robots.mujoco_lab.psuccess_spread import SETTINGS, VARIANTS, _stats
+
+    n = len(p_prior)
+    w0, w1 = np.ones(n) / n, np.asarray(w_after, dtype=float) / np.sum(w_after)
+    p = np.asarray(p_prior, dtype=float)
+    ch = {v: (p if v == "belief" else 0.5 * (p + p.mean()), 1.0 - p) for v in VARIANTS}
+    st = _stats(ch, {"prior": w0, stage: w1})
+    best = {name: {s: {q: {v: st[q][v][s] for v in VARIANTS} for q in ("placed", "irr")} for s in ("prior", stage)}
+            for name, _, _ in SETTINGS}
+    return {"stage": stage, "prior": prior, "object": obj, "key": f"{obj}__k", "class": "rigid", "ess": 40.0, "kind": "measured",
+            "checks": {"usable": True, "pose_maxdiff": 0.0, "s_equal": True, "f_std_equal": True, "menu_maxdiff": 0.0},
+            "commit_std": st, "best": best, "s_std": 0.5}
+
+
+def test_identify_records_summarize_apart_from_the_weigh_records_with_the_identify_weights():
+    from robots.mujoco_lab.psuccess_spread import markdown, spread, summarize
+
+    p = [0.1, 0.3, 0.6, 0.9]
+    recs = [_probe_record("weigh", "a", p, [1, 1, 1, 1]), _probe_record("weigh", "b", p, [1, 1, 1, 1]),
+            _probe_record("identify", "a", p, [0, 0, 1, 1]), _probe_record("identify", "b", p, [0, 0, 1, 1])]
+    s = summarize(recs, n_boot=50)
+    assert sorted(s["stages"]) == ["identify", "weigh"]
+    sd = lambda w: spread(np.array(p), np.asarray(w, dtype=float) / np.sum(w))["sd"]
+    for stage, w in (("weigh", [1, 1, 1, 1]), ("identify", [0, 0, 1, 1])):
+        k = s["stages"][stage]["priors"]["class"]["rows"]["commit_std"]["placed"]["spread"]["sd"]
+        assert k["before"] == pytest.approx(sd([1, 1, 1, 1])) and k["after"] == pytest.approx(sd(w))
+        P = s["stages"][stage]["priors"]["class"]
+        assert P["tags"]["all"]["n"] == 2 and set(P["objects"]) == {"a", "b"} and P["checks"]["s_unequal"] == 0
+        assert P["objects"]["a"]["sd_weigh"] == pytest.approx(sd(w))
+        assert set(P["rows"]) == {"commit_std", "best_k100_A3", "best_k30_A3", "best_k100_A10"}
+    md = markdown(s, {})
+    assert "## identify cases, class prior (2 cases, 2 objects)" in md and "| SD identify |" in md and "Driver split after the identify" in md
+
+
+def test_the_identify_stage_shares_the_weigh_stream():
+    from robots.mujoco_lab.psuccess_spread import PROBE_STAGES, STAGE_INDEX
+
+    assert STAGE_INDEX == {"attempt": 0, "weigh": 1, "identify": 1} and PROBE_STAGES == ("weigh", "identify")
+
+
+def test_a_run_with_the_identify_stage_needs_identify_rows_from_the_bundle_or_the_simulation(tmp_path):
+    import json
+
+    from robots.mujoco_lab.psuccess_spread import main
+
+    (tmp_path / "folds").mkdir()
+    (tmp_path / "folds" / "folds.json").write_text('{"a": 0}')
+    (tmp_path / "pc.jsonl").write_text(json.dumps({"key": "a__v11s0__d0__Bweigh"}) + "\n")
+    (tmp_path / "manifest.json").write_text(json.dumps({"probe_corpus": str(tmp_path / "pc.jsonl")}))
+    with pytest.raises(SystemExit, match="probe corpus has none"):
+        main(["run", "--bundle", str(tmp_path), "--scenes", "s.json", "--stages", "identify", "--out", str(tmp_path / "out")])
