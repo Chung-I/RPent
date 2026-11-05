@@ -1,0 +1,115 @@
+{
+ "cmd": "levels",
+ "sample": "/home/chungyili/Codes/RPent-evpi-sim/logs/evpi_sim/sample.json",
+ "out": "/home/chungyili/Codes/RPent-evpi-sim/logs/evpi_sim_levels/full/shard_3",
+ "objects": "handal__pink_spaghetti_spoon,hope__cream_cheese,hope__popcorn_box,hot3d__coffee_pot,hot3d__potato_masher,ycb__dry_erase_marker",
+ "code_revision": "1e6f206baa4e482a473ff6f21d68147df093b625",
+ "dirty": false,
+ "generator": "v11",
+ "label": "exploratory, added after the results",
+ "sample_sha256": "b8f2b1249439f7871ec483ee0faa8a177a0b42f92d95bb5ff7b13e0041988bc9",
+ "records": [
+  [
+   "hope__popcorn_box",
+   1,
+   "class",
+   "k30_A3"
+  ],
+  [
+   "hot3d__coffee_pot",
+   5,
+   "class",
+   "k30_A3"
+  ],
+  [
+   "hot3d__potato_masher",
+   3,
+   "class",
+   "k30_A3"
+  ],
+  [
+   "handal__pink_spaghetti_spoon",
+   1,
+   "generic",
+   "k30_A3"
+  ],
+  [
+   "hope__cream_cheese",
+   3,
+   "generic",
+   "k30_A3"
+  ],
+  [
+   "hope__popcorn_box",
+   3,
+   "generic",
+   "k30_A3"
+  ],
+  [
+   "hot3d__coffee_pot",
+   0,
+   "generic",
+   "k30_A3"
+  ],
+  [
+   "hot3d__potato_masher",
+   3,
+   "generic",
+   "k30_A3"
+  ],
+  [
+   "hot3d__coffee_pot",
+   0,
+   "class",
+   "k100_A10"
+  ],
+  [
+   "hot3d__coffee_pot",
+   7,
+   "class",
+   "k100_A10"
+  ],
+  [
+   "ycb__dry_erase_marker",
+   1,
+   "class",
+   "k100_A10"
+  ],
+  [
+   "handal__pink_spaghetti_spoon",
+   1,
+   "generic",
+   "k100_A10"
+  ],
+  [
+   "hope__cream_cheese",
+   0,
+   "generic",
+   "k100_A10"
+  ],
+  [
+   "hope__popcorn_box",
+   7,
+   "generic",
+   "k100_A10"
+  ],
+  [
+   "hope__popcorn_box",
+   9,
+   "generic",
+   "k100_A10"
+  ],
+  [
+   "hot3d__coffee_pot",
+   4,
+   "generic",
+   "k100_A10"
+  ],
+  [
+   "hot3d__coffee_pot",
+   5,
+   "generic",
+   "k100_A10"
+  ]
+ ]
+}

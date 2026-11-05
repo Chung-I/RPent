@@ -1,0 +1,49 @@
+{
+ "cmd": "levels",
+ "sample": "/home/chungyili/Codes/RPent-evpi-sim/logs/evpi_sim/sample.json",
+ "out": "/home/chungyili/Codes/RPent-evpi-sim/logs/evpi_sim_levels/smoke",
+ "objects": "hope__tomato_sauce_can",
+ "code_revision": "1e6f206baa4e482a473ff6f21d68147df093b625",
+ "dirty": false,
+ "generator": "v11",
+ "label": "exploratory, added after the results",
+ "sample_sha256": "b8f2b1249439f7871ec483ee0faa8a177a0b42f92d95bb5ff7b13e0041988bc9",
+ "records": [
+  [
+   "hope__tomato_sauce_can",
+   4,
+   "class",
+   "k30_A3"
+  ],
+  [
+   "hope__tomato_sauce_can",
+   4,
+   "generic",
+   "k30_A3"
+  ],
+  [
+   "hope__tomato_sauce_can",
+   6,
+   "generic",
+   "k30_A3"
+  ],
+  [
+   "hope__tomato_sauce_can",
+   9,
+   "generic",
+   "k30_A3"
+  ],
+  [
+   "hope__tomato_sauce_can",
+   7,
+   "class",
+   "k100_A10"
+  ],
+  [
+   "hope__tomato_sauce_can",
+   0,
+   "generic",
+   "k100_A10"
+  ]
+ ]
+}

@@ -1,0 +1,91 @@
+{
+ "cmd": "levels",
+ "sample": "/home/chungyili/Codes/RPent-evpi-sim/logs/evpi_sim/sample.json",
+ "out": "/home/chungyili/Codes/RPent-evpi-sim/logs/evpi_sim_levels/full/shard_2",
+ "objects": "handal__measuring_spoon,hope__corn_can,hope__pineapple_slices_can,hot3d__bbq_sauce_bottle,hot3d__pitcher,ycb__clamp,ycb__tuna_can",
+ "code_revision": "1e6f206baa4e482a473ff6f21d68147df093b625",
+ "dirty": false,
+ "generator": "v11",
+ "label": "exploratory, added after the results",
+ "sample_sha256": "b8f2b1249439f7871ec483ee0faa8a177a0b42f92d95bb5ff7b13e0041988bc9",
+ "records": [
+  [
+   "hope__corn_can",
+   8,
+   "class",
+   "k30_A3"
+  ],
+  [
+   "hot3d__bbq_sauce_bottle",
+   0,
+   "class",
+   "k30_A3"
+  ],
+  [
+   "ycb__clamp",
+   7,
+   "class",
+   "k30_A3"
+  ],
+  [
+   "ycb__tuna_can",
+   0,
+   "class",
+   "k30_A3"
+  ],
+  [
+   "handal__measuring_spoon",
+   0,
+   "class",
+   "k100_A10"
+  ],
+  [
+   "hope__corn_can",
+   6,
+   "class",
+   "k100_A10"
+  ],
+  [
+   "hope__corn_can",
+   8,
+   "class",
+   "k100_A10"
+  ],
+  [
+   "ycb__clamp",
+   7,
+   "class",
+   "k100_A10"
+  ],
+  [
+   "ycb__clamp",
+   9,
+   "class",
+   "k100_A10"
+  ],
+  [
+   "ycb__tuna_can",
+   5,
+   "class",
+   "k100_A10"
+  ],
+  [
+   "hope__pineapple_slices_can",
+   2,
+   "generic",
+   "k100_A10"
+  ],
+  [
+   "hot3d__bbq_sauce_bottle",
+   4,
+   "generic",
+   "k100_A10"
+  ],
+  [
+   "hot3d__pitcher",
+   6,
+   "generic",
+   "k100_A10"
+  ]
+ ]
+}

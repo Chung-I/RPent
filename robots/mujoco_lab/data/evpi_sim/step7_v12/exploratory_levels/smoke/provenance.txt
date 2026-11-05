@@ -1,0 +1,7 @@
+code 1e6f206baa4e482a473ff6f21d68147df093b625 (branch evpi-sim), dirty files 0
+sim /home/chungyili/Codes/daily-logs-worktrees/v12checks-armsim-fe46f6c/researches/property-belief-manipulation/experiments/2026-11-04-arm-port/sim, last commit e823247052a2bf4d1b97d5077a51f0ead91fd80c, dirty files 0
+robot model b7b9d2beaaecf848efc49c9b99355b5e551a44dd21292fa4462f22fce0187bc3  /home/chungyili/Codes/daily-logs-worktrees/v12checks-armsim-fe46f6c/researches/property-belief-manipulation/experiments/2026-11-04-arm-port/out/r1_robot.npz
+env NUMPY_MADVISE_HUGEPAGE=0 OMP_NUM_THREADS=1 RPENT_LAB_GENERATOR=v11 WANDB_MODE=online, unit v12-esl-smoke MemoryMax 6G MemorySwapMax 0
+command python -P -u -m robots.mujoco_lab.evpi_sim_levels levels --sample /home/chungyili/Codes/RPent-evpi-sim/logs/evpi_sim/sample.json --objects hope__tomato_sauce_can --out /home/chungyili/Codes/RPent-evpi-sim/logs/evpi_sim_levels/smoke
+start 2026-11-06 05:17:42
+end 2026-11-06 05:20:51

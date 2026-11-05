@@ -1,0 +1,79 @@
+{
+ "cmd": "levels",
+ "sample": "/home/chungyili/Codes/RPent-evpi-sim/logs/evpi_sim/sample.json",
+ "out": "/home/chungyili/Codes/RPent-evpi-sim/logs/evpi_sim_levels/full/shard_6",
+ "objects": "hope__butter,hope__mayonnaise_bottle,hope__spaghetti,hot3d__frozen_vegetable_block,hot3d__soup_can,ycb__spam_can",
+ "code_revision": "1e6f206baa4e482a473ff6f21d68147df093b625",
+ "dirty": false,
+ "generator": "v11",
+ "label": "exploratory, added after the results",
+ "sample_sha256": "b8f2b1249439f7871ec483ee0faa8a177a0b42f92d95bb5ff7b13e0041988bc9",
+ "records": [
+  [
+   "hope__mayonnaise_bottle",
+   1,
+   "class",
+   "k30_A3"
+  ],
+  [
+   "ycb__spam_can",
+   2,
+   "class",
+   "k30_A3"
+  ],
+  [
+   "hope__mayonnaise_bottle",
+   8,
+   "generic",
+   "k30_A3"
+  ],
+  [
+   "hot3d__soup_can",
+   9,
+   "generic",
+   "k30_A3"
+  ],
+  [
+   "ycb__spam_can",
+   5,
+   "generic",
+   "k30_A3"
+  ],
+  [
+   "hope__butter",
+   2,
+   "class",
+   "k100_A10"
+  ],
+  [
+   "hope__mayonnaise_bottle",
+   6,
+   "class",
+   "k100_A10"
+  ],
+  [
+   "hope__mayonnaise_bottle",
+   8,
+   "class",
+   "k100_A10"
+  ],
+  [
+   "hope__spaghetti",
+   3,
+   "generic",
+   "k100_A10"
+  ],
+  [
+   "hot3d__frozen_vegetable_block",
+   5,
+   "generic",
+   "k100_A10"
+  ],
+  [
+   "hot3d__soup_can",
+   4,
+   "generic",
+   "k100_A10"
+  ]
+ ]
+}

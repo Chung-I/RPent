@@ -1,0 +1,576 @@
+{
+ "label": "exploratory, added after the results",
+ "sides": {
+  "k100_A10": {
+   "class": {
+    "a_prior": {
+     "rows": 16,
+     "observed": {
+      "placed_stable": 16
+     },
+     "expected": {
+      "placed_stable": 14.842623985755788,
+      "tipped": 0.372795055375136,
+      "missed": 0.04463592335190755,
+      "dropped_low": 0.114856571728504,
+      "dropped_high": 0.15055150577033238,
+      "rolled_off": 0.026860736788505982,
+      "not_lifted": 0.44486822447689234,
+      "crushed": 0.0028079967529333364,
+      "bruised": 0.0,
+      "broken": 0.0,
+      "spilled": 0.0
+     },
+     "poisson_le": {
+      "dropped_high": 0.8602334218813013,
+      "rolled_off": 0.9734968043760153,
+      "crushed": 0.9971959419824343,
+      "irreversible_any": 0.8350862723308191
+     },
+     "p_mean": {
+      "placed_stable": 0.9276639991097367,
+      "tipped": 0.023299690960946,
+      "missed": 0.002789745209494222,
+      "dropped_low": 0.0071785357330315,
+      "dropped_high": 0.009409469110645774,
+      "rolled_off": 0.001678796049281624,
+      "not_lifted": 0.02780426402980577,
+      "crushed": 0.00017549979705833353
+     },
+     "model": {
+      "irreversible": 5.631882478492866,
+      "recoverable": 0.04717010391837462,
+      "unfinished": 0.7233600089026324,
+      "time": 0.446875,
+      "total": 6.849287591313873
+     },
+     "realized": {
+      "irreversible": 0.0,
+      "recoverable": 0.0,
+      "unfinished": 0.0,
+      "time": 0.446875,
+      "total": 0.446875
+     },
+     "p_placed_mean": 0.9276639991097367,
+     "placed_observed": 16
+    },
+    "a_S": {
+     "rows": 33,
+     "observed": {
+      "placed_stable": 32,
+      "tipped": 1
+     },
+     "expected": {
+      "placed_stable": 30.478819434069546,
+      "tipped": 0.7088239992919335,
+      "missed": 0.15122460088239176,
+      "dropped_low": 0.24268264467638842,
+      "dropped_high": 0.26629782451808504,
+      "rolled_off": 0.07087949620512099,
+      "not_lifted": 1.0619527732931322,
+      "crushed": 0.01931922706340081,
+      "bruised": 0.0,
+      "broken": 0.0,
+      "spilled": 0.0
+     },
+     "poisson_le": {
+      "dropped_high": 0.7662108971252175,
+      "rolled_off": 0.931574143583606,
+      "crushed": 0.9808661932250002,
+      "irreversible_any": 0.7001248884459658
+     },
+     "p_mean": {
+      "placed_stable": 0.9236005889111983,
+      "tipped": 0.02147951513005859,
+      "missed": 0.004582563663102781,
+      "dropped_low": 0.007354019535648134,
+      "dropped_high": 0.008069631046002577,
+      "rolled_off": 0.002147863521367303,
+      "not_lifted": 0.03218038706948886,
+      "crushed": 0.0005854311231333579
+     },
+     "model": {
+      "irreversible": 5.4014628452516185,
+      "recoverable": 0.04950629186355394,
+      "unfinished": 0.7639941108880162,
+      "time": 0.4787878787878788,
+      "total": 6.693751126791067
+     },
+     "realized": {
+      "irreversible": 0.0,
+      "recoverable": 0.030303030303030304,
+      "unfinished": 0.30303030303030304,
+      "time": 0.4787878787878788,
+      "total": 0.812121212121212
+     },
+     "p_placed_mean": 0.9236005889111983,
+     "placed_observed": 32
+    }
+   },
+   "generic": {
+    "a_prior": {
+     "rows": 8,
+     "observed": {
+      "placed_stable": 8
+     },
+     "expected": {
+      "placed_stable": 7.500026221732126,
+      "tipped": 0.1944123081545739,
+      "missed": 0.015049608459826443,
+      "dropped_low": 0.06001676557688426,
+      "dropped_high": 0.08611544586088547,
+      "rolled_off": 0.007325304015720059,
+      "not_lifted": 0.1370543461999852,
+      "crushed": 0.0,
+      "bruised": 0.0,
+      "broken": 0.0,
+      "spilled": 0.0
+     },
+     "poisson_le": {
+      "dropped_high": 0.9174883048786807,
+      "rolled_off": 0.992701460630809,
+      "irreversible_any": 0.9107919803647513
+     },
+     "p_mean": {
+      "placed_stable": 0.9375032777165158,
+      "tipped": 0.024301538519321736,
+      "missed": 0.0018812010574783054,
+      "dropped_low": 0.007502095697110533,
+      "dropped_high": 0.010764430732610684,
+      "rolled_off": 0.0009156630019650074,
+      "not_lifted": 0.01713179327499815
+     },
+     "model": {
+      "irreversible": 5.840046867287844,
+      "recoverable": 0.04225073191140965,
+      "unfinished": 0.6249672228348442,
+      "time": 0.42500000000000004,
+      "total": 6.932264822034099
+     },
+     "realized": {
+      "irreversible": 0.0,
+      "recoverable": 0.0,
+      "unfinished": 0.0,
+      "time": 0.42500000000000004,
+      "total": 0.42500000000000004
+     },
+     "p_placed_mean": 0.9375032777165155,
+     "placed_observed": 8
+    },
+    "a_S": {
+     "rows": 38,
+     "observed": {
+      "tipped": 1,
+      "not_lifted": 1,
+      "placed_stable": 36
+     },
+     "expected": {
+      "placed_stable": 35.42421154776673,
+      "tipped": 0.7630056378189884,
+      "missed": 0.1352212015305208,
+      "dropped_low": 0.3026962788528908,
+      "dropped_high": 0.27573449494892627,
+      "rolled_off": 0.10074039613879521,
+      "not_lifted": 0.9686469642960341,
+      "crushed": 0.022342117716942556,
+      "bruised": 0.0,
+      "broken": 0.0008133019013699394,
+      "spilled": 0.006588059028788152
+     },
+     "poisson_le": {
+      "dropped_high": 0.75901442617502,
+      "rolled_off": 0.9041677278540137,
+      "crushed": 0.9779056189776802,
+      "broken": 0.9991870287389786,
+      "spilled": 0.9934335946540869,
+      "irreversible_any": 0.666164681335774
+     },
+     "p_mean": {
+      "placed_stable": 0.9322160933622824,
+      "tipped": 0.020079095732078642,
+      "missed": 0.0035584526718558107,
+      "dropped_low": 0.007965691548760284,
+      "dropped_high": 0.007256170919708586,
+      "rolled_off": 0.0026510630562840845,
+      "not_lifted": 0.025490709586737742,
+      "crushed": 0.0005879504662353305,
+      "broken": 2.1402681614998404e-05,
+      "spilled": 0.00017336997444179346
+     },
+     "model": {
+      "irreversible": 5.344978549142398,
+      "recoverable": 0.044348594746063605,
+      "unfinished": 0.6778390663771728,
+      "time": 0.4789473684210524,
+      "total": 6.546113578686686
+     },
+     "realized": {
+      "irreversible": 0.0,
+      "recoverable": 0.039473684210526314,
+      "unfinished": 0.5263157894736842,
+      "time": 0.4789473684210524,
+      "total": 1.044736842105263
+     },
+     "p_placed_mean": 0.9322160933622826,
+     "placed_observed": 36
+    }
+   }
+  },
+  "k30_A3": {
+   "class": {
+    "a_prior": {
+     "rows": 18,
+     "observed": {
+      "placed_stable": 16,
+      "not_lifted": 1,
+      "dropped_high": 1
+     },
+     "expected": {
+      "placed_stable": 16.610914553167085,
+      "tipped": 0.27505234693412167,
+      "missed": 0.041809077275361865,
+      "dropped_low": 0.187966364951101,
+      "dropped_high": 0.17675468808097478,
+      "rolled_off": 0.028438981122134114,
+      "not_lifted": 0.6730165452257231,
+      "crushed": 0.006047443243500223,
+      "bruised": 0.0,
+      "broken": 0.0,
+      "spilled": 0.0
+     },
+     "poisson_le": {
+      "dropped_high": 0.9861031622075787,
+      "rolled_off": 0.971961600342901,
+      "crushed": 0.9939708057363037,
+      "irreversible_any": 0.9805951793910106
+     },
+     "p_mean": {
+      "placed_stable": 0.9228285862870602,
+      "tipped": 0.015280685940784538,
+      "missed": 0.0023227265152978814,
+      "dropped_low": 0.010442575830616722,
+      "dropped_high": 0.009819704893387488,
+      "rolled_off": 0.0015799433956741175,
+      "not_lifted": 0.03738980806809573,
+      "crushed": 0.00033596906908334574
+     },
+     "model": {
+      "irreversible": 1.760342603721743,
+      "recoverable": 0.046740892320747,
+      "unfinished": 0.23151424113881935,
+      "time": 0.4055555555555556,
+      "total": 2.444153292736865
+     },
+     "realized": {
+      "irreversible": 8.333333333333334,
+      "recoverable": 0.027777777777777776,
+      "unfinished": 0.3333333333333333,
+      "time": 0.4055555555555556,
+      "total": 9.100000000000001
+     },
+     "p_placed_mean": 0.9228285862870602,
+     "placed_observed": 16
+    },
+    "a_S": {
+     "rows": 40,
+     "observed": {
+      "placed_stable": 39,
+      "tipped": 1
+     },
+     "expected": {
+      "placed_stable": 37.408303061099545,
+      "tipped": 0.668625691636881,
+      "missed": 0.13001420547654732,
+      "dropped_low": 0.2613779588395977,
+      "dropped_high": 0.2844695188864921,
+      "rolled_off": 0.08947952639936094,
+      "not_lifted": 1.1216830560505506,
+      "crushed": 0.02797759159146801,
+      "bruised": 0.0,
+      "broken": 0.0009204595991474903,
+      "spilled": 0.007148930420400463
+     },
+     "poisson_le": {
+      "dropped_high": 0.752413289509346,
+      "rolled_off": 0.9144069861361164,
+      "crushed": 0.9724101567211597,
+      "broken": 0.9990799638938433,
+      "spilled": 0.9928765623977096,
+      "irreversible_any": 0.6636528868924441
+     },
+     "p_mean": {
+      "placed_stable": 0.9352075765274886,
+      "tipped": 0.016715642290922025,
+      "missed": 0.003250355136913683,
+      "dropped_low": 0.006534448970989942,
+      "dropped_high": 0.007111737972162302,
+      "rolled_off": 0.0022369881599840235,
+      "not_lifted": 0.028042076401263764,
+      "crushed": 0.0006994397897867003,
+      "broken": 2.3011489978687256e-05,
+      "spilled": 0.00017872326051001158
+     },
+     "model": {
+      "irreversible": 1.5374851008632588,
+      "recoverable": 0.040521484599457536,
+      "unfinished": 0.19437727041753355,
+      "time": 0.4074999999999999,
+      "total": 2.1798838558802496
+     },
+     "realized": {
+      "irreversible": 0.0,
+      "recoverable": 0.025,
+      "unfinished": 0.075,
+      "time": 0.4074999999999999,
+      "total": 0.5075000000000001
+     },
+     "p_placed_mean": 0.9352075765274888,
+     "placed_observed": 39
+    }
+   },
+   "generic": {
+    "a_prior": {
+     "rows": 3,
+     "observed": {
+      "dropped_low": 1,
+      "placed_stable": 2
+     },
+     "expected": {
+      "placed_stable": 1.4805581120377147,
+      "tipped": 0.023726872131946755,
+      "missed": 0.004127161764055381,
+      "dropped_low": 0.13524848116957056,
+      "dropped_high": 0.04262758880506816,
+      "rolled_off": 0.0020269825659422033,
+      "not_lifted": 1.3116848015257023,
+      "crushed": 0.0,
+      "bruised": 0.0,
+      "broken": 0.0,
+      "spilled": 0.0
+     },
+     "poisson_le": {
+      "dropped_high": 0.9582681934271035,
+      "rolled_off": 0.9979750703758924,
+      "irreversible_any": 0.9563277677743929
+     },
+     "p_mean": {
+      "placed_stable": 0.49351937067923823,
+      "tipped": 0.007908957377315584,
+      "missed": 0.0013757205880184605,
+      "dropped_low": 0.04508282705652352,
+      "dropped_high": 0.014209196268356053,
+      "rolled_off": 0.0006756608553140677,
+      "not_lifted": 0.4372282671752341
+     },
+     "model": {
+      "irreversible": 2.232728568550518,
+      "recoverable": 0.2729816386094746,
+      "unfinished": 1.5194418879622853,
+      "time": 0.4666666666666666,
+      "total": 4.491818761788945
+     },
+     "realized": {
+      "irreversible": 0.0,
+      "recoverable": 0.3333333333333333,
+      "unfinished": 1.0,
+      "time": 0.4666666666666666,
+      "total": 1.8
+     },
+     "p_placed_mean": 0.49351937067923823,
+     "placed_observed": 2
+    },
+    "a_S": {
+     "rows": 35,
+     "observed": {
+      "tipped": 2,
+      "placed_stable": 33
+     },
+     "expected": {
+      "placed_stable": 32.70960899125601,
+      "tipped": 0.6478652297857158,
+      "missed": 0.11812586235607855,
+      "dropped_low": 0.2501028076086049,
+      "dropped_high": 0.24505602375327354,
+      "rolled_off": 0.05752880675963515,
+      "not_lifted": 0.9381780811721396,
+      "crushed": 0.027094343046570005,
+      "bruised": 0.0,
+      "broken": 0.0008133019013699394,
+      "spilled": 0.005626552360599168
+     },
+     "poisson_le": {
+      "dropped_high": 0.7826606894242307,
+      "rolled_off": 0.9440946936857858,
+      "crushed": 0.9732694159910166,
+      "broken": 0.9991870287389786,
+      "spilled": 0.9943892470391954,
+      "irreversible_any": 0.7145380508466701
+     },
+     "p_mean": {
+      "placed_stable": 0.9345602568930289,
+      "tipped": 0.018510435136734737,
+      "missed": 0.0033750246387451014,
+      "dropped_low": 0.007145794503102998,
+      "dropped_high": 0.007001600678664959,
+      "rolled_off": 0.0016436801931324328,
+      "not_lifted": 0.026805088033489705,
+      "crushed": 0.0007741240870448573,
+      "broken": 2.323719718199827e-05,
+      "spilled": 0.00016075863887426195
+     },
+     "model": {
+      "irreversible": 1.4405101192347765,
+      "recoverable": 0.04243379829532768,
+      "unfinished": 0.1963192293209132,
+      "time": 0.41714285714285726,
+      "total": 2.0964060039938746
+     },
+     "realized": {
+      "irreversible": 0.0,
+      "recoverable": 0.05714285714285714,
+      "unfinished": 0.17142857142857143,
+      "time": 0.41714285714285726,
+      "total": 0.6457142857142857
+     },
+     "p_placed_mean": 0.9345602568930289,
+     "placed_observed": 33
+    }
+   }
+  }
+ },
+ "transitions": {
+  "k100_A10": {
+   "class": {
+    "decline \u2192 row": {
+     "n": 18,
+     "mean": 8.933333333333334
+    },
+    "row \u2192 decline": {
+     "n": 1,
+     "mean": -9.5
+    },
+    "row \u2192 row": {
+     "n": 15,
+     "mean": -0.06333333333333332
+    }
+   },
+   "generic": {
+    "decline \u2192 row": {
+     "n": 31,
+     "mean": 8.841935483870968
+    },
+    "row \u2192 decline": {
+     "n": 1,
+     "mean": -9.6
+    },
+    "row \u2192 row": {
+     "n": 7,
+     "mean": -0.11428571428571431
+    }
+   }
+  },
+  "k30_A3": {
+   "class": {
+    "decline \u2192 row": {
+     "n": 25,
+     "mean": 2.426
+    },
+    "row \u2192 decline": {
+     "n": 3,
+     "mean": 48.43333333333334
+    },
+    "row \u2192 row": {
+     "n": 15,
+     "mean": 0.2366666666666667
+    }
+   },
+   "generic": {
+    "decline \u2192 row": {
+     "n": 34,
+     "mean": 2.3470588235294114
+    },
+    "row \u2192 decline": {
+     "n": 2,
+     "mean": -0.55
+    },
+    "row \u2192 row": {
+     "n": 1,
+     "mean": 0.09999999999999998
+    }
+   }
+  }
+ },
+ "sensitivity": {
+  "k100_A10": {
+   "class": {
+    "dropped_object": "hope__mayonnaise_bottle",
+    "dropped_records": 2,
+    "n": 32,
+    "n_objects": 23,
+    "mean": 4.1015625,
+    "ci": [
+     2.0180208333333334,
+     5.991136363636363
+    ],
+    "all_records": {
+     "n": 34,
+     "mean": 4.4220588235294125
+    }
+   },
+   "generic": {
+    "dropped_object": "hope__popcorn_box",
+    "dropped_records": 2,
+    "n": 37,
+    "n_objects": 27,
+    "mean": 6.6054054054054046,
+    "ci": [
+     4.5743359375,
+     8.43004861111111
+    ],
+    "all_records": {
+     "n": 39,
+     "mean": 6.7615384615384615
+    }
+   }
+  },
+  "k30_A3": {
+   "class": {
+    "dropped_object": "hope__tomato_sauce_can",
+    "dropped_records": 1,
+    "n": 42,
+    "n_objects": 31,
+    "mean": 1.4071428571428573,
+    "ci": [
+     0.8511363636363637,
+     2.007702702702703
+    ],
+    "all_records": {
+     "n": 43,
+     "mean": 4.872093023255814
+    }
+   },
+   "generic": {
+    "dropped_object": "hope__canned_tuna",
+    "dropped_records": 2,
+    "n": 35,
+    "n_objects": 23,
+    "mean": 2.0999999999999996,
+    "ci": [
+     1.5559793103448278,
+     2.486048126614987
+    ],
+    "all_records": {
+     "n": 37,
+     "mean": 2.1297297297297293
+    }
+   }
+  }
+ },
+ "j_check": {
+  "rows": 191,
+  "max_abs_diff": 0.0
+ },
+ "n_boot": 2000,
+ "seed": 0,
+ "wandb": "https://forge.coreweave.com/wandb/leon129506/rpent-pick-place/runs/96atf6xs"
+}
