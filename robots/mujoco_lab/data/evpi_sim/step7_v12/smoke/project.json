@@ -1,0 +1,23 @@
+{
+ "records": 5,
+ "mismatch": [],
+ "case_errors": 0,
+ "simulations": 50,
+ "gate_failures": 0,
+ "errors": 0,
+ "artifacts": 0,
+ "fingerprint_differs": 0,
+ "seconds_per_simulation": {
+  "row": 11.421777777777779,
+  "probe": 27.353999999999996
+ },
+ "probe_seconds_assumed": false,
+ "replay_seconds_per_case": 20.894,
+ "full": {
+  "cases": 156,
+  "row_simulations": 1150,
+  "probe_simulations": 300,
+  "projected_cpu_h": 6.83353012345679,
+  "unavailable": []
+ }
+}

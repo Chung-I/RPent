@@ -1,0 +1,21 @@
+handal__red_serving_spoon 3: 134.5 s, 1 records, 10 simulations
+hope__corn_can 0: 77.3 s, 1 records, 5 simulations
+hope__corn_can 4: 107.6 s, 1 records, 5 simulations
+hope__corn_can 6: 158.1 s, 1 records, 10 simulations
+hope__corn_can 8: 133.3 s, 2 records, 10 simulations
+hope__pineapple_slices_can 2: 21.8 s, 1 records, 5 simulations
+hope__yogurt_cup 1: 93.8 s, 1 records, 5 simulations
+hope__yogurt_cup 2: 493.4 s, 2 records, 20 simulations
+hope__yogurt_cup 5: 155.3 s, 1 records, 10 simulations
+hope__yogurt_cup 10: 22.3 s, 1 records, 5 simulations
+hot3d__mug 0: 33.1 s, 2 records, 5 simulations
+hot3d__mug 10: 19.7 s, 1 records, 5 simulations
+ycb__chocolate_pudding 0: 39.8 s, 1 records, 5 simulations
+ycb__chocolate_pudding 1: 165.1 s, 2 records, 10 simulations
+ycb__chocolate_pudding 3: 75.7 s, 1 records, 5 simulations
+ycb__chocolate_pudding 5: 94.9 s, 2 records, 5 simulations
+ycb__tomato_soup_can 3: 104.4 s, 1 records, 5 simulations
+ycb__tomato_soup_can 4: 119.6 s, 1 records, 5 simulations
+ycb__tomato_soup_can 7: 97.3 s, 1 records, 5 simulations
+ycb__tomato_soup_can 9: 20.6 s, 1 records, 5 simulations
+done in 2169 s: /home/chungyili/Codes/RPent-evpi-sim/logs/evpi_sim/full/shard_5

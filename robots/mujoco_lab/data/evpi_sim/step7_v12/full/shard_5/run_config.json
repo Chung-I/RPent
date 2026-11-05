@@ -1,0 +1,166 @@
+{
+ "cmd": "run",
+ "sample": "/home/chungyili/Codes/RPent-evpi-sim/logs/evpi_sim/sample.json",
+ "out": "/home/chungyili/Codes/RPent-evpi-sim/logs/evpi_sim/full/shard_5",
+ "smoke": null,
+ "objects": "handal__red_serving_spoon,hope__corn_can,hope__pineapple_slices_can,hope__yogurt_cup,hot3d__mug,ycb__chocolate_pudding,ycb__tomato_soup_can",
+ "workers": 1,
+ "code_revision": "0195dfca76a7fcb6ec248aef8225238b6404dc62",
+ "dirty": false,
+ "generator": "v11",
+ "sample_sha256": "b8f2b1249439f7871ec483ee0faa8a177a0b42f92d95bb5ff7b13e0041988bc9",
+ "n_seeds": 5,
+ "seed_stream": 8,
+ "records": [
+  [
+   "hope__corn_can",
+   8,
+   "class",
+   "k30_A3"
+  ],
+  [
+   "hope__yogurt_cup",
+   1,
+   "class",
+   "k30_A3"
+  ],
+  [
+   "hope__yogurt_cup",
+   5,
+   "class",
+   "k30_A3"
+  ],
+  [
+   "hot3d__mug",
+   10,
+   "class",
+   "k30_A3"
+  ],
+  [
+   "ycb__chocolate_pudding",
+   0,
+   "class",
+   "k30_A3"
+  ],
+  [
+   "ycb__tomato_soup_can",
+   9,
+   "class",
+   "k30_A3"
+  ],
+  [
+   "hope__corn_can",
+   4,
+   "generic",
+   "k30_A3"
+  ],
+  [
+   "hot3d__mug",
+   0,
+   "generic",
+   "k30_A3"
+  ],
+  [
+   "ycb__chocolate_pudding",
+   3,
+   "generic",
+   "k30_A3"
+  ],
+  [
+   "ycb__chocolate_pudding",
+   5,
+   "generic",
+   "k30_A3"
+  ],
+  [
+   "ycb__tomato_soup_can",
+   4,
+   "generic",
+   "k30_A3"
+  ],
+  [
+   "ycb__tomato_soup_can",
+   7,
+   "generic",
+   "k30_A3"
+  ],
+  [
+   "hope__corn_can",
+   0,
+   "class",
+   "k100_A10"
+  ],
+  [
+   "hope__corn_can",
+   6,
+   "class",
+   "k100_A10"
+  ],
+  [
+   "hope__corn_can",
+   8,
+   "class",
+   "k100_A10"
+  ],
+  [
+   "hope__yogurt_cup",
+   2,
+   "class",
+   "k100_A10"
+  ],
+  [
+   "ycb__chocolate_pudding",
+   1,
+   "class",
+   "k100_A10"
+  ],
+  [
+   "handal__red_serving_spoon",
+   3,
+   "generic",
+   "k100_A10"
+  ],
+  [
+   "hope__pineapple_slices_can",
+   2,
+   "generic",
+   "k100_A10"
+  ],
+  [
+   "hope__yogurt_cup",
+   2,
+   "generic",
+   "k100_A10"
+  ],
+  [
+   "hope__yogurt_cup",
+   10,
+   "generic",
+   "k100_A10"
+  ],
+  [
+   "hot3d__mug",
+   0,
+   "generic",
+   "k100_A10"
+  ],
+  [
+   "ycb__chocolate_pudding",
+   1,
+   "generic",
+   "k100_A10"
+  ],
+  [
+   "ycb__chocolate_pudding",
+   5,
+   "generic",
+   "k100_A10"
+  ],
+  [
+   "ycb__tomato_soup_can",
+   3,
+   "generic",
+   "k100_A10"
+  ]
+ ]
+}

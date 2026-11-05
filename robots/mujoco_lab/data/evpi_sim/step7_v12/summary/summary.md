@@ -1,0 +1,310 @@
+# Experiment 1, step 7: the simulator check (5 paired seeds per case)
+
+Main reading: S = all, non-probe pairs, one per cell (4 readings); the single properties are descriptive; no multiplicity correction. The secondary quantity is the realized minus predicted gain on cases selected for a predicted gain: it includes the selection on a predicted gain, so it is not a calibration test. a_S is the one-step rule after the reveal. Each table is over the records whose a_S differs from a_prior; "unchanged" counts the others. A block with fewer than 10 records, or in a cell whose pairs drop more than 10%, shows counts only.
+
+## all records
+
+### Main reading (S = all, non-probe pairs)
+
+| cell | prior | records (objects) | unchanged | realized gain [95 %] | reading | predicted EVPI | realized minus predicted gain on cases selected for a predicted gain |
+|---|---|---|---|---|---|---|---|
+| k30_A3 | class | 43 (32) | 6 | +4.872 [+1.055, +13.757] | the realized gain from revealing S is positive in this cell | +0.530 [+0.419, +0.651] | +4.342 [+0.566, +12.919] |
+| k30_A3 | generic | 37 (24) | 6 | +2.130 [+1.622, +2.487] | the realized gain from revealing S is positive in this cell | +0.976 [+0.780, +1.174] | +1.154 [+0.511, +1.611] |
+| k100_A10 | class | 34 (24) | 7 | +4.422 [+2.273, +6.309] | the realized gain from revealing S is positive in this cell | +1.726 [+1.152, +2.373] | +2.696 [+0.420, +4.714] |
+| k100_A10 | generic | 39 (28) | 5 | +6.762 [+4.762, +8.450] | the realized gain from revealing S is positive in this cell | +2.736 [+2.173, +3.293] | +4.025 [+2.216, +5.548] |
+
+### Single properties (descriptive), non-probe pairs
+
+| cell | prior | S | records | unchanged | realized gain | predicted EVPI | realized minus predicted gain on cases selected for a predicted gain |
+|---|---|---|---|---|---|---|---|
+| k30_A3 | class | mass | 14 | 35 | +11.561 [+0.193, +38.145] | +0.434 [+0.083, +0.770] | +11.127 [-0.077, +34.947] |
+| k30_A3 | class | mu | 12 | 33 | +13.158 [-0.060, +34.685] | +0.138 [-0.585, +0.596] | +13.020 [-0.142, +34.852] |
+| k30_A3 | class | com | 7 | 41 | counts only | | |
+| k30_A3 | class | damage | 7 | 42 | counts only | | |
+| k30_A3 | generic | mass | 17 | 25 | +1.924 [+0.894, +2.600] | +0.905 [+0.111, +1.485] | +1.019 [-0.313, +2.139] |
+| k30_A3 | generic | mu | 9 | 33 | counts only | | |
+| k30_A3 | generic | com | 17 | 27 | -6.465 [-26.275, +2.600] | +0.726 [+0.310, +1.118] | -7.191 [-26.783, +2.158] |
+| k30_A3 | generic | damage | 1 | 49 | counts only | | |
+| k100_A10 | class | mass | 11 | 31 | +0.805 [-3.860, +4.758] | +0.798 [-0.735, +2.861] | +0.006 [-5.767, +4.599] |
+| k100_A10 | class | mu | 15 | 28 | +5.043 [+1.820, +7.874] | +0.077 [-0.544, +0.805] | +4.967 [+1.655, +7.977] |
+| k100_A10 | class | com | 8 | 37 | counts only | | |
+| k100_A10 | class | damage | 6 | 38 | counts only | | |
+| k100_A10 | generic | mass | 9 | 33 | counts only | | |
+| k100_A10 | generic | mu | 7 | 39 | counts only | | |
+| k100_A10 | generic | com | 11 | 30 | +5.245 [+0.055, +8.736] | +2.758 [+1.534, +3.969] | +2.487 [-1.963, +5.598] |
+| k100_A10 | generic | damage | 0 | 50 | counts only | | |
+
+### Probe pairs (a probe on either side: their own rows, not read)
+
+| cell | prior | S | records | realized gain | predicted EVPI |
+|---|---|---|---|---|---|
+| k30_A3 | class | mass | 1 | counts only | |
+| k30_A3 | class | mu | 5 | counts only | |
+| k30_A3 | class | com | 2 | counts only | |
+| k30_A3 | class | damage | 1 | counts only | |
+| k30_A3 | class | all | 1 | counts only | |
+| k30_A3 | generic | mass | 7 | counts only | |
+| k30_A3 | generic | mu | 7 | counts only | |
+| k30_A3 | generic | com | 4 | counts only | |
+| k30_A3 | generic | all | 5 | counts only | |
+| k100_A10 | class | mass | 8 | counts only | |
+| k100_A10 | class | mu | 7 | counts only | |
+| k100_A10 | class | com | 5 | counts only | |
+| k100_A10 | class | damage | 6 | counts only | |
+| k100_A10 | class | all | 9 | counts only | |
+| k100_A10 | generic | mass | 8 | counts only | |
+| k100_A10 | generic | mu | 4 | counts only | |
+| k100_A10 | generic | com | 9 | counts only | |
+| k100_A10 | generic | all | 6 | counts only | |
+
+### Level check (same records): J(a; θ_true) and the realized cost
+
+| cell | prior | S | pairs | records | J(a_prior) | realized(a_prior) | J(a_S) | realized(a_S) |
+|---|---|---|---|---|---|---|---|---|
+| k30_A3 | class | mass | main | 14 | +2.675 [+2.257, +3.135] | +12.700 [+1.327, +37.108] | +2.241 [+1.957, +2.602] | +1.139 [+0.568, +1.808] |
+| k30_A3 | class | mass | probe | 1 | counts only | | | |
+| k30_A3 | class | mu | main | 12 | +2.982 [+2.784, +3.174] | +14.667 [+1.700, +38.872] | +2.844 [+2.394, +3.531] | +1.508 [+0.789, +2.257] |
+| k30_A3 | class | mu | probe | 5 | counts only | | | |
+| k30_A3 | class | com | main | 7 | counts only | | | |
+| k30_A3 | class | com | probe | 2 | counts only | | | |
+| k30_A3 | class | damage | main | 7 | counts only | | | |
+| k30_A3 | class | damage | probe | 1 | counts only | | | |
+| k30_A3 | class | all | main | 43 | +2.767 [+2.612, +2.940] | +5.553 [+1.700, +14.194] | +2.237 [+2.126, +2.370] | +0.681 [+0.461, +0.988] |
+| k30_A3 | class | all | probe | 1 | counts only | | | |
+| k30_A3 | generic | mass | main | 17 | +3.283 [+3.000, +3.745] | +2.788 [+2.388, +3.000] | +2.378 [+1.871, +3.209] | +0.865 [+0.400, +1.571] |
+| k30_A3 | generic | mass | probe | 7 | counts only | | | |
+| k30_A3 | generic | mu | main | 9 | counts only | | | |
+| k30_A3 | generic | mu | probe | 7 | counts only | | | |
+| k30_A3 | generic | com | main | 17 | +3.077 [+3.000, +3.262] | +2.941 [+2.812, +3.000] | +2.351 [+1.910, +2.819] | +9.406 [+0.400, +29.094] |
+| k30_A3 | generic | com | probe | 4 | counts only | | | |
+| k30_A3 | generic | damage | main | 1 | counts only | | | |
+| k30_A3 | generic | all | main | 37 | +3.121 [+3.000, +3.318] | +2.903 [+2.725, +3.000] | +2.145 [+1.981, +2.328] | +0.773 [+0.474, +1.190] |
+| k30_A3 | generic | all | probe | 5 | counts only | | | |
+| k100_A10 | class | mass | main | 11 | +8.207 [+5.915, +10.933] | +3.036 [+0.415, +6.000] | +7.409 [+5.486, +8.974] | +2.232 [+0.479, +4.823] |
+| k100_A10 | class | mass | probe | 8 | counts only | | | |
+| k100_A10 | class | mu | main | 15 | +8.425 [+7.264, +9.364] | +6.183 [+3.381, +8.652] | +8.348 [+7.032, +9.629] | +1.140 [+0.438, +2.460] |
+| k100_A10 | class | mu | probe | 7 | counts only | | | |
+| k100_A10 | class | com | main | 8 | counts only | | | |
+| k100_A10 | class | com | probe | 5 | counts only | | | |
+| k100_A10 | class | damage | main | 6 | counts only | | | |
+| k100_A10 | class | damage | probe | 6 | counts only | | | |
+| k100_A10 | class | all | main | 34 | +8.517 [+7.551, +9.544] | +5.504 [+3.635, +7.313] | +6.791 [+6.179, +7.441] | +1.082 [+0.462, +2.106] |
+| k100_A10 | class | all | probe | 9 | counts only | | | |
+| k100_A10 | generic | mass | main | 9 | counts only | | | |
+| k100_A10 | generic | mass | probe | 8 | counts only | | | |
+| k100_A10 | generic | mu | main | 7 | counts only | | | |
+| k100_A10 | generic | mu | probe | 4 | counts only | | | |
+| k100_A10 | generic | com | main | 11 | +9.251 [+7.607, +10.513] | +6.527 [+3.310, +9.208] | +6.493 [+5.196, +7.853] | +1.282 [+0.400, +3.600] |
+| k100_A10 | generic | com | probe | 9 | counts only | | | |
+| k100_A10 | generic | all | main | 39 | +9.371 [+8.820, +9.819] | +8.036 [+6.542, +9.407] | +6.635 [+6.057, +7.185] | +1.274 [+0.474, +2.290] |
+| k100_A10 | generic | all | probe | 6 | counts only | | | |
+
+### Dropped pairs (an artifact or an error on either side)
+
+| cell | prior | pairs | a_prior failed | a_S failed | both | case errors | share | counts only | probe pairs |
+|---|---|---|---|---|---|---|---|---|---|
+| k30_A3 | class | 465 | 0 | 0 | 0 | 0 | 0.000 | no | 10 |
+| k30_A3 | generic | 550 | 0 | 30 | 0 | 0 | 0.055 | no | 23 |
+| k100_A10 | class | 545 | 0 | 0 | 0 | 0 | 0.000 | no | 35 |
+| k100_A10 | generic | 465 | 0 | 0 | 0 | 0 | 0.000 | no | 27 |
+
+### Outcome counts per seed
+
+- k30_A3 / class:
+  - prior: decline 135, placed_stable 100, squeeze:row:placed_stable 5, not_lifted 5, dropped_high 5
+  - all: placed_stable 200, decline 15, tipped 5
+  - mass: placed_stable 50, decline 20, squeeze:row:placed_stable 5
+  - com: placed_stable 35, decline 5, squeeze:row:placed_stable 5
+  - damage: placed_stable 35, tipped 5
+  - mu: placed_stable 40, decline 25, squeeze:row:placed_stable 11, weigh:row:placed_stable 5, squeeze:abstained 4
+  - continuation after the probe of mass: simulator {"regrasp_com": 5}, model {"decline": 17, "regrasp_com": 183}
+  - continuation after the probe of mu: simulator {"abstained": 4, "commit_std": 1, "drop_release": 5, "gentle_carry": 5, "light_grip": 5}, model {"commit_std": 79, "decline": 124, "drop_release": 200, "gentle_carry": 197, "light_grip": 200}
+  - continuation after the probe of prior: simulator {"light_grip": 5}, model {"light_grip": 200}
+  - continuation after the probe of com: simulator {"drop_release": 5}, model {"drop_release": 200}
+- k30_A3 / generic:
+  - prior: decline 195, weigh:row:placed_stable 25, placed_stable 25, dropped_low 5
+  - all: placed_stable 190, tipped 10, decline 10, artifact 10
+  - mass: placed_stable 95, decline 15, squeeze:row:placed_stable 10, artifact 5
+  - damage: placed_stable 5
+  - com: placed_stable 95, artifact 10, dropped_high 5, weigh:abstained 5
+  - mu: placed_stable 45, weigh:abstained 15, weigh:row:placed_stable 10, decline 10, artifact 5
+  - continuation after the probe of prior: simulator {"commit_std": 3, "drop_release": 2, "firm_grip": 15, "gentle_carry": 5}, model {"commit_std": 116, "decline": 20, "drop_release": 81, "firm_grip": 564, "gentle_carry": 219}
+  - continuation after the probe of mass: simulator {"light_grip": 10}, model {"decline": 5, "light_grip": 395}
+  - continuation after the probe of mu: simulator {"abstained": 15, "firm_grip": 5, "regrasp_com": 5}, model {"decline": 609, "firm_grip": 206, "regrasp_com": 185}
+  - continuation after the probe of com: simulator {"abstained": 5}, model {"decline": 200}
+- k100_A10 / class:
+  - prior: decline 105, placed_stable 100, squeeze:row:placed_stable 24, weigh:row:placed_stable 10, squeeze:abstained 6, weigh:abstained 5
+  - mu: placed_stable 80, squeeze:row:placed_stable 15, decline 5, squeeze:abstained 5, weigh:abstained 5
+  - all: placed_stable 195, decline 15, tipped 5
+  - mass: placed_stable 55, decline 20, squeeze:row:placed_stable 17, squeeze:abstained 3
+  - com: placed_stable 40, squeeze:row:placed_stable 15, decline 10
+  - damage: placed_stable 55, decline 5
+  - continuation after the probe of prior: simulator {"abstained": 11, "commit_std": 10, "drop_release": 1, "gentle_carry": 12, "light_grip": 8, "regrasp_com": 3}, model {"commit_std": 382, "decline": 496, "drop_release": 57, "firm_grip": 1, "gentle_carry": 424, "light_grip": 360, "regrasp_com": 80}
+  - continuation after the probe of com: simulator {"drop_release": 5, "regrasp_com": 10}, model {"drop_release": 192, "light_grip": 8, "regrasp_com": 400}
+  - continuation after the probe of mass: simulator {"abstained": 3, "drop_release": 5, "light_grip": 10, "regrasp_com": 2}, model {"decline": 90, "drop_release": 192, "light_grip": 407, "regrasp_com": 111}
+  - continuation after the probe of mu: simulator {"abstained": 10, "drop_release": 2, "gentle_carry": 5, "light_grip": 8}, model {"decline": 397, "drop_release": 31, "firm_grip": 7, "gentle_carry": 200, "light_grip": 365}
+- k100_A10 / generic:
+  - prior: decline 165, placed_stable 55, weigh:row:placed_stable 20, weigh:abstained 5, weigh:row:dropped_high 3, weigh:row:not_lifted 2
+  - mu: placed_stable 25, weigh:row:placed_stable 10, weigh:abstained 5, tipped 5, weigh:row:tipped 5, decline 5
+  - mass: placed_stable 55, squeeze:row:placed_stable 10, decline 10, dropped_high 5, tipped 5
+  - all: placed_stable 205, decline 10, tipped 5, not_lifted 5
+  - com: placed_stable 60, squeeze:row:placed_stable 23, weigh:row:placed_stable 10, decline 5, squeeze:abstained 2
+  - continuation after the probe of mu: simulator {"abstained": 5, "firm_grip": 10, "light_grip": 5}, model {"commit_std": 22, "decline": 255, "firm_grip": 377, "light_grip": 146}
+  - continuation after the probe of prior: simulator {"abstained": 5, "firm_grip": 18, "regrasp_com": 5, "slow_lift": 2}, model {"decline": 272, "firm_grip": 728, "gentle_carry": 15, "regrasp_com": 154, "slow_lift": 31}
+  - continuation after the probe of com: simulator {"abstained": 2, "firm_grip": 10, "light_grip": 5, "regrasp_com": 8, "slow_lift": 10}, model {"decline": 261, "firm_grip": 338, "light_grip": 200, "regrasp_com": 223, "slow_lift": 378}
+  - continuation after the probe of mass: simulator {"drop_release": 5, "light_grip": 5}, model {"decline": 4, "drop_release": 196, "light_grip": 200}
+
+## records with ESS >= 100
+
+### Main reading (S = all, non-probe pairs)
+
+| cell | prior | records (objects) | unchanged | realized gain [95 %] | reading | predicted EVPI | realized minus predicted gain on cases selected for a predicted gain |
+|---|---|---|---|---|---|---|---|
+| k30_A3 | class | 43 (32) | 6 | +4.872 [+1.011, +13.447] | the realized gain from revealing S is positive in this cell | +0.530 [+0.422, +0.642] | +4.342 [+0.532, +12.671] |
+| k30_A3 | generic | 37 (24) | 6 | +2.130 [+1.600, +2.495] | the realized gain from revealing S is positive in this cell | +0.976 [+0.776, +1.171] | +1.154 [+0.563, +1.608] |
+| k100_A10 | class | 34 (24) | 7 | +4.422 [+2.220, +6.422] | the realized gain from revealing S is positive in this cell | +1.726 [+1.176, +2.372] | +2.696 [+0.472, +4.698] |
+| k100_A10 | generic | 39 (28) | 5 | +6.762 [+4.631, +8.448] | the realized gain from revealing S is positive in this cell | +2.736 [+2.167, +3.298] | +4.025 [+2.317, +5.523] |
+
+### Single properties (descriptive), non-probe pairs
+
+| cell | prior | S | records | unchanged | realized gain | predicted EVPI | realized minus predicted gain on cases selected for a predicted gain |
+|---|---|---|---|---|---|---|---|
+| k30_A3 | class | mass | 14 | 35 | +11.561 [+0.187, +35.998] | +0.434 [+0.085, +0.767] | +11.127 [-0.010, +36.510] |
+| k30_A3 | class | mu | 12 | 33 | +13.158 [-0.030, +36.925] | +0.138 [-0.555, +0.591] | +13.020 [-0.167, +35.143] |
+| k30_A3 | class | com | 7 | 41 | counts only | | |
+| k30_A3 | class | damage | 7 | 42 | counts only | | |
+| k30_A3 | generic | mass | 17 | 25 | +1.924 [+0.933, +2.600] | +0.905 [+0.137, +1.486] | +1.019 [-0.337, +2.141] |
+| k30_A3 | generic | mu | 9 | 33 | counts only | | |
+| k30_A3 | generic | com | 17 | 27 | -6.465 [-26.275, +2.600] | +0.726 [+0.315, +1.100] | -7.191 [-26.676, +2.104] |
+| k30_A3 | generic | damage | 1 | 49 | counts only | | |
+| k100_A10 | class | mass | 11 | 31 | +0.805 [-3.030, +5.054] | +0.798 [-0.732, +2.987] | +0.006 [-5.639, +4.593] |
+| k100_A10 | class | mu | 15 | 28 | +5.043 [+1.953, +7.766] | +0.077 [-0.568, +0.897] | +4.967 [+1.883, +8.022] |
+| k100_A10 | class | com | 8 | 37 | counts only | | |
+| k100_A10 | class | damage | 6 | 38 | counts only | | |
+| k100_A10 | generic | mass | 9 | 33 | counts only | | |
+| k100_A10 | generic | mu | 7 | 39 | counts only | | |
+| k100_A10 | generic | com | 11 | 30 | +5.245 [+0.855, +8.718] | +2.758 [+1.573, +3.862] | +2.487 [-1.687, +5.706] |
+| k100_A10 | generic | damage | 0 | 50 | counts only | | |
+
+### Probe pairs (a probe on either side: their own rows, not read)
+
+| cell | prior | S | records | realized gain | predicted EVPI |
+|---|---|---|---|---|---|
+| k30_A3 | class | mass | 1 | counts only | |
+| k30_A3 | class | mu | 5 | counts only | |
+| k30_A3 | class | com | 2 | counts only | |
+| k30_A3 | class | damage | 1 | counts only | |
+| k30_A3 | class | all | 1 | counts only | |
+| k30_A3 | generic | mass | 7 | counts only | |
+| k30_A3 | generic | mu | 7 | counts only | |
+| k30_A3 | generic | com | 4 | counts only | |
+| k30_A3 | generic | all | 5 | counts only | |
+| k100_A10 | class | mass | 8 | counts only | |
+| k100_A10 | class | mu | 7 | counts only | |
+| k100_A10 | class | com | 5 | counts only | |
+| k100_A10 | class | damage | 6 | counts only | |
+| k100_A10 | class | all | 9 | counts only | |
+| k100_A10 | generic | mass | 8 | counts only | |
+| k100_A10 | generic | mu | 4 | counts only | |
+| k100_A10 | generic | com | 9 | counts only | |
+| k100_A10 | generic | all | 6 | counts only | |
+
+### Level check (same records): J(a; θ_true) and the realized cost
+
+| cell | prior | S | pairs | records | J(a_prior) | realized(a_prior) | J(a_S) | realized(a_S) |
+|---|---|---|---|---|---|---|---|---|
+| k30_A3 | class | mass | main | 14 | +2.675 [+2.258, +3.150] | +12.700 [+1.336, +39.600] | +2.241 [+1.954, +2.590] | +1.139 [+0.561, +1.889] |
+| k30_A3 | class | mass | probe | 1 | counts only | | | |
+| k30_A3 | class | mu | main | 12 | +2.982 [+2.792, +3.168] | +14.667 [+1.700, +36.908] | +2.844 [+2.395, +3.540] | +1.508 [+0.690, +2.291] |
+| k30_A3 | class | mu | probe | 5 | counts only | | | |
+| k30_A3 | class | com | main | 7 | counts only | | | |
+| k30_A3 | class | com | probe | 2 | counts only | | | |
+| k30_A3 | class | damage | main | 7 | counts only | | | |
+| k30_A3 | class | damage | probe | 1 | counts only | | | |
+| k30_A3 | class | all | main | 43 | +2.767 [+2.608, +2.942] | +5.553 [+1.692, +13.993] | +2.237 [+2.121, +2.368] | +0.681 [+0.458, +0.986] |
+| k30_A3 | class | all | probe | 1 | counts only | | | |
+| k30_A3 | generic | mass | main | 17 | +3.283 [+3.000, +3.796] | +2.788 [+2.388, +3.000] | +2.378 [+1.861, +3.201] | +0.865 [+0.400, +1.538] |
+| k30_A3 | generic | mass | probe | 7 | counts only | | | |
+| k30_A3 | generic | mu | main | 9 | counts only | | | |
+| k30_A3 | generic | mu | probe | 7 | counts only | | | |
+| k30_A3 | generic | com | main | 17 | +3.077 [+3.000, +3.246] | +2.941 [+2.812, +3.000] | +2.351 [+1.917, +2.860] | +9.406 [+0.400, +29.088] |
+| k30_A3 | generic | com | probe | 4 | counts only | | | |
+| k30_A3 | generic | damage | main | 1 | counts only | | | |
+| k30_A3 | generic | all | main | 37 | +3.121 [+3.000, +3.338] | +2.903 [+2.733, +3.000] | +2.145 [+1.991, +2.336] | +0.773 [+0.477, +1.165] |
+| k30_A3 | generic | all | probe | 5 | counts only | | | |
+| k100_A10 | class | mass | main | 11 | +8.207 [+5.959, +10.755] | +3.036 [+0.415, +5.904] | +7.409 [+5.625, +9.125] | +2.232 [+0.473, +5.230] |
+| k100_A10 | class | mass | probe | 8 | counts only | | | |
+| k100_A10 | class | mu | main | 15 | +8.425 [+7.285, +9.496] | +6.183 [+3.612, +8.720] | +8.348 [+7.061, +9.687] | +1.140 [+0.438, +2.460] |
+| k100_A10 | class | mu | probe | 7 | counts only | | | |
+| k100_A10 | class | com | main | 8 | counts only | | | |
+| k100_A10 | class | com | probe | 5 | counts only | | | |
+| k100_A10 | class | damage | main | 6 | counts only | | | |
+| k100_A10 | class | damage | probe | 6 | counts only | | | |
+| k100_A10 | class | all | main | 34 | +8.517 [+7.561, +9.516] | +5.504 [+3.616, +7.269] | +6.791 [+6.169, +7.422] | +1.082 [+0.465, +2.148] |
+| k100_A10 | class | all | probe | 9 | counts only | | | |
+| k100_A10 | generic | mass | main | 9 | counts only | | | |
+| k100_A10 | generic | mass | probe | 8 | counts only | | | |
+| k100_A10 | generic | mu | main | 7 | counts only | | | |
+| k100_A10 | generic | mu | probe | 4 | counts only | | | |
+| k100_A10 | generic | com | main | 11 | +9.251 [+7.691, +10.471] | +6.527 [+3.290, +9.200] | +6.493 [+5.196, +7.813] | +1.282 [+0.400, +3.290] |
+| k100_A10 | generic | com | probe | 9 | counts only | | | |
+| k100_A10 | generic | all | main | 39 | +9.371 [+8.825, +9.847] | +8.036 [+6.492, +9.314] | +6.635 [+6.030, +7.164] | +1.274 [+0.473, +2.263] |
+| k100_A10 | generic | all | probe | 6 | counts only | | | |
+
+### Dropped pairs (an artifact or an error on either side)
+
+| cell | prior | pairs | a_prior failed | a_S failed | both | case errors | share | counts only | probe pairs |
+|---|---|---|---|---|---|---|---|---|---|
+| k30_A3 | class | 465 | 0 | 0 | 0 | 0 | 0.000 | no | 10 |
+| k30_A3 | generic | 550 | 0 | 30 | 0 | 0 | 0.055 | no | 23 |
+| k100_A10 | class | 545 | 0 | 0 | 0 | 0 | 0.000 | no | 35 |
+| k100_A10 | generic | 465 | 0 | 0 | 0 | 0 | 0.000 | no | 27 |
+
+### Outcome counts per seed
+
+- k30_A3 / class:
+  - prior: decline 135, placed_stable 100, squeeze:row:placed_stable 5, not_lifted 5, dropped_high 5
+  - all: placed_stable 200, decline 15, tipped 5
+  - mass: placed_stable 50, decline 20, squeeze:row:placed_stable 5
+  - com: placed_stable 35, decline 5, squeeze:row:placed_stable 5
+  - damage: placed_stable 35, tipped 5
+  - mu: placed_stable 40, decline 25, squeeze:row:placed_stable 11, weigh:row:placed_stable 5, squeeze:abstained 4
+  - continuation after the probe of mass: simulator {"regrasp_com": 5}, model {"decline": 17, "regrasp_com": 183}
+  - continuation after the probe of mu: simulator {"abstained": 4, "commit_std": 1, "drop_release": 5, "gentle_carry": 5, "light_grip": 5}, model {"commit_std": 79, "decline": 124, "drop_release": 200, "gentle_carry": 197, "light_grip": 200}
+  - continuation after the probe of prior: simulator {"light_grip": 5}, model {"light_grip": 200}
+  - continuation after the probe of com: simulator {"drop_release": 5}, model {"drop_release": 200}
+- k30_A3 / generic:
+  - prior: decline 195, weigh:row:placed_stable 25, placed_stable 25, dropped_low 5
+  - all: placed_stable 190, tipped 10, decline 10, artifact 10
+  - mass: placed_stable 95, decline 15, squeeze:row:placed_stable 10, artifact 5
+  - damage: placed_stable 5
+  - com: placed_stable 95, artifact 10, dropped_high 5, weigh:abstained 5
+  - mu: placed_stable 45, weigh:abstained 15, weigh:row:placed_stable 10, decline 10, artifact 5
+  - continuation after the probe of prior: simulator {"commit_std": 3, "drop_release": 2, "firm_grip": 15, "gentle_carry": 5}, model {"commit_std": 116, "decline": 20, "drop_release": 81, "firm_grip": 564, "gentle_carry": 219}
+  - continuation after the probe of mass: simulator {"light_grip": 10}, model {"decline": 5, "light_grip": 395}
+  - continuation after the probe of mu: simulator {"abstained": 15, "firm_grip": 5, "regrasp_com": 5}, model {"decline": 609, "firm_grip": 206, "regrasp_com": 185}
+  - continuation after the probe of com: simulator {"abstained": 5}, model {"decline": 200}
+- k100_A10 / class:
+  - prior: decline 105, placed_stable 100, squeeze:row:placed_stable 24, weigh:row:placed_stable 10, squeeze:abstained 6, weigh:abstained 5
+  - mu: placed_stable 80, squeeze:row:placed_stable 15, decline 5, squeeze:abstained 5, weigh:abstained 5
+  - all: placed_stable 195, decline 15, tipped 5
+  - mass: placed_stable 55, decline 20, squeeze:row:placed_stable 17, squeeze:abstained 3
+  - com: placed_stable 40, squeeze:row:placed_stable 15, decline 10
+  - damage: placed_stable 55, decline 5
+  - continuation after the probe of prior: simulator {"abstained": 11, "commit_std": 10, "drop_release": 1, "gentle_carry": 12, "light_grip": 8, "regrasp_com": 3}, model {"commit_std": 382, "decline": 496, "drop_release": 57, "firm_grip": 1, "gentle_carry": 424, "light_grip": 360, "regrasp_com": 80}
+  - continuation after the probe of com: simulator {"drop_release": 5, "regrasp_com": 10}, model {"drop_release": 192, "light_grip": 8, "regrasp_com": 400}
+  - continuation after the probe of mass: simulator {"abstained": 3, "drop_release": 5, "light_grip": 10, "regrasp_com": 2}, model {"decline": 90, "drop_release": 192, "light_grip": 407, "regrasp_com": 111}
+  - continuation after the probe of mu: simulator {"abstained": 10, "drop_release": 2, "gentle_carry": 5, "light_grip": 8}, model {"decline": 397, "drop_release": 31, "firm_grip": 7, "gentle_carry": 200, "light_grip": 365}
+- k100_A10 / generic:
+  - prior: decline 165, placed_stable 55, weigh:row:placed_stable 20, weigh:abstained 5, weigh:row:dropped_high 3, weigh:row:not_lifted 2
+  - mu: placed_stable 25, weigh:row:placed_stable 10, weigh:abstained 5, tipped 5, weigh:row:tipped 5, decline 5
+  - mass: placed_stable 55, squeeze:row:placed_stable 10, decline 10, dropped_high 5, tipped 5
+  - all: placed_stable 205, decline 10, tipped 5, not_lifted 5
+  - com: placed_stable 60, squeeze:row:placed_stable 23, weigh:row:placed_stable 10, decline 5, squeeze:abstained 2
+  - continuation after the probe of mu: simulator {"abstained": 5, "firm_grip": 10, "light_grip": 5}, model {"commit_std": 22, "decline": 255, "firm_grip": 377, "light_grip": 146}
+  - continuation after the probe of prior: simulator {"abstained": 5, "firm_grip": 18, "regrasp_com": 5, "slow_lift": 2}, model {"decline": 272, "firm_grip": 728, "gentle_carry": 15, "regrasp_com": 154, "slow_lift": 31}
+  - continuation after the probe of com: simulator {"abstained": 2, "firm_grip": 10, "light_grip": 5, "regrasp_com": 8, "slow_lift": 10}, model {"decline": 261, "firm_grip": 338, "light_grip": 200, "regrasp_com": 223, "slow_lift": 378}
+  - continuation after the probe of mass: simulator {"drop_release": 5, "light_grip": 5}, model {"decline": 4, "drop_release": 196, "light_grip": 200}
+
+Rows whose label changes across the seeds: 0 of 228 (a row simulated once per case, action and seed).
+Gates: 200 sampled records, 0 not run, 0 replay mismatches, 0 records whose case raised, 0 simulations whose first menu differed, 0 resets whose scene differed, 0 errors, 10 artifacts.

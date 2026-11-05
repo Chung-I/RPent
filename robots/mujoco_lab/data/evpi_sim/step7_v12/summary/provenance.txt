@@ -1,0 +1,7 @@
+code 0195dfca76a7fcb6ec248aef8225238b6404dc62 (branch evpi-sim), dirty files 0
+sim /home/chungyili/Codes/daily-logs-worktrees/v12checks-armsim-fe46f6c/researches/property-belief-manipulation/experiments/2026-11-04-arm-port/sim, last commit e823247052a2bf4d1b97d5077a51f0ead91fd80c, dirty files 0
+robot model b7b9d2beaaecf848efc49c9b99355b5e551a44dd21292fa4462f22fce0187bc3  /home/chungyili/Codes/daily-logs-worktrees/v12checks-armsim-fe46f6c/researches/property-belief-manipulation/experiments/2026-11-04-arm-port/out/r1_robot.npz
+env NUMPY_MADVISE_HUGEPAGE=0 OMP_NUM_THREADS=1 RPENT_LAB_GENERATOR=v11 WANDB_MODE=online, unit v12-es-sum MemoryMax 8G MemorySwapMax 0
+command python -P -u -m robots.mujoco_lab.evpi_sim summary --sample /home/chungyili/Codes/RPent-evpi-sim/logs/evpi_sim/sample.json --dirs /home/chungyili/Codes/RPent-evpi-sim/logs/evpi_sim/full/shard_0,/home/chungyili/Codes/RPent-evpi-sim/logs/evpi_sim/full/shard_1,/home/chungyili/Codes/RPent-evpi-sim/logs/evpi_sim/full/shard_2,/home/chungyili/Codes/RPent-evpi-sim/logs/evpi_sim/full/shard_3,/home/chungyili/Codes/RPent-evpi-sim/logs/evpi_sim/full/shard_4,/home/chungyili/Codes/RPent-evpi-sim/logs/evpi_sim/full/shard_5,/home/chungyili/Codes/RPent-evpi-sim/logs/evpi_sim/full/shard_6 --out /home/chungyili/Codes/RPent-evpi-sim/logs/evpi_sim/summary --wandb
+start 2026-11-06 05:03:00
+end 2026-11-06 05:03:10

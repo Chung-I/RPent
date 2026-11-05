@@ -1,0 +1,24 @@
+handal__measuring_cups 1: 108.0 s, 1 records, 5 simulations
+handal__measuring_cups 9: 235.7 s, 1 records, 15 simulations
+hope__canned_peaches 5: 214.6 s, 1 records, 15 simulations
+hope__mayonnaise_bottle 1: 18.5 s, 1 records, 5 simulations
+hope__mayonnaise_bottle 6: 18.9 s, 1 records, 5 simulations
+hope__mayonnaise_bottle 8: 291.3 s, 2 records, 15 simulations
+hope__ranch_dressing 2: 201.6 s, 1 records, 15 simulations
+hope__ranch_dressing 6: 133.1 s, 2 records, 10 simulations
+hope__ranch_dressing 7: 28.1 s, 2 records, 5 simulations
+hope__ranch_dressing 8: 37.3 s, 3 records, 5 simulations
+hope__ranch_dressing 9: 21.0 s, 1 records, 5 simulations
+hot3d__foam_roller 1: 119.9 s, 3 records, 5 simulations
+hot3d__foam_roller 4: 151.5 s, 1 records, 10 simulations
+hot3d__foam_roller 5: 90.1 s, 1 records, 10 simulations
+hot3d__foam_roller 6: 112.9 s, 1 records, 10 simulations
+hot3d__rubiks_cube 0: 126.3 s, 1 records, 10 simulations
+hot3d__rubiks_cube 1: 121.6 s, 1 records, 5 simulations
+hot3d__rubiks_cube 2: 158.2 s, 1 records, 10 simulations
+hot3d__rubiks_cube 3: 184.4 s, 1 records, 10 simulations
+hot3d__rubiks_cube 6: 132.2 s, 1 records, 10 simulations
+hot3d__rubiks_cube 7: 107.2 s, 1 records, 10 simulations
+hot3d__rubiks_cube 8: 117.2 s, 1 records, 5 simulations
+ycb__mug 10: 117.5 s, 1 records, 10 simulations
+done in 2849 s: /home/chungyili/Codes/RPent-evpi-sim/logs/evpi_sim/full/shard_2

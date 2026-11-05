@@ -1,0 +1,2894 @@
+{
+ "tables": {
+  "all": {
+   "k30_A3": {
+    "class": {
+     "mass": {
+      "main": {
+       "n": 14,
+       "n_objects": 12,
+       "counts_only": false,
+       "realized": {
+        "mean": 11.560714285714283,
+        "ci": [
+         0.1931153846153846,
+         38.14458333333332
+        ]
+       },
+       "predicted": {
+        "mean": 0.43415034338272535,
+        "ci": [
+         0.08340567537103828,
+         0.770495259029767
+        ]
+       },
+       "gap": {
+        "mean": 11.126563942331561,
+        "ci": [
+         -0.07683960143158286,
+         34.94664254888052
+        ]
+       },
+       "level": {
+        "J_prior": {
+         "mean": 2.674655512528049,
+         "ci": [
+          2.2570562204164424,
+          3.135162927566054
+         ]
+        },
+        "realized_prior": {
+         "mean": 12.700000000000003,
+         "ci": [
+          1.3266666666666667,
+          37.10788461538462
+         ]
+        },
+        "J_S": {
+         "mean": 2.2405051691453237,
+         "ci": [
+          1.956611957082094,
+          2.6019650579635756
+         ]
+        },
+        "realized_S": {
+         "mean": 1.1392857142857145,
+         "ci": [
+          0.567827380952381,
+          1.807788461538461
+         ]
+        }
+       },
+       "reading": "descriptive"
+      },
+      "probe": {
+       "n": 1,
+       "n_objects": 1,
+       "counts_only": true,
+       "realized": null,
+       "predicted": null,
+       "gap": null,
+       "level": null,
+       "reading": null
+      },
+      "records": 15,
+      "dropped_records": 0,
+      "unchanged": 35
+     },
+     "mu": {
+      "main": {
+       "n": 12,
+       "n_objects": 9,
+       "counts_only": false,
+       "realized": {
+        "mean": 13.158333333333333,
+        "ci": [
+         -0.06000000000000005,
+         34.68461538461539
+        ]
+       },
+       "predicted": {
+        "mean": 0.13790923235031646,
+        "ci": [
+         -0.5853087761564029,
+         0.5956310910418177
+        ]
+       },
+       "gap": {
+        "mean": 13.02042410098302,
+        "ci": [
+         -0.1424889482202083,
+         34.85195247416335
+        ]
+       },
+       "level": {
+        "J_prior": {
+         "mean": 2.982254492808052,
+         "ci": [
+          2.7837310597960014,
+          3.1735029689005705
+         ]
+        },
+        "realized_prior": {
+         "mean": 14.66666666666667,
+         "ci": [
+          1.7,
+          38.87208333333331
+         ]
+        },
+        "J_S": {
+         "mean": 2.844345260457736,
+         "ci": [
+          2.393749742488163,
+          3.5308799882235715
+         ]
+        },
+        "realized_S": {
+         "mean": 1.508333333333333,
+         "ci": [
+          0.7888888888888889,
+          2.257142857142857
+         ]
+        }
+       },
+       "reading": "descriptive"
+      },
+      "probe": {
+       "n": 5,
+       "n_objects": 5,
+       "counts_only": true,
+       "realized": null,
+       "predicted": null,
+       "gap": null,
+       "level": null,
+       "reading": null
+      },
+      "records": 17,
+      "dropped_records": 0,
+      "unchanged": 33
+     },
+     "com": {
+      "main": {
+       "n": 7,
+       "n_objects": 7,
+       "counts_only": true,
+       "realized": null,
+       "predicted": null,
+       "gap": null,
+       "level": null,
+       "reading": "counts only"
+      },
+      "probe": {
+       "n": 2,
+       "n_objects": 2,
+       "counts_only": true,
+       "realized": null,
+       "predicted": null,
+       "gap": null,
+       "level": null,
+       "reading": null
+      },
+      "records": 9,
+      "dropped_records": 0,
+      "unchanged": 41
+     },
+     "damage": {
+      "main": {
+       "n": 7,
+       "n_objects": 6,
+       "counts_only": true,
+       "realized": null,
+       "predicted": null,
+       "gap": null,
+       "level": null,
+       "reading": "counts only"
+      },
+      "probe": {
+       "n": 1,
+       "n_objects": 1,
+       "counts_only": true,
+       "realized": null,
+       "predicted": null,
+       "gap": null,
+       "level": null,
+       "reading": null
+      },
+      "records": 8,
+      "dropped_records": 0,
+      "unchanged": 42
+     },
+     "all": {
+      "main": {
+       "n": 43,
+       "n_objects": 32,
+       "counts_only": false,
+       "realized": {
+        "mean": 4.872093023255814,
+        "ci": [
+         1.0549107142857144,
+         13.757312077702686
+        ]
+       },
+       "predicted": {
+        "mean": 0.5302187217221761,
+        "ci": [
+         0.418583884971278,
+         0.6505800358174626
+        ]
+       },
+       "gap": {
+        "mean": 4.341874301533639,
+        "ci": [
+         0.5659693248054012,
+         12.919241810903575
+        ]
+       },
+       "level": {
+        "J_prior": {
+         "mean": 2.7673199830061295,
+         "ci": [
+          2.612206352268139,
+          2.940426954145582
+         ]
+        },
+        "realized_prior": {
+         "mean": 5.553488372093025,
+         "ci": [
+          1.6998979591836736,
+          14.194407894736829
+         ]
+        },
+        "J_S": {
+         "mean": 2.237101261283953,
+         "ci": [
+          2.125843084050681,
+          2.3700394841478514
+         ]
+        },
+        "realized_S": {
+         "mean": 0.6813953488372092,
+         "ci": [
+          0.4612465277777778,
+          0.98753125
+         ]
+        }
+       },
+       "reading": "the realized gain from revealing S is positive in this cell"
+      },
+      "probe": {
+       "n": 1,
+       "n_objects": 1,
+       "counts_only": true,
+       "realized": null,
+       "predicted": null,
+       "gap": null,
+       "level": null,
+       "reading": null
+      },
+      "records": 44,
+      "dropped_records": 0,
+      "unchanged": 6
+     }
+    },
+    "generic": {
+     "mass": {
+      "main": {
+       "n": 17,
+       "n_objects": 10,
+       "counts_only": false,
+       "realized": {
+        "mean": 1.9235294117647062,
+        "ci": [
+         0.8941176470588236,
+         2.6
+        ]
+       },
+       "predicted": {
+        "mean": 0.9049220526100089,
+        "ci": [
+         0.11146329620861925,
+         1.4853632675723132
+        ]
+       },
+       "gap": {
+        "mean": 1.0186073591546971,
+        "ci": [
+         -0.31250813960844975,
+         2.139279695710007
+        ]
+       },
+       "level": {
+        "J_prior": {
+         "mean": 3.2827542706903245,
+         "ci": [
+          3.0,
+          3.745002528919956
+         ]
+        },
+        "realized_prior": {
+         "mean": 2.788235294117647,
+         "ci": [
+          2.3875,
+          3.0
+         ]
+        },
+        "J_S": {
+         "mean": 2.377832218080316,
+         "ci": [
+          1.871312557803463,
+          3.2087231356134693
+         ]
+        },
+        "realized_S": {
+         "mean": 0.8647058823529412,
+         "ci": [
+          0.4000000000000001,
+          1.5707499999999956
+         ]
+        }
+       },
+       "reading": "descriptive"
+      },
+      "probe": {
+       "n": 7,
+       "n_objects": 5,
+       "counts_only": true,
+       "realized": null,
+       "predicted": null,
+       "gap": null,
+       "level": null,
+       "reading": null
+      },
+      "records": 25,
+      "dropped_records": 1,
+      "unchanged": 25
+     },
+     "mu": {
+      "main": {
+       "n": 9,
+       "n_objects": 7,
+       "counts_only": true,
+       "realized": null,
+       "predicted": null,
+       "gap": null,
+       "level": null,
+       "reading": "counts only"
+      },
+      "probe": {
+       "n": 7,
+       "n_objects": 5,
+       "counts_only": true,
+       "realized": null,
+       "predicted": null,
+       "gap": null,
+       "level": null,
+       "reading": null
+      },
+      "records": 17,
+      "dropped_records": 1,
+      "unchanged": 33
+     },
+     "com": {
+      "main": {
+       "n": 17,
+       "n_objects": 10,
+       "counts_only": false,
+       "realized": {
+        "mean": -6.464705882352942,
+        "ci": [
+         -26.275,
+         2.6
+        ]
+       },
+       "predicted": {
+        "mean": 0.726053700047351,
+        "ci": [
+         0.30983041425207886,
+         1.1177206851607888
+        ]
+       },
+       "gap": {
+        "mean": -7.190759582400293,
+        "ci": [
+         -26.782650147937247,
+         2.1579299070023126
+        ]
+       },
+       "level": {
+        "J_prior": {
+         "mean": 3.077045582755871,
+         "ci": [
+          3.0,
+          3.2619549813699615
+         ]
+        },
+        "realized_prior": {
+         "mean": 2.9411764705882355,
+         "ci": [
+          2.8125,
+          3.0
+         ]
+        },
+        "J_S": {
+         "mean": 2.3509918827085197,
+         "ci": [
+          1.910091325524848,
+          2.8187126980212596
+         ]
+        },
+        "realized_S": {
+         "mean": 9.405882352941177,
+         "ci": [
+          0.4,
+          29.09375
+         ]
+        }
+       },
+       "reading": "descriptive"
+      },
+      "probe": {
+       "n": 4,
+       "n_objects": 3,
+       "counts_only": true,
+       "realized": null,
+       "predicted": null,
+       "gap": null,
+       "level": null,
+       "reading": null
+      },
+      "records": 23,
+      "dropped_records": 2,
+      "unchanged": 27
+     },
+     "damage": {
+      "main": {
+       "n": 1,
+       "n_objects": 1,
+       "counts_only": true,
+       "realized": null,
+       "predicted": null,
+       "gap": null,
+       "level": null,
+       "reading": "counts only"
+      },
+      "probe": {
+       "n": 0,
+       "n_objects": 0,
+       "counts_only": true,
+       "realized": null,
+       "predicted": null,
+       "gap": null,
+       "level": null,
+       "reading": null
+      },
+      "records": 1,
+      "dropped_records": 0,
+      "unchanged": 49
+     },
+     "all": {
+      "main": {
+       "n": 37,
+       "n_objects": 24,
+       "counts_only": false,
+       "realized": {
+        "mean": 2.1297297297297293,
+        "ci": [
+         1.621858428030303,
+         2.486842105263158
+        ]
+       },
+       "predicted": {
+        "mean": 0.9757093552859791,
+        "ci": [
+         0.7801647243753363,
+         1.174243480766055
+        ]
+       },
+       "gap": {
+        "mean": 1.1540203744437505,
+        "ci": [
+         0.5108414087996911,
+         1.6106079224617413
+        ]
+       },
+       "level": {
+        "J_prior": {
+         "mean": 3.1209582779828873,
+         "ci": [
+          3.0,
+          3.317847618894144
+         ]
+        },
+        "realized_prior": {
+         "mean": 2.902702702702703,
+         "ci": [
+          2.725,
+          3.0
+         ]
+        },
+        "J_S": {
+         "mean": 2.145248922696908,
+         "ci": [
+          1.9805436044044589,
+          2.32831087539406
+         ]
+        },
+        "realized_S": {
+         "mean": 0.7729729729729728,
+         "ci": [
+          0.47378861003861006,
+          1.1903561827956988
+         ]
+        }
+       },
+       "reading": "the realized gain from revealing S is positive in this cell"
+      },
+      "probe": {
+       "n": 5,
+       "n_objects": 3,
+       "counts_only": true,
+       "realized": null,
+       "predicted": null,
+       "gap": null,
+       "level": null,
+       "reading": null
+      },
+      "records": 44,
+      "dropped_records": 2,
+      "unchanged": 6
+     }
+    }
+   },
+   "k100_A10": {
+    "class": {
+     "mass": {
+      "main": {
+       "n": 11,
+       "n_objects": 10,
+       "counts_only": false,
+       "realized": {
+        "mean": 0.8045454545454543,
+        "ci": [
+         -3.8600000000000003,
+         4.758392857142856
+        ]
+       },
+       "predicted": {
+        "mean": 0.798246346143755,
+        "ci": [
+         -0.7346051753791144,
+         2.861448482349209
+        ]
+       },
+       "gap": {
+        "mean": 0.0062991084016991265,
+        "ci": [
+         -5.766733551062267,
+         4.598865460314111
+        ]
+       },
+       "level": {
+        "J_prior": {
+         "mean": 8.207282843635925,
+         "ci": [
+          5.914858075153739,
+          10.933319196868629
+         ]
+        },
+        "realized_prior": {
+         "mean": 3.036363636363637,
+         "ci": [
+          0.41500000000000004,
+          6.0
+         ]
+        },
+        "J_S": {
+         "mean": 7.409036497492172,
+         "ci": [
+          5.485861596529805,
+          8.973864065563868
+         ]
+        },
+        "realized_S": {
+         "mean": 2.2318181818181815,
+         "ci": [
+          0.4790625,
+          4.823295454545452
+         ]
+        }
+       },
+       "reading": "descriptive"
+      },
+      "probe": {
+       "n": 8,
+       "n_objects": 6,
+       "counts_only": true,
+       "realized": null,
+       "predicted": null,
+       "gap": null,
+       "level": null,
+       "reading": null
+      },
+      "records": 19,
+      "dropped_records": 0,
+      "unchanged": 31
+     },
+     "mu": {
+      "main": {
+       "n": 15,
+       "n_objects": 9,
+       "counts_only": false,
+       "realized": {
+        "mean": 5.043333333333333,
+        "ci": [
+         1.8195833333333333,
+         7.873529411764705
+        ]
+       },
+       "predicted": {
+        "mean": 0.07656168782953063,
+        "ci": [
+         -0.5439942032055921,
+         0.804973253612494
+        ]
+       },
+       "gap": {
+        "mean": 4.966771645503802,
+        "ci": [
+         1.6553321220889472,
+         7.976526643966926
+        ]
+       },
+       "level": {
+        "J_prior": {
+         "mean": 8.42478088942789,
+         "ci": [
+          7.263623244042851,
+          9.364160484037615
+         ]
+        },
+        "realized_prior": {
+         "mean": 6.1833333333333345,
+         "ci": [
+          3.380769230769231,
+          8.651749999999991
+         ]
+        },
+        "J_S": {
+         "mean": 8.348219201598361,
+         "ci": [
+          7.031533247939969,
+          9.628770339812231
+         ]
+        },
+        "realized_S": {
+         "mean": 1.14,
+         "ci": [
+          0.43750000000000006,
+          2.4599999999999995
+         ]
+        }
+       },
+       "reading": "descriptive"
+      },
+      "probe": {
+       "n": 7,
+       "n_objects": 7,
+       "counts_only": true,
+       "realized": null,
+       "predicted": null,
+       "gap": null,
+       "level": null,
+       "reading": null
+      },
+      "records": 22,
+      "dropped_records": 0,
+      "unchanged": 28
+     },
+     "com": {
+      "main": {
+       "n": 8,
+       "n_objects": 6,
+       "counts_only": true,
+       "realized": null,
+       "predicted": null,
+       "gap": null,
+       "level": null,
+       "reading": "counts only"
+      },
+      "probe": {
+       "n": 5,
+       "n_objects": 4,
+       "counts_only": true,
+       "realized": null,
+       "predicted": null,
+       "gap": null,
+       "level": null,
+       "reading": null
+      },
+      "records": 13,
+      "dropped_records": 0,
+      "unchanged": 37
+     },
+     "damage": {
+      "main": {
+       "n": 6,
+       "n_objects": 4,
+       "counts_only": true,
+       "realized": null,
+       "predicted": null,
+       "gap": null,
+       "level": null,
+       "reading": "counts only"
+      },
+      "probe": {
+       "n": 6,
+       "n_objects": 5,
+       "counts_only": true,
+       "realized": null,
+       "predicted": null,
+       "gap": null,
+       "level": null,
+       "reading": null
+      },
+      "records": 12,
+      "dropped_records": 0,
+      "unchanged": 38
+     },
+     "all": {
+      "main": {
+       "n": 34,
+       "n_objects": 24,
+       "counts_only": false,
+       "realized": {
+        "mean": 4.4220588235294125,
+        "ci": [
+         2.27315459280303,
+         6.308541666666666
+        ]
+       },
+       "predicted": {
+        "mean": 1.7263180669681402,
+        "ci": [
+         1.15167206197468,
+         2.3726371609823986
+        ]
+       },
+       "gap": {
+        "mean": 2.6957407565612717,
+        "ci": [
+         0.4195668396970848,
+         4.7144356213260705
+        ]
+       },
+       "level": {
+        "J_prior": {
+         "mean": 8.517311807677117,
+         "ci": [
+          7.551472082634236,
+          9.544000763428913
+         ]
+        },
+        "realized_prior": {
+         "mean": 5.504411764705882,
+         "ci": [
+          3.634810606060606,
+          7.3125390625
+         ]
+        },
+        "J_S": {
+         "mean": 6.790993740708975,
+         "ci": [
+          6.17886762926521,
+          7.441393452645329
+         ]
+        },
+        "realized_S": {
+         "mean": 1.0823529411764707,
+         "ci": [
+          0.4618401702786378,
+          2.1063281249999997
+         ]
+        }
+       },
+       "reading": "the realized gain from revealing S is positive in this cell"
+      },
+      "probe": {
+       "n": 9,
+       "n_objects": 7,
+       "counts_only": true,
+       "realized": null,
+       "predicted": null,
+       "gap": null,
+       "level": null,
+       "reading": null
+      },
+      "records": 43,
+      "dropped_records": 0,
+      "unchanged": 7
+     }
+    },
+    "generic": {
+     "mass": {
+      "main": {
+       "n": 9,
+       "n_objects": 9,
+       "counts_only": true,
+       "realized": null,
+       "predicted": null,
+       "gap": null,
+       "level": null,
+       "reading": "counts only"
+      },
+      "probe": {
+       "n": 8,
+       "n_objects": 8,
+       "counts_only": true,
+       "realized": null,
+       "predicted": null,
+       "gap": null,
+       "level": null,
+       "reading": null
+      },
+      "records": 17,
+      "dropped_records": 0,
+      "unchanged": 33
+     },
+     "mu": {
+      "main": {
+       "n": 7,
+       "n_objects": 7,
+       "counts_only": true,
+       "realized": null,
+       "predicted": null,
+       "gap": null,
+       "level": null,
+       "reading": "counts only"
+      },
+      "probe": {
+       "n": 4,
+       "n_objects": 4,
+       "counts_only": true,
+       "realized": null,
+       "predicted": null,
+       "gap": null,
+       "level": null,
+       "reading": null
+      },
+      "records": 11,
+      "dropped_records": 0,
+      "unchanged": 39
+     },
+     "com": {
+      "main": {
+       "n": 11,
+       "n_objects": 9,
+       "counts_only": false,
+       "realized": {
+        "mean": 5.245454545454546,
+        "ci": [
+         0.05500000000000004,
+         8.736363636363636
+        ]
+       },
+       "predicted": {
+        "mean": 2.7579706459813953,
+        "ci": [
+         1.533858385090337,
+         3.968749988437538
+        ]
+       },
+       "gap": {
+        "mean": 2.4874838994731494,
+        "ci": [
+         -1.96307967404247,
+         5.597784244036527
+        ]
+       },
+       "level": {
+        "J_prior": {
+         "mean": 9.250883446957788,
+         "ci": [
+          7.606909709889525,
+          10.512757090678933
+         ]
+        },
+        "realized_prior": {
+         "mean": 6.527272727272727,
+         "ci": [
+          3.31,
+          9.208333333333334
+         ]
+        },
+        "J_S": {
+         "mean": 6.492912800976392,
+         "ci": [
+          5.196331099557656,
+          7.853453073246019
+         ]
+        },
+        "realized_S": {
+         "mean": 1.2818181818181822,
+         "ci": [
+          0.4,
+          3.5999999999999996
+         ]
+        }
+       },
+       "reading": "descriptive"
+      },
+      "probe": {
+       "n": 9,
+       "n_objects": 8,
+       "counts_only": true,
+       "realized": null,
+       "predicted": null,
+       "gap": null,
+       "level": null,
+       "reading": null
+      },
+      "records": 20,
+      "dropped_records": 0,
+      "unchanged": 30
+     },
+     "damage": {
+      "main": {
+       "n": 0,
+       "n_objects": 0,
+       "counts_only": true,
+       "realized": null,
+       "predicted": null,
+       "gap": null,
+       "level": null,
+       "reading": "counts only"
+      },
+      "probe": {
+       "n": 0,
+       "n_objects": 0,
+       "counts_only": true,
+       "realized": null,
+       "predicted": null,
+       "gap": null,
+       "level": null,
+       "reading": null
+      },
+      "records": 0,
+      "dropped_records": 0,
+      "unchanged": 50
+     },
+     "all": {
+      "main": {
+       "n": 39,
+       "n_objects": 28,
+       "counts_only": false,
+       "realized": {
+        "mean": 6.7615384615384615,
+        "ci": [
+         4.761919533169534,
+         8.450381944444443
+        ]
+       },
+       "predicted": {
+        "mean": 2.7360462201584284,
+        "ci": [
+         2.1731931797022193,
+         3.2932084581507897
+        ]
+       },
+       "gap": {
+        "mean": 4.025492241380032,
+        "ci": [
+         2.2163354654638683,
+         5.547870439270877
+        ]
+       },
+       "level": {
+        "J_prior": {
+         "mean": 9.370720989135199,
+         "ci": [
+          8.820477977888018,
+          9.818665607530392
+         ]
+        },
+        "realized_prior": {
+         "mean": 8.035897435897436,
+         "ci": [
+          6.541597222222222,
+          9.406976102941172
+         ]
+        },
+        "J_S": {
+         "mean": 6.6346747689767716,
+         "ci": [
+          6.057079460697552,
+          7.1848038190817665
+         ]
+        },
+        "realized_S": {
+         "mean": 1.2743589743589745,
+         "ci": [
+          0.47379355400696865,
+          2.2897132352941174
+         ]
+        }
+       },
+       "reading": "the realized gain from revealing S is positive in this cell"
+      },
+      "probe": {
+       "n": 6,
+       "n_objects": 6,
+       "counts_only": true,
+       "realized": null,
+       "predicted": null,
+       "gap": null,
+       "level": null,
+       "reading": null
+      },
+      "records": 45,
+      "dropped_records": 0,
+      "unchanged": 5
+     }
+    }
+   }
+  },
+  "ess_ok": {
+   "k30_A3": {
+    "class": {
+     "mass": {
+      "main": {
+       "n": 14,
+       "n_objects": 12,
+       "counts_only": false,
+       "realized": {
+        "mean": 11.560714285714283,
+        "ci": [
+         0.1865833333333333,
+         35.9976923076923
+        ]
+       },
+       "predicted": {
+        "mean": 0.43415034338272535,
+        "ci": [
+         0.08471043006270304,
+         0.7674882037317742
+        ]
+       },
+       "gap": {
+        "mean": 11.126563942331561,
+        "ci": [
+         -0.01034735128416879,
+         36.509697742733614
+        ]
+       },
+       "level": {
+        "J_prior": {
+         "mean": 2.674655512528049,
+         "ci": [
+          2.257880789647473,
+          3.150290572568885
+         ]
+        },
+        "realized_prior": {
+         "mean": 12.700000000000003,
+         "ci": [
+          1.3357142857142856,
+          39.6
+         ]
+        },
+        "J_S": {
+         "mean": 2.2405051691453237,
+         "ci": [
+          1.9537280219416464,
+          2.589877777308555
+         ]
+        },
+        "realized_S": {
+         "mean": 1.1392857142857145,
+         "ci": [
+          0.5606964285714285,
+          1.889345238095238
+         ]
+        }
+       },
+       "reading": "descriptive"
+      },
+      "probe": {
+       "n": 1,
+       "n_objects": 1,
+       "counts_only": true,
+       "realized": null,
+       "predicted": null,
+       "gap": null,
+       "level": null,
+       "reading": null
+      },
+      "records": 15,
+      "dropped_records": 0,
+      "unchanged": 35
+     },
+     "mu": {
+      "main": {
+       "n": 12,
+       "n_objects": 9,
+       "counts_only": false,
+       "realized": {
+        "mean": 13.158333333333333,
+        "ci": [
+         -0.030000000000000027,
+         36.925000000000004
+        ]
+       },
+       "predicted": {
+        "mean": 0.13790923235031646,
+        "ci": [
+         -0.5545030612667461,
+         0.5914282901617632
+        ]
+       },
+       "gap": {
+        "mean": 13.02042410098302,
+        "ci": [
+         -0.16682491488809856,
+         35.14252575566203
+        ]
+       },
+       "level": {
+        "J_prior": {
+         "mean": 2.982254492808052,
+         "ci": [
+          2.791524717283193,
+          3.167830454829037
+         ]
+        },
+        "realized_prior": {
+         "mean": 14.66666666666667,
+         "ci": [
+          1.7,
+          36.90769230769231
+         ]
+        },
+        "J_S": {
+         "mean": 2.844345260457736,
+         "ci": [
+          2.3946018051578766,
+          3.5401567245367445
+         ]
+        },
+        "realized_S": {
+         "mean": 1.508333333333333,
+         "ci": [
+          0.6900000000000001,
+          2.2911363636363626
+         ]
+        }
+       },
+       "reading": "descriptive"
+      },
+      "probe": {
+       "n": 5,
+       "n_objects": 5,
+       "counts_only": true,
+       "realized": null,
+       "predicted": null,
+       "gap": null,
+       "level": null,
+       "reading": null
+      },
+      "records": 17,
+      "dropped_records": 0,
+      "unchanged": 33
+     },
+     "com": {
+      "main": {
+       "n": 7,
+       "n_objects": 7,
+       "counts_only": true,
+       "realized": null,
+       "predicted": null,
+       "gap": null,
+       "level": null,
+       "reading": "counts only"
+      },
+      "probe": {
+       "n": 2,
+       "n_objects": 2,
+       "counts_only": true,
+       "realized": null,
+       "predicted": null,
+       "gap": null,
+       "level": null,
+       "reading": null
+      },
+      "records": 9,
+      "dropped_records": 0,
+      "unchanged": 41
+     },
+     "damage": {
+      "main": {
+       "n": 7,
+       "n_objects": 6,
+       "counts_only": true,
+       "realized": null,
+       "predicted": null,
+       "gap": null,
+       "level": null,
+       "reading": "counts only"
+      },
+      "probe": {
+       "n": 1,
+       "n_objects": 1,
+       "counts_only": true,
+       "realized": null,
+       "predicted": null,
+       "gap": null,
+       "level": null,
+       "reading": null
+      },
+      "records": 8,
+      "dropped_records": 0,
+      "unchanged": 42
+     },
+     "all": {
+      "main": {
+       "n": 43,
+       "n_objects": 32,
+       "counts_only": false,
+       "realized": {
+        "mean": 4.872093023255814,
+        "ci": [
+         1.0108656832298137,
+         13.447162162162153
+        ]
+       },
+       "predicted": {
+        "mean": 0.5302187217221761,
+        "ci": [
+         0.421635746270837,
+         0.6417906115384197
+        ]
+       },
+       "gap": {
+        "mean": 4.341874301533639,
+        "ci": [
+         0.5324499152808333,
+         12.671442649425398
+        ]
+       },
+       "level": {
+        "J_prior": {
+         "mean": 2.7673199830061295,
+         "ci": [
+          2.608130423728965,
+          2.9417779964179966
+         ]
+        },
+        "realized_prior": {
+         "mean": 5.553488372093025,
+         "ci": [
+          1.6923915094339623,
+          13.992697368421052
+         ]
+        },
+        "J_S": {
+         "mean": 2.237101261283953,
+         "ci": [
+          2.1213454285982887,
+          2.36847835548503
+         ]
+        },
+        "realized_S": {
+         "mean": 0.6813953488372092,
+         "ci": [
+          0.4577735507246377,
+          0.9861068872987474
+         ]
+        }
+       },
+       "reading": "the realized gain from revealing S is positive in this cell"
+      },
+      "probe": {
+       "n": 1,
+       "n_objects": 1,
+       "counts_only": true,
+       "realized": null,
+       "predicted": null,
+       "gap": null,
+       "level": null,
+       "reading": null
+      },
+      "records": 44,
+      "dropped_records": 0,
+      "unchanged": 6
+     }
+    },
+    "generic": {
+     "mass": {
+      "main": {
+       "n": 17,
+       "n_objects": 10,
+       "counts_only": false,
+       "realized": {
+        "mean": 1.9235294117647062,
+        "ci": [
+         0.9330769230769231,
+         2.5999999999999996
+        ]
+       },
+       "predicted": {
+        "mean": 0.9049220526100089,
+        "ci": [
+         0.13709955548729685,
+         1.4857042168046926
+        ]
+       },
+       "gap": {
+        "mean": 1.0186073591546971,
+        "ci": [
+         -0.33697115086701995,
+         2.140872262566137
+        ]
+       },
+       "level": {
+        "J_prior": {
+         "mean": 3.2827542706903245,
+         "ci": [
+          3.0,
+          3.7955846684835413
+         ]
+        },
+        "realized_prior": {
+         "mean": 2.788235294117647,
+         "ci": [
+          2.3875,
+          3.0
+         ]
+        },
+        "J_S": {
+         "mean": 2.377832218080316,
+         "ci": [
+          1.861317506744314,
+          3.2011598771051215
+         ]
+        },
+        "realized_S": {
+         "mean": 0.8647058823529412,
+         "ci": [
+          0.4000000000000001,
+          1.5375
+         ]
+        }
+       },
+       "reading": "descriptive"
+      },
+      "probe": {
+       "n": 7,
+       "n_objects": 5,
+       "counts_only": true,
+       "realized": null,
+       "predicted": null,
+       "gap": null,
+       "level": null,
+       "reading": null
+      },
+      "records": 25,
+      "dropped_records": 1,
+      "unchanged": 25
+     },
+     "mu": {
+      "main": {
+       "n": 9,
+       "n_objects": 7,
+       "counts_only": true,
+       "realized": null,
+       "predicted": null,
+       "gap": null,
+       "level": null,
+       "reading": "counts only"
+      },
+      "probe": {
+       "n": 7,
+       "n_objects": 5,
+       "counts_only": true,
+       "realized": null,
+       "predicted": null,
+       "gap": null,
+       "level": null,
+       "reading": null
+      },
+      "records": 17,
+      "dropped_records": 1,
+      "unchanged": 33
+     },
+     "com": {
+      "main": {
+       "n": 17,
+       "n_objects": 10,
+       "counts_only": false,
+       "realized": {
+        "mean": -6.464705882352942,
+        "ci": [
+         -26.275000000000002,
+         2.6
+        ]
+       },
+       "predicted": {
+        "mean": 0.726053700047351,
+        "ci": [
+         0.3151182021530179,
+         1.1002916450701727
+        ]
+       },
+       "gap": {
+        "mean": -7.190759582400293,
+        "ci": [
+         -26.676302295140903,
+         2.103970407177688
+        ]
+       },
+       "level": {
+        "J_prior": {
+         "mean": 3.077045582755871,
+         "ci": [
+          3.0,
+          3.245582795034339
+         ]
+        },
+        "realized_prior": {
+         "mean": 2.9411764705882355,
+         "ci": [
+          2.8125,
+          3.0
+         ]
+        },
+        "J_S": {
+         "mean": 2.3509918827085197,
+         "ci": [
+          1.9166150287728834,
+          2.8601494429938343
+         ]
+        },
+        "realized_S": {
+         "mean": 9.405882352941177,
+         "ci": [
+          0.4,
+          29.087500000000002
+         ]
+        }
+       },
+       "reading": "descriptive"
+      },
+      "probe": {
+       "n": 4,
+       "n_objects": 3,
+       "counts_only": true,
+       "realized": null,
+       "predicted": null,
+       "gap": null,
+       "level": null,
+       "reading": null
+      },
+      "records": 23,
+      "dropped_records": 2,
+      "unchanged": 27
+     },
+     "damage": {
+      "main": {
+       "n": 1,
+       "n_objects": 1,
+       "counts_only": true,
+       "realized": null,
+       "predicted": null,
+       "gap": null,
+       "level": null,
+       "reading": "counts only"
+      },
+      "probe": {
+       "n": 0,
+       "n_objects": 0,
+       "counts_only": true,
+       "realized": null,
+       "predicted": null,
+       "gap": null,
+       "level": null,
+       "reading": null
+      },
+      "records": 1,
+      "dropped_records": 0,
+      "unchanged": 49
+     },
+     "all": {
+      "main": {
+       "n": 37,
+       "n_objects": 24,
+       "counts_only": false,
+       "realized": {
+        "mean": 2.1297297297297293,
+        "ci": [
+         1.6,
+         2.4947434210526316
+        ]
+       },
+       "predicted": {
+        "mean": 0.9757093552859791,
+        "ci": [
+         0.7755630770662595,
+         1.1705855598451542
+        ]
+       },
+       "gap": {
+        "mean": 1.1540203744437505,
+        "ci": [
+         0.5633895423610528,
+         1.6076967273933278
+        ]
+       },
+       "level": {
+        "J_prior": {
+         "mean": 3.1209582779828873,
+         "ci": [
+          3.0,
+          3.337713095075028
+         ]
+        },
+        "realized_prior": {
+         "mean": 2.902702702702703,
+         "ci": [
+          2.7333333333333334,
+          3.0
+         ]
+        },
+        "J_S": {
+         "mean": 2.145248922696908,
+         "ci": [
+          1.9907110150468026,
+          2.3359143682432153
+         ]
+        },
+        "realized_S": {
+         "mean": 0.7729729729729728,
+         "ci": [
+          0.47690789473684214,
+          1.1647846638655457
+         ]
+        }
+       },
+       "reading": "the realized gain from revealing S is positive in this cell"
+      },
+      "probe": {
+       "n": 5,
+       "n_objects": 3,
+       "counts_only": true,
+       "realized": null,
+       "predicted": null,
+       "gap": null,
+       "level": null,
+       "reading": null
+      },
+      "records": 44,
+      "dropped_records": 2,
+      "unchanged": 6
+     }
+    }
+   },
+   "k100_A10": {
+    "class": {
+     "mass": {
+      "main": {
+       "n": 11,
+       "n_objects": 10,
+       "counts_only": false,
+       "realized": {
+        "mean": 0.8045454545454543,
+        "ci": [
+         -3.0302499999999997,
+         5.054326923076919
+        ]
+       },
+       "predicted": {
+        "mean": 0.798246346143755,
+        "ci": [
+         -0.7316939931214408,
+         2.9871827278627014
+        ]
+       },
+       "gap": {
+        "mean": 0.0062991084016991265,
+        "ci": [
+         -5.638961140383394,
+         4.593003442181328
+        ]
+       },
+       "level": {
+        "J_prior": {
+         "mean": 8.207282843635925,
+         "ci": [
+          5.958651222763585,
+          10.755173093638117
+         ]
+        },
+        "realized_prior": {
+         "mean": 3.036363636363637,
+         "ci": [
+          0.41500000000000004,
+          5.903571428571428
+         ]
+        },
+        "J_S": {
+         "mean": 7.409036497492172,
+         "ci": [
+          5.625053058179016,
+          9.124810048720754
+         ]
+        },
+        "realized_S": {
+         "mean": 2.2318181818181815,
+         "ci": [
+          0.47307692307692323,
+          5.2299999999999995
+         ]
+        }
+       },
+       "reading": "descriptive"
+      },
+      "probe": {
+       "n": 8,
+       "n_objects": 6,
+       "counts_only": true,
+       "realized": null,
+       "predicted": null,
+       "gap": null,
+       "level": null,
+       "reading": null
+      },
+      "records": 19,
+      "dropped_records": 0,
+      "unchanged": 31
+     },
+     "mu": {
+      "main": {
+       "n": 15,
+       "n_objects": 9,
+       "counts_only": false,
+       "realized": {
+        "mean": 5.043333333333333,
+        "ci": [
+         1.9534821428571423,
+         7.765625
+        ]
+       },
+       "predicted": {
+        "mean": 0.07656168782953063,
+        "ci": [
+         -0.5682562351443342,
+         0.8974403071168474
+        ]
+       },
+       "gap": {
+        "mean": 4.966771645503802,
+        "ci": [
+         1.8833407825814987,
+         8.021692885815153
+        ]
+       },
+       "level": {
+        "J_prior": {
+         "mean": 8.42478088942789,
+         "ci": [
+          7.284870493253227,
+          9.496463137791391
+         ]
+        },
+        "realized_prior": {
+         "mean": 6.1833333333333345,
+         "ci": [
+          3.612395833333333,
+          8.72
+         ]
+        },
+        "J_S": {
+         "mean": 8.348219201598361,
+         "ci": [
+          7.061165136588708,
+          9.687418949652402
+         ]
+        },
+        "realized_S": {
+         "mean": 1.14,
+         "ci": [
+          0.4375,
+          2.4599999999999995
+         ]
+        }
+       },
+       "reading": "descriptive"
+      },
+      "probe": {
+       "n": 7,
+       "n_objects": 7,
+       "counts_only": true,
+       "realized": null,
+       "predicted": null,
+       "gap": null,
+       "level": null,
+       "reading": null
+      },
+      "records": 22,
+      "dropped_records": 0,
+      "unchanged": 28
+     },
+     "com": {
+      "main": {
+       "n": 8,
+       "n_objects": 6,
+       "counts_only": true,
+       "realized": null,
+       "predicted": null,
+       "gap": null,
+       "level": null,
+       "reading": "counts only"
+      },
+      "probe": {
+       "n": 5,
+       "n_objects": 4,
+       "counts_only": true,
+       "realized": null,
+       "predicted": null,
+       "gap": null,
+       "level": null,
+       "reading": null
+      },
+      "records": 13,
+      "dropped_records": 0,
+      "unchanged": 37
+     },
+     "damage": {
+      "main": {
+       "n": 6,
+       "n_objects": 4,
+       "counts_only": true,
+       "realized": null,
+       "predicted": null,
+       "gap": null,
+       "level": null,
+       "reading": "counts only"
+      },
+      "probe": {
+       "n": 6,
+       "n_objects": 5,
+       "counts_only": true,
+       "realized": null,
+       "predicted": null,
+       "gap": null,
+       "level": null,
+       "reading": null
+      },
+      "records": 12,
+      "dropped_records": 0,
+      "unchanged": 38
+     },
+     "all": {
+      "main": {
+       "n": 34,
+       "n_objects": 24,
+       "counts_only": false,
+       "realized": {
+        "mean": 4.4220588235294125,
+        "ci": [
+         2.2202941176470588,
+         6.422216812400635
+        ]
+       },
+       "predicted": {
+        "mean": 1.7263180669681402,
+        "ci": [
+         1.1760264920845263,
+         2.3722517420268767
+        ]
+       },
+       "gap": {
+        "mean": 2.6957407565612717,
+        "ci": [
+         0.4718711181325181,
+         4.698478272627172
+        ]
+       },
+       "level": {
+        "J_prior": {
+         "mean": 8.517311807677117,
+         "ci": [
+          7.560939488900862,
+          9.515656245484493
+         ]
+        },
+        "realized_prior": {
+         "mean": 5.504411764705882,
+         "ci": [
+          3.6155147058823527,
+          7.269325091575087
+         ]
+        },
+        "J_S": {
+         "mean": 6.790993740708975,
+         "ci": [
+          6.168901625790655,
+          7.421903436832224
+         ]
+        },
+        "realized_S": {
+         "mean": 1.0823529411764707,
+         "ci": [
+          0.46486089030206684,
+          2.1484765625
+         ]
+        }
+       },
+       "reading": "the realized gain from revealing S is positive in this cell"
+      },
+      "probe": {
+       "n": 9,
+       "n_objects": 7,
+       "counts_only": true,
+       "realized": null,
+       "predicted": null,
+       "gap": null,
+       "level": null,
+       "reading": null
+      },
+      "records": 43,
+      "dropped_records": 0,
+      "unchanged": 7
+     }
+    },
+    "generic": {
+     "mass": {
+      "main": {
+       "n": 9,
+       "n_objects": 9,
+       "counts_only": true,
+       "realized": null,
+       "predicted": null,
+       "gap": null,
+       "level": null,
+       "reading": "counts only"
+      },
+      "probe": {
+       "n": 8,
+       "n_objects": 8,
+       "counts_only": true,
+       "realized": null,
+       "predicted": null,
+       "gap": null,
+       "level": null,
+       "reading": null
+      },
+      "records": 17,
+      "dropped_records": 0,
+      "unchanged": 33
+     },
+     "mu": {
+      "main": {
+       "n": 7,
+       "n_objects": 7,
+       "counts_only": true,
+       "realized": null,
+       "predicted": null,
+       "gap": null,
+       "level": null,
+       "reading": "counts only"
+      },
+      "probe": {
+       "n": 4,
+       "n_objects": 4,
+       "counts_only": true,
+       "realized": null,
+       "predicted": null,
+       "gap": null,
+       "level": null,
+       "reading": null
+      },
+      "records": 11,
+      "dropped_records": 0,
+      "unchanged": 39
+     },
+     "com": {
+      "main": {
+       "n": 11,
+       "n_objects": 9,
+       "counts_only": false,
+       "realized": {
+        "mean": 5.245454545454546,
+        "ci": [
+         0.854545454545454,
+         8.718181818181817
+        ]
+       },
+       "predicted": {
+        "mean": 2.7579706459813953,
+        "ci": [
+         1.5725199942288046,
+         3.861671678179548
+        ]
+       },
+       "gap": {
+        "mean": 2.4874838994731494,
+        "ci": [
+         -1.6874696534960991,
+         5.706341900899205
+        ]
+       },
+       "level": {
+        "J_prior": {
+         "mean": 9.250883446957788,
+         "ci": [
+          7.6907940347822965,
+          10.471198709712791
+         ]
+        },
+        "realized_prior": {
+         "mean": 6.527272727272727,
+         "ci": [
+          3.29,
+          9.200000000000001
+         ]
+        },
+        "J_S": {
+         "mean": 6.492912800976392,
+         "ci": [
+          5.19561739629494,
+          7.8125233954171875
+         ]
+        },
+        "realized_S": {
+         "mean": 1.2818181818181822,
+         "ci": [
+          0.4,
+          3.29
+         ]
+        }
+       },
+       "reading": "descriptive"
+      },
+      "probe": {
+       "n": 9,
+       "n_objects": 8,
+       "counts_only": true,
+       "realized": null,
+       "predicted": null,
+       "gap": null,
+       "level": null,
+       "reading": null
+      },
+      "records": 20,
+      "dropped_records": 0,
+      "unchanged": 30
+     },
+     "damage": {
+      "main": {
+       "n": 0,
+       "n_objects": 0,
+       "counts_only": true,
+       "realized": null,
+       "predicted": null,
+       "gap": null,
+       "level": null,
+       "reading": "counts only"
+      },
+      "probe": {
+       "n": 0,
+       "n_objects": 0,
+       "counts_only": true,
+       "realized": null,
+       "predicted": null,
+       "gap": null,
+       "level": null,
+       "reading": null
+      },
+      "records": 0,
+      "dropped_records": 0,
+      "unchanged": 50
+     },
+     "all": {
+      "main": {
+       "n": 39,
+       "n_objects": 28,
+       "counts_only": false,
+       "realized": {
+        "mean": 6.7615384615384615,
+        "ci": [
+         4.630896381578947,
+         8.447798611111113
+        ]
+       },
+       "predicted": {
+        "mean": 2.7360462201584284,
+        "ci": [
+         2.1666411627870104,
+         3.2981926280869467
+        ]
+       },
+       "gap": {
+        "mean": 4.025492241380032,
+        "ci": [
+         2.317056629455717,
+         5.52255404266561
+        ]
+       },
+       "level": {
+        "J_prior": {
+         "mean": 9.370720989135199,
+         "ci": [
+          8.825128686777472,
+          9.84745388394904
+         ]
+        },
+        "realized_prior": {
+         "mean": 8.035897435897436,
+         "ci": [
+          6.4922737483953785,
+          9.314345238095237
+         ]
+        },
+        "J_S": {
+         "mean": 6.6346747689767716,
+         "ci": [
+          6.03007707223439,
+          7.164479034113255
+         ]
+        },
+        "realized_S": {
+         "mean": 1.2743589743589745,
+         "ci": [
+          0.47282361660079053,
+          2.262777777777776
+         ]
+        }
+       },
+       "reading": "the realized gain from revealing S is positive in this cell"
+      },
+      "probe": {
+       "n": 6,
+       "n_objects": 6,
+       "counts_only": true,
+       "realized": null,
+       "predicted": null,
+       "gap": null,
+       "level": null,
+       "reading": null
+      },
+      "records": 45,
+      "dropped_records": 0,
+      "unchanged": 5
+     }
+    }
+   }
+  }
+ },
+ "drops": {
+  "all": {
+   "k30_A3": {
+    "class": {
+     "pairs": 465,
+     "by_action": {
+      "prior": 0,
+      "S": 0,
+      "both": 0
+     },
+     "share": 0.0,
+     "counts_only": false,
+     "case_errors": 0,
+     "probe_pairs": 10
+    },
+    "generic": {
+     "pairs": 550,
+     "by_action": {
+      "prior": 0,
+      "S": 30,
+      "both": 0
+     },
+     "share": 0.05454545454545454,
+     "counts_only": false,
+     "case_errors": 0,
+     "probe_pairs": 23
+    }
+   },
+   "k100_A10": {
+    "class": {
+     "pairs": 545,
+     "by_action": {
+      "prior": 0,
+      "S": 0,
+      "both": 0
+     },
+     "share": 0.0,
+     "counts_only": false,
+     "case_errors": 0,
+     "probe_pairs": 35
+    },
+    "generic": {
+     "pairs": 465,
+     "by_action": {
+      "prior": 0,
+      "S": 0,
+      "both": 0
+     },
+     "share": 0.0,
+     "counts_only": false,
+     "case_errors": 0,
+     "probe_pairs": 27
+    }
+   }
+  },
+  "ess_ok": {
+   "k30_A3": {
+    "class": {
+     "pairs": 465,
+     "by_action": {
+      "prior": 0,
+      "S": 0,
+      "both": 0
+     },
+     "share": 0.0,
+     "counts_only": false,
+     "case_errors": 0,
+     "probe_pairs": 10
+    },
+    "generic": {
+     "pairs": 550,
+     "by_action": {
+      "prior": 0,
+      "S": 30,
+      "both": 0
+     },
+     "share": 0.05454545454545454,
+     "counts_only": false,
+     "case_errors": 0,
+     "probe_pairs": 23
+    }
+   },
+   "k100_A10": {
+    "class": {
+     "pairs": 545,
+     "by_action": {
+      "prior": 0,
+      "S": 0,
+      "both": 0
+     },
+     "share": 0.0,
+     "counts_only": false,
+     "case_errors": 0,
+     "probe_pairs": 35
+    },
+    "generic": {
+     "pairs": 465,
+     "by_action": {
+      "prior": 0,
+      "S": 0,
+      "both": 0
+     },
+     "share": 0.0,
+     "counts_only": false,
+     "case_errors": 0,
+     "probe_pairs": 27
+    }
+   }
+  }
+ },
+ "probe_pairs": {
+  "k30_A3": {
+   "class": 10,
+   "generic": 23
+  },
+  "k100_A10": {
+   "class": 35,
+   "generic": 27
+  }
+ },
+ "counts": {
+  "all": {
+   "k30_A3": {
+    "class": {
+     "outcomes": {
+      "prior": {
+       "decline": 135,
+       "placed_stable": 100,
+       "squeeze:row:placed_stable": 5,
+       "not_lifted": 5,
+       "dropped_high": 5
+      },
+      "all": {
+       "placed_stable": 200,
+       "decline": 15,
+       "tipped": 5
+      },
+      "mass": {
+       "decline": 20,
+       "squeeze:row:placed_stable": 5,
+       "placed_stable": 50
+      },
+      "com": {
+       "decline": 5,
+       "placed_stable": 35,
+       "squeeze:row:placed_stable": 5
+      },
+      "damage": {
+       "placed_stable": 35,
+       "tipped": 5
+      },
+      "mu": {
+       "weigh:row:placed_stable": 5,
+       "decline": 25,
+       "placed_stable": 40,
+       "squeeze:row:placed_stable": 11,
+       "squeeze:abstained": 4
+      }
+     },
+     "continuation_model": {
+      "mass": {
+       "regrasp_com": 183,
+       "decline": 17
+      },
+      "mu": {
+       "gentle_carry": 197,
+       "decline": 124,
+       "drop_release": 200,
+       "light_grip": 200,
+       "commit_std": 79
+      },
+      "prior": {
+       "light_grip": 200
+      },
+      "com": {
+       "drop_release": 200
+      }
+     },
+     "continuation_simulator": {
+      "mass": {
+       "regrasp_com": 5
+      },
+      "mu": {
+       "gentle_carry": 5,
+       "drop_release": 5,
+       "light_grip": 5,
+       "abstained": 4,
+       "commit_std": 1
+      },
+      "prior": {
+       "light_grip": 5
+      },
+      "com": {
+       "drop_release": 5
+      }
+     }
+    },
+    "generic": {
+     "outcomes": {
+      "prior": {
+       "decline": 195,
+       "weigh:row:placed_stable": 25,
+       "placed_stable": 25,
+       "dropped_low": 5
+      },
+      "all": {
+       "tipped": 10,
+       "placed_stable": 190,
+       "decline": 10,
+       "artifact": 10
+      },
+      "mass": {
+       "placed_stable": 95,
+       "squeeze:row:placed_stable": 10,
+       "decline": 15,
+       "artifact": 5
+      },
+      "damage": {
+       "placed_stable": 5
+      },
+      "com": {
+       "placed_stable": 95,
+       "dropped_high": 5,
+       "artifact": 10,
+       "weigh:abstained": 5
+      },
+      "mu": {
+       "placed_stable": 45,
+       "weigh:row:placed_stable": 10,
+       "decline": 10,
+       "artifact": 5,
+       "weigh:abstained": 15
+      }
+     },
+     "continuation_model": {
+      "prior": {
+       "commit_std": 116,
+       "drop_release": 81,
+       "decline": 20,
+       "firm_grip": 564,
+       "gentle_carry": 219
+      },
+      "mass": {
+       "light_grip": 395,
+       "decline": 5
+      },
+      "mu": {
+       "firm_grip": 206,
+       "decline": 609,
+       "regrasp_com": 185
+      },
+      "com": {
+       "decline": 200
+      }
+     },
+     "continuation_simulator": {
+      "prior": {
+       "commit_std": 3,
+       "drop_release": 2,
+       "firm_grip": 15,
+       "gentle_carry": 5
+      },
+      "mass": {
+       "light_grip": 10
+      },
+      "mu": {
+       "firm_grip": 5,
+       "regrasp_com": 5,
+       "abstained": 15
+      },
+      "com": {
+       "abstained": 5
+      }
+     }
+    }
+   },
+   "k100_A10": {
+    "class": {
+     "outcomes": {
+      "prior": {
+       "decline": 105,
+       "placed_stable": 100,
+       "squeeze:row:placed_stable": 24,
+       "squeeze:abstained": 6,
+       "weigh:abstained": 5,
+       "weigh:row:placed_stable": 10
+      },
+      "mu": {
+       "placed_stable": 80,
+       "decline": 5,
+       "squeeze:row:placed_stable": 15,
+       "squeeze:abstained": 5,
+       "weigh:abstained": 5
+      },
+      "all": {
+       "placed_stable": 195,
+       "decline": 15,
+       "tipped": 5
+      },
+      "mass": {
+       "decline": 20,
+       "placed_stable": 55,
+       "squeeze:row:placed_stable": 17,
+       "squeeze:abstained": 3
+      },
+      "com": {
+       "decline": 10,
+       "squeeze:row:placed_stable": 15,
+       "placed_stable": 40
+      },
+      "damage": {
+       "placed_stable": 55,
+       "decline": 5
+      }
+     },
+     "continuation_model": {
+      "prior": {
+       "regrasp_com": 80,
+       "decline": 496,
+       "firm_grip": 1,
+       "gentle_carry": 424,
+       "light_grip": 360,
+       "commit_std": 382,
+       "drop_release": 57
+      },
+      "com": {
+       "regrasp_com": 400,
+       "drop_release": 192,
+       "light_grip": 8
+      },
+      "mass": {
+       "light_grip": 407,
+       "decline": 90,
+       "regrasp_com": 111,
+       "drop_release": 192
+      },
+      "mu": {
+       "decline": 397,
+       "light_grip": 365,
+       "drop_release": 31,
+       "gentle_carry": 200,
+       "firm_grip": 7
+      }
+     },
+     "continuation_simulator": {
+      "prior": {
+       "regrasp_com": 3,
+       "abstained": 11,
+       "gentle_carry": 12,
+       "commit_std": 10,
+       "light_grip": 8,
+       "drop_release": 1
+      },
+      "com": {
+       "regrasp_com": 10,
+       "drop_release": 5
+      },
+      "mass": {
+       "light_grip": 10,
+       "abstained": 3,
+       "regrasp_com": 2,
+       "drop_release": 5
+      },
+      "mu": {
+       "light_grip": 8,
+       "abstained": 10,
+       "drop_release": 2,
+       "gentle_carry": 5
+      }
+     }
+    },
+    "generic": {
+     "outcomes": {
+      "prior": {
+       "decline": 165,
+       "weigh:row:dropped_high": 3,
+       "weigh:row:not_lifted": 2,
+       "weigh:row:placed_stable": 20,
+       "placed_stable": 55,
+       "weigh:abstained": 5
+      },
+      "mu": {
+       "weigh:abstained": 5,
+       "tipped": 5,
+       "weigh:row:tipped": 5,
+       "placed_stable": 25,
+       "decline": 5,
+       "weigh:row:placed_stable": 10
+      },
+      "mass": {
+       "dropped_high": 5,
+       "tipped": 5,
+       "placed_stable": 55,
+       "squeeze:row:placed_stable": 10,
+       "decline": 10
+      },
+      "all": {
+       "placed_stable": 205,
+       "tipped": 5,
+       "not_lifted": 5,
+       "decline": 10
+      },
+      "com": {
+       "squeeze:row:placed_stable": 23,
+       "squeeze:abstained": 2,
+       "weigh:row:placed_stable": 10,
+       "placed_stable": 60,
+       "decline": 5
+      }
+     },
+     "continuation_model": {
+      "mu": {
+       "decline": 255,
+       "commit_std": 22,
+       "light_grip": 146,
+       "firm_grip": 377
+      },
+      "prior": {
+       "firm_grip": 728,
+       "slow_lift": 31,
+       "decline": 272,
+       "regrasp_com": 154,
+       "gentle_carry": 15
+      },
+      "com": {
+       "decline": 261,
+       "regrasp_com": 223,
+       "slow_lift": 378,
+       "firm_grip": 338,
+       "light_grip": 200
+      },
+      "mass": {
+       "drop_release": 196,
+       "decline": 4,
+       "light_grip": 200
+      }
+     },
+     "continuation_simulator": {
+      "mu": {
+       "abstained": 5,
+       "light_grip": 5,
+       "firm_grip": 10
+      },
+      "prior": {
+       "firm_grip": 18,
+       "slow_lift": 2,
+       "regrasp_com": 5,
+       "abstained": 5
+      },
+      "com": {
+       "regrasp_com": 8,
+       "abstained": 2,
+       "slow_lift": 10,
+       "firm_grip": 10,
+       "light_grip": 5
+      },
+      "mass": {
+       "drop_release": 5,
+       "light_grip": 5
+      }
+     }
+    }
+   }
+  },
+  "ess_ok": {
+   "k30_A3": {
+    "class": {
+     "outcomes": {
+      "prior": {
+       "decline": 135,
+       "placed_stable": 100,
+       "squeeze:row:placed_stable": 5,
+       "not_lifted": 5,
+       "dropped_high": 5
+      },
+      "all": {
+       "placed_stable": 200,
+       "decline": 15,
+       "tipped": 5
+      },
+      "mass": {
+       "decline": 20,
+       "squeeze:row:placed_stable": 5,
+       "placed_stable": 50
+      },
+      "com": {
+       "decline": 5,
+       "placed_stable": 35,
+       "squeeze:row:placed_stable": 5
+      },
+      "damage": {
+       "placed_stable": 35,
+       "tipped": 5
+      },
+      "mu": {
+       "weigh:row:placed_stable": 5,
+       "decline": 25,
+       "placed_stable": 40,
+       "squeeze:row:placed_stable": 11,
+       "squeeze:abstained": 4
+      }
+     },
+     "continuation_model": {
+      "mass": {
+       "regrasp_com": 183,
+       "decline": 17
+      },
+      "mu": {
+       "gentle_carry": 197,
+       "decline": 124,
+       "drop_release": 200,
+       "light_grip": 200,
+       "commit_std": 79
+      },
+      "prior": {
+       "light_grip": 200
+      },
+      "com": {
+       "drop_release": 200
+      }
+     },
+     "continuation_simulator": {
+      "mass": {
+       "regrasp_com": 5
+      },
+      "mu": {
+       "gentle_carry": 5,
+       "drop_release": 5,
+       "light_grip": 5,
+       "abstained": 4,
+       "commit_std": 1
+      },
+      "prior": {
+       "light_grip": 5
+      },
+      "com": {
+       "drop_release": 5
+      }
+     }
+    },
+    "generic": {
+     "outcomes": {
+      "prior": {
+       "decline": 195,
+       "weigh:row:placed_stable": 25,
+       "placed_stable": 25,
+       "dropped_low": 5
+      },
+      "all": {
+       "tipped": 10,
+       "placed_stable": 190,
+       "decline": 10,
+       "artifact": 10
+      },
+      "mass": {
+       "placed_stable": 95,
+       "squeeze:row:placed_stable": 10,
+       "decline": 15,
+       "artifact": 5
+      },
+      "damage": {
+       "placed_stable": 5
+      },
+      "com": {
+       "placed_stable": 95,
+       "dropped_high": 5,
+       "artifact": 10,
+       "weigh:abstained": 5
+      },
+      "mu": {
+       "placed_stable": 45,
+       "weigh:row:placed_stable": 10,
+       "decline": 10,
+       "artifact": 5,
+       "weigh:abstained": 15
+      }
+     },
+     "continuation_model": {
+      "prior": {
+       "commit_std": 116,
+       "drop_release": 81,
+       "decline": 20,
+       "firm_grip": 564,
+       "gentle_carry": 219
+      },
+      "mass": {
+       "light_grip": 395,
+       "decline": 5
+      },
+      "mu": {
+       "firm_grip": 206,
+       "decline": 609,
+       "regrasp_com": 185
+      },
+      "com": {
+       "decline": 200
+      }
+     },
+     "continuation_simulator": {
+      "prior": {
+       "commit_std": 3,
+       "drop_release": 2,
+       "firm_grip": 15,
+       "gentle_carry": 5
+      },
+      "mass": {
+       "light_grip": 10
+      },
+      "mu": {
+       "firm_grip": 5,
+       "regrasp_com": 5,
+       "abstained": 15
+      },
+      "com": {
+       "abstained": 5
+      }
+     }
+    }
+   },
+   "k100_A10": {
+    "class": {
+     "outcomes": {
+      "prior": {
+       "decline": 105,
+       "placed_stable": 100,
+       "squeeze:row:placed_stable": 24,
+       "squeeze:abstained": 6,
+       "weigh:abstained": 5,
+       "weigh:row:placed_stable": 10
+      },
+      "mu": {
+       "placed_stable": 80,
+       "decline": 5,
+       "squeeze:row:placed_stable": 15,
+       "squeeze:abstained": 5,
+       "weigh:abstained": 5
+      },
+      "all": {
+       "placed_stable": 195,
+       "decline": 15,
+       "tipped": 5
+      },
+      "mass": {
+       "decline": 20,
+       "placed_stable": 55,
+       "squeeze:row:placed_stable": 17,
+       "squeeze:abstained": 3
+      },
+      "com": {
+       "decline": 10,
+       "squeeze:row:placed_stable": 15,
+       "placed_stable": 40
+      },
+      "damage": {
+       "placed_stable": 55,
+       "decline": 5
+      }
+     },
+     "continuation_model": {
+      "prior": {
+       "regrasp_com": 80,
+       "decline": 496,
+       "firm_grip": 1,
+       "gentle_carry": 424,
+       "light_grip": 360,
+       "commit_std": 382,
+       "drop_release": 57
+      },
+      "com": {
+       "regrasp_com": 400,
+       "drop_release": 192,
+       "light_grip": 8
+      },
+      "mass": {
+       "light_grip": 407,
+       "decline": 90,
+       "regrasp_com": 111,
+       "drop_release": 192
+      },
+      "mu": {
+       "decline": 397,
+       "light_grip": 365,
+       "drop_release": 31,
+       "gentle_carry": 200,
+       "firm_grip": 7
+      }
+     },
+     "continuation_simulator": {
+      "prior": {
+       "regrasp_com": 3,
+       "abstained": 11,
+       "gentle_carry": 12,
+       "commit_std": 10,
+       "light_grip": 8,
+       "drop_release": 1
+      },
+      "com": {
+       "regrasp_com": 10,
+       "drop_release": 5
+      },
+      "mass": {
+       "light_grip": 10,
+       "abstained": 3,
+       "regrasp_com": 2,
+       "drop_release": 5
+      },
+      "mu": {
+       "light_grip": 8,
+       "abstained": 10,
+       "drop_release": 2,
+       "gentle_carry": 5
+      }
+     }
+    },
+    "generic": {
+     "outcomes": {
+      "prior": {
+       "decline": 165,
+       "weigh:row:dropped_high": 3,
+       "weigh:row:not_lifted": 2,
+       "weigh:row:placed_stable": 20,
+       "placed_stable": 55,
+       "weigh:abstained": 5
+      },
+      "mu": {
+       "weigh:abstained": 5,
+       "tipped": 5,
+       "weigh:row:tipped": 5,
+       "placed_stable": 25,
+       "decline": 5,
+       "weigh:row:placed_stable": 10
+      },
+      "mass": {
+       "dropped_high": 5,
+       "tipped": 5,
+       "placed_stable": 55,
+       "squeeze:row:placed_stable": 10,
+       "decline": 10
+      },
+      "all": {
+       "placed_stable": 205,
+       "tipped": 5,
+       "not_lifted": 5,
+       "decline": 10
+      },
+      "com": {
+       "squeeze:row:placed_stable": 23,
+       "squeeze:abstained": 2,
+       "weigh:row:placed_stable": 10,
+       "placed_stable": 60,
+       "decline": 5
+      }
+     },
+     "continuation_model": {
+      "mu": {
+       "decline": 255,
+       "commit_std": 22,
+       "light_grip": 146,
+       "firm_grip": 377
+      },
+      "prior": {
+       "firm_grip": 728,
+       "slow_lift": 31,
+       "decline": 272,
+       "regrasp_com": 154,
+       "gentle_carry": 15
+      },
+      "com": {
+       "decline": 261,
+       "regrasp_com": 223,
+       "slow_lift": 378,
+       "firm_grip": 338,
+       "light_grip": 200
+      },
+      "mass": {
+       "drop_release": 196,
+       "decline": 4,
+       "light_grip": 200
+      }
+     },
+     "continuation_simulator": {
+      "mu": {
+       "abstained": 5,
+       "light_grip": 5,
+       "firm_grip": 10
+      },
+      "prior": {
+       "firm_grip": 18,
+       "slow_lift": 2,
+       "regrasp_com": 5,
+       "abstained": 5
+      },
+      "com": {
+       "regrasp_com": 8,
+       "abstained": 2,
+       "slow_lift": 10,
+       "firm_grip": 10,
+       "light_grip": 5
+      },
+      "mass": {
+       "drop_release": 5,
+       "light_grip": 5
+      }
+     }
+    }
+   }
+  }
+ },
+ "rows_label_changes": {
+  "n": 228,
+  "changed": 0
+ },
+ "gates": {
+  "records": 200,
+  "missing": [],
+  "mismatch": [],
+  "case_errors": 0,
+  "simulation_gate_failures": 0,
+  "fingerprint_differs": 0,
+  "errors": 0,
+  "artifacts": 10
+ },
+ "n_main_readings": 4,
+ "main": "all",
+ "min_records": 10,
+ "max_drop": 0.1,
+ "n_seeds": 5,
+ "wandb": "https://forge.coreweave.com/wandb/leon129506/rpent-pick-place/runs/9kisihlj"
+}

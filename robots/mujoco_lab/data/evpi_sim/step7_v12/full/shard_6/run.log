@@ -1,0 +1,25 @@
+hope__bbq_sauce_bottle 3: 137.9 s, 1 records, 10 simulations
+hope__bbq_sauce_bottle 5: 20.4 s, 1 records, 5 simulations
+hope__bbq_sauce_bottle 6: 504.7 s, 3 records, 20 simulations
+hope__bbq_sauce_bottle 8: 48.9 s, 3 records, 10 simulations
+hope__bbq_sauce_bottle 9: 18.6 s, 1 records, 5 simulations
+hope__cream_cheese 0: 176.8 s, 1 records, 10 simulations
+hope__cream_cheese 3: 382.7 s, 2 records, 15 simulations
+hope__cream_cheese 6: 237.4 s, 1 records, 15 simulations
+hope__pitted_cherries 1: 341.6 s, 2 records, 15 simulations
+hope__pitted_cherries 4: 230.4 s, 1 records, 10 simulations
+hope__pitted_cherries 6: 195.2 s, 1 records, 10 simulations
+hope__pitted_cherries 10: 245.5 s, 1 records, 15 simulations
+hot3d__bbq_sauce_bottle 0: 17.9 s, 1 records, 5 simulations
+hot3d__bbq_sauce_bottle 4: 20.2 s, 1 records, 5 simulations
+hot3d__pitcher 6: 22.9 s, 1 records, 5 simulations
+ycb__clamp 7: 27.9 s, 2 records, 5 simulations
+ycb__clamp 8: 88.2 s, 1 records, 5 simulations
+ycb__clamp 9: 159.7 s, 1 records, 10 simulations
+ycb__tuna_can 0: 160.1 s, 1 records, 10 simulations
+ycb__tuna_can 5: 110.6 s, 1 records, 10 simulations
+ycb__tuna_can 6: 207.8 s, 1 records, 10 simulations
+ycb__tuna_can 7: 199.9 s, 1 records, 10 simulations
+ycb__tuna_can 8: 94.8 s, 1 records, 5 simulations
+ycb__tuna_can 9: 287.3 s, 2 records, 15 simulations
+done in 3939 s: /home/chungyili/Codes/RPent-evpi-sim/logs/evpi_sim/full/shard_6

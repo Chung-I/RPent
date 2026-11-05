@@ -1,0 +1,142 @@
+{
+ "cmd": "run",
+ "sample": "/home/chungyili/Codes/RPent-evpi-sim/logs/evpi_sim/sample.json",
+ "out": "/home/chungyili/Codes/RPent-evpi-sim/logs/evpi_sim/full/shard_3",
+ "smoke": null,
+ "objects": "handal__measuring_spoon,hope__canned_tuna,hope__parmesan_cheese_canister,hope__spaghetti,hot3d__frozen_vegetable_block,hot3d__soup_can,ycb__spam_can",
+ "workers": 1,
+ "code_revision": "0195dfca76a7fcb6ec248aef8225238b6404dc62",
+ "dirty": false,
+ "generator": "v11",
+ "sample_sha256": "b8f2b1249439f7871ec483ee0faa8a177a0b42f92d95bb5ff7b13e0041988bc9",
+ "n_seeds": 5,
+ "seed_stream": 8,
+ "records": [
+  [
+   "hope__canned_tuna",
+   5,
+   "class",
+   "k30_A3"
+  ],
+  [
+   "hope__parmesan_cheese_canister",
+   1,
+   "class",
+   "k30_A3"
+  ],
+  [
+   "hope__parmesan_cheese_canister",
+   10,
+   "class",
+   "k30_A3"
+  ],
+  [
+   "ycb__spam_can",
+   2,
+   "class",
+   "k30_A3"
+  ],
+  [
+   "hope__canned_tuna",
+   5,
+   "generic",
+   "k30_A3"
+  ],
+  [
+   "hope__canned_tuna",
+   9,
+   "generic",
+   "k30_A3"
+  ],
+  [
+   "hope__parmesan_cheese_canister",
+   1,
+   "generic",
+   "k30_A3"
+  ],
+  [
+   "hot3d__soup_can",
+   9,
+   "generic",
+   "k30_A3"
+  ],
+  [
+   "ycb__spam_can",
+   5,
+   "generic",
+   "k30_A3"
+  ],
+  [
+   "handal__measuring_spoon",
+   0,
+   "class",
+   "k100_A10"
+  ],
+  [
+   "hope__canned_tuna",
+   7,
+   "class",
+   "k100_A10"
+  ],
+  [
+   "hope__canned_tuna",
+   9,
+   "class",
+   "k100_A10"
+  ],
+  [
+   "hope__parmesan_cheese_canister",
+   8,
+   "class",
+   "k100_A10"
+  ],
+  [
+   "ycb__spam_can",
+   1,
+   "class",
+   "k100_A10"
+  ],
+  [
+   "hope__parmesan_cheese_canister",
+   0,
+   "generic",
+   "k100_A10"
+  ],
+  [
+   "hope__parmesan_cheese_canister",
+   3,
+   "generic",
+   "k100_A10"
+  ],
+  [
+   "hope__parmesan_cheese_canister",
+   5,
+   "generic",
+   "k100_A10"
+  ],
+  [
+   "hope__spaghetti",
+   3,
+   "generic",
+   "k100_A10"
+  ],
+  [
+   "hot3d__frozen_vegetable_block",
+   5,
+   "generic",
+   "k100_A10"
+  ],
+  [
+   "hot3d__soup_can",
+   4,
+   "generic",
+   "k100_A10"
+  ],
+  [
+   "ycb__spam_can",
+   1,
+   "generic",
+   "k100_A10"
+  ]
+ ]
+}

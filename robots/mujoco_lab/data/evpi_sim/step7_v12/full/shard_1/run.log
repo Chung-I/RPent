@@ -1,0 +1,25 @@
+handal__hammer_2 4: 85.9 s, 1 records, 5 simulations
+hope__canned_mushrooms 0: 210.1 s, 1 records, 10 simulations
+hope__canned_mushrooms 1: 196.5 s, 1 records, 10 simulations
+hope__canned_mushrooms 2: 101.7 s, 1 records, 5 simulations
+hope__canned_mushrooms 3: 107.1 s, 1 records, 5 simulations
+hope__canned_mushrooms 5: 240.7 s, 1 records, 15 simulations
+hope__canned_mushrooms 9: 195.4 s, 1 records, 10 simulations
+hope__ketchup_bottle 6: 18.7 s, 1 records, 5 simulations
+hope__raisin_box 5: 177.0 s, 1 records, 10 simulations
+hope__raisin_box 6: 195.1 s, 1 records, 10 simulations
+hope__raisin_box 7: 191.7 s, 1 records, 15 simulations
+hope__raisin_box 8: 191.8 s, 2 records, 10 simulations
+hope__raisin_box 9: 373.1 s, 1 records, 15 simulations
+hot3d__computer_mouse 1: 101.7 s, 1 records, 10 simulations
+hot3d__computer_mouse 2: 78.3 s, 1 records, 10 simulations
+hot3d__computer_mouse 4: 103.8 s, 1 records, 10 simulations
+hot3d__computer_mouse 5: 71.9 s, 1 records, 10 simulations
+hot3d__computer_mouse 7: 187.6 s, 1 records, 10 simulations
+hot3d__computer_mouse 9: 182.1 s, 2 records, 15 simulations
+hot3d__remote_control 0: 101.7 s, 1 records, 5 simulations
+hot3d__remote_control 2: 101.9 s, 1 records, 5 simulations
+ycb__jello 0: 437.2 s, 2 records, 20 simulations
+ycb__jello 5: 167.1 s, 1 records, 10 simulations
+ycb__jello 7: 196.2 s, 1 records, 10 simulations
+done in 4016 s: /home/chungyili/Codes/RPent-evpi-sim/logs/evpi_sim/full/shard_1

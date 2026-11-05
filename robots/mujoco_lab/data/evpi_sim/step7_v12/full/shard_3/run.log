@@ -1,0 +1,18 @@
+handal__measuring_spoon 0: 95.7 s, 1 records, 5 simulations
+hope__canned_tuna 5: 260.9 s, 2 records, 15 simulations
+hope__canned_tuna 7: 209.9 s, 1 records, 15 simulations
+hope__canned_tuna 9: 256.0 s, 2 records, 15 simulations
+hope__parmesan_cheese_canister 0: 108.2 s, 1 records, 5 simulations
+hope__parmesan_cheese_canister 1: 215.9 s, 2 records, 10 simulations
+hope__parmesan_cheese_canister 3: 79.5 s, 1 records, 5 simulations
+hope__parmesan_cheese_canister 5: 107.1 s, 1 records, 5 simulations
+hope__parmesan_cheese_canister 8: 195.1 s, 1 records, 10 simulations
+hope__parmesan_cheese_canister 10: 107.9 s, 1 records, 5 simulations
+hope__spaghetti 3: 20.1 s, 1 records, 5 simulations
+hot3d__frozen_vegetable_block 5: 21.7 s, 1 records, 5 simulations
+hot3d__soup_can 4: 140.8 s, 1 records, 10 simulations
+hot3d__soup_can 9: 200.1 s, 1 records, 10 simulations
+ycb__spam_can 1: 202.5 s, 2 records, 10 simulations
+ycb__spam_can 2: 20.9 s, 1 records, 5 simulations
+ycb__spam_can 5: 206.9 s, 1 records, 15 simulations
+done in 2450 s: /home/chungyili/Codes/RPent-evpi-sim/logs/evpi_sim/full/shard_3
