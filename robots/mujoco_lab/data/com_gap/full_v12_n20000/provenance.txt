@@ -1,0 +1,68 @@
+== /home/chungyili/Codes/RPent-comgap/logs/comgap/full/shard_0
+code 6f1dbb33278237ac45b5b0354eddd89400eee7d5 (branch com-oracle-gap), dirty files 0
+sim /home/chungyili/Codes/daily-logs-worktrees/v12checks-armsim-fe46f6c/researches/property-belief-manipulation/experiments/2026-11-04-arm-port/sim, last commit e823247052a2bf4d1b97d5077a51f0ead91fd80c, dirty files 0
+robot model b7b9d2beaaecf848efc49c9b99355b5e551a44dd21292fa4462f22fce0187bc3  /home/chungyili/Codes/daily-logs-worktrees/v12checks-armsim-fe46f6c/researches/property-belief-manipulation/experiments/2026-11-04-arm-port/out/r1_robot.npz
+bundle /home/chungyili/Codes/RPent-arm/robots/mujoco_lab/data/m2b2_v12:
+25efe0d476bc46d664846675387a962c1c0868dce0d1546d7b84e1a71fcca1f6  manifest.json
+e9856c2649d139e6866ab4f481a17741c79ca63960696d887e81265d6fdf31c0  folds/folds.json
+4146ce74e25c3349731a0ef9a328d6c2247a018998fe429ea2575ec35d7dad83  folds/crossfit.json
+eb2c045287f1bac807b4f1f524373d587277ad34dce4c510d893a36d1bc5ebf9  folds/fold_0/manifest.json
+30d84db83f5314c6c183f02821d56f0d46f199dc9eb0e12ba9f82b37d286cf01  folds/fold_1/manifest.json
+4b7b053b87e358ff79dc393eaec613b0ab163ea531d9bca94d37ef85a0e70d5e  folds/fold_2/manifest.json
+8ed1f9619190b69013fe9e4504ae781747db7af7036432b69a814de7fcc6be49  folds/fold_3/manifest.json
+805c0fc743b2ee16e7bbe129e804cc8507142c4f29056085601db8da067dae59  folds/fold_4/manifest.json
+env NUMPY_MADVISE_HUGEPAGE=0 OMP_NUM_THREADS=1 RPENT_LAB_GENERATOR=v11 WANDB_MODE=online, unit v12-cg-s0 MemoryMax 8G MemorySwapMax 0
+command python -P -u -m robots.mujoco_lab.com_gap run --bundle /home/chungyili/Codes/RPent-arm/robots/mujoco_lab/data/m2b2_v12 --scenes /home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-11-03-mass-com-estimation/scenes.json --workers 1 --objects fruits_veggies__avocado,fruits_veggies__red_onion,handal__hammer_2,handal__hammer_6,handal__measuring_cups,handal__red_serving_spoon,hope__canned_peaches,hope__cream_cheese,hope__macaroni_and_cheese,hope__oatmeal_raisin_cookies,hope__pineapple_slices_can,hope__ranch_dressing,hot3d__bbq_sauce_bottle,hot3d__coffee_pot,hot3d__frozen_vegetable_block,hot3d__lizard_figurine,hot3d__potato_masher,hot3d__soup_can,hot3d__wooden_spoons,ycb__brick,ycb__coffee_can,ycb__mug,ycb__soft_scrub,ycb__tomato_soup_can --out /home/chungyili/Codes/RPent-comgap/logs/comgap/full/shard_0
+start 2026-11-05 08:35:41
+end 2026-11-05 14:08:19
+== /home/chungyili/Codes/RPent-comgap/logs/comgap/full/shard_1
+code 6f1dbb33278237ac45b5b0354eddd89400eee7d5 (branch com-oracle-gap), dirty files 0
+sim /home/chungyili/Codes/daily-logs-worktrees/v12checks-armsim-fe46f6c/researches/property-belief-manipulation/experiments/2026-11-04-arm-port/sim, last commit e823247052a2bf4d1b97d5077a51f0ead91fd80c, dirty files 0
+robot model b7b9d2beaaecf848efc49c9b99355b5e551a44dd21292fa4462f22fce0187bc3  /home/chungyili/Codes/daily-logs-worktrees/v12checks-armsim-fe46f6c/researches/property-belief-manipulation/experiments/2026-11-04-arm-port/out/r1_robot.npz
+bundle /home/chungyili/Codes/RPent-arm/robots/mujoco_lab/data/m2b2_v12:
+25efe0d476bc46d664846675387a962c1c0868dce0d1546d7b84e1a71fcca1f6  manifest.json
+e9856c2649d139e6866ab4f481a17741c79ca63960696d887e81265d6fdf31c0  folds/folds.json
+4146ce74e25c3349731a0ef9a328d6c2247a018998fe429ea2575ec35d7dad83  folds/crossfit.json
+eb2c045287f1bac807b4f1f524373d587277ad34dce4c510d893a36d1bc5ebf9  folds/fold_0/manifest.json
+30d84db83f5314c6c183f02821d56f0d46f199dc9eb0e12ba9f82b37d286cf01  folds/fold_1/manifest.json
+4b7b053b87e358ff79dc393eaec613b0ab163ea531d9bca94d37ef85a0e70d5e  folds/fold_2/manifest.json
+8ed1f9619190b69013fe9e4504ae781747db7af7036432b69a814de7fcc6be49  folds/fold_3/manifest.json
+805c0fc743b2ee16e7bbe129e804cc8507142c4f29056085601db8da067dae59  folds/fold_4/manifest.json
+env NUMPY_MADVISE_HUGEPAGE=0 OMP_NUM_THREADS=1 RPENT_LAB_GENERATOR=v11 WANDB_MODE=online, unit v12-cg-s1 MemoryMax 8G MemorySwapMax 0
+command python -P -u -m robots.mujoco_lab.com_gap run --bundle /home/chungyili/Codes/RPent-arm/robots/mujoco_lab/data/m2b2_v12 --scenes /home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-11-03-mass-com-estimation/scenes.json --workers 1 --objects fruits_veggies__lemon1,handal__green_serving_spoon,handal__hammer_3,handal__hammer_7,handal__measuring_cups_1,hope__bbq_sauce_bottle,hope__canned_tuna,hope__granola_bars,hope__mayonnaise_bottle,hope__orange_juice_carton,hope__pitted_cherries,hope__spaghetti,hot3d__birdhouse,hot3d__computer_mouse,hot3d__frozen_waffles,hot3d__megaphone,hot3d__remote_control,hot3d__spatula,ycb__banana,ycb__cheez_it,ycb__cordless_drill,ycb__mustard,ycb__spam_can,ycb__tuna_can --out /home/chungyili/Codes/RPent-comgap/logs/comgap/full/shard_1
+start 2026-11-05 08:41:50
+end 2026-11-05 14:02:45
+== /home/chungyili/Codes/RPent-comgap/logs/comgap/full/shard_2
+code 6f1dbb33278237ac45b5b0354eddd89400eee7d5 (branch com-oracle-gap), dirty files 0
+sim /home/chungyili/Codes/daily-logs-worktrees/v12checks-armsim-fe46f6c/researches/property-belief-manipulation/experiments/2026-11-04-arm-port/sim, last commit e823247052a2bf4d1b97d5077a51f0ead91fd80c, dirty files 0
+robot model b7b9d2beaaecf848efc49c9b99355b5e551a44dd21292fa4462f22fce0187bc3  /home/chungyili/Codes/daily-logs-worktrees/v12checks-armsim-fe46f6c/researches/property-belief-manipulation/experiments/2026-11-04-arm-port/out/r1_robot.npz
+bundle /home/chungyili/Codes/RPent-arm/robots/mujoco_lab/data/m2b2_v12:
+25efe0d476bc46d664846675387a962c1c0868dce0d1546d7b84e1a71fcca1f6  manifest.json
+e9856c2649d139e6866ab4f481a17741c79ca63960696d887e81265d6fdf31c0  folds/folds.json
+4146ce74e25c3349731a0ef9a328d6c2247a018998fe429ea2575ec35d7dad83  folds/crossfit.json
+eb2c045287f1bac807b4f1f524373d587277ad34dce4c510d893a36d1bc5ebf9  folds/fold_0/manifest.json
+30d84db83f5314c6c183f02821d56f0d46f199dc9eb0e12ba9f82b37d286cf01  folds/fold_1/manifest.json
+4b7b053b87e358ff79dc393eaec613b0ab163ea531d9bca94d37ef85a0e70d5e  folds/fold_2/manifest.json
+8ed1f9619190b69013fe9e4504ae781747db7af7036432b69a814de7fcc6be49  folds/fold_3/manifest.json
+805c0fc743b2ee16e7bbe129e804cc8507142c4f29056085601db8da067dae59  folds/fold_4/manifest.json
+env NUMPY_MADVISE_HUGEPAGE=0 OMP_NUM_THREADS=1 RPENT_LAB_GENERATOR=v11 WANDB_MODE=online, unit v12-cg-s2 MemoryMax 8G MemorySwapMax 0
+command python -P -u -m robots.mujoco_lab.com_gap run --bundle /home/chungyili/Codes/RPent-arm/robots/mujoco_lab/data/m2b2_v12 --scenes /home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-11-03-mass-com-estimation/scenes.json --workers 1 --objects fruits_veggies__lime,handal__hammer,handal__hammer_4,handal__hammer_8,handal__measuring_spoon,hope__butter,hope__chocolate_pudding_mix,hope__green_beans_can,hope__milk_carton,hope__parmesan_cheese_canister,hope__popcorn_box,hope__tomato_sauce_can,hot3d__ceramic_mug,hot3d__dumbbell,hot3d__glasses,hot3d__mug,hot3d__rubiks_cube,hot3d__storage_box,ycb__bowl,ycb__chocolate_pudding,ycb__dry_erase_marker,ycb__pitcher,ycb__spring_clamp,ycb__wood_block --out /home/chungyili/Codes/RPent-comgap/logs/comgap/full/shard_2
+start 2026-11-05 08:43:56
+end 2026-11-05 14:17:36
+== /home/chungyili/Codes/RPent-comgap/logs/comgap/full/shard_3
+code 6f1dbb33278237ac45b5b0354eddd89400eee7d5 (branch com-oracle-gap), dirty files 0
+sim /home/chungyili/Codes/daily-logs-worktrees/v12checks-armsim-fe46f6c/researches/property-belief-manipulation/experiments/2026-11-04-arm-port/sim, last commit e823247052a2bf4d1b97d5077a51f0ead91fd80c, dirty files 0
+robot model b7b9d2beaaecf848efc49c9b99355b5e551a44dd21292fa4462f22fce0187bc3  /home/chungyili/Codes/daily-logs-worktrees/v12checks-armsim-fe46f6c/researches/property-belief-manipulation/experiments/2026-11-04-arm-port/out/r1_robot.npz
+bundle /home/chungyili/Codes/RPent-arm/robots/mujoco_lab/data/m2b2_v12:
+25efe0d476bc46d664846675387a962c1c0868dce0d1546d7b84e1a71fcca1f6  manifest.json
+e9856c2649d139e6866ab4f481a17741c79ca63960696d887e81265d6fdf31c0  folds/folds.json
+4146ce74e25c3349731a0ef9a328d6c2247a018998fe429ea2575ec35d7dad83  folds/crossfit.json
+eb2c045287f1bac807b4f1f524373d587277ad34dce4c510d893a36d1bc5ebf9  folds/fold_0/manifest.json
+30d84db83f5314c6c183f02821d56f0d46f199dc9eb0e12ba9f82b37d286cf01  folds/fold_1/manifest.json
+4b7b053b87e358ff79dc393eaec613b0ab163ea531d9bca94d37ef85a0e70d5e  folds/fold_2/manifest.json
+8ed1f9619190b69013fe9e4504ae781747db7af7036432b69a814de7fcc6be49  folds/fold_3/manifest.json
+805c0fc743b2ee16e7bbe129e804cc8507142c4f29056085601db8da067dae59  folds/fold_4/manifest.json
+env NUMPY_MADVISE_HUGEPAGE=0 OMP_NUM_THREADS=1 RPENT_LAB_GENERATOR=v11 WANDB_MODE=online, unit v12-cg-s3 MemoryMax 8G MemorySwapMax 0
+command python -P -u -m robots.mujoco_lab.com_gap run --bundle /home/chungyili/Codes/RPent-arm/robots/mujoco_lab/data/m2b2_v12 --scenes /home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-11-03-mass-com-estimation/scenes.json --workers 1 --objects fruits_veggies__orange1,handal__hammer_1,handal__hammer_5,handal__ladle,handal__pink_spaghetti_spoon,hope__canned_mushrooms,hope__corn_can,hope__ketchup_bottle,hope__mustard_bottle,hope__peas_and_carrots,hope__raisin_box,hope__yogurt_cup,hot3d__clay_plates,hot3d__foam_roller,hot3d__keyboard,hot3d__pitcher,hot3d__smartphone,hot3d__wooden_bowl,ycb__bowl2,ycb__clamp,ycb__jello,ycb__scissors,ycb__sugar_box --out /home/chungyili/Codes/RPent-comgap/logs/comgap/full/shard_3
+start 2026-11-05 08:50:05
+end 2026-11-05 13:15:44
