@@ -15,6 +15,7 @@
 """Experiment 1, step 7 (evpi_sim; daily-logs 2026-11-05-evpi-decomposition): the seeds, the sample, the realized costs,
 the simulations a case needs, the paired exclusion, the readings and the summary."""
 
+import argparse
 import json
 import os
 from collections import Counter
@@ -25,6 +26,8 @@ import pytest
 from robots.mujoco_lab import calibrate as cal
 from robots.mujoco_lab import evpi_props as ev
 from robots.mujoco_lab import evpi_sim as es
+from robots.mujoco_lab.fragility import Thresholds
+from rpent.skills.pick_place.belief import ParticleBelief
 from rpent.skills.pick_place.costs import COST, TIME_COST_PER_S, particle_costs
 from rpent.skills.pick_place.probes import PROBE_SECONDS
 from rpent.skills.pick_place.protocol import OUTCOMES, Prediction
@@ -196,8 +199,9 @@ def test_the_summary_reads_s_all_once_per_cell_and_keeps_probe_pairs_and_single_
     assert c["all"]["main"]["level"]["realized_S"]["mean"] == pytest.approx(TIME_COST_PER_S * 4.0)
     assert c["mass"]["main"]["reading"] == "descriptive" and c["all"]["probe"]["reading"] is None
     assert out["tables"]["ess_ok"]["k30_A3"]["class"]["all"]["main"]["n"] == 11
-    assert out["n_main_readings"] == len(es.CELLS) and out["drops"]["k30_A3"]["class"]["share"] == 0.0
+    assert out["n_main_readings"] == len(es.CELLS) and out["drops"]["all"]["k30_A3"]["class"]["share"] == 0.0
     assert out["probe_pairs"]["k30_A3"]["class"] == 3
+    assert c["mass"]["unchanged"] == 3 and c["all"]["unchanged"] == 0      # the probe records keep a_prior under mass
 
 
 def test_a_cell_whose_pairs_drop_more_than_a_tenth_gets_counts_only():
@@ -206,9 +210,11 @@ def test_a_cell_whose_pairs_drop_more_than_a_tenth_gets_counts_only():
         if x["job"][0] == "row" and x["seed_k"] == 0:
             x["artifact"] = True                                  # seed 0 of every row: 24 of the cell's 135 pairs
     out = es.summarize(recs, plans, runs, n_boot=200)
-    assert out["drops"]["k30_A3"]["class"]["share"] > 0.10
-    assert out["tables"]["all"]["k30_A3"]["class"]["all"]["main"]["reading"] == "counts only"
-    assert out["drops"]["k30_A3"]["class"]["by_action"]["S"] > 0 and out["drops"]["k30_A3"]["class"]["by_action"]["prior"] == 0
+    d = out["drops"]["all"]["k30_A3"]["class"]
+    assert d["share"] > 0.10 and d["by_action"]["S"] > 0 and d["by_action"]["prior"] == 0
+    m = out["tables"]["all"]["k30_A3"]["class"]["all"]["main"]
+    assert m["reading"] == "counts only" and m["counts_only"] and m["realized"] is None and m["level"] is None
+    assert out["tables"]["all"]["k30_A3"]["class"]["mass"]["main"]["realized"] is None     # the whole cell
 
 
 def test_the_markdown_names_the_main_reading_the_secondary_quantity_and_the_probe_rows():
@@ -233,6 +239,105 @@ def test_load_runs_refuses_dirty_code_or_another_sample(tmp_path):
         es.load_runs([a, shard("c", dirty=True)])
     with pytest.raises(SystemExit, match="differs"):
         es.load_runs([a, shard("d", sample_sha256="s2")])
+
+
+def test_a_block_below_ten_records_shows_counts_only():
+    recs, plans, runs = _case_set()
+    probe = es.summarize(recs, plans, runs, n_boot=50)["tables"]["all"]["k30_A3"]["class"]["all"]["probe"]
+    assert probe["counts_only"] and probe["n"] == 3 and probe["realized"] is None and probe["predicted"] is None
+
+
+def test_the_drops_and_the_outcome_counts_come_for_both_record_sets():
+    recs, plans, runs = _case_set()
+    out = es.summarize(recs, plans, runs, n_boot=50)
+    assert set(out["drops"]) == set(out["counts"]) == {"all", "ess_ok"}
+    assert out["drops"]["ess_ok"]["k30_A3"]["class"]["pairs"] == out["drops"]["all"]["k30_A3"]["class"]["pairs"] - 2 * es.N_SEEDS
+    assert out["counts"]["ess_ok"]["k30_A3"]["class"]["outcomes"]["prior"]["decline"] == 14 * es.N_SEEDS
+
+
+def test_the_summary_refuses_a_sampled_record_that_did_not_run_or_failed_the_replay():
+    recs, plans, runs = _case_set()
+    with pytest.raises(SystemExit, match="not run"):
+        es.summarize(recs, plans[1:], runs, n_boot=50)
+    plans[0]["mismatch"] = ["mass"]
+    with pytest.raises(SystemExit, match="replay"):
+        es.summarize(recs, plans, runs, n_boot=50)
+
+
+def test_a_case_that_failed_drops_all_its_pairs_and_is_counted():
+    recs, plans, runs = _case_set()
+    plans[0] = {**{k: plans[0][k] for k in ("object", "idx", "prior", "setting")}, "beliefs": {}, "mismatch": [], "error": "reset failed"}
+    out = es.summarize(recs, plans, runs, n_boot=50)
+    d = out["drops"]["all"]["k30_A3"]["class"]
+    assert d["by_action"]["both"] == 2 * es.N_SEEDS and d["case_errors"] == 1
+    assert out["tables"]["all"]["k30_A3"]["class"]["all"]["main"]["n"] == 11
+
+
+def test_a_simulation_whose_first_menu_differs_stops_the_run():
+    assert es.stop_reason("o", 1, [{"gate": True}, {"gate": None, "error": "x"}]) is None
+    assert "first menu" in es.stop_reason("o", 1, [{"gate": True}, {"gate": False, "seed_k": 2, "job": ["row", ROW]}])
+
+
+def test_project_counts_a_simulation_that_raised_and_assumes_a_probe_time_when_the_smoke_ran_none(tmp_path):
+    recs, plans, runs = _case_set()
+    smp = tmp_path / "sample.json"
+    smp.write_text(json.dumps({"records": recs}))
+    d = tmp_path / "smoke"
+    d.mkdir()
+    (d / "run_config.json").write_text(json.dumps({"code_revision": "abc", "dirty": False, "sample_sha256": "s"}))
+    rows = [dict(x, wall_seconds=10.0) for x in runs if x["job"][0] == "row"][:4]
+    rows.append({"object": "o0", "idx": 0, "job": ["row", ROW], "seed_k": 0, "gate": None, "error": "boom"})
+    (d / "plans.jsonl").write_text("".join(json.dumps(dict(p, replay_seconds=20.0)) + "\n" for p in plans[:2]))
+    (d / "runs.jsonl").write_text("".join(json.dumps(x) + "\n" for x in rows))
+    out = es.project(argparse.Namespace(sample=str(smp), dirs=str(d)))
+    assert out["errors"] == 1 and out["seconds_per_simulation"]["row"] == pytest.approx(10.0)
+    assert out["probe_seconds_assumed"] and out["full"]["projected_cpu_h"] > 0
+
+
+# ---------------------------------------------------------------- the refresh under a revealed belief
+
+LAW = {"f_damage_n": {"median": 50.0, "log_sd": 0.5}, "k_n_per_mm": {"median": 10.0, "log_sd": 0.4}, "rho": 0.6,
+       "v_bruise_ms": {"median": 1.0, "log_sd": 0.3}}
+TH = Thresholds(laws={"soft": LAW}, slosh_zeta=0.1)
+CRUSH = {"class": "crushable", "law": "soft", "fillable": False, "cavity": None}
+POSE = {"object_id": "toy", "pivot": {"centre": [0.0, 0.0, 0.0], "axis": [1.0, 0.0, 0.0], "lo": -0.1, "L": 0.2},
+        "com_obj_nominal": [0.0, 0.0, 0.01], "nominal_mass": 0.5}
+
+
+def test_the_revealed_prior_draws_the_prior_with_the_property_revealed():
+    from robots.mujoco_lab.fragility import map_latent
+    from robots.mujoco_lab.prior import make_prior
+
+    fn = make_prior({"toy": CRUSH}, TH, generator="v11")
+    hidden = {"fill": 0.0, "frag": map_latent((0.3, -1.2, 0.8), CRUSH, TH), "spill_angle_deg": None}
+    t = ev.truth_particle(POSE, {"mass_scale": 1.3, "mu": 0.42, "com_s": 0.7}, 1, hidden, CRUSH)
+    assert es.revealed_prior(fn, ev.PRIOR, t, CRUSH, TH, 0.2) is fn
+    b = es.revealed_prior(fn, "mu", t, CRUSH, TH, 0.2)(POSE, 300, np.random.default_rng(0))
+    assert len(b) == 300 and all(p["mu"] == 0.42 for p in b.particles) and b.history == []
+    assert len({p["mass"] for p in b.particles}) > 100                 # the other properties keep their prior
+
+
+def _filled(n, rng):
+    fill = np.where(rng.random(n) < 0.5, 0.0, rng.uniform(0.3, 0.9, n))
+    parts = [{"mass": 0.3 + 0.2 * f, "mu": 0.5, "com_obj": [0.0, 0.0, 0.02 - 0.02 * f], "fill": float(f), "spill_angle_deg": 40.0 * f,
+              "liquid_mass": 0.2 * f, "ancestor": i, **{k: None for k in ev.FRAG_KEYS}, "frag_z": [0.0, 0.0, 0.0]}
+             for i, f in enumerate(fill)]
+    return ParticleBelief(parts, np.ones(n))
+
+
+def test_a_coupled_revealed_prior_gives_equal_weight_draws_and_no_reveal_entry():
+    entry = {"class": "none", "law": None, "fillable": True, "cavity": None}
+    t = dict(_filled(1, np.random.default_rng(5)).particles[0], mass=0.42, fill=0.6, spill_angle_deg=24.0, liquid_mass=0.12,
+             com_obj=[0.0, 0.0, 0.008], f_damage_n=None, v_bruise_ms=None, v_break_ms=None)
+    b = es.revealed_prior(lambda pose, n, rng, **kw: _filled(n, rng), "damage", t, entry, None, 0.2)(POSE, 4000, np.random.default_rng(1))
+    assert len(b) == 4000 and np.allclose(b.weights, b.weights[0]) and b.history == []
+    assert all(p["fill"] == 0.6 for p in b.particles) and abs(float(np.mean(b.arrays()["mass"])) - 0.42) < 0.01
+
+
+def test_the_stores_belief_leaves_out_the_reveal_entries_so_a_refresh_can_replay_its_history():
+    b = ParticleBelief([{"mass": 1.0, "mu": 0.5, "com_obj": [0.0, 0.0, 0.0]}], np.ones(1),
+                       history=[{"type": "reveal", "keys": ["mass"]}, {"type": "probe", "used_terms": []}])
+    assert es.store_belief(b).history == [{"type": "probe", "used_terms": []}]
 
 
 # ---------------------------------------------------------------- the replay (needs the sim and the m2b2_v12 bundle)
@@ -264,3 +369,44 @@ def test_the_replay_rebuilds_a_run_records_choices_and_another_reset_seed_keeps_
     assert all(plan["beliefs"][k]["action"] == rec["action"][k] for k in plan["beliefs"])
     ctx["reset"](es.seeds_of(11, o, idx)[1])
     assert fingerprint(prims.env) == rec["fingerprint"]
+
+
+@pytest.mark.skipif(not (SIM and os.path.exists(os.path.join(V12, "folds", "folds.json"))), reason="sim dir or m2b2_v12 bundle missing")
+def test_a_probe_under_a_revealed_belief_keeps_the_reveal_through_the_refresh():
+    """The one-particle S = all belief refreshes after any probe: under its revealed prior it stays the truth. A coupled
+    reveal's belief (a fillable object's damage) updates without a failure and keeps the revealed fill."""
+    from robots.mujoco_lab.fragility import entry_of
+    from robots.mujoco_lab.prior import fragility_world
+    from rpent.skills.pick_place.tools import assess_pick, pick_and_place
+
+    o, idx = "hot3d__mug", 3
+    folds = json.load(open(os.path.join(V12, "folds", "folds.json")))
+    prims = cal._primitives(os.path.join(V12, "folds", f"fold_{folds[o]}"), None, None)
+    prims.n_particles = 300
+    world = fragility_world(prims.manifest)
+    s = {"seed": 11, "fold": folds[o], "settings": [("k30_A3", 30.0, 3.0)], "flat": None}
+    fillable = bool(entry_of(o, world[0])[0].get("fillable"))
+    keys = ["all"] + (["damage"] if fillable else [])
+    rec = {"prior": "class", "setting": "k30_A3", "care": 30.0, "abstain_cost": 3.0, "fingerprint": None, "n_particles": 300,
+           "choice": {k: "decline" for k in (ev.PRIOR,) + ev.REVEALS}, "action": {k: "decline" for k in (ev.PRIOR,) + ev.REVEALS}}
+    for k in keys:
+        rec["action"][k] = "differs"
+    rc = es.replay_case(prims, o, idx, [rec], s, {"class": prims.prior}, world)
+    truth = rc["ctx"][("class", "k30_A3", "all")][0].particles[0]
+    for key in keys:
+        belief, care, A, state = rc["ctx"][("class", "k30_A3", key)]
+        prims.prior = rc["prior_of"][("class", key)]
+        rc["reset"](es.seeds_of(11, o, idx)[1])
+        store = es._store(prims.env, es.store_belief(belief))
+        prims.abstain_cost, prims.rng = A, ev._rng_at(state)
+        assert "error" not in assess_pick(object="object", destination=rc["destination"], care=care, primitives=prims, store=store).data
+        d = pick_and_place(object="object", destination=rc["destination"], care=care, primitives=prims, store=store,
+                           option_id="probe_weigh").data
+        assert "error" not in d, d
+        b = next(iter(store["beliefs"].values()))["belief"]
+        assert not [f for f in b.flags if "update failed" in f], b.flags
+        if key == "all":
+            assert len(b) == 1 and b.particles[0]["mass"] == truth["mass"] and b.particles[0]["mu"] == truth["mu"]
+            assert any(f.startswith("refreshed") for f in b.flags)
+        else:
+            assert all(p["fill"] == truth["fill"] for p in b.particles)

@@ -33,8 +33,13 @@ calibrate._stream k SEED_STREAM. The reset seed sets the sensor noise streams on
 A row runs once per case, action key and seed and is scored under every record that chose it; a probe runs per record
 and belief, because its continuation follows that belief and setting (``jobs_of``). Each record's beliefs and first
 menus are rebuilt first with evpi_props's functions and streams (``replay_case``), and each simulation's first menu again:
-an action key that differs from the record's stops the run (the replay gate).
-The summary (``summarize``), per cell and S, on all records and on those that pass evpi_props.ess_ok:
+an action key that differs from the record's stops the run (the replay gate, ``stop_reason``). While a belief with S
+revealed runs, the skill's prior is that prior with S revealed (``revealed_prior``), so a refresh after a probe keeps
+the reveal, and the store holds the belief without its reveal entries (``store_belief``). A case whose replay or reset
+raises becomes a plan with an ``error``: all its pairs drop.
+The summary (``summarize``; it refuses a sampled record that did not run or failed the replay), per cell and S, on all
+records and on those that pass evpi_props.ess_ok, over the records whose a_S differs from a_prior (``unchanged`` counts
+the others; they are not simulated, and for a row their realized difference is 0 by construction):
   realized  the primary quantity: the mean over the records of cost(a_prior) - cost(a_S) (each record: the mean over its
             kept seeds), with its object-bootstrap interval; read for S = all only (``reading``: one reading per cell);
             the single properties are descriptive; no multiplicity correction;
@@ -43,7 +48,8 @@ The summary (``summarize``), per cell and S, on all records and on those that pa
   level     the mean J(a; θ_true) and the mean realized cost of a_prior and of a_S on the same records.
 A pair with a probe on either side gets its own rows and no reading; a (record, seed) pair one of whose actions ends as an
 artifact or an error drops from both, and a cell whose drops pass MAX_DROP gets counts only; so does a cell and S with
-fewer than MIN_RECORDS records.
+fewer than MIN_RECORDS records. A counts-only block shows no mean and no interval. The drops and the outcome counts come
+for both record sets.
 
     python -P -m robots.mujoco_lab.evpi_sim sample --dirs D1,D2,... --out FILE
     python -P -m robots.mujoco_lab.evpi_sim run --sample FILE --out DIR [--smoke 5] [--objects O,...]
@@ -173,13 +179,38 @@ def _menu(store: dict[str, Any]) -> dict[str, Any]:
     return cache[0]["menu"]
 
 
+def store_belief(b: Any) -> Any:
+    """The belief the store holds: its history without the reveal entries. A refresh (tools.update_belief) replays every
+    history entry with its used terms, and a reveal entry has none; the revealed prior carries the reveal instead
+    (``revealed_prior``). Nothing in the menu path reads the history, and the replay gate checks every first menu."""
+    return b._replace(history=[e for e in b.history if e.get("type") != "reveal"])
+
+
+def revealed_prior(fn: Callable, S: str, truth: dict[str, Any], entry: dict[str, Any], thresholds: Any,
+                   pivot_length: float) -> Callable:
+    """The prior a belief with S revealed refreshes from (``primitives.prior`` while its simulations run): fn's draw with
+    S revealed as evpi_props.reveal reveals it, at equal weights (belief.refresh ignores a draw's weights) and with no
+    reveal entry; fn itself for the prior's belief. Under fn a probe that leaves fewer than MIN_ESS effective particles
+    would refresh without the reveal (S = all is one particle, so its probes always refresh)."""
+    if S == ev.PRIOR:
+        return fn
+
+    def prior(pose: dict[str, Any], n: int, rng: np.random.Generator, **kw: Any) -> Any:
+        b, _ = ev.reveal(fn(pose, n, rng, **kw), S, truth, entry, thresholds, lambda m, r: fn(pose, m, r, **kw), rng, pivot_length)
+        if not np.allclose(b.weights, b.weights[0]):
+            b = b._replace(particles=b.resample(int(n), rng), weights=np.ones(int(n)))
+        return store_belief(b)
+
+    return prior
+
+
 def replay_case(prims: Any, o: str, idx: int, recs: list[dict[str, Any]], s: dict[str, Any], priors: dict[str, Callable],
                 world: Any, all_keys: bool = False) -> dict[str, Any]:
     """The case as evpi_props.run_case builds it (its reset, truth, prior draws on calibrate._stream k 1, reveals on
     REVEAL_STREAM in REVEALS order, first menus on the stream after the prior's draw), and per record its plan: each
     needed belief's choice, action key, kind and row time (a_prior and the a_S that differ; every belief with
     ``all_keys``), with ``mismatch`` naming the beliefs whose choice or action key differs from the record's. Returns
-    the plans, the beliefs' contexts, the destination and ``reset(seed)``."""
+    the plans, the beliefs' contexts, their revealed priors (``prior_of``), the destination and ``reset(seed)``."""
     from robots.mujoco_lab.adapter import object_props
     from robots.mujoco_lab.com_gap import fingerprint
     from robots.mujoco_lab.fragility import entry_of
@@ -203,7 +234,8 @@ def replay_case(prims: Any, o: str, idx: int, recs: list[dict[str, Any]], s: dic
     th = None if world is None else world[1]
     truth = ev.truth_particle(pose, theta, com_end, hidden, entry)
     n, spread = _particles(prims), _spread_kw(prims)
-    plans, ctx = [], {}
+    plans, ctx, prior_of = [], {}, {}
+    L = float(pose["pivot"]["L"])
     base = prims.prior
     try:
         for pname in sorted({r["prior"] for r in recs}):
@@ -219,7 +251,7 @@ def replay_case(prims: Any, o: str, idx: int, recs: list[dict[str, Any]], s: dic
 
             beliefs = {ev.PRIOR: b0}
             for S in ev.REVEALS:
-                beliefs[S] = ev.reveal(b0, S, truth, entry, th, draw, rr, float(pose["pivot"]["L"]))[0]
+                beliefs[S] = ev.reveal(b0, S, truth, entry, th, draw, rr, L)[0]
             for r in (r for r in recs if r["prior"] == pname):
                 care, A = float(r["care"]), float(r["abstain_cost"])
                 keys = [ev.PRIOR] + [S for S in ev.REVEALS if all_keys or r["action"][S] != r["action"][ev.PRIOR]]
@@ -235,12 +267,13 @@ def replay_case(prims: Any, o: str, idx: int, recs: list[dict[str, Any]], s: dic
                     if c != r["choice"][key] or plan["beliefs"][key]["action"] != r["action"][key]:
                         plan["mismatch"].append(key)
                     ctx[(pname, r["setting"], key)] = (beliefs[key], care, A, state)
+                    prior_of[(pname, key)] = revealed_prior(fn, key, truth, entry, th, L)
                 if not (plan["fingerprint_ok"] and plan["n_particles_ok"]):
                     plan["mismatch"].append("case")
                 plans.append(plan)
     finally:
         prims.prior = base
-    return {"plans": plans, "ctx": ctx, "destination": destination, "reset": reset, "fingerprint": fp,
+    return {"plans": plans, "ctx": ctx, "prior_of": prior_of, "destination": destination, "reset": reset, "fingerprint": fp,
             "seconds": round(time.time() - t0, 2)}
 
 
@@ -310,33 +343,48 @@ def execute(prims: Any, belief: Any, destination: str, care: float, A: float, st
                                  "artifact": bool(d2.get("artifact"))})
 
 
+def stop_reason(o: str, idx: int, runs: list[dict[str, Any]]) -> str | None:
+    """The replay gate on the simulations: a first menu that differs from the replay's stops the run."""
+    bad = next((x for x in runs if x.get("gate") is False), None)
+    if bad is None:
+        return None
+    return f"simulation gate: {o} {idx}: the first menu differs from the replay's (seed {bad.get('seed_k')}, job {bad.get('job')})"
+
+
 def sim_case(prims: Any, o: str, idx: int, recs: list[dict[str, Any]], s: dict[str, Any], priors: dict[str, Callable],
-             world: Any) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """One case: the replay, then (when every plan passes the gate) each of its simulations at every seed."""
+             world: Any) -> tuple[list[dict[str, Any]], list[dict[str, Any]], str | None]:
+    """One case: the replay, then (when every plan passes the gate) each of its simulations at every seed, under the
+    belief's revealed prior and with the store's belief (``store_belief``). Returns (plans, runs, stop): ``stop`` is the
+    simulation gate's reason (``stop_reason``), and the case ends at that simulation."""
     from robots.mujoco_lab.com_gap import fingerprint
 
     rc = replay_case(prims, o, idx, recs, s, priors, world)
     plans = [dict(p, replay_seconds=rc["seconds"]) for p in rc["plans"]]
     if any(p["mismatch"] for p in plans):
-        return plans, []
-    runs = []
+        return plans, [], None
+    runs: list[dict[str, Any]] = []
     base = prims.prior
     try:
         for k, reset_seed in enumerate(seeds_of(int(s["seed"]), o, idx)):
             for jk, (pname, setting, key, b) in jobs_of(plans).items():
                 belief, care, A, state = rc["ctx"][(pname, setting, key)]
-                prims.prior = priors[pname]
-                rc["reset"](reset_seed)
-                fp_ok = fingerprint(prims.env) == rc["fingerprint"]
+                prims.prior = rc["prior_of"][(pname, key)]
+                t0, fp_ok = time.time(), None
                 try:
-                    x = execute(prims, belief, rc["destination"], care, A, state, b)
+                    rc["reset"](reset_seed)
+                    fp_ok = fingerprint(prims.env) == rc["fingerprint"]
+                    x = execute(prims, store_belief(belief), rc["destination"], care, A, state, b)
                 except Exception as exc:  # noqa: BLE001  one bad simulation must not stop the case
-                    x = {"gate": None, "artifact": False, "error": f"{type(exc).__name__}: {str(exc)[:200]}"}
+                    x = {"gate": None, "artifact": False, "error": f"{type(exc).__name__}: {str(exc)[:200]}",
+                         "seconds": round(time.time() - t0, 2)}
                 runs.append(dict(x, object=o, idx=idx, job=list(jk), seed_k=k, reset_seed=reset_seed, prior=pname,
-                                 setting=setting, key=key, fingerprint_ok=fp_ok))
+                                 setting=setting, key=key, fingerprint_ok=fp_ok, wall_seconds=round(time.time() - t0, 2)))
+                stop = stop_reason(o, idx, runs[-1:])
+                if stop:
+                    return plans, runs, stop
     finally:
         prims.prior = base
-    return plans, runs
+    return plans, runs, None
 
 
 def run_object(job: tuple[str, list[dict[str, Any]], dict[str, Any]]) -> dict[str, Any]:
@@ -360,13 +408,23 @@ def run_object(job: tuple[str, list[dict[str, Any]], dict[str, Any]]) -> dict[st
     try:
         for idx in sorted(by):
             t0 = time.time()
-            plans, runs = sim_case(prims, o, idx, by[idx], s, priors, world)
+            try:
+                plans, runs, stop = sim_case(prims, o, idx, by[idx], s, priors, world)
+            except Exception as exc:  # noqa: BLE001  a case whose replay or reset raises drops all its pairs (summarize)
+                err = f"{type(exc).__name__}: {str(exc)[:200]}"
+                plans = [{"object": o, "idx": idx, "prior": r["prior"], "setting": r["setting"], "beliefs": {}, "mismatch": [],
+                          "error": err, "replay_seconds": round(time.time() - t0, 2)} for r in by[idx]]
+                runs, stop = [], None
             out["plans"] += plans
             out["runs"] += runs
-            print(f"{o} {idx}: {time.time() - t0:.1f} s, {len(plans)} records, {len(runs)} simulations", file=sys.stderr, flush=True)
+            print(f"{o} {idx}: {time.time() - t0:.1f} s, {len(plans)} records, {len(runs)} simulations"
+                  + (f", error {plans[0]['error']}" if plans and "error" in plans[0] else ""), file=sys.stderr, flush=True)
             bad = [(p["prior"], p["setting"], p["mismatch"]) for p in plans if p["mismatch"]]
             if bad:
                 out["stop"] = f"replay gate: {o} {idx} {bad}"
+                break
+            if stop:
+                out["stop"] = stop
                 break
     finally:
         prims.prior = base
@@ -457,9 +515,10 @@ def load_runs(dirs: list[str]) -> tuple[list[dict[str, Any]], list[dict[str, Any
 
 
 def project(a: argparse.Namespace) -> dict[str, Any]:
-    """The smoke test's report: the replay gate, the time per simulation and per replay, and the full sample's
-    projected CPU-h (its simulations counted from the records' choices: one per row action of a case, one per probe
-    choice, N_SEEDS each)."""
+    """The smoke test's report: the replay gate, the time per simulation (its reset and run, a raised one too) and per
+    replay, and the full sample's projected CPU-h (its simulations counted from the records' choices: one per row action
+    of a case, one per probe choice, N_SEEDS each). Without a probe simulation in the smoke test a probe is taken as two
+    rows (a probe, its next menu and a row), and ``probe_seconds_assumed`` says so."""
     smp = json.load(open(a.sample))
     plans, runs, _ = load_runs(a.dirs.split(","))
     sims: Counter = Counter()
@@ -473,16 +532,24 @@ def project(a: argparse.Namespace) -> dict[str, Any]:
             sims[("probe", r["object"], r["idx"], r["prior"], r["setting"], key) if c.startswith("probe_")
                  else ("row", r["object"], r["idx"], r["action"][key])] += 1
     kinds = Counter(k[0] for k in sims)
-    sec = {k: [float(x["seconds"]) for x in runs if x["job"][0] == k] for k in ("row", "probe")}
-    rep = {(p["object"], p["idx"]): float(p["replay_seconds"]) for p in plans}
+    sec: dict[str, list[float]] = {"row": [], "probe": []}
+    for x in runs:
+        v = x.get("wall_seconds", x.get("seconds"))
+        if v is not None and x["job"][0] in sec:
+            sec[x["job"][0]].append(float(v))
+    rep = {(p["object"], p["idx"]): float(p["replay_seconds"]) for p in plans if p.get("replay_seconds") is not None}
     mean = {k: float(np.mean(v)) if v else None for k, v in sec.items()}
+    assumed = mean["probe"] is None and kinds["probe"] > 0
+    if mean["probe"] is None and mean["row"] is not None:
+        mean["probe"] = 2.0 * mean["row"]
     per_case = float(np.mean(list(rep.values()))) if rep else 0.0
-    total = len(cases) * per_case + sum(N_SEEDS * kinds[k] * (mean[k] if mean[k] is not None else mean["row"] or 0.0) for k in kinds)
-    out = {"records": len(plans), "mismatch": [[p["object"], p["idx"], p["prior"], p["setting"], p["mismatch"]] for p in plans if p["mismatch"]],
+    total = len(cases) * per_case + sum(N_SEEDS * kinds[k] * (mean[k] or 0.0) for k in kinds)
+    out = {"records": len(plans), "mismatch": [[p["object"], p["idx"], p["prior"], p["setting"], p["mismatch"]] for p in plans if p.get("mismatch")],
+           "case_errors": sum(1 for p in plans if "error" in p),
            "simulations": len(runs), "gate_failures": sum(1 for x in runs if x.get("gate") is False),
            "errors": sum(1 for x in runs if "error" in x), "artifacts": sum(1 for x in runs if x.get("artifact")),
-           "fingerprint_differs": sum(1 for x in runs if not x.get("fingerprint_ok", True)),
-           "seconds_per_simulation": mean, "replay_seconds_per_case": per_case,
+           "fingerprint_differs": sum(1 for x in runs if x.get("fingerprint_ok") is False),
+           "seconds_per_simulation": mean, "probe_seconds_assumed": assumed, "replay_seconds_per_case": per_case,
            "full": {"cases": len(cases), "row_simulations": N_SEEDS * kinds["row"], "probe_simulations": N_SEEDS * kinds["probe"],
                     "projected_cpu_h": total / 3600.0}}
     print(json.dumps(out, indent=1), flush=True)
@@ -508,7 +575,12 @@ def record_pairs(r: dict[str, Any], plan: dict[str, Any], runs: dict[tuple, dict
     """Per reveal S whose action differs from a_prior's: the (record, seed) pairs, a pair kept when both actions ran
     without an error or an artifact (``drops`` by the action that failed), and over the kept seeds the mean realized
     difference ``d`` = cost(a_prior) - cost(a_S), the mean costs ``rp`` and ``rs``; ``probe_pair`` when a probe is on
-    either side. ``runs``: the case's simulations by (job key, seed)."""
+    either side. ``runs``: the case's simulations by (job key, seed). A plan with an ``error`` (its case raised) drops
+    every pair of the record's changed reveals from both actions."""
+    if "error" in plan:
+        return {S: {"kept": 0, "drops": {"prior": 0, "S": 0, "both": N_SEEDS}, "d": None, "rp": None, "rs": None,
+                    "probe_pair": any(str(r["choice"][k]).startswith("probe_") for k in (ev.PRIOR, S))}
+                for S in ev.REVEALS if r["action"][S] != r["action"][ev.PRIOR]}
     bs = plan["beliefs"]
     b0 = bs[ev.PRIOR]
 
@@ -563,8 +635,33 @@ def _token(b: dict[str, Any], x: dict[str, Any] | None) -> str:
     return f"{x['probe']['probe']}:{x['end']}" + (f":{x['cont']['label']}" if x["end"] == "row" else "")
 
 
+def _counts(items: list[tuple[dict[str, Any], dict[str, Any], dict[str, Any]]],
+            by_case: dict[tuple, dict[tuple, dict[str, Any]]]) -> dict[str, Any]:
+    """The outcome per belief and seed (``_token``), and after a probe the continuation the simulator ran and the picks
+    the model scored."""
+    tok: dict[str, Counter] = defaultdict(Counter)
+    picks_j: dict[str, Counter] = defaultdict(Counter)
+    picks_s: dict[str, Counter] = defaultdict(Counter)
+    for r, p, _ in items:
+        sims = by_case[(r["object"], r["idx"])]
+        for key, b in p["beliefs"].items():
+            jk = job_key(p["prior"], p["setting"], key, b)
+            for k in range(N_SEEDS):
+                x = None if jk is None else sims.get((jk, k))
+                tok[key][_token(b, x)] += 1
+                if b["kind"] == "probe" and x is not None and "error" not in x:
+                    picks_s[key][x["cont"]["option"] if x.get("end") == "row" else x.get("end")] += 1
+            if b["kind"] == "probe":
+                picks_j[key].update((r.get("probe_detail") or {}).get(key, {}).get("picks") or {})
+    return {"outcomes": {k: dict(v) for k, v in tok.items()},
+            "continuation_model": {k: dict(v) for k, v in picks_j.items()},
+            "continuation_simulator": {k: dict(v) for k, v in picks_s.items()}}
+
+
 def summarize(sample_recs: list[dict[str, Any]], plans: list[dict[str, Any]], runs: list[dict[str, Any]], n_boot: int = N_BOOT,
               seed: int = 0) -> dict[str, Any]:
+    """The tables, drops and outcome counts per record set ("all", "ess_ok"), cell and S (module docstring). A sampled
+    record with no plan, or whose replay differed, stops the summary (SystemExit)."""
     rng = np.random.default_rng(seed)
     pl = {(p["object"], p["idx"], p["prior"], p["setting"]): p for p in plans}
     by_case: dict[tuple, dict[tuple, dict[str, Any]]] = defaultdict(dict)
@@ -581,25 +678,37 @@ def summarize(sample_recs: list[dict[str, Any]], plans: list[dict[str, Any]], ru
             mismatch.append([r["object"], r["idx"], r["prior"], r["setting"], p["mismatch"]])
             continue
         rows[(r["setting"], r["prior"])].append((r, p, record_pairs(r, p, by_case[(r["object"], r["idx"])])))
+    if missing:
+        raise SystemExit(f"{len(missing)} sampled records not run, for example {missing[:3]}")
+    if mismatch:
+        raise SystemExit(f"{len(mismatch)} sampled records failed the replay, for example {mismatch[:3]}")
 
     def block(items: list[tuple[dict[str, Any], dict[str, Any]]], S: str, main: bool, share: float) -> dict[str, Any]:
         objs = [r["object"] for r, _ in items]
+        n = len(items)
+        only = n < MIN_RECORDS or share > MAX_DROP
 
         def ci(v: list[float]) -> dict[str, Any]:
             return _mean_ci(np.array(v, dtype=float), objs, rng, n_boot)
 
-        b = {"n": len(items), "n_objects": len(set(objs)),
-             "realized": ci([q["d"] for _, q in items]), "predicted": ci([r["evpi"][S] for r, _ in items]),
-             "gap": ci([q["d"] - r["evpi"][S] for r, q in items]),
-             "level": {"J_prior": ci([r["J"][ev.PRIOR] for r, _ in items]), "realized_prior": ci([q["rp"] for _, q in items]),
-                       "J_S": ci([r["J"][S] for r, _ in items]), "realized_S": ci([q["rs"] for _, q in items])}}
-        b["reading"] = (reading(b["realized"]["ci"], b["n"], share) if S == MAIN else "descriptive") if main else None
+        b: dict[str, Any] = {"n": n, "n_objects": len(set(objs)), "counts_only": only, "realized": None, "predicted": None,
+                             "gap": None, "level": None}
+        if not only:
+            b.update(realized=ci([q["d"] for _, q in items]), predicted=ci([r["evpi"][S] for r, _ in items]),
+                     gap=ci([q["d"] - r["evpi"][S] for r, q in items]),
+                     level={"J_prior": ci([r["J"][ev.PRIOR] for r, _ in items]), "realized_prior": ci([q["rp"] for _, q in items]),
+                            "J_S": ci([r["J"][S] for r, _ in items]), "realized_S": ci([q["rs"] for _, q in items])})
+        if not main:
+            b["reading"] = None
+        elif S == MAIN:
+            b["reading"] = reading(None if only else b["realized"]["ci"], n, share)
+        else:
+            b["reading"] = COUNTS if only else "descriptive"
         return b
 
     tables: dict[str, dict[str, dict[str, Any]]] = {"all": {}, "ess_ok": {}}
-    drops: dict[str, dict[str, Any]] = defaultdict(dict)
-    probe_pairs: dict[str, dict[str, int]] = defaultdict(dict)
-    counts: dict[str, dict[str, Any]] = defaultdict(dict)
+    drops: dict[str, dict[str, dict[str, Any]]] = {"all": defaultdict(dict), "ess_ok": defaultdict(dict)}
+    counts: dict[str, dict[str, dict[str, Any]]] = {"all": defaultdict(dict), "ess_ok": defaultdict(dict)}
     for (setting, prior), items in rows.items():
         for subset in ("all", "ess_ok"):
             its = [t for t in items if subset == "all" or ev.ess_ok(t[0])]
@@ -613,28 +722,13 @@ def summarize(sample_recs: list[dict[str, Any]], plans: list[dict[str, Any]], ru
                 cell[S] = {"main": block([t for t in kept if not t[1]["probe_pair"]], S, True, share),
                            "probe": block([t for t in kept if t[1]["probe_pair"]], S, False, share),
                            "records": sum(1 for _, _, qs in its if S in qs),
-                           "dropped_records": sum(1 for _, _, qs in its if S in qs and qs[S]["kept"] == 0)}
+                           "dropped_records": sum(1 for _, _, qs in its if S in qs and qs[S]["kept"] == 0),
+                           "unchanged": sum(1 for r, _, _ in its if r["action"][S] == r["action"][ev.PRIOR])}
             tables[subset].setdefault(setting, {})[prior] = cell
-            if subset == "all":
-                drops[setting][prior] = {"pairs": total, "by_action": by_action, "share": share, "counts_only": share > MAX_DROP}
-                probe_pairs[setting][prior] = sum(1 for q in pairs if q["probe_pair"])
-        tok: dict[str, Counter] = defaultdict(Counter)
-        picks_j: dict[str, Counter] = defaultdict(Counter)
-        picks_s: dict[str, Counter] = defaultdict(Counter)
-        for r, p, _ in items:
-            sims = by_case[(r["object"], r["idx"])]
-            for key, b in p["beliefs"].items():
-                jk = job_key(p["prior"], p["setting"], key, b)
-                for k in range(N_SEEDS):
-                    x = None if jk is None else sims.get((jk, k))
-                    tok[key][_token(b, x)] += 1
-                    if b["kind"] == "probe" and x is not None and "error" not in x:
-                        picks_s[key][x["cont"]["option"] if x.get("end") == "row" else x.get("end")] += 1
-                if b["kind"] == "probe":
-                    picks_j[key].update((r.get("probe_detail") or {}).get(key, {}).get("picks") or {})
-        counts[setting][prior] = {"outcomes": {k: dict(v) for k, v in tok.items()},
-                                  "continuation_model": {k: dict(v) for k, v in picks_j.items()},
-                                  "continuation_simulator": {k: dict(v) for k, v in picks_s.items()}}
+            drops[subset][setting][prior] = {"pairs": total, "by_action": by_action, "share": share, "counts_only": share > MAX_DROP,
+                                             "case_errors": sum(1 for _, p, _ in its if "error" in p),
+                                             "probe_pairs": sum(1 for q in pairs if q["probe_pair"])}
+            counts[subset][setting][prior] = _counts(its, by_case)
     labels: dict[tuple, set] = defaultdict(set)
     n_valid: Counter = Counter()
     for x in runs:
@@ -642,11 +736,14 @@ def summarize(sample_recs: list[dict[str, Any]], plans: list[dict[str, Any]], ru
             labels[(x["object"], x["idx"], tuple(x["job"]))].add(x["label"])
             n_valid[(x["object"], x["idx"], tuple(x["job"]))] += 1
     multi = [k for k in labels if n_valid[k] >= 2]
-    return {"tables": tables, "drops": drops, "probe_pairs": probe_pairs, "counts": counts,
+    return {"tables": tables, "drops": {k: dict(v) for k, v in drops.items()},
+            "probe_pairs": {st: {pr: d["probe_pairs"] for pr, d in v.items()} for st, v in drops["all"].items()},
+            "counts": {k: dict(v) for k, v in counts.items()},
             "rows_label_changes": {"n": len(multi), "changed": sum(1 for k in multi if len(labels[k]) > 1)},
             "gates": {"records": len(sample_recs), "missing": missing, "mismatch": mismatch,
+                      "case_errors": sum(1 for p in plans if "error" in p),
                       "simulation_gate_failures": sum(1 for x in runs if x.get("gate") is False),
-                      "fingerprint_differs": sum(1 for x in runs if not x.get("fingerprint_ok", True)),
+                      "fingerprint_differs": sum(1 for x in runs if x.get("fingerprint_ok") is False),
                       "errors": sum(1 for x in runs if "error" in x), "artifacts": sum(1 for x in runs if x.get("artifact"))},
             "n_main_readings": len(CELLS), "main": MAIN, "min_records": MIN_RECORDS, "max_drop": MAX_DROP, "n_seeds": N_SEEDS}
 
@@ -662,26 +759,30 @@ def markdown(s: dict[str, Any]) -> str:
            f"Main reading: S = {s['main']}, non-probe pairs, one per cell ({s['n_main_readings']} readings); the single "
            "properties are descriptive; no multiplicity correction. The secondary quantity is the " + SECONDARY + ": it "
            "includes the selection on a predicted gain, so it is not a calibration test. a_S is the one-step rule after "
-           "the reveal.", ""]
+           "the reveal. Each table is over the records whose a_S differs from a_prior; \"unchanged\" counts the others. "
+           f"A block with fewer than {s['min_records']} records, or in a cell whose pairs drop more than "
+           f"{s['max_drop']:.0%}, shows counts only.", ""]
     for subset, title in (("all", "all records"), ("ess_ok", f"records with ESS >= {ev.ESS_TABLE:g}")):
         t = s["tables"][subset]
         out += [f"## {title}", "", "### Main reading (S = all, non-probe pairs)", "",
-                "| cell | prior | records (objects) | realized gain [95 %] | reading | predicted EVPI | " + SECONDARY + " |",
-                "|---|---|---|---|---|---|---|"]
+                "| cell | prior | records (objects) | unchanged | realized gain [95 %] | reading | predicted EVPI | " + SECONDARY + " |",
+                "|---|---|---|---|---|---|---|---|"]
         for setting, prior in CELLS:
             c = (t.get(setting) or {}).get(prior)
             if c is None:
                 continue
             m = c[MAIN]["main"]
-            out.append(f"| {setting} | {prior} | {m['n']} ({m['n_objects']}) | {_f(m['realized'])} | {m['reading']} | "
-                       f"{_f(m['predicted'])} | {_f(m['gap'])} |")
+            out.append(f"| {setting} | {prior} | {m['n']} ({m['n_objects']}) | {c[MAIN]['unchanged']} | {_f(m['realized'])} | "
+                       f"{m['reading']} | {_f(m['predicted'])} | {_f(m['gap'])} |")
         out += ["", "### Single properties (descriptive), non-probe pairs", "",
-                "| cell | prior | S | records | realized gain | predicted EVPI | " + SECONDARY + " |", "|---|---|---|---|---|---|---|"]
+                "| cell | prior | S | records | unchanged | realized gain | predicted EVPI | " + SECONDARY + " |",
+                "|---|---|---|---|---|---|---|---|"]
         for setting, prior in CELLS:
             c = (t.get(setting) or {}).get(prior)
             for S in (ev.SINGLE if c else ()):
                 m = c[S]["main"]
-                out.append(f"| {setting} | {prior} | {S} | {m['n']} | {_f(m['realized'])} | {_f(m['predicted'])} | {_f(m['gap'])} |")
+                out.append(f"| {setting} | {prior} | {S} | {m['n']} | {c[S]['unchanged']} | "
+                           + (f"{COUNTS} | | |" if m["counts_only"] else f"{_f(m['realized'])} | {_f(m['predicted'])} | {_f(m['gap'])} |"))
         out += ["", "### Probe pairs (a probe on either side: their own rows, not read)", "",
                 "| cell | prior | S | records | realized gain | predicted EVPI |", "|---|---|---|---|---|---|"]
         for setting, prior in CELLS:
@@ -689,45 +790,50 @@ def markdown(s: dict[str, Any]) -> str:
             for S in (ev.REVEALS if c else ()):
                 m = c[S]["probe"]
                 if m["n"]:
-                    out.append(f"| {setting} | {prior} | {S} | {m['n']} | {_f(m['realized'])} | {_f(m['predicted'])} |")
+                    out.append(f"| {setting} | {prior} | {S} | {m['n']} | "
+                               + (f"{COUNTS} | |" if m["counts_only"] else f"{_f(m['realized'])} | {_f(m['predicted'])} |"))
         out += ["", "### Level check (same records): J(a; θ_true) and the realized cost", "",
-                "| cell | prior | S | pairs | J(a_prior) | realized(a_prior) | J(a_S) | realized(a_S) |", "|---|---|---|---|---|---|---|---|"]
+                "| cell | prior | S | pairs | records | J(a_prior) | realized(a_prior) | J(a_S) | realized(a_S) |",
+                "|---|---|---|---|---|---|---|---|---|"]
         for setting, prior in CELLS:
             c = (t.get(setting) or {}).get(prior)
             for S in (ev.REVEALS if c else ()):
                 for part in ("main", "probe"):
                     m = c[S][part]
-                    if m["n"]:
-                        lv = m["level"]
-                        out.append(f"| {setting} | {prior} | {S} | {part} | {_f(lv['J_prior'])} | {_f(lv['realized_prior'])} | "
-                                   f"{_f(lv['J_S'])} | {_f(lv['realized_S'])} |")
+                    if not m["n"]:
+                        continue
+                    lv = m["level"]
+                    out.append(f"| {setting} | {prior} | {S} | {part} | {m['n']} | "
+                               + (f"{COUNTS} | | | |" if lv is None else
+                                  f"{_f(lv['J_prior'])} | {_f(lv['realized_prior'])} | {_f(lv['J_S'])} | {_f(lv['realized_S'])} |"))
+        out += ["", "### Dropped pairs (an artifact or an error on either side)", "",
+                "| cell | prior | pairs | a_prior failed | a_S failed | both | case errors | share | counts only | probe pairs |",
+                "|---|---|---|---|---|---|---|---|---|---|"]
+        for setting, prior in CELLS:
+            d = (s["drops"][subset].get(setting) or {}).get(prior)
+            if d:
+                ba = d["by_action"]
+                out.append(f"| {setting} | {prior} | {d['pairs']} | {ba['prior']} | {ba['S']} | {ba['both']} | {d['case_errors']} | "
+                           f"{d['share']:.3f} | {'yes' if d['counts_only'] else 'no'} | {d['probe_pairs']} |")
+        out += ["", "### Outcome counts per seed", ""]
+        for setting, prior in CELLS:
+            c = (s["counts"][subset].get(setting) or {}).get(prior)
+            if not c:
+                continue
+            out.append(f"- {setting} / {prior}:")
+            for key, v in c["outcomes"].items():
+                out.append(f"  - {key}: " + ", ".join(f"{k} {n}" for k, n in sorted(v.items(), key=lambda kv: -kv[1])))
+            for key in c["continuation_simulator"]:
+                out.append(f"  - continuation after the probe of {key}: simulator " + json.dumps(c["continuation_simulator"][key], sort_keys=True)
+                           + ", model " + json.dumps(c["continuation_model"].get(key, {}), sort_keys=True))
         out.append("")
-    out += ["## Dropped pairs (an artifact or an error on either side)", "",
-            "| cell | prior | pairs | a_prior failed | a_S failed | both | share | counts only | probe pairs |",
-            "|---|---|---|---|---|---|---|---|---|"]
-    for setting, prior in CELLS:
-        d = (s["drops"].get(setting) or {}).get(prior)
-        if d:
-            ba = d["by_action"]
-            out.append(f"| {setting} | {prior} | {d['pairs']} | {ba['prior']} | {ba['S']} | {ba['both']} | {d['share']:.3f} | "
-                       f"{'yes' if d['counts_only'] else 'no'} | {s['probe_pairs'][setting][prior]} |")
     rl = s["rows_label_changes"]
     g = s["gates"]
-    out += ["", f"Rows whose label changes across the seeds: {rl['changed']} of {rl['n']} (a row simulated once per case, "
+    out += [f"Rows whose label changes across the seeds: {rl['changed']} of {rl['n']} (a row simulated once per case, "
             "action and seed).",
             f"Gates: {g['records']} sampled records, {len(g['missing'])} not run, {len(g['mismatch'])} replay mismatches, "
-            f"{g['simulation_gate_failures']} simulations whose first menu differed, {g['fingerprint_differs']} resets whose "
-            f"scene differed, {g['errors']} errors, {g['artifacts']} artifacts.", "", "## Outcome counts per seed", ""]
-    for setting, prior in CELLS:
-        c = (s["counts"].get(setting) or {}).get(prior)
-        if not c:
-            continue
-        out.append(f"- {setting} / {prior}:")
-        for key, v in c["outcomes"].items():
-            out.append(f"  - {key}: " + ", ".join(f"{k} {n}" for k, n in sorted(v.items(), key=lambda kv: -kv[1])))
-        for key in c["continuation_simulator"]:
-            out.append(f"  - continuation after the probe of {key}: simulator " + json.dumps(c["continuation_simulator"][key], sort_keys=True)
-                       + ", model " + json.dumps(c["continuation_model"].get(key, {}), sort_keys=True))
+            f"{g['case_errors']} records whose case raised, {g['simulation_gate_failures']} simulations whose first menu "
+            f"differed, {g['fingerprint_differs']} resets whose scene differed, {g['errors']} errors, {g['artifacts']} artifacts."]
     return "\n".join(out) + "\n"
 
 
@@ -755,14 +861,20 @@ def summary(a: argparse.Namespace) -> dict[str, Any]:
                             m = c[S][part]
                             pre = f"{subset}/{setting}/{prior}/{S}/{part}"
                             flat[f"{pre}/n"] = m["n"]
+                            flat[f"{pre}/unchanged"] = c[S]["unchanged"]
+                            if m["counts_only"]:
+                                continue
+                            ci = m["realized"]["ci"]
                             flat[f"{pre}/realized"] = m["realized"]["mean"]
-                            flat[f"{pre}/realized_lo"] = None if m["realized"]["ci"] is None else m["realized"]["ci"][0]
-                            flat[f"{pre}/realized_hi"] = None if m["realized"]["ci"] is None else m["realized"]["ci"][1]
+                            flat[f"{pre}/realized_lo"] = None if ci is None else ci[0]
+                            flat[f"{pre}/realized_hi"] = None if ci is None else ci[1]
                             flat[f"{pre}/predicted"] = m["predicted"]["mean"]
                             flat[f"{pre}/gap"] = m["gap"]["mean"]
-        for setting, block in out["drops"].items():
-            for prior, d in block.items():
-                flat[f"drops/{setting}/{prior}/share"] = d["share"]
+        for subset, t in out["drops"].items():
+            for setting, block in t.items():
+                for prior, d in block.items():
+                    flat[f"drops/{subset}/{setting}/{prior}/share"] = d["share"]
+                    flat[f"drops/{subset}/{setting}/{prior}/case_errors"] = d["case_errors"]
         flat.update({f"gates/{k}": (len(v) if isinstance(v, list) else v) for k, v in out["gates"].items()})
         flat["rows_label_changes"] = out["rows_label_changes"]["changed"]
         out["wandb"] = tracking.log_run("evpi_sim", conf, flat)
