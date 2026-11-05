@@ -705,11 +705,14 @@ def load(dirs: list[str]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
 
 def groups(r: dict[str, Any]) -> dict[str, bool]:
     """Step 5's groups from the choices alone (no EVPI value): invariant (every reveal keeps a_prior's action), critical
-    (some reveal changes it), and the overlay abstain_dominated (decline under the prior and under the truth)."""
+    (some reveal changes it), and the overlays abstain_dominated (decline under the prior and under the truth) and
+    invariant_probe (invariant with a probe first: the row picked after the probe still follows each belief, so its
+    EVPI need not be 0)."""
     a, c = r["action"], r["choice"]
     invariant = all(a[S] == a[PRIOR] for S in REVEALS)
     return {"invariant": invariant, "critical": not invariant, "invariant_id": all(c[S] == c[PRIOR] for S in REVEALS),
-            "abstain_dominated": c[PRIOR] in ABSTAINS and c["all"] in ABSTAINS}
+            "abstain_dominated": c[PRIOR] in ABSTAINS and c["all"] in ABSTAINS,
+            "invariant_probe": invariant and PRIOR in (r.get("probe_detail") or {})}
 
 
 def ess_ok(r: dict[str, Any]) -> bool:
@@ -728,16 +731,57 @@ def evpi_table(recs: list[dict[str, Any]], rng: np.random.Generator, n_boot: int
         c = _mean_ci(np.array([r["evpi"][S] for r in recs], dtype=float), objs, rng, n_boot)
         c["reading"] = None if c["ci"] is None else ("matters" if c["ci"][0] > BAR else "no detectable value")
         c["share_positive"] = float(np.mean([r["evpi"][S] > 1e-12 for r in recs])) if recs else None
+        c["share_negative"] = float(np.mean([r["evpi"][S] < -1e-12 for r in recs])) if recs else None
         out[S] = c
     return out
+
+
+GROUPS = ("invariant", "critical", "abstain_dominated", "invariant_id", "invariant_probe")
 
 
 def _shares(recs: list[dict[str, Any]], by: Callable[[dict[str, Any]], str]) -> dict[str, Any]:
     cells: dict[str, list[dict[str, bool]]] = defaultdict(list)
     for r in recs:
         cells[by(r)].append(groups(r))
-    return {k: {"n": len(v), **{g: float(np.mean([x[g] for x in v])) for g in ("invariant", "critical", "abstain_dominated", "invariant_id")}}
-            for k, v in sorted(cells.items())}
+    return {k: {"n": len(v), **{g: float(np.mean([x[g] for x in v])) for g in GROUPS}} for k, v in sorted(cells.items())}
+
+
+def critical_dist(recs: list[dict[str, Any]]) -> dict[str, Any]:
+    """On the θ-critical cases (some reveal changes the first action), per reveal: the median and the 90th percentile of
+    EVPI_S and the share above BAR, since a changed action can still save almost nothing (the coordinator's addition of
+    2026-11-05, fixed before the results)."""
+    crit = [r for r in recs if groups(r)["critical"]]
+    out = {}
+    for S in REVEALS:
+        v = np.array([r["evpi"][S] for r in crit], dtype=float)
+        out[S] = ({"n": 0, "median": None, "p90": None, "share_above_bar": None} if len(v) == 0 else
+                  {"n": int(len(v)), "median": float(np.median(v)), "p90": float(np.percentile(v, 90)),
+                   "share_above_bar": float(np.mean(v > BAR))})
+    return out
+
+
+def fillable_report(recs: list[dict[str, Any]]) -> dict[str, Any]:
+    """Per fillable case and prior, once (its beliefs serve every setting): each coupled reveal's kernel ESS (the weights'
+    effective particles, before any refresh) and the reveals refreshed from the prior. Their mass, CoM and damage results
+    are approximate (the kernels' widths)."""
+    seen, cases = set(), []
+    for r in recs:
+        key = (r["object"], r["idx"], r["prior"])
+        if not r.get("fillable") or key in seen:
+            continue
+        seen.add(key)
+        info = {S: r["ess"].get(S) or {} for S in COUPLED}
+        refreshed = [S for S in COUPLED if info[S].get("refreshed")]
+        cases.append({"object": r["object"], "idx": r["idx"], "prior": r["prior"], "fill": r.get("fill"),
+                      "kernel_ess": {S: info[S].get("ess") for S in COUPLED},
+                      "ess_final": {S: info[S].get("ess_final") for S in COUPLED},
+                      "refreshed": refreshed, "refreshes": len(refreshed)})
+    by = {}
+    for S in COUPLED:
+        v = [float(c["kernel_ess"][S]) for c in cases if c["kernel_ess"][S] is not None]
+        by[S] = {"n": len(v), "min": min(v) if v else None, "median": float(np.median(v)) if v else None,
+                 "below_100": sum(x < ESS_TABLE for x in v), "refreshed": sum(S in c["refreshed"] for c in cases)}
+    return {"n": len(cases), "cases": cases, "by_reveal": by}
 
 
 def checks(recs: list[dict[str, Any]], comgap: dict[tuple, dict[str, Any]] | None) -> dict[str, Any]:
@@ -802,10 +846,14 @@ def summarize(recs: list[dict[str, Any]], comgap: dict[tuple, dict[str, Any]] | 
             "groups_by_load": _shares(rs, lambda r: r["load_bin"]),
             "groups_ess_ok": _shares(sub, lambda r: "all")["all"] if sub else None,
             "choices": dict(Counter(r["choice"][PRIOR] for r in rs)), "probe_gap": probe_gap(rs, rng, n_boot),
-            "probe_gap_ess_ok": probe_gap(sub, rng, n_boot)}
+            "probe_gap_ess_ok": probe_gap(sub, rng, n_boot),
+            "critical": critical_dist(rs), "critical_ess_ok": critical_dist(sub),
+            "n_fillable": sum(bool(r["fillable"]) for r in rs), "n_fillable_ess_ok": sum(bool(r["fillable"]) for r in sub),
+            "abstain_share": float(np.mean([r["choice"][PRIOR] in ABSTAINS for r in rs])) if rs else None,
+            "action_readable": any(r["choice"][PRIOR] not in ABSTAINS for r in rs)}
     return {"n_records": len(recs), "n_counted": len(counted), "errors": sum("error" in r for r in recs),
             "artifacts": sum(bool(r.get("artifact")) and "error" not in r for r in recs), "cells": cells,
-            "checks": checks(counted, comgap), "bar": BAR, "ess_table": ESS_TABLE}
+            "checks": checks(counted, comgap), "fillable": fillable_report(counted), "bar": BAR, "ess_table": ESS_TABLE}
 
 
 def _by(recs: list[dict[str, Any]]) -> dict[tuple[str, str], list[dict[str, Any]]]:
@@ -821,28 +869,74 @@ def _f(c: dict[str, Any] | None) -> str:
     return f"{c['mean']:+.4f} [{c['ci'][0]:+.4f}, {c['ci'][1]:+.4f}]"
 
 
+def _g(x: float | None, fmt: str = "+.4f") -> str:
+    return "–" if x is None else format(x, fmt)
+
+
 def markdown(s: dict[str, Any]) -> str:
     L = [f"# evpi_props summary", "", f"records {s['n_records']}, counted {s['n_counted']}, errors {s['errors']}, "
          f"artifacts {s['artifacts']}; a property matters when the 95 % object-bootstrap lower bound of its mean EVPI "
          f"is above {s['bar']}", ""]
-    for table, label in (("evpi", "all cases"), ("evpi_ess_ok", f"cases with ESS >= {s['ess_table']:g}")):
-        L += [f"## Mean EVPI per reveal ({label})", "", "| setting | prior | n | " + " | ".join(REVEALS) + " |",
+    mute = [f"{setting} {prior}" for setting, block in s["cells"].items() for prior, c in block.items()
+            if c["n"] and not c["action_readable"]]
+    if mute:
+        L += [f"Every first choice is decline or unreachable in {', '.join(mute)}: reported, but the action question "
+              "cannot be read there.", ""]
+    for suf, label in (("", "all cases"), ("_ess_ok", f"cases with ESS >= {s['ess_table']:g}")):
+        table, nk, fk = "evpi" + suf, "n" + suf, "n_fillable" + suf
+        L += [f"## Mean EVPI per reveal ({label})", "", "| setting | prior | n | fillable | " + " | ".join(REVEALS) + " |",
+              "|---|---|---|---|" + "---|" * len(REVEALS)]
+        for setting, block in s["cells"].items():
+            for prior, c in block.items():
+                approx = c[fk] > 0
+                L.append(f"| {setting} | {prior} | {c[nk]} | {c[fk]} | " + " | ".join(
+                    f"{'≈ ' if approx and S in COUPLED else ''}{_f(c[table][S])} {c[table][S]['reading'] or ''}"
+                    for S in REVEALS) + " |")
+        L.append("")
+        if any(c[fk] > 0 for block in s["cells"].values() for c in block.values()):
+            L += ["≈: the cell holds fillable cases (the fillable column). Their mass, CoM and damage reveals weight the "
+                  "particles by narrow kernels first, so those results are approximate (fillable.md).", ""]
+        L += [f"## Share of cases with EVPI_S < 0 / > 0 ({label})", "", "| setting | prior | n | " + " | ".join(REVEALS) + " |",
               "|---|---|---|" + "---|" * len(REVEALS)]
         for setting, block in s["cells"].items():
             for prior, c in block.items():
-                n = c["n"] if table == "evpi" else c["n_ess_ok"]
-                L.append(f"| {setting} | {prior} | {n} | " + " | ".join(f"{_f(c[table][S])} {c[table][S]['reading'] or ''}"
-                                                                     for S in REVEALS) + " |")
+                L.append(f"| {setting} | {prior} | {c[nk]} | " + " | ".join(
+                    f"{_g(c[table][S]['share_negative'], '.3f')} / {_g(c[table][S]['share_positive'], '.3f')}"
+                    for S in REVEALS) + " |")
+        L += ["", f"## θ-critical cases: EVPI_S median / 90th percentile / share above {s['bar']} ({label})", "",
+              "| setting | prior | n critical | " + " | ".join(REVEALS) + " |", "|---|---|---|" + "---|" * len(REVEALS)]
+        for setting, block in s["cells"].items():
+            for prior, c in block.items():
+                d = c["critical" + suf]
+                L.append(f"| {setting} | {prior} | {d['all']['n']} | " + " | ".join(
+                    f"{_g(d[S]['median'])} / {_g(d[S]['p90'])} / {_g(d[S]['share_above_bar'], '.3f')}" for S in REVEALS) + " |")
         L.append("")
-    L += ["## Groups (from the choices)", "", "| setting | prior | n | invariant | critical | abstain-dominated (overlay) |",
-          "|---|---|---|---|---|---|"]
+    L += ["## Groups (from the choices)", "", "| setting | prior | n | invariant | critical | abstain-dominated (overlay) | "
+          "invariant, probe first (overlay) | first choice abstains |", "|---|---|---|---|---|---|---|---|"]
     for setting, block in s["cells"].items():
         for prior, c in block.items():
             g = c["groups"] or {}
             L.append(f"| {setting} | {prior} | {c['n']} | {g.get('invariant', 0):.3f} | {g.get('critical', 0):.3f} | "
-                     f"{g.get('abstain_dominated', 0):.3f} |")
+                     f"{g.get('abstain_dominated', 0):.3f} | {g.get('invariant_probe', 0):.3f} | {_g(c['abstain_share'], '.3f')} |")
+    fr = s.get("fillable") or {"n": 0, "by_reveal": {}}
+    L += ["", f"## Fillable cases ({fr['n']} case-prior pairs; per case in fillable.md)", "",
+          "| reveal | n | min kernel ESS | median kernel ESS | below 100 | refreshed |", "|---|---|---|---|---|---|"]
+    for S, b in fr["by_reveal"].items():
+        L.append(f"| {S} | {b['n']} | {_g(b['min'], '.1f')} | {_g(b['median'], '.1f')} | {b['below_100']} | {b['refreshed']} |")
     L += ["", "## Checks", "", "```", json.dumps(s["checks"], indent=1), "```", ""]
     return "\n".join(L)
+
+
+def fillable_markdown(fr: dict[str, Any]) -> str:
+    L = ["# Fillable cases: kernel ESS per coupled reveal and refreshes", "",
+         "The kernel ESS is the weights' effective particles before any refresh. A reveal refreshes from the prior under "
+         "100. The mass, CoM and damage results of these cases are approximate.", "",
+         "| object | idx | prior | fill | " + " | ".join(f"{S} ESS" for S in COUPLED) + " | refreshed | refreshes |",
+         "|---|---|---|---|" + "---|" * len(COUPLED) + "---|---|"]
+    for c in fr["cases"]:
+        L.append(f"| {c['object']} | {c['idx']} | {c['prior']} | {_g(c['fill'], '.3f')} | "
+                 + " | ".join(_g(c["kernel_ess"][S], ".1f") for S in COUPLED) + f" | {', '.join(c['refreshed']) or '–'} | {c['refreshes']} |")
+    return "\n".join(L) + "\n"
 
 
 def _comgap(path: str | None) -> dict[tuple, dict[str, Any]] | None:
@@ -865,6 +959,8 @@ def summary(a: argparse.Namespace) -> dict[str, Any]:
     md = markdown(out)
     with open(os.path.join(a.out, "summary.md"), "w") as f:
         f.write(md)
+    with open(os.path.join(a.out, "fillable.md"), "w") as f:
+        f.write(fillable_markdown(out["fillable"]))
     print(md, flush=True)
     if a.wandb:
         conf = {k: v for k, v in cfg.items() if k not in ("generic", "cases", "spreads")}
@@ -874,7 +970,9 @@ def summary(a: argparse.Namespace) -> dict[str, Any]:
                 for S in REVEALS:
                     flat[f"{setting}/{prior}/evpi_{S}"] = c["evpi"][S]["mean"]
                     flat[f"{setting}/{prior}/evpi_{S}_lo"] = None if c["evpi"][S]["ci"] is None else c["evpi"][S]["ci"][0]
-                flat.update({f"{setting}/{prior}/share_{g}": (c["groups"] or {}).get(g) for g in ("invariant", "critical", "abstain_dominated")})
+                    flat[f"{setting}/{prior}/evpi_{S}_share_negative"] = c["evpi"][S]["share_negative"]
+                    flat.update({f"{setting}/{prior}/critical_{S}_{k}": c["critical"][S][k] for k in ("median", "p90", "share_above_bar")})
+                flat.update({f"{setting}/{prior}/share_{g}": (c["groups"] or {}).get(g) for g in GROUPS})
         flat["replay_mismatch"] = (out["checks"].get("replay") or {}).get("mismatch")
         out["wandb"] = tracking.log_run("evpi_props", conf, flat)
     with open(os.path.join(a.out, "summary.json"), "w") as f:

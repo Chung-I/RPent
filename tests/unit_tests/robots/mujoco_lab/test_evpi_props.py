@@ -212,7 +212,7 @@ def test_an_unreachable_case_costs_A_under_every_belief():
 
 def test_the_groups_come_from_the_choices():
     g = ev.groups(_rec(SAME))
-    assert g == {"invariant": True, "critical": False, "invariant_id": True, "abstain_dominated": True}
+    assert g == {"invariant": True, "critical": False, "invariant_id": True, "abstain_dominated": True, "invariant_probe": False}
     g = ev.groups(_rec(dict(SAME, mass="commit_std", all="commit_std")))
     assert g["critical"] and not g["abstain_dominated"]
 
@@ -244,6 +244,72 @@ def test_the_ess_table_leaves_out_a_case_with_a_thin_reveal():
     assert ev.ess_ok(ok) and not ev.ess_ok(thin)
     s = ev.summarize([ok, thin], n_boot=50)
     assert s["cells"]["k100_A3"]["class"]["n"] == 2 and s["cells"]["k100_A3"]["class"]["n_ess_ok"] == 1
+
+
+def _vals(v):
+    return {S: v for S in ev.REVEALS}
+
+
+def test_an_invariant_case_whose_first_action_is_a_probe_is_counted_apart():
+    r = _rec({k: "probe_squeeze" for k in ("prior",) + ev.REVEALS})
+    r["probe_detail"] = {k: {"J": 1.0, "picks": {}} for k in r["choice"]}
+    g = ev.groups(r)
+    assert g["invariant"] and g["invariant_probe"]           # the pick after the probe still follows each belief
+    assert not ev.groups(_rec(SAME))["invariant_probe"]
+
+
+def test_the_evpi_table_reports_the_share_of_negative_values():
+    recs = [_rec(SAME, obj=f"o{i}", evpi=_vals(v)) for i, v in enumerate((-0.2, 0.0, 0.3, 0.5))]
+    t = ev.evpi_table(recs, np.random.default_rng(0), 50)
+    assert t["mass"]["share_negative"] == 0.25 and t["mass"]["share_positive"] == 0.5
+
+
+def test_the_critical_distribution_reads_the_critical_cases_only():
+    crit = dict(SAME, mass="commit_std")
+    recs = [_rec(crit, obj=f"c{i}", evpi=_vals(v)) for i, v in enumerate((0.0, 0.01, 0.5))]
+    recs.append(_rec(SAME, obj="inv", evpi=_vals(9.0)))
+    d = ev.critical_dist(recs)
+    assert d["all"]["n"] == 3 and d["all"]["median"] == pytest.approx(0.01)
+    assert d["all"]["p90"] == pytest.approx(np.percentile([0.0, 0.01, 0.5], 90))
+    assert d["all"]["share_above_bar"] == pytest.approx(1 / 3)
+    assert ev.critical_dist(recs[-1:])["mass"] == {"n": 0, "median": None, "p90": None, "share_above_bar": None}
+    c = ev.summarize(recs, n_boot=50)["cells"]["k100_A3"]["class"]
+    assert c["critical"]["all"]["n"] == 3 and c["critical_ess_ok"]["all"]["n"] == 3
+
+
+def _fillable(obj="mug", setting="k100_A3"):
+    r = _rec(SAME, obj=obj, setting=setting)
+    r["fillable"], r["fill"] = True, 0.5
+    r["ess"].update(mass={"weighted": True, "ess": 230.0, "refreshed": False, "ess_final": 230.0},
+                    com={"weighted": True, "ess": 40.0, "refreshed": True, "ess_final": 900.0},
+                    damage={"weighted": True, "ess": 9973.0, "refreshed": False, "ess_final": 9973.0})
+    return r
+
+
+def test_the_fillable_report_gives_each_fillable_case_once_with_its_kernel_ess_and_refreshes():
+    rep = ev.fillable_report([_fillable(), _fillable(setting="k30_A3"), _rec(SAME, obj="box")])
+    assert rep["n"] == 1                                      # one case: its beliefs serve every setting
+    row = rep["cases"][0]
+    assert row["object"] == "mug" and row["refreshes"] == 1 and row["refreshed"] == ["com"]
+    assert row["kernel_ess"] == {"mass": 230.0, "com": 40.0, "damage": 9973.0}
+    assert rep["by_reveal"]["com"]["refreshed"] == 1 and rep["by_reveal"]["mass"]["min"] == 230.0
+
+
+def test_a_cell_with_fillable_cases_marks_the_coupled_reveals_approximate():
+    s = ev.summarize([_fillable(), _rec(SAME, obj="box")], n_boot=50)
+    assert s["cells"]["k100_A3"]["class"]["n_fillable"] == 1 and s["fillable"]["n"] == 1
+    assert "≈" in ev.markdown(s)
+    assert "≈" not in ev.markdown(ev.summarize([_rec(SAME, obj="box")], n_boot=50))
+
+
+def test_a_cell_whose_first_choices_all_abstain_says_the_action_question_cannot_be_read():
+    s = ev.summarize([_rec(SAME, obj="a"), _rec(SAME, obj="b")], n_boot=50)
+    c = s["cells"]["k100_A3"]["class"]
+    assert c["abstain_share"] == 1.0 and not c["action_readable"]
+    assert "cannot be read" in ev.markdown(s)
+    s = ev.summarize([_rec(SAME, obj="a"), _rec(dict(SAME, prior="commit_std"), obj="b")], n_boot=50)
+    assert s["cells"]["k100_A3"]["class"]["action_readable"]
+    assert "cannot be read" not in ev.markdown(s)
 
 
 def _shard(tmp_path, name, recs, **cfg):
