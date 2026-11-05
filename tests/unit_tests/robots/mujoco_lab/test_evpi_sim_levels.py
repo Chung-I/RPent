@@ -159,3 +159,12 @@ def test_a_missing_level_stops_the_tables():
     recs, plans, runs, levels = _case_set()
     with pytest.raises(SystemExit, match="no level"):
         lv.tables(recs, plans, runs, levels[1:], n_boot=50)
+
+
+def test_a_simulation_whose_first_menu_differed_stops_the_tables_as_it_stops_the_summary():
+    recs, plans, runs, levels = _case_set()
+    runs[0].update(gate=False, error="the first menu differs")
+    with pytest.raises(SystemExit, match="first menu differed"):
+        es.summarize(recs, plans, runs, n_boot=50)
+    with pytest.raises(SystemExit, match="first menu differed"):
+        lv.tables(recs, plans, runs, levels, n_boot=50)
