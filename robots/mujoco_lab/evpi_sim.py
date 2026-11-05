@@ -437,8 +437,31 @@ def _sha(path: str) -> str:
     return hashlib.sha256(open(path, "rb").read()).hexdigest()
 
 
+def load_priors(dirs: list[str]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Experiment 1's records from shard dirs that ran one prior each (ev_shards.sh K PRIOR): ev.load on each prior's
+    dirs, then the priors joined. One ev.load over both priors refuses, since priors_parsed differs. Every other
+    ev.CONFIG_KEYS entry must agree across the priors, no case row may repeat, and priors_parsed becomes the union."""
+    by: dict[tuple[str, ...], list[str]] = defaultdict(list)
+    for d in dirs:
+        by[tuple(json.load(open(os.path.join(d, "run_config.json"))).get("priors_parsed") or ())].append(d)
+    recs, cfg = [], None
+    for ds in by.values():
+        rs, c = ev.load(ds)
+        if cfg is not None:
+            bad = [k for k in ev.CONFIG_KEYS if k != "priors_parsed" and c.get(k) != cfg.get(k)]
+            if bad:
+                raise SystemExit(f"{ds[0]}: config differs in {bad}")
+        cfg = cfg or c
+        recs += rs
+    dup = [k for k, v in Counter((r["object"], r["idx"], r["prior"], r["setting"]) for r in recs).items() if v > 1]
+    if dup:
+        raise SystemExit(f"{len(dup)} repeated case rows, e.g. {dup[0]}")
+    priors = {p for g in by for p in g}
+    return recs, dict(cfg or {}, priors_parsed=[p for p in ev.PRIORS if p in priors] + sorted(priors - set(ev.PRIORS)))
+
+
 def sample(a: argparse.Namespace) -> str:
-    recs, cfg = ev.load(a.dirs.split(","))
+    recs, cfg = load_priors(a.dirs.split(","))
     picked = draw_sample(recs, a.per_cell, a.sample_seed)
     keep = ("bundle", "scenes", "seed", "code_revision", "generator", "settings_parsed", "priors_parsed")
     objects = sorted({r["object"] for r in picked})

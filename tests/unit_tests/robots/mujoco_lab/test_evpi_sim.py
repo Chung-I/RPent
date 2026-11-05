@@ -100,6 +100,48 @@ def test_the_smoke_records_come_from_every_cell_in_turn():
     assert [(r["setting"], r["prior"]) for r in smoke] == list(es.CELLS) + [es.CELLS[0]]
 
 
+def _ev_shard(tmp_path, name, prior, recs, objects, **cfg):
+    """An evpi_props shard dir that ran one prior: the run_config keys ev.load compares, the full generic table (every
+    shard has all objects' rows) and the records."""
+    d = tmp_path / name
+    d.mkdir()
+    c = {"seed": 11, "code_revision": "abc", "dirty": False, "priors_parsed": [prior], "generic": {o: {"mass": 1.0} for o in objects}}
+    (d / "run_config.json").write_text(json.dumps(dict(c, **cfg)))
+    (d / "records.jsonl").write_text("".join(json.dumps(r) + "\n" for r in recs))
+    return str(d)
+
+
+def test_the_sample_joins_shards_that_ran_one_prior_each_and_draws_as_from_each_prior_alone(tmp_path):
+    cls = [_rec(obj=f"c{i % 17}", idx=i) for i in range(60)] + [_rec(obj=f"c{i % 5}", idx=i, setting="k100_A10") for i in range(55)]
+    gen = [_rec(obj=f"g{i % 11}", idx=i, prior="generic") for i in range(52)]
+    gen += [_rec(obj=f"g{i}", idx=i, prior="generic", setting="k100_A10") for i in range(7)]
+    objs = sorted({r["object"] for r in cls + gen})
+    dirs = [_ev_shard(tmp_path, "c0", "class", cls[::2], objs), _ev_shard(tmp_path, "g0", "generic", gen[::2], objs),
+            _ev_shard(tmp_path, "c1", "class", cls[1::2], objs), _ev_shard(tmp_path, "g1", "generic", gen[1::2], objs)]
+    with pytest.raises(SystemExit, match="priors_parsed"):
+        ev.load(dirs)                                          # one load over both priors refuses (the 6 Nov stop)
+
+    def sample(ds, name):
+        return json.load(open(es.sample(argparse.Namespace(dirs=",".join(ds), out=str(tmp_path / name), per_cell=es.PER_CELL,
+                                                           sample_seed=es.SAMPLE_SEED))))
+
+    smp = sample(dirs, "s.json")
+    alone = {"class": es.draw_sample(cls), "generic": es.draw_sample(gen)}
+    want = [r for cell in es.CELLS for r in alone[cell[1]] if (r["setting"], r["prior"]) == cell]
+    assert smp["records"] == want                              # each cell's draw: its own stream, its own records
+    assert Counter((r["setting"], r["prior"]) for r in want) == {("k30_A3", "class"): 50, ("k100_A10", "class"): 50,
+                                                                ("k30_A3", "generic"): 50, ("k100_A10", "generic"): 7}
+    assert smp["available"] == {"k30_A3/class": 60, "k30_A3/generic": 52, "k100_A10/class": 55, "k100_A10/generic": 7}
+    assert smp["config"]["priors_parsed"] == ["class", "generic"]
+    assert set(smp["config"]["generic"]) == {r["object"] for r in want}
+    assert sample(dirs[::-1], "s_rev.json")["records"] == want  # the dirs' order does not matter
+    g12 = [_ev_shard(tmp_path, n, "generic", rs, objs, seed=12) for n, rs in (("g2", gen[::2]), ("g3", gen[1::2]))]
+    with pytest.raises(SystemExit, match=r"config differs in \['seed'\]"):
+        sample([dirs[0], dirs[2]] + g12, "s12.json")         # every other config key must still agree across the priors
+    with pytest.raises(SystemExit, match="repeated"):
+        sample(dirs + [_ev_shard(tmp_path, "c2", "class", cls[:1], objs)], "sdup.json")
+
+
 # ---------------------------------------------------------------- the realized costs
 
 @pytest.mark.parametrize("label", ["placed_stable", "dropped_high", "not_lifted", "crushed"])
