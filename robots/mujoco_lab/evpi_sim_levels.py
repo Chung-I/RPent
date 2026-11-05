@@ -139,7 +139,11 @@ def _mean(v: list[float]) -> float | None:
 
 def tables(recs: list[dict[str, Any]], plans: list[dict[str, Any]], runs: list[dict[str, Any]], levels: list[dict[str, Any]],
            n_boot: int = es.N_BOOT, seed: int = 0) -> dict[str, Any]:
-    """The per-side model-next-to-simulator tables, the transitions and the sensitivity (module docstring)."""
+    """The per-side model-next-to-simulator tables, the transitions and the sensitivity (module docstring). A simulation
+    whose first menu differed from the replay's stops them, as it stops evpi_sim.summarize."""
+    gate = [[x["object"], x["idx"], x.get("seed_k"), x.get("job")] for x in runs if x.get("gate") is False]
+    if gate:
+        raise SystemExit(f"{len(gate)} simulations whose first menu differed from the replay's, for example {gate[:3]}")
     rng = np.random.default_rng(seed)
     lev: dict[tuple, dict[str, Any]] = {}
     for x in levels:
