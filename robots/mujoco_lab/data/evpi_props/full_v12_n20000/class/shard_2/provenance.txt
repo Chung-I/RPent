@@ -1,0 +1,16 @@
+code 2df16a67026fadf7795168e09bb414a807e32186 (branch evpi-decomposition), dirty files 0
+sim /home/chungyili/Codes/daily-logs-worktrees/v12checks-armsim-fe46f6c/researches/property-belief-manipulation/experiments/2026-11-04-arm-port/sim, last commit e823247052a2bf4d1b97d5077a51f0ead91fd80c, dirty files 0
+robot model b7b9d2beaaecf848efc49c9b99355b5e551a44dd21292fa4462f22fce0187bc3  /home/chungyili/Codes/daily-logs-worktrees/v12checks-armsim-fe46f6c/researches/property-belief-manipulation/experiments/2026-11-04-arm-port/out/r1_robot.npz
+bundle /home/chungyili/Codes/RPent-arm/robots/mujoco_lab/data/m2b2_v12:
+25efe0d476bc46d664846675387a962c1c0868dce0d1546d7b84e1a71fcca1f6  manifest.json
+e9856c2649d139e6866ab4f481a17741c79ca63960696d887e81265d6fdf31c0  folds/folds.json
+4146ce74e25c3349731a0ef9a328d6c2247a018998fe429ea2575ec35d7dad83  folds/crossfit.json
+eb2c045287f1bac807b4f1f524373d587277ad34dce4c510d893a36d1bc5ebf9  folds/fold_0/manifest.json
+30d84db83f5314c6c183f02821d56f0d46f199dc9eb0e12ba9f82b37d286cf01  folds/fold_1/manifest.json
+4b7b053b87e358ff79dc393eaec613b0ab163ea531d9bca94d37ef85a0e70d5e  folds/fold_2/manifest.json
+8ed1f9619190b69013fe9e4504ae781747db7af7036432b69a814de7fcc6be49  folds/fold_3/manifest.json
+805c0fc743b2ee16e7bbe129e804cc8507142c4f29056085601db8da067dae59  folds/fold_4/manifest.json
+env NUMPY_MADVISE_HUGEPAGE=0 OMP_NUM_THREADS=1 RPENT_LAB_GENERATOR=v11 WANDB_MODE=online, unit v12-ev-c2 MemoryMax 6G MemorySwapMax 0
+command python -P -u -m robots.mujoco_lab.evpi_props run --bundle /home/chungyili/Codes/RPent-arm/robots/mujoco_lab/data/m2b2_v12 --scenes /home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-11-03-mass-com-estimation/scenes.json --priors class --workers 1 --objects fruits_veggies__lime,handal__hammer_3,handal__measuring_cups,hope__canned_mushrooms,hope__green_beans_can,hope__orange_juice_carton,hope__ranch_dressing,hot3d__clay_plates,hot3d__glasses,hot3d__remote_control,hot3d__wooden_spoons,ycb__clamp,ycb__pitcher,ycb__tuna_can --out /home/chungyili/Codes/RPent-evpi/logs/evpi/full_class/shard_2
+start 2026-11-05 22:50:30
+end 2026-11-06 00:37:02

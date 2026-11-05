@@ -1,0 +1,76 @@
+# Fillable cases: kernel ESS per coupled reveal and refreshes
+
+The kernel ESS is the weights' effective particles before any refresh. A reveal refreshes from the prior under 100. The mass, CoM and damage results of these cases are approximate.
+
+| object | idx | prior | fill | mass ESS | com ESS | damage ESS | refreshed | refreshes |
+|---|---|---|---|---|---|---|---|---|
+| hot3d__pitcher | 0 | generic | 0.000 | 159.0 | 1090.5 | 10007.0 | – | 0 |
+| hot3d__pitcher | 1 | generic | 0.428 | 155.0 | 1129.7 | 589.4 | – | 0 |
+| hot3d__pitcher | 3 | generic | 0.000 | 267.4 | 1085.1 | 9868.0 | – | 0 |
+| hot3d__pitcher | 4 | generic | 0.717 | 77.9 | 1121.3 | 621.2 | mass | 1 |
+| hot3d__pitcher | 5 | generic | 0.000 | 277.5 | 576.9 | 9993.0 | – | 0 |
+| hot3d__pitcher | 6 | generic | 0.000 | 226.3 | 1119.6 | 9948.0 | – | 0 |
+| hot3d__pitcher | 7 | generic | 0.000 | 213.5 | 1111.5 | 9968.0 | – | 0 |
+| hot3d__pitcher | 8 | generic | 0.484 | 148.4 | 1120.3 | 606.7 | – | 0 |
+| hot3d__pitcher | 9 | generic | 0.663 | 124.9 | 1173.8 | 637.7 | – | 0 |
+| hot3d__pitcher | 10 | generic | 0.798 | 108.9 | 1120.5 | 571.7 | – | 0 |
+| ycb__mug | 1 | generic | 0.459 | 239.8 | 844.4 | 609.0 | – | 0 |
+| ycb__mug | 2 | generic | 0.000 | 250.4 | 811.1 | 9938.0 | – | 0 |
+| ycb__mug | 3 | generic | 0.829 | 219.0 | 1148.5 | 566.1 | – | 0 |
+| ycb__mug | 4 | generic | 0.000 | 127.0 | 1097.1 | 9952.0 | – | 0 |
+| ycb__mug | 7 | generic | 0.618 | 227.2 | 1065.7 | 610.4 | – | 0 |
+| ycb__mug | 8 | generic | 0.719 | 222.8 | 1062.8 | 614.8 | – | 0 |
+| ycb__mug | 9 | generic | 0.000 | 163.9 | 1088.5 | 9945.0 | – | 0 |
+| ycb__mug | 10 | generic | 0.000 | 131.5 | 1071.6 | 10077.0 | – | 0 |
+| hot3d__ceramic_mug | 0 | generic | 0.000 | 171.3 | 1035.2 | 9924.0 | – | 0 |
+| hot3d__ceramic_mug | 1 | generic | 0.345 | 186.1 | 937.9 | 607.6 | – | 0 |
+| hot3d__ceramic_mug | 2 | generic | 0.000 | 149.2 | 1090.1 | 9910.0 | – | 0 |
+| hot3d__ceramic_mug | 3 | generic | 0.000 | 142.2 | 1065.1 | 9966.0 | – | 0 |
+| hot3d__ceramic_mug | 4 | generic | 0.630 | 181.7 | 1033.2 | 579.0 | – | 0 |
+| hot3d__ceramic_mug | 5 | generic | 0.408 | 152.4 | 977.2 | 561.3 | – | 0 |
+| hot3d__ceramic_mug | 6 | generic | 0.000 | 227.1 | 86.6 | 10032.0 | com | 1 |
+| hot3d__ceramic_mug | 7 | generic | 0.848 | 126.0 | 1058.4 | 585.5 | – | 0 |
+| hot3d__ceramic_mug | 8 | generic | 0.000 | 186.7 | 1011.1 | 9830.0 | – | 0 |
+| hot3d__ceramic_mug | 9 | generic | 0.803 | 154.7 | 1054.3 | 558.1 | – | 0 |
+| hot3d__ceramic_mug | 10 | generic | 0.000 | 136.4 | 1031.3 | 9979.0 | – | 0 |
+| hot3d__wooden_bowl | 0 | generic | 0.492 | 10.0 | 1182.0 | 584.6 | mass | 1 |
+| hot3d__wooden_bowl | 1 | generic | 0.346 | 16.9 | 1137.4 | 557.7 | mass | 1 |
+| hot3d__wooden_bowl | 2 | generic | 0.596 | 8.2 | 1136.6 | 613.2 | mass | 1 |
+| hot3d__wooden_bowl | 3 | generic | 0.540 | 13.0 | 1190.6 | 575.9 | mass | 1 |
+| hot3d__wooden_bowl | 4 | generic | 0.422 | 23.8 | 1172.1 | 579.5 | mass | 1 |
+| hot3d__wooden_bowl | 5 | generic | 0.000 | 38.1 | 1211.8 | 9882.0 | mass | 1 |
+| hot3d__wooden_bowl | 6 | generic | 0.000 | 56.5 | 1199.7 | 10005.0 | mass | 1 |
+| hot3d__wooden_bowl | 8 | generic | 0.811 | 6.6 | 1142.8 | 624.7 | mass | 1 |
+| hot3d__wooden_bowl | 9 | generic | 0.752 | 4.1 | 1123.7 | 551.1 | mass | 1 |
+| hot3d__wooden_bowl | 10 | generic | 0.000 | 208.2 | 129.9 | 10062.0 | – | 0 |
+| ycb__bowl | 0 | generic | 0.000 | 222.0 | 1109.6 | 10002.0 | – | 0 |
+| ycb__bowl | 1 | generic | 0.000 | 131.0 | 1069.7 | 9950.0 | – | 0 |
+| ycb__bowl | 2 | generic | 0.868 | 135.3 | 1089.6 | 587.8 | – | 0 |
+| ycb__bowl | 3 | generic | 0.000 | 192.7 | 1089.4 | 9930.0 | – | 0 |
+| ycb__bowl | 4 | generic | 0.657 | 171.6 | 1105.3 | 608.0 | – | 0 |
+| ycb__bowl | 5 | generic | 0.392 | 214.7 | 1094.2 | 594.0 | – | 0 |
+| ycb__bowl | 6 | generic | 0.000 | 252.4 | 1087.8 | 10024.0 | – | 0 |
+| ycb__bowl | 7 | generic | 0.000 | 246.9 | 1179.8 | 9860.0 | – | 0 |
+| ycb__bowl | 8 | generic | 0.562 | 178.6 | 1103.2 | 584.7 | – | 0 |
+| ycb__bowl | 9 | generic | 0.000 | 223.1 | 1133.2 | 10072.0 | – | 0 |
+| ycb__bowl | 10 | generic | 0.000 | 263.7 | 1077.1 | 9929.0 | – | 0 |
+| ycb__bowl2 | 0 | generic | 0.407 | 236.2 | 1156.0 | 603.0 | – | 0 |
+| ycb__bowl2 | 1 | generic | 0.473 | 195.3 | 1155.2 | 576.9 | – | 0 |
+| ycb__bowl2 | 2 | generic | 0.355 | 225.7 | 1121.8 | 548.5 | – | 0 |
+| ycb__bowl2 | 4 | generic | 0.000 | 233.2 | 1128.1 | 9962.0 | – | 0 |
+| ycb__bowl2 | 5 | generic | 0.000 | 214.0 | 1112.3 | 9952.0 | – | 0 |
+| ycb__bowl2 | 6 | generic | 0.323 | 230.3 | 1140.5 | 585.7 | – | 0 |
+| ycb__bowl2 | 7 | generic | 0.000 | 247.5 | 1148.9 | 10037.0 | – | 0 |
+| ycb__bowl2 | 8 | generic | 0.000 | 263.1 | 1110.9 | 10017.0 | – | 0 |
+| ycb__bowl2 | 9 | generic | 0.000 | 175.0 | 1121.3 | 10068.0 | – | 0 |
+| hot3d__mug | 0 | generic | 0.000 | 239.4 | 942.8 | 9973.0 | – | 0 |
+| hot3d__mug | 1 | generic | 0.000 | 229.8 | 926.1 | 9987.0 | – | 0 |
+| hot3d__mug | 2 | generic | 0.700 | 184.8 | 923.1 | 613.2 | – | 0 |
+| hot3d__mug | 3 | generic | 0.000 | 180.4 | 1039.0 | 9960.0 | – | 0 |
+| hot3d__mug | 4 | generic | 0.889 | 177.4 | 1084.0 | 470.4 | – | 0 |
+| hot3d__mug | 5 | generic | 0.000 | 228.8 | 965.5 | 10000.0 | – | 0 |
+| hot3d__mug | 6 | generic | 0.644 | 159.9 | 865.2 | 614.1 | – | 0 |
+| hot3d__mug | 7 | generic | 0.717 | 158.6 | 927.4 | 587.2 | – | 0 |
+| hot3d__mug | 8 | generic | 0.872 | 179.6 | 1064.6 | 578.9 | – | 0 |
+| hot3d__mug | 9 | generic | 0.626 | 180.0 | 917.2 | 584.9 | – | 0 |
+| hot3d__mug | 10 | generic | 0.000 | 246.9 | 970.8 | 10054.0 | – | 0 |

@@ -1,0 +1,13 @@
+code e2ac6e67e9c4719902594df3b7fa6e5093bb2d51 (branch evpi-summary), dirty files 0
+comgap dcdfacf201cb2b2255f8ee8572e42025bb04006275a7968c394c044000133000  /home/chungyili/Codes/RPent-comgap/robots/mujoco_lab/data/com_gap/full_v12_n20000/records.jsonl.gz
+shard /home/chungyili/Codes/RPent-evpi/logs/evpi/full_generic/shard_0 efa7ea12ef159115 EXIT 0
+shard /home/chungyili/Codes/RPent-evpi/logs/evpi/full_generic/shard_1 797b85a526c1b3eb EXIT 0
+shard /home/chungyili/Codes/RPent-evpi/logs/evpi/full_generic/shard_2 cb29a0b425e4d8cd EXIT 0
+shard /home/chungyili/Codes/RPent-evpi/logs/evpi/full_generic/shard_3 540e9db3266449b3 EXIT 0
+shard /home/chungyili/Codes/RPent-evpi/logs/evpi/full_generic/shard_4 72d265d989c074f8 EXIT 0
+shard /home/chungyili/Codes/RPent-evpi/logs/evpi/full_generic/shard_5 d516485373059f5a EXIT 0
+shard /home/chungyili/Codes/RPent-evpi/logs/evpi/full_generic/shard_6 bd29305f9dd626f5 EXIT 0
+env NUMPY_MADVISE_HUGEPAGE=0 OMP_NUM_THREADS=1 RPENT_LAB_GENERATOR=v11 WANDB_MODE=online, unit v12-ev-sum-generic MemoryMax 8G MemorySwapMax 0
+command python -P -u -m robots.mujoco_lab.evpi_props summary --dirs /home/chungyili/Codes/RPent-evpi/logs/evpi/full_generic/shard_0,/home/chungyili/Codes/RPent-evpi/logs/evpi/full_generic/shard_1,/home/chungyili/Codes/RPent-evpi/logs/evpi/full_generic/shard_2,/home/chungyili/Codes/RPent-evpi/logs/evpi/full_generic/shard_3,/home/chungyili/Codes/RPent-evpi/logs/evpi/full_generic/shard_4,/home/chungyili/Codes/RPent-evpi/logs/evpi/full_generic/shard_5,/home/chungyili/Codes/RPent-evpi/logs/evpi/full_generic/shard_6 --out /home/chungyili/Codes/RPent-evpi/logs/evpi/summary_generic --comgap /home/chungyili/Codes/RPent-comgap/robots/mujoco_lab/data/com_gap/full_v12_n20000/records.jsonl.gz --wandb
+start 2026-11-06 03:27:31
+end 2026-11-06 03:27:45

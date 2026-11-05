@@ -1,0 +1,1375 @@
+{
+ "cmd": "run",
+ "bundle": "/home/chungyili/Codes/RPent-arm/robots/mujoco_lab/data/m2b2_v12",
+ "scenes": "/home/chungyili/Codes/daily-logs/researches/property-belief-manipulation/experiments/2026-11-03-mass-com-estimation/scenes.json",
+ "settings": null,
+ "priors": "class",
+ "objects": "fruits_veggies__orange1,handal__hammer_4,handal__measuring_cups_1,hope__canned_peaches,hope__ketchup_bottle,hope__parmesan_cheese_canister,hope__spaghetti,hot3d__coffee_pot,hot3d__keyboard,hot3d__rubiks_cube,ycb__banana,ycb__coffee_can,ycb__scissors,ycb__wood_block",
+ "seed": 11,
+ "repeats": 11,
+ "sample": null,
+ "sample_seed": 0,
+ "workers": 1,
+ "out": "/home/chungyili/Codes/RPent-evpi/logs/evpi/full_class/shard_3",
+ "code_revision": "2df16a67026fadf7795168e09bb414a807e32186",
+ "dirty": false,
+ "generator": "v11",
+ "settings_parsed": [
+  [
+   "k100_A3",
+   100.0,
+   3.0
+  ],
+  [
+   "k30_A3",
+   30.0,
+   3.0
+  ],
+  [
+   "k100_A10",
+   100.0,
+   10.0
+  ],
+  [
+   "k10_A10",
+   10.0,
+   10.0
+  ],
+  [
+   "k1_A10",
+   1.0,
+   10.0
+  ]
+ ],
+ "priors_parsed": [
+  "class"
+ ],
+ "cases": [
+  [
+   "fruits_veggies__orange1",
+   0
+  ],
+  [
+   "fruits_veggies__orange1",
+   1
+  ],
+  [
+   "fruits_veggies__orange1",
+   2
+  ],
+  [
+   "fruits_veggies__orange1",
+   3
+  ],
+  [
+   "fruits_veggies__orange1",
+   4
+  ],
+  [
+   "fruits_veggies__orange1",
+   5
+  ],
+  [
+   "fruits_veggies__orange1",
+   6
+  ],
+  [
+   "fruits_veggies__orange1",
+   7
+  ],
+  [
+   "fruits_veggies__orange1",
+   8
+  ],
+  [
+   "fruits_veggies__orange1",
+   9
+  ],
+  [
+   "fruits_veggies__orange1",
+   10
+  ],
+  [
+   "handal__hammer_4",
+   0
+  ],
+  [
+   "handal__hammer_4",
+   1
+  ],
+  [
+   "handal__hammer_4",
+   2
+  ],
+  [
+   "handal__hammer_4",
+   3
+  ],
+  [
+   "handal__hammer_4",
+   4
+  ],
+  [
+   "handal__hammer_4",
+   5
+  ],
+  [
+   "handal__hammer_4",
+   6
+  ],
+  [
+   "handal__hammer_4",
+   7
+  ],
+  [
+   "handal__hammer_4",
+   8
+  ],
+  [
+   "handal__hammer_4",
+   9
+  ],
+  [
+   "handal__hammer_4",
+   10
+  ],
+  [
+   "handal__measuring_cups_1",
+   0
+  ],
+  [
+   "handal__measuring_cups_1",
+   1
+  ],
+  [
+   "handal__measuring_cups_1",
+   2
+  ],
+  [
+   "handal__measuring_cups_1",
+   3
+  ],
+  [
+   "handal__measuring_cups_1",
+   4
+  ],
+  [
+   "handal__measuring_cups_1",
+   5
+  ],
+  [
+   "handal__measuring_cups_1",
+   6
+  ],
+  [
+   "handal__measuring_cups_1",
+   7
+  ],
+  [
+   "handal__measuring_cups_1",
+   8
+  ],
+  [
+   "handal__measuring_cups_1",
+   9
+  ],
+  [
+   "handal__measuring_cups_1",
+   10
+  ],
+  [
+   "hope__canned_peaches",
+   0
+  ],
+  [
+   "hope__canned_peaches",
+   1
+  ],
+  [
+   "hope__canned_peaches",
+   2
+  ],
+  [
+   "hope__canned_peaches",
+   3
+  ],
+  [
+   "hope__canned_peaches",
+   4
+  ],
+  [
+   "hope__canned_peaches",
+   5
+  ],
+  [
+   "hope__canned_peaches",
+   6
+  ],
+  [
+   "hope__canned_peaches",
+   7
+  ],
+  [
+   "hope__canned_peaches",
+   8
+  ],
+  [
+   "hope__canned_peaches",
+   9
+  ],
+  [
+   "hope__canned_peaches",
+   10
+  ],
+  [
+   "hope__ketchup_bottle",
+   0
+  ],
+  [
+   "hope__ketchup_bottle",
+   1
+  ],
+  [
+   "hope__ketchup_bottle",
+   2
+  ],
+  [
+   "hope__ketchup_bottle",
+   3
+  ],
+  [
+   "hope__ketchup_bottle",
+   4
+  ],
+  [
+   "hope__ketchup_bottle",
+   5
+  ],
+  [
+   "hope__ketchup_bottle",
+   6
+  ],
+  [
+   "hope__ketchup_bottle",
+   7
+  ],
+  [
+   "hope__ketchup_bottle",
+   8
+  ],
+  [
+   "hope__ketchup_bottle",
+   9
+  ],
+  [
+   "hope__ketchup_bottle",
+   10
+  ],
+  [
+   "hope__parmesan_cheese_canister",
+   0
+  ],
+  [
+   "hope__parmesan_cheese_canister",
+   1
+  ],
+  [
+   "hope__parmesan_cheese_canister",
+   2
+  ],
+  [
+   "hope__parmesan_cheese_canister",
+   3
+  ],
+  [
+   "hope__parmesan_cheese_canister",
+   4
+  ],
+  [
+   "hope__parmesan_cheese_canister",
+   5
+  ],
+  [
+   "hope__parmesan_cheese_canister",
+   6
+  ],
+  [
+   "hope__parmesan_cheese_canister",
+   7
+  ],
+  [
+   "hope__parmesan_cheese_canister",
+   8
+  ],
+  [
+   "hope__parmesan_cheese_canister",
+   9
+  ],
+  [
+   "hope__parmesan_cheese_canister",
+   10
+  ],
+  [
+   "hope__spaghetti",
+   0
+  ],
+  [
+   "hope__spaghetti",
+   1
+  ],
+  [
+   "hope__spaghetti",
+   2
+  ],
+  [
+   "hope__spaghetti",
+   3
+  ],
+  [
+   "hope__spaghetti",
+   4
+  ],
+  [
+   "hope__spaghetti",
+   5
+  ],
+  [
+   "hope__spaghetti",
+   6
+  ],
+  [
+   "hope__spaghetti",
+   7
+  ],
+  [
+   "hope__spaghetti",
+   8
+  ],
+  [
+   "hope__spaghetti",
+   9
+  ],
+  [
+   "hope__spaghetti",
+   10
+  ],
+  [
+   "hot3d__coffee_pot",
+   0
+  ],
+  [
+   "hot3d__coffee_pot",
+   1
+  ],
+  [
+   "hot3d__coffee_pot",
+   2
+  ],
+  [
+   "hot3d__coffee_pot",
+   3
+  ],
+  [
+   "hot3d__coffee_pot",
+   4
+  ],
+  [
+   "hot3d__coffee_pot",
+   5
+  ],
+  [
+   "hot3d__coffee_pot",
+   6
+  ],
+  [
+   "hot3d__coffee_pot",
+   7
+  ],
+  [
+   "hot3d__coffee_pot",
+   8
+  ],
+  [
+   "hot3d__coffee_pot",
+   9
+  ],
+  [
+   "hot3d__coffee_pot",
+   10
+  ],
+  [
+   "hot3d__keyboard",
+   0
+  ],
+  [
+   "hot3d__keyboard",
+   1
+  ],
+  [
+   "hot3d__keyboard",
+   2
+  ],
+  [
+   "hot3d__keyboard",
+   3
+  ],
+  [
+   "hot3d__keyboard",
+   4
+  ],
+  [
+   "hot3d__keyboard",
+   5
+  ],
+  [
+   "hot3d__keyboard",
+   6
+  ],
+  [
+   "hot3d__keyboard",
+   7
+  ],
+  [
+   "hot3d__keyboard",
+   8
+  ],
+  [
+   "hot3d__keyboard",
+   9
+  ],
+  [
+   "hot3d__keyboard",
+   10
+  ],
+  [
+   "hot3d__rubiks_cube",
+   0
+  ],
+  [
+   "hot3d__rubiks_cube",
+   1
+  ],
+  [
+   "hot3d__rubiks_cube",
+   2
+  ],
+  [
+   "hot3d__rubiks_cube",
+   3
+  ],
+  [
+   "hot3d__rubiks_cube",
+   4
+  ],
+  [
+   "hot3d__rubiks_cube",
+   5
+  ],
+  [
+   "hot3d__rubiks_cube",
+   6
+  ],
+  [
+   "hot3d__rubiks_cube",
+   7
+  ],
+  [
+   "hot3d__rubiks_cube",
+   8
+  ],
+  [
+   "hot3d__rubiks_cube",
+   9
+  ],
+  [
+   "hot3d__rubiks_cube",
+   10
+  ],
+  [
+   "ycb__banana",
+   0
+  ],
+  [
+   "ycb__banana",
+   1
+  ],
+  [
+   "ycb__banana",
+   2
+  ],
+  [
+   "ycb__banana",
+   3
+  ],
+  [
+   "ycb__banana",
+   4
+  ],
+  [
+   "ycb__banana",
+   5
+  ],
+  [
+   "ycb__banana",
+   6
+  ],
+  [
+   "ycb__banana",
+   7
+  ],
+  [
+   "ycb__banana",
+   8
+  ],
+  [
+   "ycb__banana",
+   9
+  ],
+  [
+   "ycb__banana",
+   10
+  ],
+  [
+   "ycb__coffee_can",
+   0
+  ],
+  [
+   "ycb__coffee_can",
+   1
+  ],
+  [
+   "ycb__coffee_can",
+   2
+  ],
+  [
+   "ycb__coffee_can",
+   3
+  ],
+  [
+   "ycb__coffee_can",
+   4
+  ],
+  [
+   "ycb__coffee_can",
+   5
+  ],
+  [
+   "ycb__coffee_can",
+   6
+  ],
+  [
+   "ycb__coffee_can",
+   7
+  ],
+  [
+   "ycb__coffee_can",
+   8
+  ],
+  [
+   "ycb__coffee_can",
+   9
+  ],
+  [
+   "ycb__coffee_can",
+   10
+  ],
+  [
+   "ycb__scissors",
+   0
+  ],
+  [
+   "ycb__scissors",
+   1
+  ],
+  [
+   "ycb__scissors",
+   2
+  ],
+  [
+   "ycb__scissors",
+   3
+  ],
+  [
+   "ycb__scissors",
+   4
+  ],
+  [
+   "ycb__scissors",
+   5
+  ],
+  [
+   "ycb__scissors",
+   6
+  ],
+  [
+   "ycb__scissors",
+   7
+  ],
+  [
+   "ycb__scissors",
+   8
+  ],
+  [
+   "ycb__scissors",
+   9
+  ],
+  [
+   "ycb__scissors",
+   10
+  ],
+  [
+   "ycb__wood_block",
+   0
+  ],
+  [
+   "ycb__wood_block",
+   1
+  ],
+  [
+   "ycb__wood_block",
+   2
+  ],
+  [
+   "ycb__wood_block",
+   3
+  ],
+  [
+   "ycb__wood_block",
+   4
+  ],
+  [
+   "ycb__wood_block",
+   5
+  ],
+  [
+   "ycb__wood_block",
+   6
+  ],
+  [
+   "ycb__wood_block",
+   7
+  ],
+  [
+   "ycb__wood_block",
+   8
+  ],
+  [
+   "ycb__wood_block",
+   9
+  ],
+  [
+   "ycb__wood_block",
+   10
+  ]
+ ],
+ "spreads": {
+  "generic": {
+   "0": {
+    "mass": 1.1185824228229213,
+    "com_flat": 0.1477436947257577,
+    "com_upright": 0.12623029414638953
+   },
+   "1": {
+    "mass": 1.1088908326025209,
+    "com_flat": 0.1483827394605411,
+    "com_upright": 0.12417440710727123
+   },
+   "2": {
+    "mass": 1.1186521194323575,
+    "com_flat": 0.1468530165101892,
+    "com_upright": 0.10369698032703843
+   },
+   "3": {
+    "mass": 1.1590413815498983,
+    "com_flat": 0.1511282515949038,
+    "com_upright": 0.12200873184259857
+   },
+   "4": {
+    "mass": 1.154545853707586,
+    "com_flat": 0.15770950784808344,
+    "com_upright": 0.12437851976488792
+   }
+  }
+ },
+ "generic": {
+  "fruits_veggies__avocado": {
+   "mass": 0.20563459083434787,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1185824228229213,
+   "sigma_com": 0.1477436947257577
+  },
+  "fruits_veggies__red_onion": {
+   "mass": 0.20563459083434787,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1185824228229213,
+   "sigma_com": 0.1477436947257577
+  },
+  "handal__hammer_2": {
+   "mass": 0.20563459083434787,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1185824228229213,
+   "sigma_com": 0.1477436947257577
+  },
+  "handal__hammer_6": {
+   "mass": 0.20563459083434787,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1185824228229213,
+   "sigma_com": 0.1477436947257577
+  },
+  "handal__hammer_8": {
+   "mass": 0.20563459083434787,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1185824228229213,
+   "sigma_com": 0.1477436947257577
+  },
+  "handal__measuring_cups": {
+   "mass": 0.20563459083434787,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1185824228229213,
+   "sigma_com": 0.12623029414638953
+  },
+  "handal__red_serving_spoon": {
+   "mass": 0.20563459083434787,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1185824228229213,
+   "sigma_com": 0.1477436947257577
+  },
+  "hope__canned_mushrooms": {
+   "mass": 0.20563459083434787,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1185824228229213,
+   "sigma_com": 0.12623029414638953
+  },
+  "hope__chocolate_pudding_mix": {
+   "mass": 0.20563459083434787,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1185824228229213,
+   "sigma_com": 0.12623029414638953
+  },
+  "hope__granola_bars": {
+   "mass": 0.20563459083434787,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1185824228229213,
+   "sigma_com": 0.12623029414638953
+  },
+  "hope__mustard_bottle": {
+   "mass": 0.20563459083434787,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1185824228229213,
+   "sigma_com": 0.12623029414638953
+  },
+  "hope__oatmeal_raisin_cookies": {
+   "mass": 0.20563459083434787,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1185824228229213,
+   "sigma_com": 0.12623029414638953
+  },
+  "hot3d__frozen_waffles": {
+   "mass": 0.20563459083434787,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1185824228229213,
+   "sigma_com": 0.1477436947257577
+  },
+  "hot3d__pitcher": {
+   "mass": 0.20563459083434787,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1185824228229213,
+   "sigma_com": 0.12623029414638953
+  },
+  "hot3d__soup_can": {
+   "mass": 0.20563459083434787,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1185824228229213,
+   "sigma_com": 0.12623029414638953
+  },
+  "ycb__bowl": {
+   "mass": 0.20563459083434787,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1185824228229213,
+   "sigma_com": 0.12623029414638953
+  },
+  "ycb__jello": {
+   "mass": 0.20563459083434787,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1185824228229213,
+   "sigma_com": 0.1477436947257577
+  },
+  "ycb__mustard": {
+   "mass": 0.20563459083434787,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1185824228229213,
+   "sigma_com": 0.12623029414638953
+  },
+  "ycb__spam_can": {
+   "mass": 0.20563459083434787,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1185824228229213,
+   "sigma_com": 0.1477436947257577
+  },
+  "handal__hammer": {
+   "mass": 0.21412429239679684,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1088908326025209,
+   "sigma_com": 0.1483827394605411
+  },
+  "handal__measuring_spoon": {
+   "mass": 0.21412429239679684,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1088908326025209,
+   "sigma_com": 0.1483827394605411
+  },
+  "hope__canned_peaches": {
+   "mass": 0.21412429239679684,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1088908326025209,
+   "sigma_com": 0.12417440710727123
+  },
+  "hope__canned_tuna": {
+   "mass": 0.21412429239679684,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1088908326025209,
+   "sigma_com": 0.12417440710727123
+  },
+  "hope__macaroni_and_cheese": {
+   "mass": 0.21412429239679684,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1088908326025209,
+   "sigma_com": 0.12417440710727123
+  },
+  "hope__pitted_cherries": {
+   "mass": 0.21412429239679684,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1088908326025209,
+   "sigma_com": 0.1483827394605411
+  },
+  "hope__raisin_box": {
+   "mass": 0.21412429239679684,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1088908326025209,
+   "sigma_com": 0.12417440710727123
+  },
+  "hope__ranch_dressing": {
+   "mass": 0.21412429239679684,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1088908326025209,
+   "sigma_com": 0.12417440710727123
+  },
+  "hot3d__bbq_sauce_bottle": {
+   "mass": 0.21412429239679684,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1088908326025209,
+   "sigma_com": 0.12417440710727123
+  },
+  "hot3d__clay_plates": {
+   "mass": 0.21412429239679684,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1088908326025209,
+   "sigma_com": 0.1483827394605411
+  },
+  "hot3d__lizard_figurine": {
+   "mass": 0.21412429239679684,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1088908326025209,
+   "sigma_com": 0.1483827394605411
+  },
+  "hot3d__spatula": {
+   "mass": 0.21412429239679684,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1088908326025209,
+   "sigma_com": 0.1483827394605411
+  },
+  "ycb__banana": {
+   "mass": 0.21412429239679684,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1088908326025209,
+   "sigma_com": 0.1483827394605411
+  },
+  "ycb__bowl2": {
+   "mass": 0.21412429239679684,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1088908326025209,
+   "sigma_com": 0.12417440710727123
+  },
+  "ycb__dry_erase_marker": {
+   "mass": 0.21412429239679684,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1088908326025209,
+   "sigma_com": 0.1483827394605411
+  },
+  "ycb__scissors": {
+   "mass": 0.21412429239679684,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1088908326025209,
+   "sigma_com": 0.1483827394605411
+  },
+  "ycb__soft_scrub": {
+   "mass": 0.21412429239679684,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1088908326025209,
+   "sigma_com": 0.12417440710727123
+  },
+  "ycb__tuna_can": {
+   "mass": 0.21412429239679684,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1088908326025209,
+   "sigma_com": 0.1483827394605411
+  },
+  "ycb__wood_block": {
+   "mass": 0.21412429239679684,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1088908326025209,
+   "sigma_com": 0.1483827394605411
+  },
+  "handal__green_serving_spoon": {
+   "mass": 0.20568766146344955,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1186521194323575,
+   "sigma_com": 0.1468530165101892
+  },
+  "handal__hammer_3": {
+   "mass": 0.20568766146344955,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1186521194323575,
+   "sigma_com": 0.1468530165101892
+  },
+  "handal__hammer_5": {
+   "mass": 0.20568766146344955,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1186521194323575,
+   "sigma_com": 0.1468530165101892
+  },
+  "handal__ladle": {
+   "mass": 0.20568766146344955,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1186521194323575,
+   "sigma_com": 0.1468530165101892
+  },
+  "handal__measuring_cups_1": {
+   "mass": 0.20568766146344955,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1186521194323575,
+   "sigma_com": 0.10369698032703843
+  },
+  "hope__milk_carton": {
+   "mass": 0.20568766146344955,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1186521194323575,
+   "sigma_com": 0.10369698032703843
+  },
+  "hope__orange_juice_carton": {
+   "mass": 0.20568766146344955,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1186521194323575,
+   "sigma_com": 0.10369698032703843
+  },
+  "hope__parmesan_cheese_canister": {
+   "mass": 0.20568766146344955,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1186521194323575,
+   "sigma_com": 0.10369698032703843
+  },
+  "hope__popcorn_box": {
+   "mass": 0.20568766146344955,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1186521194323575,
+   "sigma_com": 0.10369698032703843
+  },
+  "hot3d__foam_roller": {
+   "mass": 0.20568766146344955,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1186521194323575,
+   "sigma_com": 0.1468530165101892
+  },
+  "hot3d__frozen_vegetable_block": {
+   "mass": 0.20568766146344955,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1186521194323575,
+   "sigma_com": 0.1468530165101892
+  },
+  "hot3d__potato_masher": {
+   "mass": 0.20568766146344955,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1186521194323575,
+   "sigma_com": 0.1468530165101892
+  },
+  "hot3d__remote_control": {
+   "mass": 0.20568766146344955,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1186521194323575,
+   "sigma_com": 0.1468530165101892
+  },
+  "hot3d__wooden_spoons": {
+   "mass": 0.20568766146344955,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1186521194323575,
+   "sigma_com": 0.1468530165101892
+  },
+  "ycb__cheez_it": {
+   "mass": 0.20568766146344955,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1186521194323575,
+   "sigma_com": 0.10369698032703843
+  },
+  "ycb__chocolate_pudding": {
+   "mass": 0.20568766146344955,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1186521194323575,
+   "sigma_com": 0.10369698032703843
+  },
+  "ycb__pitcher": {
+   "mass": 0.20568766146344955,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1186521194323575,
+   "sigma_com": 0.10369698032703843
+  },
+  "ycb__sugar_box": {
+   "mass": 0.20568766146344955,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1186521194323575,
+   "sigma_com": 0.10369698032703843
+  },
+  "ycb__tomato_soup_can": {
+   "mass": 0.20568766146344955,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1186521194323575,
+   "sigma_com": 0.10369698032703843
+  },
+  "fruits_veggies__orange1": {
+   "mass": 0.18922983337014163,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1590413815498983,
+   "sigma_com": 0.1511282515949038
+  },
+  "handal__hammer_4": {
+   "mass": 0.18922983337014163,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1590413815498983,
+   "sigma_com": 0.1511282515949038
+  },
+  "handal__hammer_7": {
+   "mass": 0.18922983337014163,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1590413815498983,
+   "sigma_com": 0.1511282515949038
+  },
+  "hope__bbq_sauce_bottle": {
+   "mass": 0.18922983337014163,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1590413815498983,
+   "sigma_com": 0.12200873184259857
+  },
+  "hope__green_beans_can": {
+   "mass": 0.18922983337014163,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1590413815498983,
+   "sigma_com": 0.12200873184259857
+  },
+  "hope__mayonnaise_bottle": {
+   "mass": 0.18922983337014163,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1590413815498983,
+   "sigma_com": 0.12200873184259857
+  },
+  "hope__pineapple_slices_can": {
+   "mass": 0.18922983337014163,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1590413815498983,
+   "sigma_com": 0.12200873184259857
+  },
+  "hope__spaghetti": {
+   "mass": 0.18922983337014163,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1590413815498983,
+   "sigma_com": 0.12200873184259857
+  },
+  "hope__tomato_sauce_can": {
+   "mass": 0.18922983337014163,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1590413815498983,
+   "sigma_com": 0.12200873184259857
+  },
+  "hot3d__ceramic_mug": {
+   "mass": 0.18922983337014163,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1590413815498983,
+   "sigma_com": 0.12200873184259857
+  },
+  "hot3d__computer_mouse": {
+   "mass": 0.18922983337014163,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1590413815498983,
+   "sigma_com": 0.1511282515949038
+  },
+  "hot3d__keyboard": {
+   "mass": 0.18922983337014163,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1590413815498983,
+   "sigma_com": 0.1511282515949038
+  },
+  "hot3d__smartphone": {
+   "mass": 0.18922983337014163,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1590413815498983,
+   "sigma_com": 0.1511282515949038
+  },
+  "hot3d__storage_box": {
+   "mass": 0.18922983337014163,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1590413815498983,
+   "sigma_com": 0.12200873184259857
+  },
+  "hot3d__wooden_bowl": {
+   "mass": 0.18922983337014163,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1590413815498983,
+   "sigma_com": 0.12200873184259857
+  },
+  "ycb__brick": {
+   "mass": 0.18922983337014163,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1590413815498983,
+   "sigma_com": 0.1511282515949038
+  },
+  "ycb__cordless_drill": {
+   "mass": 0.18922983337014163,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1590413815498983,
+   "sigma_com": 0.1511282515949038
+  },
+  "ycb__mug": {
+   "mass": 0.18922983337014163,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1590413815498983,
+   "sigma_com": 0.12200873184259857
+  },
+  "ycb__spring_clamp": {
+   "mass": 0.18922983337014163,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.1590413815498983,
+   "sigma_com": 0.1511282515949038
+  },
+  "fruits_veggies__lemon1": {
+   "mass": 0.20608891145204042,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.154545853707586,
+   "sigma_com": 0.15770950784808344
+  },
+  "fruits_veggies__lime": {
+   "mass": 0.20608891145204042,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.154545853707586,
+   "sigma_com": 0.15770950784808344
+  },
+  "handal__hammer_1": {
+   "mass": 0.20608891145204042,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.154545853707586,
+   "sigma_com": 0.15770950784808344
+  },
+  "handal__pink_spaghetti_spoon": {
+   "mass": 0.20608891145204042,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.154545853707586,
+   "sigma_com": 0.12437851976488792
+  },
+  "hope__butter": {
+   "mass": 0.20608891145204042,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.154545853707586,
+   "sigma_com": 0.15770950784808344
+  },
+  "hope__corn_can": {
+   "mass": 0.20608891145204042,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.154545853707586,
+   "sigma_com": 0.12437851976488792
+  },
+  "hope__cream_cheese": {
+   "mass": 0.20608891145204042,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.154545853707586,
+   "sigma_com": 0.15770950784808344
+  },
+  "hope__ketchup_bottle": {
+   "mass": 0.20608891145204042,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.154545853707586,
+   "sigma_com": 0.12437851976488792
+  },
+  "hope__peas_and_carrots": {
+   "mass": 0.20608891145204042,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.154545853707586,
+   "sigma_com": 0.15770950784808344
+  },
+  "hope__yogurt_cup": {
+   "mass": 0.20608891145204042,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.154545853707586,
+   "sigma_com": 0.12437851976488792
+  },
+  "hot3d__birdhouse": {
+   "mass": 0.20608891145204042,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.154545853707586,
+   "sigma_com": 0.15770950784808344
+  },
+  "hot3d__coffee_pot": {
+   "mass": 0.20608891145204042,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.154545853707586,
+   "sigma_com": 0.12437851976488792
+  },
+  "hot3d__dumbbell": {
+   "mass": 0.20608891145204042,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.154545853707586,
+   "sigma_com": 0.15770950784808344
+  },
+  "hot3d__glasses": {
+   "mass": 0.20608891145204042,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.154545853707586,
+   "sigma_com": 0.15770950784808344
+  },
+  "hot3d__megaphone": {
+   "mass": 0.20608891145204042,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.154545853707586,
+   "sigma_com": 0.12437851976488792
+  },
+  "hot3d__mug": {
+   "mass": 0.20608891145204042,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.154545853707586,
+   "sigma_com": 0.12437851976488792
+  },
+  "hot3d__rubiks_cube": {
+   "mass": 0.20608891145204042,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.154545853707586,
+   "sigma_com": 0.15770950784808344
+  },
+  "ycb__clamp": {
+   "mass": 0.20608891145204042,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.154545853707586,
+   "sigma_com": 0.15770950784808344
+  },
+  "ycb__coffee_can": {
+   "mass": 0.20608891145204042,
+   "com": 0.5,
+   "fallback": [],
+   "sigma_mass": 1.154545853707586,
+   "sigma_com": 0.12437851976488792
+  }
+ },
+ "exact_sd": {
+  "mass": 0.01,
+  "com": 0.005
+ },
+ "fill_sd": 0.01,
+ "bar": 0.02,
+ "ess_table": 100.0,
+ "reveals": [
+  "mass",
+  "mu",
+  "com",
+  "damage",
+  "all"
+ ]
+}
