@@ -204,6 +204,12 @@ def _rec(choices, evpi_all=0.0, obj="o1", setting="k100_A3", prior="class", guar
 SAME = {k: "decline" for k in ("prior",) + ev.REVEALS}
 
 
+def test_an_unreachable_case_costs_A_under_every_belief():
+    assert ev.true_cost(None, "unreachable", {}, None, None, "bin", 100.0, 3.0, None) == {"J": 3.0}
+    g = ev.groups(_rec({k: "unreachable" for k in ("prior",) + ev.REVEALS}))
+    assert g["invariant"] and g["abstain_dominated"]
+
+
 def test_the_groups_come_from_the_choices():
     g = ev.groups(_rec(SAME))
     assert g == {"invariant": True, "critical": False, "invariant_id": True, "abstain_dominated": True}

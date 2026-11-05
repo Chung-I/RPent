@@ -76,6 +76,7 @@ PRIORS = ("class", "generic")
 PRIOR = "prior"
 REVEALS = ("mass", "mu", "com", "damage", "all")
 SINGLE = ("mass", "mu", "com", "damage")
+ABSTAINS = ("decline", "unreachable")    # an unreachable case (no pinch the arm reaches) ends undone, as a decline does
 DAMAGE_KEYS = ("f_damage_n", "v_bruise_ms", "v_break_ms")
 COUPLED = ("mass", "com", "damage")       # the reveals that weight a fillable object's particles first
 FILL_SD = 0.01                            # the fill kernel (the fill is U[0.3, 0.9] when filled)
@@ -457,8 +458,10 @@ def probe_true_cost(prims: Any, o: Any, menu: dict[str, Any], b: ParticleBelief,
 def true_cost(prims: Any, choice: str, m: dict[str, Any], b: ParticleBelief, tb: ParticleBelief, destination: str, care: float,
               A: float, rng_fn: Callable[[], np.random.Generator]) -> dict[str, Any]:
     """J(choice; θ_true) for the choice of menu ``m`` (first_menu's) under belief b: A for decline, a row's cost at the
-    truth, a probe's one-step cost at the truth (``rng_fn`` gives its results' stream); None for no choice."""
-    if choice == "decline":
+    truth, a probe's one-step cost at the truth (``rng_fn`` gives its results' stream); A for an unreachable case (the
+    skill cannot pinch it for this destination under any belief, so every EVPI is 0, as com_gap counts it); None for no
+    choice."""
+    if choice in ABSTAINS:
         return {"J": float(A)}
     o = m["menu"].get(choice)
     if o is None:
@@ -706,7 +709,7 @@ def groups(r: dict[str, Any]) -> dict[str, bool]:
     a, c = r["action"], r["choice"]
     invariant = all(a[S] == a[PRIOR] for S in REVEALS)
     return {"invariant": invariant, "critical": not invariant, "invariant_id": all(c[S] == c[PRIOR] for S in REVEALS),
-            "abstain_dominated": c[PRIOR] == "decline" and c["all"] == "decline"}
+            "abstain_dominated": c[PRIOR] in ABSTAINS and c["all"] in ABSTAINS}
 
 
 def ess_ok(r: dict[str, Any]) -> bool:
