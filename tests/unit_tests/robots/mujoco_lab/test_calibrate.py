@@ -951,3 +951,118 @@ def test_the_output_records_its_provenance_from_before_the_cases_ran(tmp_path, m
         calibrate.main(["--metrics", METRICS, "--repeats", "1", "--out", str(out), "--objects", "ycb__banana", "--seed", "2",
                         "--coverage-sims", "0"])
         assert json.load(open(out))["code"] == dict(start, changed_during_run=changed)
+
+
+@pytest.mark.parametrize("limit", [None, 1, 3])
+def test_retry_protocol_keeps_grasping_up_to_the_limit(monkeypatch, limit):
+    from robots.mujoco_lab.calibrate import run_protocol
+
+    sc = _scripted(monkeypatch, [_assessment("commit") for _ in range(7)], ["missed"] * 6)
+    kw = {} if limit is None else {"retry_attempts": limit}
+    case = run_protocol(SimpleNamespace(abstain_cost=1.0), "retry", "table_centre", np.random.default_rng(0), **kw)
+    assert len(case["attempts"]) == (5 if limit is None else limit) and case["ended"] == "failed"
+    assert sc.calls == ["commit_std"] * len(case["attempts"]) and case["probes"] == []
+
+
+@pytest.mark.parametrize("outcome, ended", [("placed_stable", "placed"), ("broken", "failed")])
+def test_retry_protocol_stops_at_a_terminal_outcome(monkeypatch, outcome, ended):
+    from robots.mujoco_lab.calibrate import run_protocol
+
+    _scripted(monkeypatch, [_assessment("commit") for _ in range(4)], ["missed", outcome, "missed"])
+    case = run_protocol(SimpleNamespace(abstain_cost=1.0), "retry", "table_centre", np.random.default_rng(0))
+    assert [t["outcome"] for t in case["attempts"]] == ["missed", outcome] and case["ended"] == ended
+
+
+@pytest.mark.parametrize("recommendation", ["decline", "probe"])
+def test_retry_protocol_ignores_the_recommendation_and_guard(monkeypatch, recommendation):
+    from robots.mujoco_lab.calibrate import run_protocol
+
+    a = dict(_assessment(recommendation, probe=True), guard={"flag": True})
+    sc = _scripted(monkeypatch, [a], ["placed_stable"])
+    case = run_protocol(SimpleNamespace(abstain_cost=1.0), "retry", "table_centre", np.random.default_rng(0), follow=True)
+    assert sc.calls == ["commit_std"] and case["ended"] == "placed" and case["probes"] == []
+    assert case["recommendation"] == recommendation and case["guard"] == {"flag": True} and case["first_menu"] is not None
+
+
+@pytest.mark.parametrize("protocol", ["retry", "retry_frozen"])
+def test_retry_protocol_belief_after_a_failed_attempt(monkeypatch, protocol):
+    from robots.mujoco_lab import calibrate
+    from rpent.skills.pick_place import tools
+
+    prior, updated = object(), object()
+    seen, stores = [], []
+
+    def assess(**kw):
+        store = kw["store"]
+        if not stores:
+            store["beliefs"] = {"obj": {"belief": prior}}
+            stores.append(store)
+        else:
+            assert store["beliefs"]["obj"]["belief"] is prior
+            assert tools._cache(store) == {}
+        seen.append(store["beliefs"]["obj"]["belief"])
+        return SimpleNamespace(data=_assessment("decline"))
+
+    def pick(**kw):
+        store = kw["store"]
+        n = len(seen)
+        seen.append(store["beliefs"]["obj"]["belief"])
+        store["beliefs"]["obj"]["belief"] = updated
+        tools._cache(store)[("stale",)] = _assessment("commit")
+        return SimpleNamespace(data={"option": kw["option_id"], "outcome": "missed" if n == 1 else "placed_stable",
+                                     "placed_at_requested": n != 1, "diagnosis": None,
+                                     "assessment": dict(_assessment("decline"), best_option="updated_row",
+                                                        options=[_row("updated_row")])})
+
+    monkeypatch.setattr(calibrate, "assess_pick", assess)
+    monkeypatch.setattr(calibrate, "pick_and_place", pick)
+    case = calibrate.run_protocol(SimpleNamespace(abstain_cost=1.0), protocol, "table_centre", np.random.default_rng(0))
+    assert case["ended"] == "placed" and case["probes"] == []
+    assert seen == ([prior, prior, prior, prior] if protocol == "retry_frozen" else [prior, prior, updated])
+    assert [t["option"] for t in case["attempts"]] == ["commit_std", "commit_std" if protocol == "retry_frozen" else "updated_row"]
+
+
+@pytest.mark.parametrize("protocol", ["retry", "retry_frozen"])
+@pytest.mark.parametrize("limit", [1, 3])
+def test_retry_attempts_reach_the_workers_and_output(tmp_path, protocol, limit):
+    from robots.mujoco_lab.calibrate import main
+
+    out = tmp_path / "retry.json"
+    main(["--metrics", METRICS, "--repeats", "1", "--out", str(out), "--objects", "ycb__banana", "--seed", "6",
+          "--protocol", protocol, "--retry-attempts", str(limit), "--threshold", "1.01", "--workers", "2", "--coverage-sims", "0"])
+    saved = json.load(open(out))
+    assert saved["retry_attempts"] == limit and saved["errors"] == 0
+    row = saved["rows"][0]
+    assert len(row["attempts"]) == limit and row["ended"] == "failed"
+
+
+@pytest.mark.parametrize("bad", ["0", "-1", "1.5", "x"])
+def test_retry_attempts_argument_is_checked(tmp_path, bad):
+    from robots.mujoco_lab.calibrate import main
+
+    with pytest.raises(SystemExit):
+        main(["--metrics", METRICS, "--out", str(tmp_path / "c.json"), "--retry-attempts", bad])
+
+
+@pytest.mark.parametrize("protocol", ["retry", "retry_frozen"])
+@pytest.mark.parametrize("fresh, ended", [({"error": "assessment failed"}, "error"), ({"assessed": False}, "unreachable"),
+                                         (dict(_assessment("decline"), best_option=None), "no_row")])
+def test_retry_protocol_handles_a_fresh_menu_without_a_row(monkeypatch, protocol, fresh, ended):
+    from robots.mujoco_lab import calibrate
+
+    assessments = [_assessment("commit"), fresh]
+
+    def assess(**kw):
+        kw["store"].setdefault("beliefs", {"obj": {"belief": object()}})
+        return SimpleNamespace(data=assessments.pop(0))
+
+    def pick(**kw):
+        return SimpleNamespace(data={"option": kw["option_id"], "outcome": "missed", "placed_at_requested": False,
+                                     "diagnosis": None, "assessment": fresh})
+
+    monkeypatch.setattr(calibrate, "assess_pick", assess)
+    monkeypatch.setattr(calibrate, "pick_and_place", pick)
+    case = calibrate.run_protocol(SimpleNamespace(abstain_cost=1.0), protocol, "table_centre", np.random.default_rng(0))
+    assert case["ended"] == ended and [t["outcome"] for t in case["attempts"]] == ["missed"]
+    if ended == "error":
+        assert case["error"] == "assessment failed"

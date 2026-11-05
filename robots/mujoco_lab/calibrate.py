@@ -24,6 +24,8 @@ protocols are paired case by case), resets the lab, and runs one protocol throug
 * ``probe_first``: the probes the recommendation asks for (at most two), then the best row;
 * ``repair``: the best row, then, when it did not place the object stably and the object is still in
   reach, the best row of the fresh assessment (the belief after the failure);
+* ``retry``: the best row after each recoverable failure, learning from attempts, up to ``--retry-attempts``;
+* ``retry_frozen``: the same retries at each new pose, with the first assessment's prior belief restored;
 * ``random_row``: a uniformly drawn commit or lower-risk row to the requested destination (the
   control for the selection effect of executing the best row);
 * ``probe_all`` (a diagnostic): the push, then the weigh (each when the menu offers it), whatever the
@@ -85,6 +87,7 @@ import numpy as np
 
 from robots.mujoco_lab import tracking
 from robots.mujoco_lab.corpus import apply_damage, case_rng, damage_rng, draw_damage, draw_theta, trainable
+from rpent.skills.pick_place import tools
 from rpent.skills.pick_place.costs import COST, TIME_COST_PER_S, care_scale, probe_time_scale
 from rpent.skills.pick_place.destinations import MESH_IDS, PRIMITIVE_IDS
 from rpent.skills.pick_place.evaluate import (_ece, coverage_design, ece_ci, ece_from_sums, ece_iid_floor,
@@ -94,9 +97,11 @@ from rpent.skills.pick_place.probes import DAMAGED, PROBE_KINDS, PROBE_SECONDS
 from rpent.skills.pick_place.protocol import DAMAGE, IRREVERSIBLE, MOTION_OUTCOMES, OUTCOMES, RECOVERABLE, Prediction
 from rpent.skills.pick_place.tools import MAX_PROBES, _threshold, assess_pick, pick_and_place
 
-PROTOCOLS = ("commit", "probe_first", "repair", "random_row", "probe_all", "policy", "policy_no_probe", "policy_probe_one")
+PROTOCOLS = ("commit", "probe_first", "repair", "random_row", "probe_all", "policy", "policy_no_probe", "policy_probe_one",
+             "retry", "retry_frozen")
 POLICIES = ("policy", "policy_no_probe", "policy_probe_one")      # the protocols that run the policy loop
 POLICY_ATTEMPTS = 3               # policy: the attempts per case (a recoverable failure is reassessed)
+RETRY_ATTEMPTS = 5                # retry and retry_frozen: the maximum attempts per case
 PROBE_ORDER = ("probe_push", "probe_weigh")     # probe_all: the order of scene A of the probe corpus
 CARE = "normal"                   # the default care of the realized cost
 ECE_TARGET = 0.05                 # the plug-in rule's bound on the ECE of P(placed_stable)
@@ -175,7 +180,7 @@ def _attempt_record(d: dict[str, Any], row: dict[str, Any], a: dict[str, Any], f
 
 
 def run_protocol(prims: Any, protocol: str, destination: str, rng: np.random.Generator, care: str | float = CARE, features_fn=None,
-                 follow: bool = False, max_probes: int = MAX_PROBES) -> dict[str, Any]:
+                 follow: bool = False, max_probes: int = MAX_PROBES, retry_attempts: int = RETRY_ATTEMPTS) -> dict[str, Any]:
     """One case through the skill tools under ``protocol`` (see the module docstring). ``rng`` draws the
     random row; ``features_fn(row)`` gives the features of a row about to run (for the subgroups). The case
     costs its probes, its attempts and ``prims.abstain_cost`` (when set) if it ends without the object placed."""
@@ -210,7 +215,11 @@ def run_protocol(prims: Any, protocol: str, destination: str, rng: np.random.Gen
         return end("unreachable")
     case["recommendation"], case["best_option"], case["guard"] = a.get("recommendation"), a.get("best_option"), a.get("guard")
     case["first_menu"] = _first_menu(a)
-    if follow and a.get("recommendation") == "decline":
+    retry = protocol in ("retry", "retry_frozen")
+    if protocol == "retry_frozen":
+        belief_record = next(iter(store["beliefs"].values()))
+        prior = belief_record["belief"]
+    if follow and not retry and a.get("recommendation") == "decline":
         return end("abstained")
     def probe(option_id: str) -> str | None:
         """Run one probe row; the reason the case ends, or None (``a`` is then the fresh assessment)."""
@@ -277,7 +286,7 @@ def run_protocol(prims: Any, protocol: str, destination: str, rng: np.random.Gen
                 return end("error", a["error"])
             if not a.get("assessed", False):
                 return end("unreachable")
-    for attempt in range(2 if protocol == "repair" else 1):
+    for attempt in range(retry_attempts if retry else (2 if protocol == "repair" else 1)):
         if protocol == "random_row":
             rows = _rows_to(a, destination)
             row = rows[int(rng.integers(len(rows)))] if rows else None
@@ -292,8 +301,15 @@ def run_protocol(prims: Any, protocol: str, destination: str, rng: np.random.Gen
         case["attempts"].append(_attempt_record(d, row, a, features, care))
         if d["outcome"] == "placed_stable":
             return end("placed")
-        a = d["assessment"]
-        if protocol == "repair" and attempt == 0:
+        if retry and (d["outcome"] not in RECOVERABLE or len(case["attempts"]) >= retry_attempts):
+            return end("failed")
+        if protocol == "retry_frozen":
+            belief_record["belief"] = prior
+            tools._cache(store).clear()
+            a = assess_pick(object="object", destination=destination, care=care, primitives=prims, store=store).data
+        else:
+            a = d["assessment"]
+        if retry or (protocol == "repair" and attempt == 0):
             if "error" in a:
                 return end("error", a["error"])
             if not a.get("assessed", False):
@@ -335,7 +351,7 @@ def _stream(seed: int, object_id: str, idx: int, k: int) -> np.random.Generator:
 
 
 def run_case(prims: Any, object_id: str, idx: int, seed: int, protocol: str = "commit", follow: bool = False,
-             use_fixtures: bool = False, care: str | float = CARE) -> dict[str, Any]:
+             use_fixtures: bool = False, care: str | float = CARE, retry_attempts: int = RETRY_ATTEMPTS) -> dict[str, Any]:
     """Reset the lab to the case's draw and run the protocol; the first attempt's fields sit at the top
     level (milestone 1's row)."""
     from robots.mujoco_lab.adapter import object_props
@@ -362,7 +378,7 @@ def run_case(prims: Any, object_id: str, idx: int, seed: int, protocol: str = "c
                        act["v_transport"], act["destination"], act.get("release_height"))
 
     case = run_protocol(prims, protocol, destination, _stream(seed, object_id, idx, 2), care=care, features_fn=features_fn,
-                        follow=follow)
+                        follow=follow, retry_attempts=retry_attempts)
     case["artifact"] = case_artifact(case, reset_info)
     row = {"object": object_id, "idx": idx, "destination": destination, "theta": theta, "com_end": com_end,
            "fill": hidden["fill"], "theta_frag": hidden["frag"], "force_noise": env.force_noise,
@@ -463,7 +479,8 @@ def _run_object(job: tuple[str, list[int], dict[str, Any]]) -> list[dict[str, An
     for idx in idxs:
         t0 = time.time()
         try:
-            row = run_case(prims, object_id, idx, s["seed"], s["protocol"], s["follow"], s["fixtures"], s["care"])
+            row = run_case(prims, object_id, idx, s["seed"], s["protocol"], s["follow"], s["fixtures"], s["care"],
+                           retry_attempts=s.get("retry_attempts", RETRY_ATTEMPTS))
         except Exception as exc:  # noqa: BLE001  one bad case must not stop the run
             row = {"object": object_id, "idx": idx, "error": str(exc)[:200], "executed": False}
         row.update(fold=s["fold"], bundle=s["bundle"], const=s["const"], seconds=round(time.time() - t0, 2))
@@ -570,7 +587,7 @@ def run_cases(a: argparse.Namespace, plan: dict[str, Any]) -> list[dict[str, Any
         jobs.append((o, idxs, {"bundle": bundle, "fold": fold, "const": plan["consts"][bundle], "seed": a.seed,
                                                  "protocol": a.protocol, "follow": a.follow_recommendation, "fixtures": a.fixtures,
                                                  "threshold": a.threshold, "model_kind": a.model_kind, "care": a.care,
-                                                 "abstain_cost": A, "force_noise": getattr(a, "force_noise", None),
+                                                 "retry_attempts": a.retry_attempts, "abstain_cost": A, "force_noise": getattr(a, "force_noise", None),
                                                  "probe_time_scale": getattr(a, "probe_time_scale", None)}))
     rows: list[dict[str, Any]] = []
     if a.workers <= 1:
@@ -933,6 +950,7 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
     src.add_argument("--crossfit", default=None, help="train_models --folds output: folds.json and fold_<k>/ bundles")
     src.add_argument("--compare", nargs=2, default=None, metavar=("A", "B"), help="two result files: A - B over the paired cases")
     ap.add_argument("--protocol", default="commit", choices=PROTOCOLS)
+    ap.add_argument("--retry-attempts", type=int, default=RETRY_ATTEMPTS, help="maximum attempts for retry and retry_frozen (at least 1)")
     ap.add_argument("--repeats", type=int, default=10)
     ap.add_argument("--out", required=True)
     ap.add_argument("--objects", default=None, help="comma-separated ids (default: the test split, or every object of the folds)")
@@ -953,6 +971,8 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
     ap.add_argument("--workers", type=int, default=1)
     ap.add_argument("--coverage-sims", type=int, default=200, help="simulations for the interval coverage (0: skip)")
     a = ap.parse_args(argv)
+    if a.retry_attempts < 1:
+        ap.error("--retry-attempts must be at least 1")
     t0 = time.time()
     rng = np.random.default_rng(a.seed)
     if a.compare:
@@ -973,7 +993,7 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
     out = summarize(rows, a.protocol, rng, a.coverage_sims, nested=bool(a.crossfit))
     out.update(kind=plan["kind"], objects=plan["objects"], folds=plan["folds"], seed=a.seed, repeats=a.repeats,
                care=a.care, care_scale=care_scale(a.care), abstain_cost=run_abstain_cost(a, plan), force_noise=run_force_noise(rows),
-               evoi=run_evoi(rows), probe_time_scale=run_probe_time_scale(rows),
+               evoi=run_evoi(rows), probe_time_scale=run_probe_time_scale(rows), retry_attempts=a.retry_attempts,
                source={"crossfit": a.crossfit, "bundle": a.bundle, "metrics": a.metrics}, seconds=round(time.time() - t0, 1),
                cases=None if not a.cases else {"path": a.cases, "n": len(rows)},
                code=dict(code, changed_during_run=code_revision() != code))
