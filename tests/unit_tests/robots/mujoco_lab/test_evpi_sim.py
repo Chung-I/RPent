@@ -278,20 +278,38 @@ def test_a_simulation_whose_first_menu_differs_stops_the_run():
     assert "first menu" in es.stop_reason("o", 1, [{"gate": True}, {"gate": False, "seed_k": 2, "job": ["row", ROW]}])
 
 
-def test_project_counts_a_simulation_that_raised_and_assumes_a_probe_time_when_the_smoke_ran_none(tmp_path):
-    recs, plans, runs = _case_set()
+def _smoke(tmp_path, recs, plans, runs):
     smp = tmp_path / "sample.json"
     smp.write_text(json.dumps({"records": recs}))
     d = tmp_path / "smoke"
     d.mkdir()
     (d / "run_config.json").write_text(json.dumps({"code_revision": "abc", "dirty": False, "sample_sha256": "s"}))
+    (d / "plans.jsonl").write_text("".join(json.dumps(dict(p, replay_seconds=20.0)) + "\n" for p in plans[:2]))
+    (d / "runs.jsonl").write_text("".join(json.dumps(x) + "\n" for x in runs))
+    return es.project(argparse.Namespace(sample=str(smp), dirs=str(d)))
+
+
+def test_project_counts_a_simulation_that_raised_and_assumes_a_probe_time_when_the_smoke_ran_none(tmp_path):
+    recs, plans, runs = _case_set()
     rows = [dict(x, wall_seconds=10.0) for x in runs if x["job"][0] == "row"][:4]
     rows.append({"object": "o0", "idx": 0, "job": ["row", ROW], "seed_k": 0, "gate": None, "error": "boom"})
-    (d / "plans.jsonl").write_text("".join(json.dumps(dict(p, replay_seconds=20.0)) + "\n" for p in plans[:2]))
-    (d / "runs.jsonl").write_text("".join(json.dumps(x) + "\n" for x in rows))
-    out = es.project(argparse.Namespace(sample=str(smp), dirs=str(d)))
+    out = _smoke(tmp_path, recs, plans, rows)
     assert out["errors"] == 1 and out["seconds_per_simulation"]["row"] == pytest.approx(10.0)
-    assert out["probe_seconds_assumed"] and out["full"]["projected_cpu_h"] > 0
+    assert out["probe_seconds_assumed"] and out["full"]["projected_cpu_h"] > 0 and out["full"]["unavailable"] == []
+
+
+def test_project_gives_no_projection_when_no_simulation_time_was_measured(tmp_path):
+    recs, plans, runs = _case_set()
+    out = _smoke(tmp_path, recs, plans, [{"object": "o0", "idx": 0, "job": ["row", ROW], "seed_k": 0, "gate": None, "error": "boom"}])
+    assert out["full"]["projected_cpu_h"] is None and out["full"]["unavailable"] == ["probe", "row"]
+    assert not out["probe_seconds_assumed"]
+
+
+def test_the_summary_refuses_a_simulation_whose_first_menu_differed():
+    recs, plans, runs = _case_set()
+    runs[-1] = dict(runs[-1], gate=False, error="the first menu differs from the replay's")
+    with pytest.raises(SystemExit, match="first menu"):
+        es.summarize(recs, plans, runs, n_boot=50)
 
 
 # ---------------------------------------------------------------- the refresh under a revealed belief

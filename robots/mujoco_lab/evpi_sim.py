@@ -518,7 +518,8 @@ def project(a: argparse.Namespace) -> dict[str, Any]:
     """The smoke test's report: the replay gate, the time per simulation (its reset and run, a raised one too) and per
     replay, and the full sample's projected CPU-h (its simulations counted from the records' choices: one per row action
     of a case, one per probe choice, N_SEEDS each). Without a probe simulation in the smoke test a probe is taken as two
-    rows (a probe, its next menu and a row), and ``probe_seconds_assumed`` says so."""
+    rows (a probe, its next menu and a row), and ``probe_seconds_assumed`` says so. Without a measured row time either,
+    there is no projection: ``unavailable`` names the kinds of simulation with no time."""
     smp = json.load(open(a.sample))
     plans, runs, _ = load_runs(a.dirs.split(","))
     sims: Counter = Counter()
@@ -539,11 +540,12 @@ def project(a: argparse.Namespace) -> dict[str, Any]:
             sec[x["job"][0]].append(float(v))
     rep = {(p["object"], p["idx"]): float(p["replay_seconds"]) for p in plans if p.get("replay_seconds") is not None}
     mean = {k: float(np.mean(v)) if v else None for k, v in sec.items()}
-    assumed = mean["probe"] is None and kinds["probe"] > 0
+    assumed = mean["probe"] is None and kinds["probe"] > 0 and mean["row"] is not None
     if mean["probe"] is None and mean["row"] is not None:
         mean["probe"] = 2.0 * mean["row"]
     per_case = float(np.mean(list(rep.values()))) if rep else 0.0
-    total = len(cases) * per_case + sum(N_SEEDS * kinds[k] * (mean[k] or 0.0) for k in kinds)
+    unavailable = sorted(k for k in kinds if mean.get(k) is None)
+    total = None if unavailable else len(cases) * per_case + sum(N_SEEDS * kinds[k] * mean[k] for k in kinds)
     out = {"records": len(plans), "mismatch": [[p["object"], p["idx"], p["prior"], p["setting"], p["mismatch"]] for p in plans if p.get("mismatch")],
            "case_errors": sum(1 for p in plans if "error" in p),
            "simulations": len(runs), "gate_failures": sum(1 for x in runs if x.get("gate") is False),
@@ -551,7 +553,7 @@ def project(a: argparse.Namespace) -> dict[str, Any]:
            "fingerprint_differs": sum(1 for x in runs if x.get("fingerprint_ok") is False),
            "seconds_per_simulation": mean, "probe_seconds_assumed": assumed, "replay_seconds_per_case": per_case,
            "full": {"cases": len(cases), "row_simulations": N_SEEDS * kinds["row"], "probe_simulations": N_SEEDS * kinds["probe"],
-                    "projected_cpu_h": total / 3600.0}}
+                    "projected_cpu_h": None if total is None else total / 3600.0, "unavailable": unavailable}}
     print(json.dumps(out, indent=1), flush=True)
     return out
 
@@ -661,7 +663,8 @@ def _counts(items: list[tuple[dict[str, Any], dict[str, Any], dict[str, Any]]],
 def summarize(sample_recs: list[dict[str, Any]], plans: list[dict[str, Any]], runs: list[dict[str, Any]], n_boot: int = N_BOOT,
               seed: int = 0) -> dict[str, Any]:
     """The tables, drops and outcome counts per record set ("all", "ess_ok"), cell and S (module docstring). A sampled
-    record with no plan, or whose replay differed, stops the summary (SystemExit)."""
+    record with no plan or whose replay differed, or a simulation whose first menu differed, stops the summary
+    (SystemExit)."""
     rng = np.random.default_rng(seed)
     pl = {(p["object"], p["idx"], p["prior"], p["setting"]): p for p in plans}
     by_case: dict[tuple, dict[tuple, dict[str, Any]]] = defaultdict(dict)
@@ -682,6 +685,9 @@ def summarize(sample_recs: list[dict[str, Any]], plans: list[dict[str, Any]], ru
         raise SystemExit(f"{len(missing)} sampled records not run, for example {missing[:3]}")
     if mismatch:
         raise SystemExit(f"{len(mismatch)} sampled records failed the replay, for example {mismatch[:3]}")
+    gate = [[x["object"], x["idx"], x.get("seed_k"), x.get("job")] for x in runs if x.get("gate") is False]
+    if gate:
+        raise SystemExit(f"{len(gate)} simulations whose first menu differed from the replay's, for example {gate[:3]}")
 
     def block(items: list[tuple[dict[str, Any], dict[str, Any]]], S: str, main: bool, share: float) -> dict[str, Any]:
         objs = [r["object"] for r, _ in items]
