@@ -946,41 +946,55 @@ def simulate_case(lab: Any, rec1: dict[str, Any], dec: dict[str, str], rules: tu
     row of the rules (first_rows): a fresh episode (the reset and the first menu, gated against Stage 1's rows), the first
     attempt, and after a recoverable label without an artifact the second menu, every rule's second decision
     (second_decisions) and each distinct second row. The first second row runs in the same episode; each later one runs in
-    a fresh episode whose replayed first attempt must give the same label and the same second menu. Returns {"sims",
-    "stop"}: a gate that fails stops the case (and the run) with its reason."""
+    a fresh episode whose replayed first attempt must give the same label and the same second menu. An exception is the
+    error of the simulation it occurs in (a second menu that raises has the error status). Returns {"sims", "stop"}: a
+    gate that fails stops the case (and the run) with its reason."""
     sims: list[dict[str, Any]] = []
     for k, reset_seed in enumerate(seeds):
         for first in first_rows(dec, rules):
             t0 = time.time()
-            store, stop, at_rest = lab.fresh(reset_seed, rec1)
-            if stop:
-                return {"sims": sims, "stop": f"seed {k}, first row {first}: {stop}"}
-            d1 = lab.attempt(store, first)
-            sim: dict[str, Any] = {"seed_k": k, "reset_seed": int(reset_seed), "first": first, "label": d1.get("outcome"),
-                                   "artifact": bool(d1.get("artifact")) or not at_rest, "error": d1.get("error"), "menu2": None,
-                                   "second": {}}
+            sim: dict[str, Any] = {"seed_k": k, "reset_seed": int(reset_seed), "first": first, "label": None, "artifact": False,
+                                   "error": None, "menu2": None, "second": {}}
+            try:
+                store, stop, at_rest = lab.fresh(reset_seed, rec1)
+                if stop:
+                    return {"sims": sims, "stop": f"seed {k}, first row {first}: {stop}"}
+                d1 = lab.attempt(store, first)
+            except Exception as exc:  # noqa: BLE001  this simulation's error (design 5.5: at seed 0 it drops the case)
+                d1, at_rest = {"error": _err(exc)}, True
+            sim.update(label=d1.get("outcome"), artifact=bool(d1.get("artifact")) or not at_rest, error=d1.get("error"))
             if sim["error"] is None and sim["label"] in RECOVERABLE and not sim["artifact"]:
-                m2 = lab.second_menu(store, d1)
+                try:
+                    m2 = lab.second_menu(store, d1)
+                except Exception as exc:  # noqa: BLE001
+                    m2 = {"status": "error", "error": _err(exc), "rows": []}
                 m2["decisions"] = second_decisions(m2["rows"], rules)
                 sim["menu2"] = m2
                 for j, row2 in enumerate(first_rows(m2["decisions"], rules) if m2["status"] != "error" else []):
-                    if j:
-                        store, stop, at_rest = lab.fresh(reset_seed, rec1)
-                        if stop:
-                            return {"sims": sims + [sim], "stop": f"seed {k}, first row {first}, second row {row2}: {stop}"}
-                        d1b = lab.attempt(store, first)
-                        again = (d1b.get("outcome"), bool(d1b.get("artifact")) or not at_rest, d1b.get("error"))
-                        if again != (sim["label"], sim["artifact"], sim["error"]):
-                            return {"sims": sims + [sim], "stop": f"seed {k}: the replayed first attempt of {first} gave {again}"}
-                        m2b = lab.second_menu(store, d1b)
-                        ok, why = menu_matches(m2b["rows"], m2["rows"])
-                        if not ok or m2b["status"] != m2["status"]:
-                            return {"sims": sims + [sim], "stop": f"seed {k}: the replayed second menu after {first} differs: {why}"}
-                    d2 = lab.attempt(store, row2)
+                    try:
+                        if j:
+                            store, stop, at_rest = lab.fresh(reset_seed, rec1)
+                            if stop:
+                                return {"sims": sims + [sim], "stop": f"seed {k}, first row {first}, second row {row2}: {stop}"}
+                            d1b = lab.attempt(store, first)
+                            again = (d1b.get("outcome"), bool(d1b.get("artifact")) or not at_rest, d1b.get("error"))
+                            if again != (sim["label"], sim["artifact"], sim["error"]):
+                                return {"sims": sims + [sim], "stop": f"seed {k}: the replayed first attempt of {first} gave {again}"}
+                            m2b = lab.second_menu(store, d1b)
+                            ok, why = menu_matches(m2b["rows"], m2["rows"])
+                            if not ok or m2b["status"] != m2["status"]:
+                                return {"sims": sims + [sim], "stop": f"seed {k}: the replayed second menu after {first} differs: {why}"}
+                        d2 = lab.attempt(store, row2)
+                    except Exception as exc:  # noqa: BLE001
+                        d2 = {"error": _err(exc)}
                     sim["second"][row2] = {"label": d2.get("outcome"), "artifact": bool(d2.get("artifact")), "error": d2.get("error")}
             sim["seconds"] = round(time.time() - t0, 2)
             sims.append(sim)
     return {"sims": sims, "stop": None}
+
+
+def _err(exc: BaseException) -> str:
+    return f"{type(exc).__name__}: {str(exc)[:300]}"
 
 
 def stage2_skip(rec1: dict[str, Any]) -> str | None:
@@ -1178,9 +1192,17 @@ def second_decision_mismatches(recs: list[dict[str, Any]], rules: tuple[str, ...
 STAGE2_CONFIG_KEYS = ("bundle", "seed", "rules", "n_seeds", "stage1_records_sha256", "retry_sha256", "split_sha256")
 
 
-def load_stage2(dirs: list[str], sides: tuple[str, ...] | None = None) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    """The records of finished Stage 2 runs that agree on STAGE2_CONFIG_KEYS, each case once. With ``sides`` only the
-    records of those sides are kept (the lock never holds a test record). A run that stopped is refused."""
+SIDES = ("validation", "test")
+
+
+def records_path(d: str, side: str) -> str:
+    """A Stage 2 run's records of one side: the lock opens the validation file only."""
+    return os.path.join(d, f"records_{side}.jsonl")
+
+
+def load_stage2(dirs: list[str], sides: tuple[str, ...] = SIDES) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """The records of finished Stage 2 runs that agree on STAGE2_CONFIG_KEYS, each case once, from the records files of
+    ``sides`` only (stage2-lock never opens the test file). A run that stopped is refused."""
     recs: list[dict[str, Any]] = []
     cfgs = []
     for d in dirs:
@@ -1189,11 +1211,13 @@ def load_stage2(dirs: list[str], sides: tuple[str, ...] | None = None) -> tuple[
         if json.load(open(os.path.join(d, "run_metrics.json"))).get("stop"):
             raise SystemExit(f"{d}: the run stopped on a gate")
         cfgs.append(json.load(open(os.path.join(d, "run_config.json"))))
-        for line in open(os.path.join(d, "records.jsonl")):
-            r = json.loads(line)
-            if r.get("stop"):
-                raise SystemExit(f"{d}: {r['object']} {r['idx']} holds a stop: the run did not finish")
-            if sides is None or r["side"] in sides:
+        for side in sides:
+            for line in open(records_path(d, side)):
+                r = json.loads(line)
+                if r.get("stop"):
+                    raise SystemExit(f"{d}: {r['object']} {r['idx']} holds a stop: the run did not finish")
+                if r["side"] != side:
+                    raise SystemExit(f"{d}: {r['object']} {r['idx']} has side {r['side']} in the {side} file")
                 recs.append(r)
     for k in STAGE2_CONFIG_KEYS:
         if len({json.dumps(c.get(k)) for c in cfgs}) > 1:
@@ -1255,7 +1279,7 @@ def stage2_lock(a: argparse.Namespace) -> dict[str, Any]:
     checks = stage2_checks(val, cfg, ("validation",))
     lk = lock(val, rules)
     out = {"lock": lk, "curves_validation": _curves(val, rules), "checks": checks,
-           "provenance": {"runs": a.runs, "records_sha256": {d: _sha(os.path.join(d, "records.jsonl")) for d in dirs},
+           "provenance": {"runs": a.runs, "records_sha256": {d: _sha(records_path(d, "validation")) for d in dirs},
                           "code_revision": cfg["code_revision"], "stage1": cfg["stage1"], "rules": rules}}
     out["wandb"] = log_run("curve-stage2-lock", {"runs": a.runs, "rules": rules},
                            {"checks": checks, "lock": {r: {"knob": v["knob"], "qualifies": v["qualifies"]} for r, v in lk.items()
@@ -1380,14 +1404,16 @@ def stage2_summary(a: argparse.Namespace) -> dict[str, Any]:
     if os.path.exists(jpath):
         raise SystemExit(f"{jpath} exists: pick a new --out")
     dirs = a.runs.split(",")
-    recs, cfg = load_stage2(dirs)
+    val, cfg = load_stage2(dirs, ("validation",))
     rules = tuple(cfg["rules"])
-    checks = stage2_checks(recs, cfg, ("validation", "test"))
-    val, test = [r for r in recs if r["side"] == "validation"], [r for r in recs if r["side"] == "test"]
+    checks_val = stage2_checks(val, cfg, ("validation",))
     locked = json.load(open(a.locked))
     lk = lock(val, rules)
     if any(locked["lock"][rule]["knob"] != lk[rule]["knob"] for rule in rules):
         raise SystemExit("the lock file differs from the lock of the validation records")
+    test, _ = load_stage2(dirs, ("test",))          # opened only after the lock file is checked
+    checks_test = stage2_checks(test, cfg, ("test",))
+    checks = {k: checks_val[k] + checks_test[k] for k in checks_val}
     key = {rule: lk[rule]["key"] for rule in rules}
     no_thin = [r for r in test if not r["thin"]]
     rep: dict[str, Any] = {"rules": rules, "lock": lk, "checks": checks}
@@ -1402,7 +1428,7 @@ def stage2_summary(a: argparse.Namespace) -> dict[str, Any]:
     groups = sorted({"|".join(stratum(r["object"], r)) for r in test})
     rep["groups"] = {rule: {g: rule_point([r for r in test if "|".join(stratum(r["object"], r)) == g], key[rule]) for g in groups}
                      for rule in rules}
-    rep["provenance"] = {"runs": a.runs, "records_sha256": {d: _sha(os.path.join(d, "records.jsonl")) for d in dirs},
+    rep["provenance"] = {"runs": a.runs, "records_sha256": {f"{d} {side}": _sha(records_path(d, side)) for d in dirs for side in SIDES},
                          "code_revision": cfg["code_revision"], "stage1": cfg["stage1"],
                          "locked": f"{a.locked} (sha256 {_sha(a.locked)}, commit {a.lock_commit})",
                          "bootstrap": f"{BOOT_DRAWS} object draws, seed {BOOT_SEED}, 95 % percentile interval", "eps": EPS}
@@ -1501,6 +1527,9 @@ class LabCase:
         if len(cache) != 1:
             return {"status": "error", "error": f"{len(cache)} cached assessments (one expected)", "rows": []}
         b, rows = cache[0]["belief"], []
+        failed = [str(f) for f in (b.flags or []) if str(f).startswith("belief update failed")]
+        if failed:   # tools._update keeps the old belief when the update raises: the second menu would price the prior
+            return {"status": "error", "error": failed[-1][:300], "rows": []}
         for x in cache[0]["menu"].values():
             if _same_destination(x, self.destination):
                 _, per = menu_mod.estimate(self.prims.model, b, x._base, x._pose, x.action["force"], x._planned)
@@ -1567,8 +1596,9 @@ def _stage2_cases(a: argparse.Namespace, recs1: list[dict[str, Any]]) -> list[di
 
 
 def stage2(a: argparse.Namespace) -> str:
-    """The Stage 2 run (design 5.5): records.jsonl (one stage2_record per case, by object as each ends), run_config.json
-    and run_metrics.json (times, counts and errors only; wandb when on). A gate that fails stops the run (exit 3)."""
+    """The Stage 2 run (design 5.5): records_validation.jsonl and records_test.jsonl (one stage2_record per case, by
+    object as each ends), run_config.json and run_metrics.json (times, counts and errors only; wandb when on). A gate that
+    fails stops the run (exit 3). Returns --out."""
     import multiprocessing as mp
 
     from robots.mujoco_lab.estimation_check import _revision
@@ -1576,9 +1606,8 @@ def stage2(a: argparse.Namespace) -> str:
     from robots.mujoco_lab.tracking import log_run
 
     os.makedirs(a.out, exist_ok=True)
-    path = os.path.join(a.out, "records.jsonl")
-    if os.path.exists(path):
-        raise SystemExit(f"{path} exists: pick a new --out")
+    if any(os.path.exists(records_path(a.out, side)) for side in SIDES):
+        raise SystemExit(f"{a.out}: a records file exists: pick a new --out")
     rules = tuple(a.rules.split(","))
     if any(r not in RULES for r in rules):
         raise SystemExit(f"unknown rules in {a.rules}")
@@ -1602,14 +1631,16 @@ def stage2(a: argparse.Namespace) -> str:
     jobs = [(o, items, {"bundle": os.path.join(cfg1["bundle"], "folds", f"fold_{items[0][0]['fold']}"), "seed": cfg1["seed"],
                         "rules": rules, "n_seeds": a.seeds}) for o, items in by.items()]
     t0, stop = time.time(), None
-    with open(path, "w") as out:
+    outs = {side: open(records_path(a.out, side), "w") for side in SIDES}
+    try:
         pool = None if a.workers == 1 else mp.get_context("spawn").Pool(a.workers)
         results = map(stage2_object, jobs) if pool is None else pool.imap_unordered(stage2_object, jobs)
         try:
             for res in results:
                 for r in res["records"]:
-                    out.write(json.dumps(r) + "\n")
-                out.flush()
+                    outs[r["side"]].write(json.dumps(r) + "\n")
+                for f in outs.values():
+                    f.flush()
                 if res["stop"]:
                     stop = res["stop"]
                     break
@@ -1617,7 +1648,10 @@ def stage2(a: argparse.Namespace) -> str:
             if pool is not None:
                 (pool.terminate if stop else pool.close)()
                 pool.join()
-    done = [json.loads(line) for line in open(path)]
+    finally:
+        for f in outs.values():
+            f.close()
+    done = [json.loads(line) for side in SIDES for line in open(records_path(a.out, side))]
     attempts = sum(len(r["sims"]) + sum(len(x["second"]) for x in r["sims"]) for r in done)
     metrics = {"cases": len(done), "of_cases": len(recs), "stop": stop, "skipped": sum(bool(r["skipped"]) for r in done),
                "dropped": sum(bool(r["dropped"]) for r in done), "case_errors": sum(bool(r["error"]) for r in done),
@@ -1630,7 +1664,7 @@ def stage2(a: argparse.Namespace) -> str:
     print(f"done: {json.dumps(metrics)}", flush=True)
     if stop:
         raise SystemExit(3)
-    return path
+    return a.out
 
 
 def stage2_smoke(a: argparse.Namespace) -> dict[str, Any]:
@@ -1642,7 +1676,7 @@ def stage2_smoke(a: argparse.Namespace) -> dict[str, Any]:
     jpath = os.path.join(a.out, "smoke_summary.json")
     if os.path.exists(jpath):
         raise SystemExit(f"{jpath} exists: pick a new --out")
-    recs = [json.loads(line) for d in a.runs.split(",") for line in open(os.path.join(d, "records.jsonl"))]
+    recs = [json.loads(line) for d in a.runs.split(",") for side in SIDES for line in open(records_path(d, side))]
     cfg = json.load(open(os.path.join(a.runs.split(",")[0], "run_config.json")))
     rules = tuple(cfg["rules"])
     recs1, _ = load_stage1(cfg["stage1"].split(","))

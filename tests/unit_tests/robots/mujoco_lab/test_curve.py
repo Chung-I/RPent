@@ -650,9 +650,10 @@ def test_stage2_writes_records_and_stops_the_run_on_a_gate(tmp_path, monkeypatch
 
     monkeypatch.setattr(cv, "stage2_object", fake)
     runs = f"{tmp_path / 'a'},{tmp_path / 'b'}"
-    path = cv.main(["stage2", "--stage1", runs, "--retry", str(retry), "--out", str(tmp_path / "s2"), "--sides", "validation",
-                    "--seeds", "5"])
-    recs = [_json.loads(x) for x in open(path)]
+    out = cv.main(["stage2", "--stage1", runs, "--retry", str(retry), "--out", str(tmp_path / "s2"), "--sides", "validation",
+                   "--seeds", "5"])
+    recs = [_json.loads(x) for x in open(f"{out}/records_validation.jsonl")]
+    assert open(f"{out}/records_test.jsonl").read() == ""
     assert sorted((r["object"], r["idx"]) for r in recs) == [("ycb__a", 0), ("ycb__a", 1), ("ycb__b", 0)]
     assert {r["object"]: r["skipped"] for r in recs}["ycb__b"] == "stage1 artifact"
     assert sorted(seen) == [("ycb__a", [0, 1], 5, "B/folds/fold_0"), ("ycb__b", [0], 5, "B/folds/fold_0")]
@@ -856,11 +857,57 @@ def test_lock_loader_never_holds_test_records(tmp_path):
     d.mkdir()
     (d / "run_config.json").write_text(_json.dumps({"rules": ["R0", "R4"], "n_seeds": 1, "bundle": "B", "seed": 11}))
     (d / "run_metrics.json").write_text("{}")
-    with open(d / "records.jsonl", "w") as f:
-        for side in ("validation", "test"):
-            f.write(_json.dumps(_s2(f"o_{side}", 0, {}, [], side=side)) + "\n")
+    (d / "records_validation.jsonl").write_text(_json.dumps(_s2("o_validation", 0, {}, [], side="validation")) + "\n")
+    (d / "records_test.jsonl").write_text("not json: the lock must never open this file\n")
     recs, _ = cv.load_stage2([str(d)], sides=("validation",))
     assert [r["side"] for r in recs] == ["validation"]
-    (d / "records.jsonl").write_text(_json.dumps(_s2("o", 0, {}, [], side="validation", stop="gate")) + "\n")
+    (d / "records_validation.jsonl").write_text(_json.dumps(_s2("o", 0, {}, [], side="validation", stop="gate")) + "\n")
     with pytest.raises(SystemExit, match="stop"):
         cv.load_stage2([str(d)], sides=("validation",))
+    (d / "records_validation.jsonl").write_text(_json.dumps(_s2("o", 0, {}, [], side="test")) + "\n")
+    with pytest.raises(SystemExit, match="side"):
+        cv.load_stage2([str(d)], sides=("validation",))
+
+
+def test_second_menu_is_an_error_when_the_attempts_belief_update_failed():
+    import types
+
+    lab = object.__new__(cv.LabCase)
+    lab.destination, lab.prims = "bin", None
+    b = types.SimpleNamespace(flags=["belief update failed: ValueError: no particle explains the readout"], weights=None)
+    store = {"pick_place": {("o", "bin", 100.0, 0): {"menu": {}, "belief": b, "assessment": None}}}
+    m = lab.second_menu(store, {"assessment": {"assessed": True}})
+    assert m["status"] == "error" and "belief update failed" in m["error"] and m["rows"] == []
+
+
+# finding 3: an exception in one simulation is that simulation's error, not the case's
+
+class _RaisingLab(_FakeLab):
+    def __init__(self, *a, raise_at_seed=None, raise_in="fresh", **kw):
+        super().__init__(*a, **kw)
+        self.raise_at_seed, self.raise_in = raise_at_seed, raise_in
+
+    def fresh(self, reset_seed, rec1):
+        if self.raise_in == "fresh" and reset_seed == self.raise_at_seed:
+            raise RuntimeError("reset failed")
+        return super().fresh(reset_seed, rec1)
+
+    def second_menu(self, store, d):
+        if self.raise_in == "second_menu" and store["seed"] == self.raise_at_seed:
+            raise RuntimeError("estimate failed")
+        return super().second_menu(store, d)
+
+
+def test_simulate_case_keeps_the_other_seeds_when_one_simulation_raises():
+    rows1 = [dict(_row("commit_std", 0.9, irr=0.0), cvar=_cv(0.1))]
+    rows2 = [dict(_row("commit_std", 0.9, irr=0.0), cvar=_cv(0.1)), dict(_row("slow_lift", 0.95, irr=0.01), cvar=_cv(0.1))]
+    lab = _RaisingLab({"commit_std": "tipped"}, {"commit_std": "placed_stable", "slow_lift": "missed"}, rows2, raise_at_seed=5)
+    res = cv.simulate_case(lab, {"rows": rows1}, _dec_for(rows1), ("R0", "R4"), [11000, 5, 7])
+    assert res["stop"] is None and [s["seed_k"] for s in res["sims"]] == [0, 1, 2]
+    assert res["sims"][0]["error"] is None and res["sims"][0]["second"] and "reset failed" in res["sims"][1]["error"]
+    assert res["sims"][2]["error"] is None and not cv.case_dropped(res["sims"])
+    lab = _RaisingLab({"commit_std": "tipped"}, {"commit_std": "placed_stable", "slow_lift": "missed"}, rows2, raise_at_seed=11000,
+                      raise_in="second_menu")
+    res = cv.simulate_case(lab, {"rows": rows1}, _dec_for(rows1), ("R0", "R4"), [11000, 5])
+    assert res["sims"][0]["menu2"]["status"] == "error" and "estimate failed" in res["sims"][0]["menu2"]["error"]
+    assert res["sims"][0]["second"] == {} and res["sims"][1]["menu2"]["status"] == "ok" and cv.case_dropped(res["sims"])
