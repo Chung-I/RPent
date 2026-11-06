@@ -357,3 +357,98 @@ def test_e1_check_compares_the_menu_and_R0_with_experiment_1s_decision_without_p
     c = cv.e1_check(mine, theirs)
     assert c == {"cases": 3, "missing": 0, "fingerprint_differs": 0, "guard_differs": 0, "menu_differs": 0,
                  "no_guard": 2, "r0_vs_menu_differs": 0, "r0_vs_e1_differs": 0}
+
+
+def _cv(x):
+    return {f"{A:g}|{r:g}": x for A, r in cv.CVAR_KEYS}
+
+
+def _s1rec(o, side="validation", thin=False, rows=None, **kw):
+    rows = [_row("commit_std", 0.6, irr=0.01, cvar=_cv(0.1)), _row("firm_grip", 0.8, irr=0.05, cvar=_cv(0.2))] if rows is None else rows
+    rows = [dict(r, mean_gap=0.0) for r in rows]
+    return dict({"object": o, "idx": 0, "side": side, "status": "ok" if rows else "no_rows", "rows": rows, "artifact": False,
+                 "ess": 20000.0, "thin": thin, "choice": "commit_std", "best_option": "commit_std", "guard_flag": False,
+                 "fingerprint": "f", "n_particles": 20000}, **kw)
+
+
+def test_stage1_report_reads_validation_only_and_reports_thin_plastic_and_low_ess_apart():
+    recs = [_s1rec("a"), _s1rec("b", thin=True), _s1rec("e", ess=50.0), _s1rec("c", side="test"),
+            _s1rec("d", rows=[], status="error", error="x")]
+    V = lambda care, A: {k: 1e9 for k in RECOVERABLE}  # noqa: E731
+    s0 = [{"protocol": "policy", "care": 1.5, "A": 3.0, "r": 0.4, "success": 0.45, "irreversible": 0.02},
+          {"protocol": "policy", "care": 7.5, "A": 3.0, "r": 0.08, "success": 0.3, "irreversible": 0.0},
+          {"protocol": "policy", "care": 10.0, "A": 10.0, "r": 0.2, "success": 0.48, "irreversible": 0.02}]
+    rep = cv.stage1_report(recs, V, s0, [])
+    assert rep["counts"]["validation"] == 3 and rep["counts"]["errors"] == 1 and rep["counts"]["thin_validation"] == 1
+    assert rep["counts"]["ess_low_validation"] == 1
+    assert rep["curves"]["R4"][0]["n"] == 3
+    assert rep["curves_no_thin"]["R4"][0]["n"] == 2
+    assert rep["curves_ess_ok"]["R4"][0]["n"] == 2
+    assert [p["r"] for p in rep["stage0_at_check"]] == [0.2]
+    assert set(rep["only_r"]) == {cv.dkey(rule, 3.0, r) for rule in cv.CHECK_RULES for _, r in cv.R_CHECK}
+    assert rep["e1"]["cases"] == 4 and rep["e1"]["missing"] == 4
+    assert rep["mean_gap_max"] == 0.0
+    md = cv.stage1_markdown(rep)
+    assert "without the 9 thin-plastic objects" in md and "| R4 |" in md
+
+
+def _write_run(d, recs, **cfg):
+    import json as _json
+    import os as _os
+
+    _os.makedirs(d)
+    base = {"bundle": "B", "seed": 11, "split_sha256": "s", "scenes_sha256": "c", "manifest_sha256": "m", "code_revision": "x",
+            "generator": "v11", "r_grid": list(cv.R_GRID), "delta_grid": list(cv.DELTA_GRID), "a_main": 10.0,
+            "r_check": [list(x) for x in cv.R_CHECK], "quantile": 0.9, "cvar_level": 0.1, "stage1_care": 100.0}
+    _json.dump(dict(base, **cfg), open(_os.path.join(d, "run_config.json"), "w"))
+    with open(_os.path.join(d, "records.jsonl"), "w") as f:
+        for r in recs:
+            f.write(_json.dumps(r) + "\n")
+    _json.dump({"cases": len(recs)}, open(_os.path.join(d, "run_metrics.json"), "w"))
+
+
+def test_load_stage1_joins_finished_runs_that_agree(tmp_path):
+    _write_run(str(tmp_path / "a"), [_s1rec("a")])
+    _write_run(str(tmp_path / "b"), [_s1rec("b")])
+    recs, cfg = cv.load_stage1([str(tmp_path / "a"), str(tmp_path / "b")])
+    assert [r["object"] for r in recs] == ["a", "b"] and cfg["seed"] == 11
+    _write_run(str(tmp_path / "c"), [_s1rec("c")], seed=12)
+    with pytest.raises(SystemExit, match="seed"):
+        cv.load_stage1([str(tmp_path / "a"), str(tmp_path / "c")])
+    _write_run(str(tmp_path / "d"), [_s1rec("a")])
+    with pytest.raises(SystemExit, match="twice"):
+        cv.load_stage1([str(tmp_path / "a"), str(tmp_path / "d")])
+    _write_run(str(tmp_path / "e"), [_s1rec("e")])
+    (tmp_path / "e" / "run_metrics.json").unlink()
+    with pytest.raises(SystemExit, match="not finished"):
+        cv.load_stage1([str(tmp_path / "e")])
+
+
+def test_stage1_summary_end_to_end_on_synthetic_runs(tmp_path, monkeypatch):
+    import gzip as _gzip
+    import json as _json
+
+    monkeypatch.setenv("WANDB_MODE", "disabled")
+    _write_run(str(tmp_path / "a"), [_s1rec("a"), _s1rec("t", side="test")])
+    _write_run(str(tmp_path / "b"), [_s1rec("b", thin=True)])
+    retry = tmp_path / "retry.json.gz"
+    with _gzip.open(retry, "wt") as f:
+        _json.dump({"rows": [{"attempts": [{"label": "tipped", "cost_s": 8.0}, {"label": "placed_stable", "cost_s": 8.0}]}]}, f)
+    s0 = tmp_path / "s0.json"
+    s0.write_text(_json.dumps([{"protocol": "policy", "care": 10.0, "A": 10.0, "r": 0.2, "success": 0.48, "irreversible": 0.02,
+                                "give_up": 0.3}]))
+    (tmp_path / "e1" / "shard_0").mkdir(parents=True)
+    with _gzip.open(tmp_path / "e1" / "shard_0" / "records.jsonl.gz", "wt") as f:
+        f.write(_json.dumps({"object": "a", "idx": 0, "prior": "class", "setting": "k100_A10", "choice": {"prior": "commit_std"},
+                             "fingerprint": "f", "menu": {"prior": {"best_option": "commit_std", "without_probe": "commit",
+                                                                     "guard_flag": False}}}) + "\n")
+    out = tmp_path / "out"
+    rep = cv.main(["stage1-summary", "--runs", f"{tmp_path / 'a'},{tmp_path / 'b'}", "--retry", str(retry), "--stage0", str(s0),
+                   "--e1", str(tmp_path / "e1"), "--split-commit", "723125a5", "--out", str(out)])
+    assert rep["counts"]["validation"] == 2 and rep["e1"]["cases"] == 3 and rep["e1"]["missing"] == 2
+    assert rep["provenance"]["retry_continuation"]["tipped"]["n"] == 1
+    assert (out / "stage1_summary.md").read_text().startswith("# Success-damage curve, Stage 1")
+    assert (out / "stage1_curves.png").stat().st_size > 10000
+    with pytest.raises(SystemExit, match="exists"):
+        cv.main(["stage1-summary", "--runs", str(tmp_path / "a"), "--retry", str(retry), "--stage0", str(s0),
+                 "--e1", str(tmp_path / "e1"), "--split-commit", "x", "--out", str(out)])

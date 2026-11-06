@@ -649,6 +649,226 @@ def e1_check(mine: list[dict[str, Any]], theirs: list[dict[str, Any]], setting: 
     return out
 
 
+STAGE1_CONFIG_KEYS = ("bundle", "seed", "split_sha256", "scenes_sha256", "manifest_sha256", "code_revision", "generator", "r_grid",
+                      "delta_grid", "a_main", "r_check", "quantile", "cvar_level", "stage1_care")
+
+
+def load_stage1(dirs: list[str]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """The records of finished Stage 1 runs (each dir: run_config.json, records.jsonl and run_metrics.json, which the run
+    writes at its end); the runs must agree on STAGE1_CONFIG_KEYS and hold each case once."""
+    recs: list[dict[str, Any]] = []
+    cfgs = []
+    for d in dirs:
+        if not os.path.exists(os.path.join(d, "run_metrics.json")):
+            raise SystemExit(f"{d}: the run has not finished (no run_metrics.json)")
+        cfgs.append(json.load(open(os.path.join(d, "run_config.json"))))
+        recs += [json.loads(line) for line in open(os.path.join(d, "records.jsonl"))]
+    for k in STAGE1_CONFIG_KEYS:
+        if len({json.dumps(c.get(k)) for c in cfgs}) > 1:
+            raise SystemExit(f"the runs differ in {k}")
+    twice = [k for k, n in Counter((r["object"], int(r["idx"])) for r in recs).items() if n > 1]
+    if twice:
+        raise SystemExit(f"{len(twice)} cases appear twice, the first {twice[0]}")
+    return recs, cfgs[0]
+
+
+def stage1_report(recs: list[dict[str, Any]], V: Any, stage0_pts: list[dict[str, Any]], e1_recs: list[dict[str, Any]]) -> dict[str, Any]:
+    """The model-only check (design 5.4) on the validation objects: each rule's predicted curve (also without the
+    thin-plastic objects and without the records whose ESS is below ESS_APART), each rule against R0 at equal predicted
+    success, the only-r-matters shares with the Stage 0 points at the same r, and the counts: the records, the experiment 1
+    check (every case without an error; counts only) and the largest mean_gap."""
+    for r in recs:
+        if "error" not in r:
+            r["decisions"] = decisions(r, V)
+    val = counted(recs, "validation")
+    no_thin = [r for r in val if not r.get("thin")]
+    ess_ok = [r for r in val if r.get("ess", float("inf")) >= ESS_APART]
+    curves = {rule: curve_of(val, rule) for rule in RULES}
+    ok = [r for r in recs if "error" not in r]
+    counts = {"records": len(recs), "errors": len(recs) - len(ok), "artifacts": sum(bool(r.get("artifact")) for r in recs),
+              "validation": len(val), "test_counted": len(counted(recs, "test")), "thin_validation": len(val) - len(no_thin),
+              "ess_low_validation": len(val) - len(ess_ok), "status_validation": dict(Counter(r["status"] for r in val)),
+              "guard_validation": sum(bool(r.get("guard_flag")) for r in val),
+              "n_particles": sorted({int(r["n_particles"]) for r in ok if r.get("n_particles") is not None}),
+              "rows_per_case_validation": {str(k): v for k, v in sorted(Counter(len(r.get("rows") or []) for r in val).items())}}
+    return {"counts": counts, "curves": curves,
+            "curves_no_thin": {rule: curve_of(no_thin, rule) for rule in RULES},
+            "curves_ess_ok": {rule: curve_of(ess_ok, rule) for rule in RULES},
+            "vs_r0": {rule: at_equal_success(curves[rule], curves["R0"]) for rule in RULES if rule != "R0"},
+            "only_r": {dkey(rule, A, r): only_r(val, rule, r, A) for rule in CHECK_RULES for A, r in R_CHECK},
+            "stage0_at_check": [p for p in stage0_pts if any(abs(float(p["r"]) - r) < 1e-9 for _, r in R_CHECK)],
+            "e1": e1_check(ok, e1_recs),
+            "mean_gap_max": max((row["mean_gap"] for r in ok for row in r.get("rows") or []), default=None)}
+
+
+def _pc(x: float | None, nd: int = 1) -> str:
+    return "–" if x is None else f"{100 * x:.{nd}f}"
+
+
+def _knob(k: float | None) -> str:
+    return "–" if k is None else f"{k:g}"
+
+
+def _q(qs: list[float] | None, nd: int) -> str:
+    return "–" if qs is None else " / ".join(f"{100 * x:.{nd}f}" for x in qs)
+
+
+def stage1_markdown(rep: dict[str, Any]) -> str:
+    c, e = rep["counts"], rep["e1"]
+    pv = rep.get("provenance") or {}
+    L = ["# Success-damage curve, Stage 1: the model-only check (validation objects only)", ""]
+    if pv:
+        L += [f"- {k}: {v}" for k, v in pv.items()] + [""]
+    L += ["## Counts and checks", "",
+          f"- Records {c['records']}: errors {c['errors']}, artifacts {c['artifacts']}. Validation cases counted {c['validation']} "
+          f"(status {c['status_validation']}); test cases counted {c['test_counted']}, not read here.",
+          f"- Validation: thin plastic {c['thin_validation']} cases, ESS below {ESS_APART:g} {c['ess_low_validation']}, guard flags "
+          f"{c['guard_validation']} (reported, not applied). Rows per case {c['rows_per_case_validation']}. Particles {c['n_particles']}.",
+          f"- Largest gap between a row's statistics and the menu's own mean prediction: {rep['mean_gap_max']}.",
+          f"- Experiment 1 check (k100_A10, class prior; every case without an error, both sides; counts only): cases {e['cases']}, "
+          f"missing {e['missing']}, fingerprint differs {e['fingerprint_differs']}, guard flag differs {e['guard_differs']}, "
+          f"menu decision without probe rows differs {e['menu_differs']}; without a guard flag ({e['no_guard']}): R0 at r 0.02 "
+          f"differs from this menu {e['r0_vs_menu_differs']}, from experiment 1 {e['r0_vs_e1_differs']}.", "",
+          "## 1. Predicted curves (design 5.4)", "",
+          "Per rule and knob, over the validation cases: the mean P(placed) and P(irr) of the first action (a give-up counts 0 "
+          "and 0), in %. Chosen rows: their P(placed) and P(irr) as min / q1 / median / q3 / max (%), and the share with "
+          f"P(placed) < {LOW_SUCCESS:g}.", "",
+          "| rule | knob | success | P(irr) | give-up | chosen P(placed) < 0.2 | chosen P(placed) | chosen P(irr) |",
+          "|---|---|---|---|---|---|---|---|"]
+    for rule in RULES:
+        for p in rep["curves"][rule]:
+            L.append(f"| {rule} | {_knob(p['knob'])} | {_pc(p['success'])} | {_pc(p['irr'], 2)} | {_pc(p['give_up'])} | "
+                     f"{_pc(p['low_success'])} | {_q(p['placed_q'], 1)} | {_q(p['irr_q'], 2)} |")
+    n_nt = rep["curves_no_thin"]["R4"][0]["n"]
+    L += ["", f"## 2. The same without the 9 thin-plastic objects ({n_nt} validation cases)", "",
+          "| rule | knob | success | P(irr) | give-up | P(irr), all objects |", "|---|---|---|---|---|---|"]
+    for rule in RULES:
+        for p, q in zip(rep["curves_no_thin"][rule], rep["curves"][rule]):
+            L.append(f"| {rule} | {_knob(p['knob'])} | {_pc(p['success'])} | {_pc(p['irr'], 2)} | {_pc(p['give_up'])} | {_pc(q['irr'], 2)} |")
+    L += ["", "## 3. At equal predicted success: each rule's P(irr) and R0's", "",
+          "R0's P(irr) is linear between its two points that bracket the success; – when the success is outside R0's range.", "",
+          "| rule | knob | success | P(irr) | R0's P(irr) at that success |", "|---|---|---|---|---|"]
+    for rule, pts in rep["vs_r0"].items():
+        for p in pts:
+            L.append(f"| {rule} | {_knob(p['knob'])} | {_pc(p['success'])} | {_pc(p['irr'], 2)} | {_pc(p['irr_other'], 2)} |")
+    L += ["", "## 4. The give-up rate near the model's damage floor (R2 and R5, δ 0.005 to 0.02)", "",
+          "| rule | δ | give-up | success | P(irr) |", "|---|---|---|---|---|"]
+    for rule in ("R2", "R5"):
+        for p in rep["curves"][rule]:
+            if 0.005 - 1e-12 <= p["knob"] <= 0.02 + 1e-12:
+                L.append(f"| {rule} | {p['knob']:g} | {_pc(p['give_up'])} | {_pc(p['success'])} | {_pc(p['irr'], 2)} |")
+    L += ["", "## 5. Does only r matter? First decisions at A 3 against A 10, same r (validation cases)", "",
+          "| rule | r | cases | decisions differ | share |", "|---|---|---|---|---|"]
+    for k, v in rep["only_r"].items():
+        rule, _, r = k.split("|")
+        L.append(f"| {rule} | {r} | {v['n']} | {v['differ']} | {_pc(v['share'])} % |")
+    L += ["", "Stage 0 beside it: the m4 sweep's simulated points at the same r (bundle m2b2, seed 12, descriptive):", "",
+          "| protocol | κ | A | r | success | irreversible | give-up |", "|---|---|---|---|---|---|---|"]
+    for p in sorted(rep["stage0_at_check"], key=lambda p: (p["r"], p["protocol"], p["A"])):
+        L.append(f"| {p['protocol']} | {p['care']:g} | {p['A']:g} | {p['r']:g} | {_pc(p['success'])} | {_pc(p['irreversible'])} | "
+                 f"{_pc(p.get('give_up'))} |")
+    n_lo = c["ess_low_validation"]
+    L += ["", f"## 6. Records with ESS below {ESS_APART:g}: {n_lo} validation cases", ""]
+    if n_lo:
+        L += ["The curves without them:", "", "| rule | knob | success | P(irr) | give-up |", "|---|---|---|---|---|"]
+        for rule in RULES:
+            for p in rep["curves_ess_ok"][rule]:
+                L.append(f"| {rule} | {_knob(p['knob'])} | {_pc(p['success'])} | {_pc(p['irr'], 2)} | {_pc(p['give_up'])} |")
+    return "\n".join(L) + "\n"
+
+
+RULE_COLOURS = {"R0": "#2a78d6", "R1": "#eb6834", "R3": "#1baf7a", "R6": "#eda100", "R2": "#e87ba4", "R5": "#008300"}
+RULE_NAMES = {"R0": "R0 J", "R1": "R1 J + retry value", "R2": "R2 cap on P(irr)", "R3": "R3 J with the P(irr) tail",
+              "R4": "R4 always grasp", "R5": "R5 cap on the P(irr) tail", "R6": "R6 CVaR score"}
+
+
+def _end_labels(ax: Any, ends: list[tuple[float, float, str]]) -> None:
+    """Line-end labels in one column right of the data, top down, at least 4.5 % of the y range apart, with leader lines."""
+    x0, x1 = ax.get_xlim()
+    y0, y1 = ax.get_ylim()
+    gap, xl = 0.045 * (y1 - y0), x1 + 0.03 * (x1 - x0)
+    ax.set_xlim(x0, x1 + 0.16 * (x1 - x0))
+    last = None
+    for x, y, text in sorted(ends, key=lambda e: -e[1]):
+        last = y if last is None else min(y, last - gap)
+        ax.annotate(text, (x, y), xytext=(xl, last), textcoords="data", fontsize=8, color="#52514e", va="center",
+                    arrowprops={"arrowstyle": "-", "color": "#c3c2b7", "lw": 0.6})
+
+
+def stage1_figure(rep: dict[str, Any], path: str) -> None:
+    """Predicted success against predicted damage on the validation cases: the rules whose knob is r (left) and the caps
+    with R0 for reference (right); R4 is one point in both. Each line runs through its knob values, labelled at its end."""
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    fig, axes = plt.subplots(1, 2, figsize=(10.4, 4.6), sharey=True)
+    r4 = rep["curves"]["R4"][0]
+    for ax, rules, title in ((axes[0], ("R0", "R1", "R3", "R6"), "rules traced by r"),
+                             (axes[1], ("R0", "R2", "R5"), "caps traced by δ (R0 for reference)")):
+        ends = []
+        for rule in rules:
+            pts = rep["curves"][rule]
+            x, y = [100 * p["irr"] for p in pts], [100 * p["success"] for p in pts]
+            ax.plot(x, y, color=RULE_COLOURS[rule], lw=2, marker="o", ms=4, mec="white", mew=1, zorder=3, label=RULE_NAMES[rule])
+            ends.append((x[-1], y[-1], rule))
+        ax.scatter([100 * r4["irr"]], [100 * r4["success"]], marker="*", s=110, color="#52514e", edgecolors="white", linewidths=1,
+                   zorder=4, label=RULE_NAMES["R4"])
+        ax.annotate("R4", (100 * r4["irr"], 100 * r4["success"]), xytext=(5, -9), textcoords="offset points", fontsize=8,
+                    color="#52514e")
+        _end_labels(ax, ends)
+        ax.set_xlabel("predicted irreversible damage (% of cases)")
+        ax.set_title(title, fontsize=10)
+        ax.grid(True, color="#e6e5e0", linewidth=0.8, zorder=0)
+        for side in ("top", "right"):
+            ax.spines[side].set_visible(False)
+        ax.legend(frameon=False, fontsize=7.5, loc="lower right")
+    axes[0].set_ylabel("predicted task success (% of cases)")
+    fig.suptitle(f"Stage 1, model only: first actions on {rep['counts']['validation']} validation cases (m2b2_v12b, class prior)",
+                 fontsize=10)
+    fig.tight_layout()
+    fig.savefig(path, dpi=200)
+    plt.close(fig)
+
+
+def stage1_summary(a: argparse.Namespace) -> dict[str, Any]:
+    """The Stage 1 report from finished runs: stage1_summary.{json,md,png} in --out (refuses an existing json), wandb."""
+    import glob
+
+    from robots.mujoco_lab.tracking import log_run
+
+    os.makedirs(a.out, exist_ok=True)
+    jpath = os.path.join(a.out, "stage1_summary.json")
+    if os.path.exists(jpath):
+        raise SystemExit(f"{jpath} exists: pick a new --out")
+    recs, cfg = load_stage1(a.runs.split(","))
+    c = retry_continuation(json.load(gzip.open(a.retry))["rows"])
+    V = lambda care, A: continuation_values(c, care, A)  # noqa: E731
+    stage0_pts = json.load(open(a.stage0))
+    e1 = []
+    for f in sorted(glob.glob(os.path.join(a.e1, "shard_*", "records.jsonl.gz"))):
+        for line in gzip.open(f, "rt"):
+            t = json.loads(line)
+            if t.get("prior") == "class" and t.get("setting") == "k100_A10":
+                e1.append(t)
+    rep = stage1_report(recs, V, stage0_pts, e1)
+    rep["provenance"] = {"runs": a.runs, "code_revision": cfg["code_revision"], "bundle": cfg["bundle"], "seed": cfg["seed"],
+                         "split": f"{a.split_commit} (sha256 {cfg['split_sha256']})", "retry": f"{a.retry} (sha256 {_sha(a.retry)})",
+                         "retry_continuation": c, "stage0": a.stage0, "e1": f"{a.e1} ({len(e1)} class k100_A10 records)"}
+    rep["wandb"] = log_run("curve-stage1-summary", {"runs": a.runs, **{k: cfg.get(k) for k in STAGE1_CONFIG_KEYS}},
+                           {"counts": rep["counts"], "e1": rep["e1"],
+                            "curves": {f"{rule}/{_knob(p['knob'])}": {"success": p["success"], "irr": p["irr"], "give_up": p["give_up"]}
+                                       for rule in RULES for p in rep["curves"][rule]}})
+    with open(jpath, "w") as f:
+        json.dump(rep, f, indent=1)
+    with open(os.path.join(a.out, "stage1_summary.md"), "w") as f:
+        f.write(stage1_markdown(rep))
+    stage1_figure(rep, os.path.join(a.out, "stage1_curves.png"))
+    print(f"wrote {a.out}", flush=True)
+    return rep
+
+
 def main(argv: list[str] | None = None) -> Any:
     p = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -672,8 +892,15 @@ def main(argv: list[str] | None = None) -> Any:
     s1.add_argument("--shard", type=int, default=0)
     s1.add_argument("--shards", type=int, default=1)
     s1.add_argument("--workers", type=int, default=1)
+    ss = sub.add_parser("stage1-summary", help="the Stage 1 report from finished runs")
+    ss.add_argument("--runs", required=True, help="comma-separated Stage 1 run dirs")
+    ss.add_argument("--retry", required=True, help="the retry run (R1's continuation values)")
+    ss.add_argument("--stage0", required=True, help="stage0_points.json")
+    ss.add_argument("--e1", required=True, help="experiment 1's class records dir (shard_*/records.jsonl.gz)")
+    ss.add_argument("--split-commit", required=True, help="the commit that holds split.json")
+    ss.add_argument("--out", required=True)
     a = p.parse_args(argv)
-    return {"stage0": stage0, "split": split, "stage1": stage1}[a.cmd](a)
+    return {"stage0": stage0, "split": split, "stage1": stage1, "stage1-summary": stage1_summary}[a.cmd](a)
 
 
 if __name__ == "__main__":
