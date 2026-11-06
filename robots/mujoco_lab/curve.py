@@ -32,11 +32,15 @@ r = A / (5 kappa). Rates are over the counted cases (calibrate._counted: no erro
 from __future__ import annotations
 
 import argparse
+import copy
 import gzip
+import hashlib
 import json
 import os
 import re
 import sys
+import time
+from collections import Counter, defaultdict
 from typing import Any
 
 import numpy as np
@@ -57,6 +61,15 @@ CVAR_LEVEL = 0.1                                                 # R6: the lowes
 ROW_ORDER = ("commit_std", "slow_lift", "firm_grip", "light_grip", "gentle_carry", "regrasp_com", "inboard_place",
              "drop_release")                                     # menu._rows' order: a tie goes to the earlier row
 GIVE_UP_ROW = "give_up"                                          # a rule's decision not to grasp (not an m4 ended value)
+PRIOR_KEY = "prior"                                              # evpi_props.PRIOR: the prior belief's key in its records
+KNOBS = {"R0": R_GRID, "R1": R_GRID, "R2": DELTA_GRID, "R3": R_GRID, "R4": (None,), "R5": DELTA_GRID, "R6": R_GRID}
+CHECK_RULES = ("R0", "R1", "R3", "R6")                           # the rules whose knob is r
+CVAR_KEYS = tuple((A_MAIN, r) for r in R_GRID) + R_CHECK
+STAGE1_CARE = 100.0               # the first menu's own (care, A) = experiment 1's k100_A10 (r 0.02): the replay check
+NO_GRASP = ("decline", "unreachable", "no_row", "error")         # evpi_props.choice_of values that grasp nothing
+ESS_APART = 100.0                 # records whose belief has a lower ESS are reported apart (design 5.3)
+LOW_SUCCESS = 0.2                 # design 5.4: the share of selected rows with P(placed) below this
+QS = (0.0, 0.25, 0.5, 0.75, 1.0)  # the selected rows' distribution: min, quartiles, max
 M4_NAME = re.compile(r"^(?P<protocol>[a-z_]+)_k(?P<care>[0-9.]+)_A(?P<A>[0-9.]+)_s(?P<s>[0-9.]+)_seed(?P<seed>\d+)\.json\.gz$")
 
 
@@ -358,6 +371,284 @@ def continuation_values(c: dict[str, dict[str, Any]], care: float, A: float) -> 
     return {y: (1.0 - c[y]["q"]) * A + c[y]["d"] * 5.0 * care + c[y]["t"] if y in c else float("inf") for y in RECOVERABLE}
 
 
+# ---------------------------------------------------------------- Stage 1: the run (design 5.4)
+
+def row_record(o: Any, per: list[Prediction], w: Any) -> dict[str, Any]:
+    """A menu row's Stage 1 record: stats_from_matrix of its per-particle predictions (CVAR_KEYS), its id, kind and action
+    key (evpi_props.action_key), and mean_gap, the largest gap between the statistics' mean and the menu's own prediction."""
+    from robots.mujoco_lab.evpi_props import action_key
+    from rpent.skills.pick_place.costs import prediction_matrix
+
+    st = stats_from_matrix(prediction_matrix(per), w, o.cost_s, CVAR_KEYS)
+    gap = max(abs(st["p"][k] - o.pred.p.get(k, 0.0)) for k in OUTCOMES)
+    return dict(st, id=o.id, kind=o.kind, action=action_key(o.id, {o.id: o}), mean_gap=gap)
+
+
+def case_status(a: dict[str, Any], rows: list[dict[str, Any]]) -> str:
+    """unreachable (no pinch the arm reaches), no_rows (no row to the requested destination) or ok."""
+    if not a.get("assessed", True):
+        return "unreachable"
+    return "ok" if rows else "no_rows"
+
+
+def shard_objects(objects: list[str], k: int, n: int) -> list[str]:
+    """Shard k of n: every n-th object of the sorted list, from the k-th."""
+    if not 0 <= int(k) < int(n):
+        raise ValueError(f"shard {k} of {n}")
+    return sorted(set(objects))[int(k)::int(n)]
+
+
+def dkey(rule: str, A: float, knob: float | None) -> str:
+    return f"{rule}|{A:g}|{'-' if knob is None else format(knob, 'g')}"
+
+
+def decision_keys() -> list[tuple[str, float, float | None]]:
+    """(rule, A, knob): every rule's knobs at A_MAIN, then the only-r-matters check (CHECK_RULES at R_CHECK)."""
+    return ([(rule, A_MAIN, k) for rule in RULES for k in KNOBS[rule]]
+            + [(rule, A, r) for rule in CHECK_RULES for A, r in R_CHECK])
+
+
+def decisions(rec: dict[str, Any], V: Any) -> dict[str, str]:
+    """Every rule's first decision on a Stage 1 record, keyed by dkey."""
+    rows = rec.get("rows") or []
+    return {dkey(rule, A, k): decide(rule, rows, k, A, V) for rule, A, k in decision_keys()}
+
+
+def stage1_case(prims: Any, o: str, idx: int, s: dict[str, Any], world: Any, shared: Any) -> dict[str, Any]:
+    """One case's first menu at the class prior, as evpi_props.run_case builds it (the case's reset, the prior's draw on
+    calibrate._stream k 1, the menu stream after it) with no probe rows, under (STAGE1_CARE, A_MAIN); the record holds
+    every same-destination commit and lower-risk row (row_record) and the menu's own decision."""
+    from robots.mujoco_lab import calibrate as cal
+    from robots.mujoco_lab import evpi_props as ev
+    from robots.mujoco_lab.adapter import object_props
+    from robots.mujoco_lab.com_gap import fingerprint
+    from robots.mujoco_lab.fragility import entry_of
+    from rpent.skills.pick_place import menu as menu_mod
+    from rpent.skills.pick_place.tools import _particles, _spread_kw
+
+    t0 = time.time()
+    env, seed = prims.env, int(s["seed"])
+    theta, com_end, destination, hidden = cal.case_draw(seed, o, idx, object_props(o)["mass"], False, fragility=world)
+    if world is not None:
+        env.slosh_zeta, env.slosh_scale = world[1].slosh_zeta, world[1].slosh_scale
+    env.classes = None if world is None else world[0]
+    env.reset(o, theta, seed=seed * 1000 + idx, com_end=com_end, fixture=destination if destination in cal.MESH_IDS else None,
+              fill=hidden["fill"], frag=hidden["frag"])
+    shared.clear_case()
+    reset_info = dict(getattr(env, "reset_info", None) or {})
+    entry = entry_of(o, world[0])[0] if world is not None else {"class": "none", "law": None, "fillable": False}
+    rec: dict[str, Any] = {"object": o, "idx": idx, "fold": s["fold"], "side": s["side"], "destination": destination,
+                           "fingerprint": fingerprint(env), "at_rest": reset_info.get("at_rest", True),
+                           "class": entry.get("class", "none"), "law": entry.get("law"), "fillable": bool(entry.get("fillable")),
+                           "thin": entry.get("law") == "thin_plastic"}
+    try:
+        pose, n = env.pose_info(), _particles(prims)
+        g = cal._stream(seed, o, idx, 1)
+        b0 = prims.prior(pose, n, g, **_spread_kw(prims))
+        state = copy.deepcopy(g.bit_generator.state)
+        m = ev.first_menu(prims, b0, destination, STAGE1_CARE, A_MAIN, state)
+        a = m["payload"]
+        rows = []
+        for x in m["menu"].values():
+            if x.kind in ("commit", "lower_risk") and x.action.get("destination") == destination:
+                _, per = menu_mod.estimate(prims.model, b0, x._base, x._pose, x.action["force"], x._planned)   # the menu's memo
+                rows.append(row_record(x, per, b0.weights))
+        guard = a.get("guard") or {}
+        rec.update(n_particles=n, ess=float(b0.effective_size()), status=case_status(a, rows), choice=ev.choice_of(a),
+                   recommendation=a.get("recommendation"), best_option=a.get("best_option"), without_probe=a.get("without_probe"),
+                   guard_flag=bool(guard.get("flag")), first_menu=cal._first_menu(a), rows=rows)
+        shared.clear()
+    except Exception as exc:  # noqa: BLE001  one bad case must not stop the run
+        rec.update(status="error", error=f"{type(exc).__name__}: {str(exc)[:300]}")
+    rec["artifact"] = cal.case_artifact(rec, reset_info)
+    rec["seconds"] = round(time.time() - t0, 2)
+    return rec
+
+
+def stage1_object(job: tuple[str, list[int], dict[str, Any]]) -> list[dict[str, Any]]:
+    """One object's Stage 1 cases on its fold's bundle (evpi_props.run_object's sensor and world), no probe models."""
+    from robots.mujoco_lab import calibrate as cal
+    from robots.mujoco_lab.evpi_props import SharedMenus
+    from robots.mujoco_lab.prior import fragility_world
+
+    o, idxs, s = job
+    prims = cal._primitives(s["bundle"], None, None)
+    probes, prims.probe_models = getattr(prims, "probe_models", None), {}
+    prims.force_noise = cal.job_force_noise(None, prims.manifest)
+    prims.env.force_noise = prims.force_noise
+    world = fragility_world(prims.manifest)
+    out = []
+    try:
+        with SharedMenus(prims) as shared:
+            for idx in idxs:
+                rec = stage1_case(prims, o, idx, s, world, shared)
+                out.append(rec)
+                print(f"{o} {idx}: {rec['seconds']:.1f} s, {len(rec.get('rows') or [])} rows, {rec['status']}"
+                      + (f", error {rec['error']}" if "error" in rec else ""), file=sys.stderr, flush=True)
+                shared.hits.clear()
+    finally:
+        prims.probe_models = probes
+    return out
+
+
+def _sha(path: str) -> str:
+    return hashlib.sha256(open(path, "rb").read()).hexdigest()
+
+
+def _peak_rss_mb() -> dict[str, float]:
+    import resource
+
+    return {"self": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024.0,
+            "children": resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss / 1024.0}
+
+
+def stage1(a: argparse.Namespace) -> str:
+    """The Stage 1 run: records.jsonl (one record per case), run_config.json and run_metrics.json (times, counts and
+    errors only; wandb when on)."""
+    import multiprocessing as mp
+
+    from robots.mujoco_lab.estimation_check import _revision
+    from robots.mujoco_lab.identify_fit import require_bundle_generator
+    from robots.mujoco_lab.tracking import log_run
+
+    os.makedirs(a.out, exist_ok=True)
+    path = os.path.join(a.out, "records.jsonl")
+    if os.path.exists(path):
+        raise SystemExit(f"{path} exists: pick a new --out")
+    generator = require_bundle_generator(a.bundle)
+    folds = json.load(open(os.path.join(a.bundle, "folds", "folds.json")))
+    if sorted(json.load(open(a.scenes))) != sorted(folds):
+        raise SystemExit("the scenes' objects differ from the bundle's folds")
+    sp = json.load(open(a.split))
+    side = {**{o: "validation" for o in sp["validation"]}, **{o: "test" for o in sp["test"]}}
+    if sorted(side) != sorted(folds):
+        raise SystemExit("the split's objects differ from the bundle's folds")
+    if a.cases:
+        cases = [(c.rsplit(":", 1)[0], int(c.rsplit(":", 1)[1])) for c in a.cases.split(",")]
+    else:
+        objs = shard_objects(a.objects.split(",") if a.objects else list(folds), a.shard, a.shards)
+        cases = [(o, i) for o in objs for i in range(a.repeats)]
+    by: dict[str, list[int]] = defaultdict(list)
+    for o, i in cases:
+        by[o].append(i)
+    config = {**vars(a), **_revision(), "generator": generator, "split_sha256": _sha(a.split), "scenes_sha256": _sha(a.scenes),
+              "manifest_sha256": _sha(os.path.join(a.bundle, "manifest.json")), "cases": cases, "rules": RULES, "r_grid": R_GRID,
+              "delta_grid": DELTA_GRID, "a_main": A_MAIN, "r_check": R_CHECK, "quantile": QUANTILE, "cvar_level": CVAR_LEVEL,
+              "stage1_care": STAGE1_CARE}
+    with open(os.path.join(a.out, "run_config.json"), "w") as f:
+        json.dump(config, f, indent=1)
+    jobs = [(o, idxs, {"bundle": os.path.join(a.bundle, "folds", f"fold_{folds[o]}"), "fold": folds[o], "seed": a.seed,
+                       "side": side[o]}) for o, idxs in by.items()]
+    t0 = time.time()
+    with open(path, "w") as out:
+        if a.workers == 1:
+            results = map(stage1_object, jobs)
+            pool = None
+        else:
+            pool = mp.get_context("spawn").Pool(a.workers)
+            results = pool.imap_unordered(stage1_object, jobs)
+        try:
+            for rows in results:
+                for r in rows:
+                    out.write(json.dumps(r) + "\n")
+                out.flush()
+        finally:
+            if pool is not None:
+                pool.close()
+                pool.join()
+    recs = [json.loads(line) for line in open(path)]
+    metrics = {"cases": len(recs), "errors": sum("error" in r for r in recs), "artifacts": sum(bool(r.get("artifact")) for r in recs),
+               "status": dict(Counter(r["status"] for r in recs)), "wall_seconds": round(time.time() - t0, 1),
+               "case_seconds": round(sum(r["seconds"] for r in recs), 1),
+               "case_seconds_max": max((r["seconds"] for r in recs), default=0.0), "peak_rss_mb": _peak_rss_mb()}
+    metrics["wandb"] = log_run("curve-stage1", config, metrics)
+    with open(os.path.join(a.out, "run_metrics.json"), "w") as f:
+        json.dump(metrics, f, indent=1)
+    print(f"done: {json.dumps(metrics)}", flush=True)
+    return path
+
+
+# ---------------------------------------------------------------- Stage 1: the model-only report (design 5.4)
+
+def counted(recs: list[dict[str, Any]], side: str | None) -> list[dict[str, Any]]:
+    """The records a Stage 1 reading counts: no error, no artifact, on ``side`` (None: both sides)."""
+    return [r for r in recs if "error" not in r and not r.get("artifact") and (side is None or r.get("side") == side)]
+
+
+def predicted_point(recs: list[dict[str, Any]], key: str) -> dict[str, Any]:
+    """One rule and knob (``key`` in each record's "decisions"): the mean over the records of the chosen first row's
+    P(placed) and P(irr) (a give-up counts 0 and 0), the give-up rate, the share of the chosen rows with P(placed) below
+    LOW_SUCCESS and the chosen rows' P(placed) and P(irr) at the quantiles QS."""
+    chosen = []
+    for r in recs:
+        d = r["decisions"][key]
+        if d != GIVE_UP_ROW:
+            chosen.append(next(row for row in r["rows"] if row["id"] == d))
+    n = len(recs)
+    pl, ir = [c["p_placed"] for c in chosen], [c["p_irr"] for c in chosen]
+    return {"n": n, "success": sum(pl) / n if n else None, "irr": sum(ir) / n if n else None,
+            "give_up": (n - len(chosen)) / n if n else None,
+            "low_success": sum(p < LOW_SUCCESS for p in pl) / len(pl) if pl else None,
+            "placed_q": [float(x) for x in np.quantile(pl, QS)] if pl else None,
+            "irr_q": [float(x) for x in np.quantile(ir, QS)] if ir else None}
+
+
+def curve_of(recs: list[dict[str, Any]], rule: str, A: float = A_MAIN) -> list[dict[str, Any]]:
+    return [dict(knob=k, **predicted_point(recs, dkey(rule, A, k))) for k in KNOBS[rule]]
+
+
+def at_equal_success(a: list[dict[str, Any]], b: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Per point of curve a, curve b's P(irr) at the same predicted success (linear between b's points; None outside
+    b's success range)."""
+    pts = sorted((p["success"], p["irr"]) for p in b if p["success"] is not None)
+    xs, ys = [x for x, _ in pts], [y for _, y in pts]
+    out = []
+    for p in a:
+        inside = bool(xs) and p["success"] is not None and xs[0] <= p["success"] <= xs[-1]
+        out.append({"knob": p["knob"], "success": p["success"], "irr": p["irr"],
+                    "irr_other": float(np.interp(p["success"], xs, ys)) if inside else None})
+    return out
+
+
+def only_r(recs: list[dict[str, Any]], rule: str, r: float, A: float = 3.0) -> dict[str, Any]:
+    """The share of records whose first decision at (A, r) differs from the one at (A_MAIN, r)."""
+    n = len(recs)
+    differ = sum(x["decisions"][dkey(rule, A, r)] != x["decisions"][dkey(rule, A_MAIN, r)] for x in recs)
+    return {"n": n, "differ": differ, "share": differ / n if n else None}
+
+
+def e1_check(mine: list[dict[str, Any]], theirs: list[dict[str, Any]], setting: str = "k100_A10", prior: str = "class") -> dict[str, int]:
+    """Stage 1 against experiment 1's records at kappa 100, A 10 (r 0.02), class prior; counts only. Experiment 1's
+    decision without its probe rows: the best row when its without_probe is commit, else give up. Counted: the cases
+    (no error), the ones experiment 1 lacks, the fingerprint and the guard flag that differ, the menus whose decisions
+    differ; on the cases with no guard flag in either (the rules ignore the guard), R0 at r 0.02 against this run's menu
+    and against experiment 1."""
+    e1 = {(t["object"], int(t["idx"])): t for t in theirs if t.get("prior") == prior and t.get("setting") == setting and "error" not in t}
+    keys = ("cases", "missing", "fingerprint_differs", "guard_differs", "menu_differs", "no_guard", "r0_vs_menu_differs",
+            "r0_vs_e1_differs")
+    out = dict.fromkeys(keys, 0)
+    for r in mine:
+        if "error" in r:
+            continue
+        out["cases"] += 1
+        t = e1.get((r["object"], int(r["idx"])))
+        if t is None:
+            out["missing"] += 1
+            continue
+        m = t["menu"][PRIOR_KEY]
+        theirs_d = m["best_option"] if m.get("without_probe") == "commit" else GIVE_UP_ROW
+        mine_d = GIVE_UP_ROW if r["choice"] in NO_GRASP else r["choice"]
+        r0 = r["decisions"][dkey("R0", A_MAIN, 0.02)]
+        out["fingerprint_differs"] += r["fingerprint"] != t.get("fingerprint")
+        out["guard_differs"] += bool(r["guard_flag"]) != bool(m.get("guard_flag"))
+        out["menu_differs"] += mine_d != theirs_d
+        if not r["guard_flag"] and not m.get("guard_flag"):
+            out["no_guard"] += 1
+            out["r0_vs_menu_differs"] += r0 != mine_d
+            out["r0_vs_e1_differs"] += r0 != theirs_d
+    return out
+
+
 def main(argv: list[str] | None = None) -> Any:
     p = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -369,8 +660,20 @@ def main(argv: list[str] | None = None) -> Any:
     sp.add_argument("--scenes", required=True)
     sp.add_argument("--seed", type=int, default=SPLIT_SEED)
     sp.add_argument("--out", required=True)
+    s1 = sub.add_parser("stage1", help="Stage 1: the first menus at the class prior, model only")
+    s1.add_argument("--bundle", required=True)
+    s1.add_argument("--scenes", required=True)
+    s1.add_argument("--split", required=True)
+    s1.add_argument("--out", required=True)
+    s1.add_argument("--seed", type=int, default=11, help="the run seed (experiment 1: 11)")
+    s1.add_argument("--repeats", type=int, default=11)
+    s1.add_argument("--objects", default=None, help="comma-separated objects (default: the bundle's 95)")
+    s1.add_argument("--cases", default=None, help="comma-separated object:idx cases in place of the objects")
+    s1.add_argument("--shard", type=int, default=0)
+    s1.add_argument("--shards", type=int, default=1)
+    s1.add_argument("--workers", type=int, default=1)
     a = p.parse_args(argv)
-    return {"stage0": stage0, "split": split}[a.cmd](a)
+    return {"stage0": stage0, "split": split, "stage1": stage1}[a.cmd](a)
 
 
 if __name__ == "__main__":

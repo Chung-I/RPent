@@ -239,3 +239,121 @@ def test_retry_continuation_from_the_retry_rows():
     V = cv.continuation_values(c, care=2.0, A=10.0)
     assert V["tipped"] == pytest.approx(0.5 * 10.0 + 0.5 * 10.0 + c["tipped"]["t"])
     assert V["missed"] == float("inf")                          # no data: never below A
+
+
+# ---------------------------------------------------------------- Stage 1: the run's records
+
+from types import SimpleNamespace  # noqa: E402
+
+
+def test_row_record_holds_the_rows_statistics_its_action_and_the_gap_to_the_menus_mean():
+    per = [Prediction(p={"placed_stable": 0.9, "crushed": 0.1}), Prediction(p={"placed_stable": 0.5, "tipped": 0.5})]
+    w = np.array([0.25, 0.75])
+    menu_mean = Prediction.weighted_mean(per, w)
+    o = SimpleNamespace(id="firm_grip", kind="lower_risk", action={"force": 20.0000000001, "destination": "plate"}, cost_s=8.0,
+                        pred=menu_mean)
+    r = cv.row_record(o, per, w)
+    assert r["id"] == "firm_grip" and r["kind"] == "lower_risk"
+    assert r["action"] == 'firm_grip|{"destination": "plate", "force": 20.0}'
+    assert r["p_placed"] == pytest.approx(0.25 * 0.9 + 0.75 * 0.5)
+    assert r["p_irr"] == pytest.approx(0.025)
+    assert set(r["cvar"]) == {f"{A:g}|{x:g}" for A, x in cv.CVAR_KEYS}
+    assert r["mean_gap"] == pytest.approx(0.0, abs=1e-12)
+    o.pred = Prediction(p=dict(menu_mean.p, placed_stable=menu_mean.p["placed_stable"] + 0.01))
+    assert cv.row_record(o, per, w)["mean_gap"] == pytest.approx(0.01)
+
+
+def test_case_status():
+    assert cv.case_status({"assessed": False}, []) == "unreachable"
+    assert cv.case_status({"assessed": True}, []) == "no_rows"
+    assert cv.case_status({}, [{"id": "commit_std"}]) == "ok"
+
+
+def test_shards_split_the_sorted_objects_round_robin():
+    objs = ["d", "a", "c", "b", "e"]
+    parts = [cv.shard_objects(objs, k, 3) for k in range(3)]
+    assert parts == [["a", "d"], ["b", "e"], ["c"]]
+    with pytest.raises(ValueError):
+        cv.shard_objects(objs, 3, 3)
+
+
+def test_decision_keys_cover_every_rule_and_knob_and_the_r_check():
+    keys = cv.decision_keys()
+    assert len(keys) == 4 * 9 + 2 * 7 + 1 + 4 * 2
+    assert ("R4", 10.0, None) in keys and ("R6", 3.0, 2.0) in keys and ("R2", 10.0, 0.002) in keys
+    assert ("R2", 3.0, 0.2) not in keys
+    assert cv.dkey("R0", 10.0, 0.02) == "R0|10|0.02" and cv.dkey("R4", 10.0, None) == "R4|10|-"
+
+
+def test_decisions_of_a_record_follow_decide():
+    rows = [_row("commit_std", 0.5, irr=0.02, cvar={k: 0.1 for k in ("10|0.02", "10|0.5", "3|0.2", "3|2")}),
+            _row("firm_grip", 0.8, irr=0.05, cvar={k: 0.3 for k in ("10|0.02", "10|0.5", "3|0.2", "3|2")})]
+    for row in rows:
+        row["cvar"].update({f"10|{x:g}": 0.0 for x in cv.R_GRID if f"10|{x:g}" not in row["cvar"]})
+    V = lambda care, A: {k: 1e9 for k in RECOVERABLE}  # noqa: E731
+    d = cv.decisions({"rows": rows}, V)
+    assert d["R0|10|0.02"] == cv.decide("R0", rows, 0.02) == "give_up"
+    assert d["R4|10|-"] == "firm_grip"
+    assert d["R6|3|0.2"] == "firm_grip"
+    assert cv.decisions({"rows": []}, V)["R4|10|-"] == "give_up"
+
+
+# ---------------------------------------------------------------- Stage 1: the model-only report
+
+def _rec(o, rows, dec, side="validation", **kw):
+    return dict({"object": o, "idx": 0, "side": side, "status": "ok" if rows else "no_rows", "rows": rows, "decisions": dec,
+                 "artifact": False, "ess": 20000.0, "thin": False}, **kw)
+
+
+def test_predicted_point_counts_a_give_up_as_zero_success_and_zero_damage():
+    rows = [_row("commit_std", 0.6, irr=0.1), _row("firm_grip", 0.1, irr=0.0)]
+    recs = [_rec("a", rows, {"K": "commit_std"}), _rec("b", rows, {"K": "firm_grip"}), _rec("c", rows, {"K": "give_up"}),
+            _rec("d", [], {"K": "give_up"})]
+    p = cv.predicted_point(recs, "K")
+    assert p["n"] == 4
+    assert p["success"] == pytest.approx((0.6 + 0.1) / 4)
+    assert p["irr"] == pytest.approx(0.1 / 4)
+    assert p["give_up"] == pytest.approx(0.5)
+    assert p["low_success"] == pytest.approx(0.5)             # firm_grip's 0.1 among the 2 chosen rows
+    assert p["placed_q"] == pytest.approx([0.1, 0.225, 0.35, 0.475, 0.6])    # min, quartiles, max of the chosen rows
+    assert p["irr_q"] == pytest.approx([0.0, 0.025, 0.05, 0.075, 0.1])
+
+
+def test_counted_drops_errors_artifacts_and_other_sides():
+    recs = [_rec("a", [], {}), _rec("b", [], {}, side="test"), _rec("c", [], {}, artifact=True),
+            dict(_rec("d", [], {}), status="error", error="x")]
+    assert [r["object"] for r in cv.counted(recs, "validation")] == ["a"]
+
+
+def test_at_equal_success_interpolates_the_other_curves_damage():
+    a = [{"knob": 1.0, "success": 0.3, "irr": 0.02}, {"knob": 2.0, "success": 0.9, "irr": 0.2}]
+    b = [{"knob": 0.1, "success": 0.2, "irr": 0.01}, {"knob": 0.2, "success": 0.4, "irr": 0.03}, {"knob": 0.5, "success": 0.5, "irr": 0.05}]
+    out = cv.at_equal_success(a, b)
+    assert out[0]["irr_other"] == pytest.approx(0.02)
+    assert out[1]["irr_other"] is None                         # 0.9 is outside b's success range
+
+
+def test_only_r_share_compares_A_3_with_A_10_at_the_same_r():
+    recs = [_rec("a", [], {"R0|3|0.2": "give_up", "R0|10|0.2": "give_up"}),
+            _rec("b", [], {"R0|3|0.2": "commit_std", "R0|10|0.2": "firm_grip"})]
+    assert cv.only_r(recs, "R0", 0.2) == {"n": 2, "differ": 1, "share": 0.5}
+
+
+def test_e1_check_compares_the_menu_and_R0_with_experiment_1s_decision_without_probes():
+    rows = [_row("commit_std", 0.97, irr=0.0)]                 # J at kappa 100, A 10: 0.03 + 0.4 + 0.3 <= 10
+    mine = [dict(_rec("a", rows, {"R0|10|0.02": "commit_std"}), choice="commit_std", best_option="commit_std",
+                 guard_flag=False, fingerprint="f1"),
+            dict(_rec("b", rows, {"R0|10|0.02": "commit_std"}), choice="decline", best_option="commit_std",
+                 guard_flag=True, fingerprint="f2"),
+            dict(_rec("c", [], {"R0|10|0.02": "give_up"}), choice="unreachable", best_option=None, guard_flag=False,
+                 fingerprint="f3")]
+
+    def e1(o, choice, best, without, flag, fp):
+        return {"object": o, "idx": 0, "prior": "class", "setting": "k100_A10", "choice": {"prior": choice}, "fingerprint": fp,
+                "menu": {"prior": {"best_option": best, "without_probe": without, "guard_flag": flag}}}
+
+    theirs = [e1("a", "weigh_probe", "commit_std", "commit", False, "f1"), e1("b", "decline", "commit_std", "decline", True, "f2"),
+              e1("c", "unreachable", None, None, False, "f3"), e1("a", "commit_std", "x", "commit", False, "f1") | {"prior": "generic"}]
+    c = cv.e1_check(mine, theirs)
+    assert c == {"cases": 3, "missing": 0, "fingerprint_differs": 0, "guard_differs": 0, "menu_differs": 0,
+                 "no_guard": 2, "r0_vs_menu_differs": 0, "r0_vs_e1_differs": 0}
