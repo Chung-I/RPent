@@ -26,6 +26,13 @@ what each probe will show under each belief particle.
   hand force (``no_contact``).
 * squeeze (milestone 2b): close at the proposal and ramp each pad to the cap ``squeeze_cap``, no lift; the
   reading is the stiffness (``measured``, reading ``k_hat``, a law on log(k_hat / k_n_per_mm)).
+* identify (arm port): close with the weigh squeeze, lift, hold, run a 6 s excitation motion (the best of 40 windowed
+  Fourier trajectories by the payload regressor's condition number), hold, set down: about 18 s. A ``measured`` result
+  carries Real2Sim's step-2 fit of link 7's payload (``phi``, its ``cov`` with the model-error floor, ``info`` of mass
+  and mass x CoM, and ``obj_l7``, the object's frame in link 7's). Its reading term is not a learned law: it is the
+  analytic Gaussian likelihood of each particle's (mass, mass x CoM) in the object frame (identify_obs), as gate R1
+  scores it, and the temper does not touch it. The other kinds (not_lifted, lost, unplanned) are learned like the
+  other probes' kinds; the preposterior samples a reading from a training row's covariance (IdentifyModel.sample).
 
 Every probe can damage the object (kind ``damaged``, milestone 2b): its kind classifier learns the kind where the
 probe corpus has it, and ``terminal_risk`` (thrown or damaged) is the chance the probe ends the case.
@@ -48,11 +55,16 @@ from sklearn.model_selection import GroupKFold
 from rpent.skills.pick_place.evaluate import MIN_CLASS_ROWS, row_pose
 from rpent.skills.pick_place.features import FEATURES_M2, FRAG_KEYS, G, particle_matrix
 from rpent.skills.pick_place.likelihood import Law, as_law, fit_law
+from rpent.skills.pick_place.likelihood import joint_loglik as identify_loglik       # one code path with the attempt's fit
+from rpent.skills.pick_place.likelihood import joint_obs as identify_obs
+from rpent.skills.pick_place.likelihood import l7_map as _l7_map
 from rpent.skills.pick_place.success_model import DAMAGE_FLAG, N_FOLDS, _Calibrator, _fit_gbm
 
-PROBE_SECONDS = {"weigh": 4.0, "push": 2.0, "squeeze": 3.0}
+IDENTIFY = "identify"
+PROBE_SECONDS = {"weigh": 4.0, "push": 2.0, "squeeze": 3.0, IDENTIFY: 18.0}     # identify: a 6 s excitation (R1 decision)
 PROBE_KINDS = {"weigh": ("measured", "lower_bound", "lost"), "push": ("slid", "tipped", "no_breakaway", "no_contact"),
-               "squeeze": ("measured",)}
+               "squeeze": ("measured",), IDENTIFY: ("measured", "not_lifted", "lost", "unplanned")}
+Z80 = 1.2815515655446004                     # the 80 % range's half width in sd
 UNREACHABLE = "unreachable"                  # a substrate's probe whose pose its arm cannot reach (mujoco_lab arm port)
 OBSTRUCTED = "obstructed"                    # a push with no side whose path is clear of fixtures (mujoco_lab arm port)
 NO_MOTION = (UNREACHABLE, OBSTRUCTED)         # results with no motion: shown to the agent, never learned from, no update
@@ -131,6 +143,26 @@ def log_ratio(kind: str, reading: dict[str, float], mass, mu, probe: str | None 
         if kind == "lower_bound":
             return np.log(v / np.asarray(mu, dtype=float))
         return np.log(v / (np.asarray(mu, dtype=float) * np.asarray(mass, dtype=float) * G))
+
+
+def identify_summary(reading: dict[str, Any]) -> dict[str, Any]:
+    """The agents' keys of a measured identify (arm port): the mass (kg) and the CoM in the object frame (m, from the
+    object's origin) with their 80 % ranges (Gaussian, the CoM's by the delta method), from the fit's covariance; {}
+    without a fit."""
+    if reading.get("phi") is None or reading.get("cov") is None or reading.get("obj_l7") is None:
+        return {}
+    Ti = np.linalg.inv(_l7_map(reading["obj_l7"]))
+    phi = Ti @ np.asarray(reading["phi"], dtype=float)[:4]
+    cov = Ti @ np.asarray(reading["cov"], dtype=float)[:4, :4] @ Ti.T
+    m = float(phi[0])
+    c = phi[1:4] / m
+    J = np.zeros((3, 4))
+    J[:, 0] = -phi[1:4] / m ** 2
+    J[:, 1:4] = np.eye(3) / m
+    csd = np.sqrt(np.maximum(np.diag(J @ cov @ J.T), 0.0))
+    msd = float(np.sqrt(max(cov[0, 0], 0.0)))
+    return {"m_hat": m, "m_range80": [m - Z80 * msd, m + Z80 * msd], "com_obj_m": c.tolist(),
+            "com_obj_range80_m": [[float(c[i] - Z80 * csd[i]), float(c[i] + Z80 * csd[i])] for i in range(3)]}
 
 
 class CalibratedClassifier:
@@ -312,6 +344,44 @@ class ProbeModel:
         return joblib.load(path)
 
 
+@dataclass
+class IdentifyModel(ProbeModel):
+    """The identify probe's model: the kinds and the throw as a ProbeModel (no reading laws), the measured reading's
+    analytic joint-torque likelihood (identify_loglik, not tempered), and ``noise_covs``, the training fits'
+    covariances in the object frame, from which the preposterior samples a reading."""
+
+    noise_covs: list = field(default_factory=list)
+
+    def loglik(self, obs: dict[str, Any], X: np.ndarray, arrays: dict[str, np.ndarray], force: float,
+               temper: float | None = None, terms: list[str] | None = None,
+               P: np.ndarray | None = None, thrown: bool | None = None) -> tuple[np.ndarray, dict[str, list[str]]]:
+        ll, info = super().loglik(obs, X, arrays, force, temper=temper, terms=terms, P=P, thrown=thrown)
+        if obs["kind"] != "measured" or (terms is not None and "reading" not in terms):
+            return ll, info
+        got = identify_obs(obs.get("reading") or {})
+        if got is None:
+            info["rejected"].append("reading")
+            return ll, info
+        info["used"].insert(1 if info["used"][:1] == ["kind"] else 0, "reading")
+        return ll + identify_loglik(got, arrays), info
+
+    def sample(self, x_row: np.ndarray, particle: dict[str, Any], force: float, rng: np.random.Generator,
+               p: np.ndarray | None = None) -> dict[str, Any]:
+        """A simulated result: the kind and the throw as ProbeModel.sample; a measured kind's fit is the particle's
+        (m, m c_obj) plus an error drawn from one training covariance (uniform over noise_covs), read in the object
+        frame (obj_l7 the identity)."""
+        out = super().sample(x_row, particle, force, rng, p=p)
+        if out["kind"] != "measured" or not self.noise_covs:
+            return out
+        cov = np.asarray(self.noise_covs[int(rng.integers(len(self.noise_covs)))], dtype=float)
+        m = float(particle["mass"])
+        x = np.concatenate([[m], m * np.asarray(particle["com_obj"], dtype=float)])
+        phi = x + rng.multivariate_normal(np.zeros(4), cov)
+        out["reading"] = {"phi": phi.tolist(), "info": np.linalg.inv(cov).tolist(),
+                          "obj_l7": {"p": [0.0, 0.0, 0.0], "R": np.eye(3).ravel().tolist()}}
+        return out
+
+
 def truth_arrays(row: dict[str, Any]) -> dict[str, np.ndarray]:
     """The row's truth as a one-particle belief's arrays: mass, friction, CoM and, for a milestone 2b row, the
     fragility (NaN for a threshold the class lacks), the fill and the spill angle."""
@@ -345,7 +415,7 @@ def fit_probe_model(rows: list[dict[str, Any]], probe: str, seed: int = 0, names
     groups = np.array([r["object"] for r in rows])
     clf = CalibratedClassifier.fit(X, y, groups, classes, seed)
     reading, n_reading, rate = {}, {}, {}
-    for kind in classes:
+    for kind in classes if probe != IDENTIFY else ():      # identify: the analytic likelihood, no reading law
         of = [r for r in rows if r["kind"] == kind]
         pairs = [(log_ratio(kind, r["reading"], r["truth"]["mass"], r["truth"]["mu"], probe, (r.get("theta_frag") or {}).get("k_n_per_mm")),
                   r["object"] in val) for r in of]
@@ -363,6 +433,18 @@ def fit_probe_model(rows: list[dict[str, Any]], probe: str, seed: int = 0, names
                                             np.array([r["object"] for r in every]), ("kept", "thrown"), seed)
     stats = {"n": len(every), "n_not_thrown": len(rows), "kinds": {k: int((y == k).sum()) for k in classes}, "n_reading": n_reading,
              "reading_rate": rate, "thrown": int(thrown.sum())}
+    if probe == IDENTIFY:
+        covs = []
+        for r in rows:
+            rd = r.get("reading") or {}
+            if r["kind"] == "measured" and rd.get("cov") is not None and rd.get("obj_l7") is not None:
+                Ti = np.linalg.inv(_l7_map(rd["obj_l7"]))
+                c = Ti @ np.asarray(rd["cov"], dtype=float)[:4, :4] @ Ti.T
+                if np.isfinite(c).all() and np.all(np.linalg.eigvalsh((c + c.T) / 2) > 0):
+                    covs.append((c + c.T) / 2)
+        stats["n_reading"] = {"measured": len(covs)}
+        return IdentifyModel(probe=probe, classes=classes, clf=clf, reading={}, p_thrown=p_thrown, stats=stats, reading_rate={},
+                             feature_names=tuple(names), noise_covs=covs)
     return ProbeModel(probe=probe, classes=classes, clf=clf, reading=reading, p_thrown=p_thrown, stats=stats, reading_rate=rate,
                       feature_names=tuple(names))
 

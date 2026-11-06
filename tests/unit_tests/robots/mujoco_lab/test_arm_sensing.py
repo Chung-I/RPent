@@ -63,6 +63,10 @@ def test_the_identify_probe_reads_mass_and_com(env):
     assert res.seconds > 3.0 and j["duration_s"] == 3.0
     tr = res.sensor["joint_truth_l7"]                # hidden: the checks' truth, never a planner's
     assert np.linalg.norm(np.array(j["phi"][1:4]) / j["phi"][0] - np.array(tr[1:4]) / tr[0]) < 0.01
+    # the agents' keys (probes.identify_summary): mass and the CoM in the object frame with 80 % ranges
+    assert j["m_hat"] == j["phi"][0] and j["m_range80"][0] < j["m_hat"] < j["m_range80"][1]
+    c = np.asarray(env.truth()["com_obj"], dtype=float)
+    assert np.linalg.norm(np.asarray(j["com_obj_m"]) - c) < 0.01 and len(j["com_obj_range80_m"]) == 3
 
 
 def test_a_reset_draws_the_same_torque_noise(env):

@@ -166,17 +166,31 @@ def _bundle(tmp_path, rows):
     return str(tmp_path)
 
 
+def _scene_d(r):
+    """A probe corpus's identify row (probe_corpus scene D, m2b2_v12b): the key tag Didentify."""
+    return {**r, "key": r["key"].rsplit("__", 1)[0] + "__Didentify"}
+
+
 def test_a_bundles_own_identify_rows_come_first_and_keep_their_declines(tmp_path):
-    """A bundle built with the identify probe (v12b) brings its own rows, so its rerun is a bundle-path change only."""
+    """A bundle built with the identify probe (v12b) brings its own rows, tagged as its probe corpus's scene D tags them,
+    so its rerun is a bundle-path change only."""
     from robots.mujoco_lab.identify_fit import bundle_identify_rows, identify_source
 
-    declined = {"key": "a__v11s0__d0__Bidentify", "object": "a", "draw": 0, "declined": "no proposal"}
-    own = _bundle(tmp_path, [_weigh("a", 0), declined, _ident("a", 1)])
+    declined = {"key": "a__v11s0__d0__Didentify", "object": "a", "draw": 0, "declined": "no proposal"}
+    own = _bundle(tmp_path, [_weigh("a", 0), declined, _scene_d(_ident("a", 1))])
     assert [r["draw"] for r in bundle_identify_rows(own)] == [0, 1]
     ext = tmp_path / "ext.jsonl"
     ext.write_text(json.dumps(_ident("a", 0)) + "\n")
     rows, src = identify_source(own, str(ext))
     assert src == "bundle" and [r["draw"] for r in rows] == [0, 1]
+
+
+def test_the_bundle_tag_is_the_posterior_checks_tag_of_probe_set_d():
+    """One tag for a bundle's identify rows: the one posterior_check judges as probe set D."""
+    from robots.mujoco_lab.identify_fit import BUNDLE_TAG
+    from robots.mujoco_lab.posterior_check import PROBE_TAGS
+
+    assert PROBE_TAGS["D"] == (BUNDLE_TAG,)
 
 
 def test_a_bundle_without_identify_rows_reads_the_simulated_rows_or_refuses(tmp_path):

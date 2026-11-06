@@ -58,7 +58,7 @@ from robots.mujoco_lab.names import accepts, object_name
 from robots.mujoco_lab.meter import DamageMeter
 from robots.mujoco_lab.readouts import RISEN_M, slide_force, summarize
 from rpent.skills.pick_place.features import G, Geometry
-from rpent.skills.pick_place.probes import ProbeResult
+from rpent.skills.pick_place.probes import ProbeResult, identify_summary
 from rpent.skills.pick_place.protocol import OUTCOMES  # noqa: F401  (label vocabulary)
 
 LIFT_H = 0.20
@@ -1598,6 +1598,7 @@ class MuJoCoLabEnv:
                     reading = dict(reading or {})
                     reading["duration_s"] = float(duration)
                     reading["plan"] = plan_info
+                    reading.update(identify_summary(reading))       # the agents' keys: mass and CoM with 80 % ranges
         self._metering = False
         # set it down where it was: the lowest point 1 cm above the table, then open, rise, settle
         (x, y, z), yaw = sim.hand_target[0], sim.hand_target[1]
