@@ -869,6 +869,416 @@ def stage1_summary(a: argparse.Namespace) -> dict[str, Any]:
     return rep
 
 
+# ---------------------------------------------------------------- Stage 2: the episodes (design 5.2, 5.5)
+
+SIM_RULES = ("R0", "R1", "R2", "R3", "R4", "R5")   # R6 is model only unless the Stage 1 check admits it (stage2 --rules)
+
+
+def no_continuation(care: float, A: float) -> dict[str, float]:
+    """R1's continuation values at the second decision: no third attempt, so a recoverable label costs C(y) + A, as in R0."""
+    return {k: float("inf") for k in RECOVERABLE}
+
+
+def first_rows(dec: dict[str, str], rules: tuple[str, ...]) -> list[str]:
+    """The distinct rows the rules grasp with at A_MAIN (the r-check's A 3 decisions are not simulated), in ROW_ORDER."""
+    ids = {d for k, d in dec.items() if d != GIVE_UP_ROW and k.split("|")[0] in rules and float(k.split("|")[1]) == A_MAIN}
+    return sorted(ids, key=lambda i: (ROW_ORDER.index(i) if i in ROW_ORDER else len(ROW_ORDER), i))
+
+
+def second_decisions(rows: list[dict[str, Any]], rules: tuple[str, ...]) -> dict[str, str]:
+    """Every rule's decision at the second (last) attempt from the second menu's rows, keyed by dkey at A_MAIN."""
+    return {dkey(rule, A_MAIN, k): decide(rule, rows, k, A_MAIN, no_continuation) for rule in rules for k in KNOBS[rule]}
+
+
+def menu_matches(now: list[dict[str, Any]], then: list[dict[str, Any]], tol: float = 1e-12) -> tuple[bool, str]:
+    """(match, reason): the same row ids, the same action keys, and mean predictions within tol."""
+    a, b = {r["id"]: r for r in now}, {r["id"]: r for r in then}
+    if sorted(a) != sorted(b):
+        return False, f"rows {sorted(a)} against {sorted(b)}"
+    for i in sorted(a):
+        if a[i]["action"] != b[i]["action"]:
+            return False, f"{i}: action {a[i]['action']} against {b[i]['action']}"
+        gap = max(abs(a[i]["p"].get(k, 0.0) - b[i]["p"].get(k, 0.0)) for k in set(a[i]["p"]) | set(b[i]["p"]))
+        if gap > tol:
+            return False, f"{i}: the mean prediction differs by {gap:.3g}"
+    return True, ""
+
+
+def episode(dec: dict[str, str], sims: list[dict[str, Any]], key: str) -> dict[str, Any]:
+    """One rule and knob's episode on a case (the main seed's simulations): the first decision, its attempt, and after a
+    recoverable label the second decision (stored with the second menu) and its attempt. A give-up at either decision
+    ends the episode unplaced; an irreversible label ends it."""
+    out: dict[str, Any] = {"attempts": 0, "success": False, "irr": False, "give_up": False, "labels": [], "rows": []}
+    first = dec[key]
+    if first == GIVE_UP_ROW:
+        return dict(out, give_up=True)
+    s = next(x for x in sims if x["seed_k"] == 0 and x["first"] == first)
+    out.update(attempts=1, labels=[s["label"]], rows=[first])
+    if s["label"] == "placed_stable":
+        return dict(out, success=True)
+    if s["label"] in IRREVERSIBLE:
+        return dict(out, irr=True)
+    second = s["menu2"]["decisions"][key]
+    if second == GIVE_UP_ROW:
+        return dict(out, give_up=True)
+    y2 = s["second"][second]["label"]
+    return dict(out, attempts=2, labels=[s["label"], y2], rows=[first, second], success=y2 == "placed_stable", irr=y2 in IRREVERSIBLE)
+
+
+def case_dropped(sims: list[dict[str, Any]]) -> bool:
+    """Design 5.5: an artifact or an error on any simulation of the case at the main seed drops it from every rule."""
+    for s in sims:
+        if s["seed_k"] != 0:
+            continue
+        if s.get("error") or s.get("artifact") or (s.get("menu2") or {}).get("status") == "error":
+            return True
+        if any(x.get("error") or x.get("artifact") for x in (s.get("second") or {}).values()):
+            return True
+    return False
+
+
+
+def simulate_case(lab: Any, rec1: dict[str, Any], dec: dict[str, str], rules: tuple[str, ...], seeds: list[int]) -> dict[str, Any]:
+    """One case's simulations through ``lab`` (LabCase: fresh, attempt, second_menu). Per reset seed and per distinct first
+    row of the rules (first_rows): a fresh episode (the reset and the first menu, gated against Stage 1's rows), the first
+    attempt, and after a recoverable label without an artifact the second menu, every rule's second decision
+    (second_decisions) and each distinct second row. The first second row runs in the same episode; each later one runs in
+    a fresh episode whose replayed first attempt must give the same label and the same second menu. Returns {"sims",
+    "stop"}: a gate that fails stops the case (and the run) with its reason."""
+    sims: list[dict[str, Any]] = []
+    for k, reset_seed in enumerate(seeds):
+        for first in first_rows(dec, rules):
+            t0 = time.time()
+            store, stop, at_rest = lab.fresh(reset_seed, rec1)
+            if stop:
+                return {"sims": sims, "stop": f"seed {k}, first row {first}: {stop}"}
+            d1 = lab.attempt(store, first)
+            sim: dict[str, Any] = {"seed_k": k, "reset_seed": int(reset_seed), "first": first, "label": d1.get("outcome"),
+                                   "artifact": bool(d1.get("artifact")) or not at_rest, "error": d1.get("error"), "menu2": None,
+                                   "second": {}}
+            if sim["error"] is None and sim["label"] in RECOVERABLE and not sim["artifact"]:
+                m2 = lab.second_menu(store, d1)
+                m2["decisions"] = second_decisions(m2["rows"], rules)
+                sim["menu2"] = m2
+                for j, row2 in enumerate(first_rows(m2["decisions"], rules) if m2["status"] != "error" else []):
+                    if j:
+                        store, stop, at_rest = lab.fresh(reset_seed, rec1)
+                        if stop:
+                            return {"sims": sims + [sim], "stop": f"seed {k}, first row {first}, second row {row2}: {stop}"}
+                        d1b = lab.attempt(store, first)
+                        again = (d1b.get("outcome"), bool(d1b.get("artifact")) or not at_rest, d1b.get("error"))
+                        if again != (sim["label"], sim["artifact"], sim["error"]):
+                            return {"sims": sims + [sim], "stop": f"seed {k}: the replayed first attempt of {first} gave {again}"}
+                        m2b = lab.second_menu(store, d1b)
+                        ok, why = menu_matches(m2b["rows"], m2["rows"])
+                        if not ok or m2b["status"] != m2["status"]:
+                            return {"sims": sims + [sim], "stop": f"seed {k}: the replayed second menu after {first} differs: {why}"}
+                    d2 = lab.attempt(store, row2)
+                    sim["second"][row2] = {"label": d2.get("outcome"), "artifact": bool(d2.get("artifact")), "error": d2.get("error")}
+            sim["seconds"] = round(time.time() - t0, 2)
+            sims.append(sim)
+    return {"sims": sims, "stop": None}
+
+
+def stage2_skip(rec1: dict[str, Any]) -> str | None:
+    """Why a Stage 1 case is not simulated: a Stage 1 error or a reset artifact drops it from every rule (paired)."""
+    if rec1.get("status") == "error" or "error" in rec1:
+        return "stage1 error"
+    if rec1.get("artifact"):
+        return "stage1 artifact"
+    return None
+
+
+def stage2_record(rec1: dict[str, Any], dec: dict[str, str], rules: tuple[str, ...], res: dict[str, Any] | None,
+                  n_seeds: int) -> dict[str, Any]:
+    """A case's Stage 2 record: its Stage 1 identity and strata, every first decision (dkey), the simulated first rows,
+    the first menu's rows' P(placed), P(irr) and QUANTILE tail (for the calibration), the simulations (simulate_case),
+    and whether the case is skipped (stage2_skip) or dropped (case_dropped, or an exception in its simulations)."""
+    skip = stage2_skip(rec1)
+    sims = [] if skip or res is None else res["sims"]
+    keep = ("object", "idx", "fold", "side", "class", "law", "fillable", "thin", "destination", "ess", "guard_flag", "status")
+    return dict({k: rec1.get(k) for k in keep}, decisions=dec, first_rows=[] if skip else first_rows(dec, rules),
+                row_stats={r["id"]: {"p_placed": r["p_placed"], "p_irr": r["p_irr"], "q_irr": r["q_irr"]} for r in rec1.get("rows") or []},
+                sims=sims, skipped=skip, error=None if res is None else res.get("error"),
+                dropped=bool(skip) or bool((res or {}).get("error")) or case_dropped(sims), stop=None if res is None else res.get("stop"),
+                n_seeds=int(n_seeds))
+
+
+def smoke_summary(recs: list[dict[str, Any]]) -> dict[str, Any]:
+    """The smoke test's counts and times (no rates): the (case, first row) pairs and (case, first row, second row) triples
+    whose label differs across seeds, the triples that ran at some but not all of their first row's seeds, the summed
+    simulation seconds per seed, and the seconds per first row at seed 0 (the projection's unit)."""
+    first: dict[tuple, dict[int, Any]] = defaultdict(dict)
+    second: dict[tuple, dict[int, Any]] = defaultdict(dict)
+    secs: dict[str, float] = defaultdict(float)
+    errors = artifacts = 0
+    for rec in recs:
+        for s in rec["sims"]:
+            key = (rec["object"], rec["idx"], s["first"])
+            first[key][s["seed_k"]] = s["label"]
+            secs[str(s["seed_k"])] += float(s.get("seconds") or 0.0)
+            errors += bool(s.get("error"))
+            artifacts += bool(s.get("artifact"))
+            for row2, x in (s.get("second") or {}).items():
+                second[key + (row2,)][s["seed_k"]] = x["label"]
+                errors += bool(x.get("error"))
+                artifacts += bool(x.get("artifact"))
+    n0 = sum(0 in v for v in first.values())
+    return {"first_pairs": len(first), "first_changed": sum(len(set(v.values())) > 1 for v in first.values()),
+            "second_triples": len(second), "second_changed": sum(len(set(v.values())) > 1 for v in second.values()),
+            "second_presence_changed": sum(set(v) != set(first[k[:3]]) for k, v in second.items()),
+            "seconds_per_seed": dict(sorted(secs.items())), "first_rows_seed0": n0,
+            "seconds_per_first_row_seed0": secs.get("0", 0.0) / n0 if n0 else None, "errors": errors, "artifacts": artifacts}
+
+
+def projection(sm: dict[str, Any], n_first_rows: int) -> float:
+    """CPU-h of the full run (seed 0 only): the smoke test's seconds per first row at seed 0 (second rows included) times
+    the run's number of distinct (case, first row) pairs."""
+    return float(sm["seconds_per_first_row_seed0"]) * int(n_first_rows) / 3600.0
+
+
+def mean_row(x: Any) -> dict[str, Any]:
+    """A menu row as the replay gate compares it: its id, action key and mean prediction."""
+    from robots.mujoco_lab.evpi_props import action_key
+
+    return {"id": x.id, "action": action_key(x.id, {x.id: x}), "p": dict(x.pred.p)}
+
+
+def _same_destination(x: Any, destination: str) -> bool:
+    return x.kind in ("commit", "lower_risk") and x.action.get("destination") == destination
+
+
+class LabCase:
+    """One case on the lab for simulate_case (evpi_props.run_case's draw and world): ``fresh`` resets at a seed, checks the
+    fingerprint and rebuilds the first menu at the class prior on a fresh store under (STAGE1_CARE, A_MAIN), gated against
+    Stage 1's rows (menu_matches); ``attempt`` runs one row; ``second_menu`` gives the reassessment's rows under the
+    posterior (row_record), its status, ESS and guard flag."""
+
+    def __init__(self, prims: Any, o: str, idx: int, seed: int, world: Any):
+        from robots.mujoco_lab import calibrate as cal
+        from robots.mujoco_lab.adapter import object_props
+
+        self.prims, self.o, self.idx, self.seed = prims, o, int(idx), int(seed)
+        env = prims.env
+        self.theta, self.com_end, self.destination, self.hidden = cal.case_draw(self.seed, o, self.idx, object_props(o)["mass"], False,
+                                                                                fragility=world)
+        if world is not None:
+            env.slosh_zeta, env.slosh_scale = world[1].slosh_zeta, world[1].slosh_scale
+        env.classes = None if world is None else world[0]
+        self.fixture = self.destination if self.destination in cal.MESH_IDS else None
+
+    def fresh(self, reset_seed: int, rec1: dict[str, Any]) -> tuple[Any, str, bool]:
+        from robots.mujoco_lab import calibrate as cal
+        from robots.mujoco_lab import evpi_props as ev
+        from robots.mujoco_lab.com_gap import fingerprint
+        from robots.mujoco_lab.evpi_sim import _store
+        from rpent.skills.pick_place.tools import _particles, _spread_kw, assess_pick
+
+        prims, env = self.prims, self.prims.env
+        env.reset(self.o, self.theta, seed=int(reset_seed), com_end=self.com_end, fixture=self.fixture, fill=self.hidden["fill"],
+                  frag=self.hidden["frag"])
+        at_rest = bool(dict(getattr(env, "reset_info", None) or {}).get("at_rest", True))
+        if fingerprint(env) != rec1["fingerprint"]:
+            return None, "the reset's fingerprint differs from Stage 1's", at_rest
+        pose, n = env.pose_info(), _particles(prims)
+        g = cal._stream(self.seed, self.o, self.idx, 1)
+        b0 = prims.prior(pose, n, g, **_spread_kw(prims))
+        state = copy.deepcopy(g.bit_generator.state)
+        store = _store(env, b0)
+        prims.abstain_cost, prims.rng = A_MAIN, ev._rng_at(state)
+        assess_pick(object="object", destination=self.destination, care=STAGE1_CARE, primitives=prims, store=store)
+        cache = list(store.get("pick_place", {}).values())
+        if len(cache) > 1:
+            return None, f"{len(cache)} cached assessments for one menu", at_rest
+        menu = cache[0]["menu"] if cache else {}
+        ok, why = menu_matches([mean_row(x) for x in menu.values() if _same_destination(x, self.destination)], rec1["rows"])
+        return (store, "", at_rest) if ok else (None, f"replay gate: {why}", at_rest)
+
+    def attempt(self, store: Any, row: str) -> dict[str, Any]:
+        from rpent.skills.pick_place.tools import pick_and_place
+
+        try:
+            d = pick_and_place(object="object", destination=self.destination, care=STAGE1_CARE, primitives=self.prims, store=store,
+                               option_id=row).data
+        except Exception as exc:  # noqa: BLE001  a simulator fault ends this simulation as an error
+            return {"error": f"{type(exc).__name__}: {str(exc)[:200]}"}
+        if "outcome" not in d:
+            return {"error": str(d.get("error") or d.get("reason"))}
+        if d.get("restored") is not None:
+            return {"error": "the lab restored the object (a recovery mode is on)"}
+        return d
+
+    def second_menu(self, store: Any, d: dict[str, Any]) -> dict[str, Any]:
+        from rpent.skills.pick_place import menu as menu_mod
+
+        a2 = d["assessment"]
+        if "error" in a2:
+            return {"status": "error", "error": str(a2["error"])[:300], "rows": []}
+        if not a2.get("assessed", False):
+            return {"status": "unreachable", "rows": []}
+        cache = list(store.get("pick_place", {}).values())
+        if len(cache) != 1:
+            return {"status": "error", "error": f"{len(cache)} cached assessments (one expected)", "rows": []}
+        b, rows = cache[0]["belief"], []
+        for x in cache[0]["menu"].values():
+            if _same_destination(x, self.destination):
+                _, per = menu_mod.estimate(self.prims.model, b, x._base, x._pose, x.action["force"], x._planned)
+                rows.append(row_record(x, per, b.weights))
+        return {"status": case_status(a2, rows), "rows": rows, "ess": float(b.effective_size()),
+                "guard_flag": bool((a2.get("guard") or {}).get("flag"))}
+
+
+def stage2_object(job: tuple[str, list[tuple[dict[str, Any], dict[str, str]]], dict[str, Any]]) -> dict[str, Any]:
+    """One object's Stage 2 cases on its fold's bundle (stage1_object's sensor and world, no probe models): per case its
+    record (stage2_record). A gate that fails ends the object with ``stop`` (the run stops)."""
+    from robots.mujoco_lab import calibrate as cal
+    from robots.mujoco_lab.evpi_sim import seeds_of
+    from robots.mujoco_lab.prior import fragility_world
+
+    o, items, s = job
+    prims = cal._primitives(s["bundle"], None, None)
+    if getattr(prims, "reset_s", None) is not None:
+        raise RuntimeError("the curve scores the absorbing episode only (this bundle restores the object after damage)")
+    probes, prims.probe_models = getattr(prims, "probe_models", None), {}
+    prims.force_noise = cal.job_force_noise(None, prims.manifest)
+    prims.env.force_noise = prims.force_noise
+    world = fragility_world(prims.manifest)
+    rules, n_seeds = tuple(s["rules"]), int(s["n_seeds"])
+    out: dict[str, Any] = {"records": [], "stop": None}
+    try:
+        for rec1, dec in items:
+            t0, idx, res = time.time(), int(rec1["idx"]), None
+            if stage2_skip(rec1) is None:
+                res = {"sims": [], "stop": None}
+                if first_rows(dec, rules):
+                    try:
+                        lab = LabCase(prims, o, idx, int(s["seed"]), world)
+                        res = simulate_case(lab, rec1, dec, rules, seeds_of(int(s["seed"]), o, idx)[:n_seeds])
+                    except Exception as exc:  # noqa: BLE001  a case that raises is dropped from every rule (design 5.5)
+                        res = {"sims": [], "stop": None, "error": f"{type(exc).__name__}: {str(exc)[:300]}"}
+            rec = dict(stage2_record(rec1, dec, rules, res, n_seeds), seconds=round(time.time() - t0, 2))
+            out["records"].append(rec)
+            n2 = sum(len(x["second"]) for x in rec["sims"])
+            bad = sum(bool(x.get("error")) for x in rec["sims"]) + sum(bool(y.get("error")) for x in rec["sims"] for y in x["second"].values())
+            print(f"{o} {idx}: {rec['seconds']:.1f} s, {len(rec['sims']) + n2} attempts, {bad} attempt errors"
+                  + (f", skipped ({rec['skipped']})" if rec["skipped"] else "") + (f", error {rec['error']}" if rec["error"] else "")
+                  + (f", STOP {rec['stop']}" if rec["stop"] else ""), file=sys.stderr, flush=True)
+            if rec["stop"]:
+                out["stop"] = f"{o} {idx}: {rec['stop']}"
+                break
+    finally:
+        prims.probe_models = probes
+    return out
+
+
+def _stage2_cases(a: argparse.Namespace, recs1: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The run's Stage 1 records: --cases, or the shard's objects on the --sides, in (object, idx) order."""
+    if a.cases:
+        want = {(c.rsplit(":", 1)[0], int(c.rsplit(":", 1)[1])) for c in a.cases.split(",")}
+        recs = [r for r in recs1 if (r["object"], int(r["idx"])) in want]
+        if len(recs) != len(want):
+            raise SystemExit(f"{len(want) - len(recs)} of the --cases are not in the Stage 1 records")
+    else:
+        sides = set(a.sides.split(","))
+        objs = set(shard_objects([r["object"] for r in recs1 if r["side"] in sides], a.shard, a.shards))
+        recs = [r for r in recs1 if r["object"] in objs and r["side"] in sides]
+    return sorted(recs, key=lambda r: (r["object"], int(r["idx"])))
+
+
+def stage2(a: argparse.Namespace) -> str:
+    """The Stage 2 run (design 5.5): records.jsonl (one stage2_record per case, by object as each ends), run_config.json
+    and run_metrics.json (times, counts and errors only; wandb when on). A gate that fails stops the run (exit 3)."""
+    import multiprocessing as mp
+
+    from robots.mujoco_lab.estimation_check import _revision
+    from robots.mujoco_lab.identify_fit import require_bundle_generator
+    from robots.mujoco_lab.tracking import log_run
+
+    os.makedirs(a.out, exist_ok=True)
+    path = os.path.join(a.out, "records.jsonl")
+    if os.path.exists(path):
+        raise SystemExit(f"{path} exists: pick a new --out")
+    rules = tuple(a.rules.split(","))
+    if any(r not in RULES for r in rules):
+        raise SystemExit(f"unknown rules in {a.rules}")
+    dirs = a.stage1.split(",")
+    recs1, cfg1 = load_stage1(dirs)
+    generator = require_bundle_generator(cfg1["bundle"])
+    c = retry_continuation(json.load(gzip.open(a.retry))["rows"])
+    V = lambda care, A: continuation_values(c, care, A)  # noqa: E731
+    recs = _stage2_cases(a, recs1)
+    by: dict[str, list[tuple[dict[str, Any], dict[str, str]]]] = defaultdict(list)
+    for r in recs:
+        by[r["object"]].append((r, decisions(r, V)))
+    config = {**vars(a), **_revision(), "generator": generator, "bundle": cfg1["bundle"], "seed": cfg1["seed"],
+              "stage1_code_revision": cfg1["code_revision"],
+              "stage1_records_sha256": {d: _sha(os.path.join(d, "records.jsonl")) for d in dirs},
+              "split_sha256": cfg1["split_sha256"], "retry_sha256": _sha(a.retry), "retry_continuation": c, "rules": rules,
+              "n_seeds": a.seeds, "cases": [(r["object"], int(r["idx"])) for r in recs], "a_main": A_MAIN, "stage1_care": STAGE1_CARE,
+              "r_grid": R_GRID, "delta_grid": DELTA_GRID, "quantile": QUANTILE}
+    with open(os.path.join(a.out, "run_config.json"), "w") as f:
+        json.dump(config, f, indent=1)
+    jobs = [(o, items, {"bundle": os.path.join(cfg1["bundle"], "folds", f"fold_{items[0][0]['fold']}"), "seed": cfg1["seed"],
+                        "rules": rules, "n_seeds": a.seeds}) for o, items in by.items()]
+    t0, stop = time.time(), None
+    with open(path, "w") as out:
+        pool = None if a.workers == 1 else mp.get_context("spawn").Pool(a.workers)
+        results = map(stage2_object, jobs) if pool is None else pool.imap_unordered(stage2_object, jobs)
+        try:
+            for res in results:
+                for r in res["records"]:
+                    out.write(json.dumps(r) + "\n")
+                out.flush()
+                if res["stop"]:
+                    stop = res["stop"]
+                    break
+        finally:
+            if pool is not None:
+                (pool.terminate if stop else pool.close)()
+                pool.join()
+    done = [json.loads(line) for line in open(path)]
+    attempts = sum(len(r["sims"]) + sum(len(x["second"]) for x in r["sims"]) for r in done)
+    metrics = {"cases": len(done), "of_cases": len(recs), "stop": stop, "skipped": sum(bool(r["skipped"]) for r in done),
+               "dropped": sum(bool(r["dropped"]) for r in done), "case_errors": sum(bool(r["error"]) for r in done),
+               "attempts": attempts, "wall_seconds": round(time.time() - t0, 1),
+               "case_seconds": round(sum(r["seconds"] for r in done), 1),
+               "case_seconds_max": max((r["seconds"] for r in done), default=0.0), "peak_rss_mb": _peak_rss_mb()}
+    metrics["wandb"] = log_run("curve-stage2", config, metrics)
+    with open(os.path.join(a.out, "run_metrics.json"), "w") as f:
+        json.dump(metrics, f, indent=1)
+    print(f"done: {json.dumps(metrics)}", flush=True)
+    if stop:
+        raise SystemExit(3)
+    return path
+
+
+def stage2_smoke(a: argparse.Namespace) -> dict[str, Any]:
+    """The smoke test's report (times and counts, no rates): smoke_summary of the smoke runs and the full run's projection
+    from the Stage 1 records (every non-skipped case's distinct first rows at seed 0)."""
+    from robots.mujoco_lab.tracking import log_run
+
+    os.makedirs(a.out, exist_ok=True)
+    jpath = os.path.join(a.out, "smoke_summary.json")
+    if os.path.exists(jpath):
+        raise SystemExit(f"{jpath} exists: pick a new --out")
+    recs = [json.loads(line) for d in a.runs.split(",") for line in open(os.path.join(d, "records.jsonl"))]
+    cfg = json.load(open(os.path.join(a.runs.split(",")[0], "run_config.json")))
+    rules = tuple(cfg["rules"])
+    recs1, _ = load_stage1(cfg["stage1"].split(","))
+    c = retry_continuation(json.load(gzip.open(cfg["retry"]))["rows"])
+    V = lambda care, A: continuation_values(c, care, A)  # noqa: E731
+    n_first = sum(len(first_rows(decisions(r, V), rules)) for r in recs1 if stage2_skip(r) is None)
+    sm = dict(smoke_summary(recs), cases=len(recs), dropped=sum(bool(r["dropped"]) for r in recs),
+              case_errors=sum(bool(r["error"]) for r in recs), stops=[r["stop"] for r in recs if r["stop"]],
+              run_first_rows=n_first, run_cases=sum(stage2_skip(r) is None for r in recs1))
+    sm["projection_cpu_h"] = projection(sm, n_first) if sm["seconds_per_first_row_seed0"] else None
+    sm["wandb"] = log_run("curve-stage2-smoke", {"runs": a.runs, "rules": rules}, sm)
+    with open(jpath, "w") as f:
+        json.dump(sm, f, indent=1)
+    print(json.dumps(sm, indent=1), flush=True)
+    return sm
+
+
 def main(argv: list[str] | None = None) -> Any:
     p = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -899,8 +1309,23 @@ def main(argv: list[str] | None = None) -> Any:
     ss.add_argument("--e1", required=True, help="experiment 1's class records dir (shard_*/records.jsonl.gz)")
     ss.add_argument("--split-commit", required=True, help="the commit that holds split.json")
     ss.add_argument("--out", required=True)
+    s2 = sub.add_parser("stage2", help="Stage 2: the episodes in the simulator (design 5.5)")
+    s2.add_argument("--stage1", required=True, help="comma-separated Stage 1 run dirs")
+    s2.add_argument("--retry", required=True, help="the retry run (R1's continuation values)")
+    s2.add_argument("--out", required=True)
+    s2.add_argument("--rules", default=",".join(SIM_RULES))
+    s2.add_argument("--seeds", type=int, default=1, help="reset seeds per case (evpi_sim.seeds_of; 1 = the case's own)")
+    s2.add_argument("--cases", default=None, help="comma-separated object:idx cases in place of the shard")
+    s2.add_argument("--sides", default="validation,test")
+    s2.add_argument("--shard", type=int, default=0)
+    s2.add_argument("--shards", type=int, default=1)
+    s2.add_argument("--workers", type=int, default=1)
+    sk = sub.add_parser("stage2-smoke", help="the smoke test's times, counts and the full run's projection")
+    sk.add_argument("--runs", required=True, help="comma-separated smoke run dirs")
+    sk.add_argument("--out", required=True)
     a = p.parse_args(argv)
-    return {"stage0": stage0, "split": split, "stage1": stage1, "stage1-summary": stage1_summary}[a.cmd](a)
+    return {"stage0": stage0, "split": split, "stage1": stage1, "stage1-summary": stage1_summary, "stage2": stage2,
+            "stage2-smoke": stage2_smoke}[a.cmd](a)
 
 
 if __name__ == "__main__":

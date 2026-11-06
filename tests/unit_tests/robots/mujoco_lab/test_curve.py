@@ -160,7 +160,7 @@ def _row(rid, placed, irr=0.0, rec_label="tipped", rec=None, cost_s=8.0, q_irr=N
     p = {k: 0.0 for k in OUTCOMES}
     p.update({"placed_stable": placed, "crushed": irr, rec_label: rec})
     from rpent.skills.pick_place.costs import COST
-    return {"id": rid, "p": p, "p_placed": placed, "p_irr": irr, "rec": rec * COST[rec_label], "cost_s": cost_s,
+    return {"id": rid, "action": f"{rid}|{{}}", "p": p, "p_placed": placed, "p_irr": irr, "rec": rec * COST[rec_label], "cost_s": cost_s,
             "q_irr": irr if q_irr is None else q_irr, "cvar": cvar or {}}
 
 
@@ -452,3 +452,223 @@ def test_stage1_summary_end_to_end_on_synthetic_runs(tmp_path, monkeypatch):
     with pytest.raises(SystemExit, match="exists"):
         cv.main(["stage1-summary", "--runs", str(tmp_path / "a"), "--retry", str(retry), "--stage0", str(s0),
                  "--e1", str(tmp_path / "e1"), "--split-commit", "x", "--out", str(out)])
+
+
+# ---------------------------------------------------------------- Stage 2: the episodes
+
+def test_first_rows_are_the_distinct_grasps_of_the_rules_at_A_main_in_menu_order():
+    dec = {"R0|10|0.02": "give_up", "R0|10|10": "firm_grip", "R4|10|-": "commit_std", "R2|10|0.2": "firm_grip",
+           "R6|10|0.5": "light_grip", "R0|3|0.2": "slow_lift"}
+    assert cv.first_rows(dec, ("R0", "R2", "R4")) == ["commit_std", "firm_grip"]
+    assert cv.first_rows(dec, ("R0", "R2", "R4", "R6")) == ["commit_std", "firm_grip", "light_grip"]
+
+
+def test_second_decisions_price_no_continuation_for_R1():
+    rows = [dict(_row("commit_std", 0.05, irr=0.0, rec_label="tipped"), cvar=_cv(0.1))]
+    d = cv.second_decisions(rows, ("R0", "R1", "R4"))
+    assert set(d) == {cv.dkey(rule, 10.0, k) for rule in ("R0", "R1", "R4") for k in cv.KNOBS[rule]}
+    assert d["R1|10|2"] == d["R0|10|2"] == "give_up"           # no third attempt: R1 prices a recoverable label as R0 does
+    assert d["R4|10|-"] == "commit_std"
+
+
+def test_menu_matches_needs_the_same_rows_actions_and_means():
+    a = [{"id": "commit_std", "action": "commit_std|{}", "p": {"placed_stable": 0.5, "tipped": 0.5}}]
+    assert cv.menu_matches(a, [dict(a[0], p={"placed_stable": 0.5 + 1e-15, "tipped": 0.5})]) == (True, "")
+    assert cv.menu_matches(a, [dict(a[0], action="commit_std|{x}")])[0] is False
+    assert cv.menu_matches(a, [dict(a[0], p={"placed_stable": 0.6, "tipped": 0.4})])[0] is False
+    assert cv.menu_matches(a, a + [dict(a[0], id="firm_grip")])[0] is False
+
+
+def _sim(first, label, menu2=None, second=None, seed_k=0, **kw):
+    return dict({"seed_k": seed_k, "first": first, "label": label, "artifact": False, "error": None,
+                 "menu2": menu2, "second": second or {}}, **kw)
+
+
+def test_episode_follows_the_rule_through_two_attempts():
+    dec = {"R0|10|1": "commit_std", "R0|10|2": "give_up", "R2|10|0.01": "firm_grip", "R4|10|-": "firm_grip"}
+    m2 = {"status": "ok", "rows": [], "decisions": {"R0|10|1": "slow_lift", "R4|10|-": "give_up"}}
+    sims = [_sim("commit_std", "tipped", menu2=m2, second={"slow_lift": {"label": "placed_stable", "artifact": False, "error": None}}),
+            _sim("firm_grip", "crushed")]
+    e = cv.episode(dec, sims, "R0|10|1")
+    assert e == {"attempts": 2, "success": True, "irr": False, "give_up": False, "labels": ["tipped", "placed_stable"],
+                 "rows": ["commit_std", "slow_lift"]}
+    assert cv.episode(dec, sims, "R0|10|2") == {"attempts": 0, "success": False, "irr": False, "give_up": True, "labels": [],
+                                                 "rows": []}
+    assert cv.episode(dec, sims, "R2|10|0.01")["irr"] is True
+    m2["decisions"]["R2|10|0.01"] = "give_up"
+    e4 = cv.episode(dict(dec, **{"R4|10|-": "commit_std"}), sims, "R4|10|-")
+    assert e4["give_up"] is True and e4["attempts"] == 1          # the second decision gave up
+
+
+def test_case_dropped_by_any_artifact_or_error_at_the_main_seed():
+    good = [_sim("commit_std", "placed_stable")]
+    assert cv.case_dropped(good) is False
+    assert cv.case_dropped(good + [_sim("firm_grip", "tipped", artifact=True)]) is True
+    assert cv.case_dropped([_sim("commit_std", "tipped", second={"x": {"label": None, "artifact": False, "error": "boom"}})]) is True
+    assert cv.case_dropped([_sim("commit_std", "tipped", menu2={"status": "error", "rows": [], "decisions": {}})]) is True
+    assert cv.case_dropped(good + [_sim("firm_grip", "tipped", artifact=True, seed_k=1)]) is False
+
+
+class _FakeLab:
+    """simulate_case's lab: first attempts give first[row], second attempts second[row]; ``replay`` overrides the
+    first attempt's label on fresh episodes after the first."""
+
+    def __init__(self, first, second, rows2, stop_at=None, replay=None):
+        self.first, self.second, self.rows2, self.stop_at, self.replay = first, second, rows2, stop_at, replay
+        self.fresh_calls, self.attempts = 0, []
+
+    def fresh(self, reset_seed, rec1):
+        self.fresh_calls += 1
+        if self.stop_at == self.fresh_calls:
+            return None, "replay gate: rows differ", True
+        return {"n": 0, "seed": reset_seed, "k": self.fresh_calls}, "", True
+
+    def attempt(self, store, row):
+        store["n"] += 1
+        self.attempts.append((store["seed"], store["n"], row))
+        if store["n"] == 1:
+            label = self.replay if (self.replay and store["k"] > 1) else self.first[row]
+        else:
+            label = self.second[row]
+        return {"outcome": label, "artifact": False}
+
+    def second_menu(self, store, d):
+        return {"status": "ok", "rows": [dict(r) for r in self.rows2]}
+
+
+def _dec_for(rows, rules=("R0", "R4")):
+    V = lambda care, A: {k: 1e9 for k in RECOVERABLE}  # noqa: E731
+    return cv.decisions({"rows": rows}, V)
+
+
+def test_simulate_case_runs_each_first_row_and_each_distinct_second_row():
+    rows1 = [dict(_row("commit_std", 0.9, irr=0.0), cvar=_cv(0.1)), dict(_row("firm_grip", 0.95, irr=0.02), cvar=_cv(0.1))]
+    rows2 = [dict(_row("commit_std", 0.9, irr=0.0), cvar=_cv(0.1)), dict(_row("slow_lift", 0.95, irr=0.01), cvar=_cv(0.1))]
+    dec = _dec_for(rows1)                                      # R0 grasps commit_std at low r, firm_grip at high r; R4 firm_grip
+    lab = _FakeLab({"commit_std": "tipped", "firm_grip": "placed_stable"}, {"commit_std": "placed_stable", "slow_lift": "missed"}, rows2)
+    res = cv.simulate_case(lab, {"rows": rows1}, dec, ("R0", "R4"), [11000])
+    assert res["stop"] is None
+    sims = {s["first"]: s for s in res["sims"]}
+    assert set(sims) == set(cv.first_rows(dec, ("R0", "R4")))
+    want2 = cv.first_rows(cv.second_decisions([dict(r) for r in rows2], ("R0", "R4")), ("R0", "R4"))
+    assert sorted(sims["commit_std"]["second"]) == sorted(want2) and len(want2) == 2
+    assert sims["commit_std"]["second"]["slow_lift"]["label"] == "missed"
+    assert sims["firm_grip"]["menu2"] is None and sims["firm_grip"]["second"] == {}
+    # one fresh episode per first row, plus one per later second row (its first attempt replayed)
+    assert lab.fresh_calls == len(sims) + len(want2) - 1
+    assert cv.episode(dec, res["sims"], "R4|10|-")["rows"][0] == "firm_grip"
+
+
+def test_simulate_case_stops_on_a_gate_or_a_replayed_first_attempt_that_differs():
+    rows1 = [dict(_row("commit_std", 0.9, irr=0.0), cvar=_cv(0.1))]
+    rows2 = [dict(_row("commit_std", 0.9, irr=0.0), cvar=_cv(0.1)), dict(_row("slow_lift", 0.95, irr=0.01), cvar=_cv(0.1))]
+    dec = _dec_for(rows1)
+    lab = _FakeLab({"commit_std": "tipped"}, {"commit_std": "placed_stable", "slow_lift": "missed"}, rows2, stop_at=1)
+    assert "replay gate" in cv.simulate_case(lab, {"rows": rows1}, dec, ("R0", "R4"), [11000])["stop"]
+    lab = _FakeLab({"commit_std": "tipped"}, {"commit_std": "placed_stable", "slow_lift": "missed"}, rows2, replay="missed")
+    assert "first attempt" in cv.simulate_case(lab, {"rows": rows1}, dec, ("R0", "R4"), [11000])["stop"]
+
+
+def test_simulate_case_repeats_everything_at_each_seed():
+    rows1 = [dict(_row("commit_std", 0.9, irr=0.0), cvar=_cv(0.1))]
+    lab = _FakeLab({"commit_std": "placed_stable"}, {}, [])
+    res = cv.simulate_case(lab, {"rows": rows1}, _dec_for(rows1), ("R0", "R4"), [11000, 5, 7])
+    assert [(s["seed_k"], s["reset_seed"]) for s in res["sims"]] == [(0, 11000), (1, 5), (2, 7)]
+
+
+def _s1(o="ycb__a", idx=0, rows=None, **kw):
+    rec = {"object": o, "idx": idx, "fold": 0, "side": "validation", "class": "rigid", "law": None, "fillable": False,
+           "thin": False, "destination": "bin", "ess": 900.0, "guard_flag": False, "status": "ok" if rows else "no_rows",
+           "rows": rows or [], "artifact": False, "fingerprint": "f"}
+    return dict(rec, **kw)
+
+
+def test_stage2_record_skips_stage1_errors_and_artifacts_and_keeps_row_stats():
+    rows1 = [dict(_row("commit_std", 0.9, irr=0.01, q_irr=0.03), cvar=_cv(0.1))]
+    dec = _dec_for(rows1)
+    sims = [_sim("commit_std", "placed_stable", reset_seed=11000)]
+    r = cv.stage2_record(_s1(rows=rows1), dec, ("R0", "R4"), {"sims": sims, "stop": None}, 1)
+    assert r["skipped"] is None and r["dropped"] is False and r["first_rows"] == ["commit_std"] and r["sims"] == sims
+    assert r["row_stats"] == {"commit_std": {"p_placed": 0.9, "p_irr": 0.01, "q_irr": 0.03}}
+    assert r["decisions"] == dec and r["object"] == "ycb__a" and r["side"] == "validation" and r["n_seeds"] == 1
+    bad = cv.stage2_record(_s1(rows=rows1, status="error", error="E"), dec, ("R0", "R4"), None, 1)
+    assert bad["skipped"] == "stage1 error" and bad["dropped"] is True and bad["sims"] == [] and bad["first_rows"] == []
+    art = cv.stage2_record(_s1(rows=rows1, artifact=True), dec, ("R0", "R4"), None, 1)
+    assert art["skipped"] == "stage1 artifact" and art["dropped"] is True
+    none = cv.stage2_record(_s1(), _dec_for([]), ("R0", "R4"), {"sims": [], "stop": None}, 1)
+    assert none["skipped"] is None and none["dropped"] is False and none["first_rows"] == []
+    assert cv.stage2_skip(_s1(rows=rows1)) is None and cv.stage2_skip(_s1(rows=rows1, artifact=True)) == "stage1 artifact"
+    err = cv.stage2_record(_s1(rows=rows1), dec, ("R0", "R4"), {"sims": [], "stop": None, "error": "RuntimeError: E"}, 1)
+    assert err["dropped"] is True and err["error"] == "RuntimeError: E" and r["error"] is None
+
+
+def test_smoke_summary_counts_label_changes_across_seeds_and_seconds_per_seed():
+    def sim(k, first, label, second=None, seconds=10.0):
+        return _sim(first, label, menu2={"status": "ok"} if second else None, second=second or {}, seed_k=k, seconds=seconds)
+    a = [sim(0, "commit_std", "tipped", {"slow_lift": {"label": "placed_stable"}}, 30.0), sim(1, "commit_std", "tipped",
+         {"slow_lift": {"label": "missed"}}), sim(0, "firm_grip", "placed_stable"), sim(1, "firm_grip", "placed_stable")]
+    b = [sim(0, "commit_std", "placed_stable"), sim(1, "commit_std", "tipped", {"slow_lift": {"label": "missed"}})]
+    recs = [dict(_s1("ycb__a", 0), sims=a, n_seeds=2), dict(_s1("ycb__b", 1), sims=b, n_seeds=2)]
+    sm = cv.smoke_summary(recs)
+    assert sm["first_pairs"] == 3 and sm["first_changed"] == 1            # ycb__b commit_std: placed_stable vs tipped
+    assert sm["second_triples"] == 2 and sm["second_changed"] == 1        # ycb__a slow_lift changed; ycb__b's ran at one seed
+    assert sm["second_presence_changed"] == 1                             # ycb__b slow_lift ran at seed 1 only
+    assert sm["seconds_per_seed"] == {"0": 50.0, "1": 30.0}
+    assert sm["first_rows_seed0"] == 3 and sm["seconds_per_first_row_seed0"] == pytest.approx(50.0 / 3)
+    assert sm["errors"] == 0 and sm["artifacts"] == 0
+
+
+def test_projection_scales_the_seed0_seconds_per_first_row_to_the_run():
+    sm = {"seconds_per_first_row_seed0": 36.0}
+    assert cv.projection(sm, 1000) == pytest.approx(10.0)
+
+
+def test_stage2_writes_records_and_stops_the_run_on_a_gate(tmp_path, monkeypatch):
+    import gzip as _gzip
+    import json as _json
+
+    from robots.mujoco_lab import identify_fit
+
+    monkeypatch.setenv("WANDB_MODE", "disabled")
+    monkeypatch.setattr(identify_fit, "require_bundle_generator", lambda b: "v11")
+    rows1 = [dict(_row("commit_std", 0.9, irr=0.0), cvar=_cv(0.1))]
+    _write_run(str(tmp_path / "a"), [_s1("ycb__a", 0, rows=rows1), _s1("ycb__a", 1, rows=rows1), _s1("ycb__t", 0, rows=rows1, side="test")])
+    _write_run(str(tmp_path / "b"), [_s1("ycb__b", 0, rows=rows1, artifact=True)])
+    retry = tmp_path / "retry.json.gz"
+    with _gzip.open(retry, "wt") as f:
+        _json.dump({"rows": [{"attempts": [{"label": "tipped", "cost_s": 8.0}, {"label": "placed_stable", "cost_s": 8.0}]}]}, f)
+    seen = []
+
+    def fake(job):
+        o, items, s = job
+        seen.append((o, [int(r["idx"]) for r, _ in items], s["n_seeds"], s["bundle"]))
+        recs = [cv.stage2_record(r, d, s["rules"], {"sims": [_sim("commit_std", "placed_stable", seconds=1.0)], "stop": None}, s["n_seeds"])
+                for r, d in items]
+        for r in recs:
+            r["seconds"] = 1.0
+        return {"records": recs, "stop": None}
+
+    monkeypatch.setattr(cv, "stage2_object", fake)
+    runs = f"{tmp_path / 'a'},{tmp_path / 'b'}"
+    path = cv.main(["stage2", "--stage1", runs, "--retry", str(retry), "--out", str(tmp_path / "s2"), "--sides", "validation",
+                    "--seeds", "5"])
+    recs = [_json.loads(x) for x in open(path)]
+    assert sorted((r["object"], r["idx"]) for r in recs) == [("ycb__a", 0), ("ycb__a", 1), ("ycb__b", 0)]
+    assert {r["object"]: r["skipped"] for r in recs}["ycb__b"] == "stage1 artifact"
+    assert sorted(seen) == [("ycb__a", [0, 1], 5, "B/folds/fold_0"), ("ycb__b", [0], 5, "B/folds/fold_0")]
+    cfg = _json.load(open(tmp_path / "s2" / "run_config.json"))
+    assert cfg["rules"] == list(cv.SIM_RULES) and cfg["n_seeds"] == 5 and set(cfg["stage1_records_sha256"]) == set(runs.split(","))
+    m = _json.load(open(tmp_path / "s2" / "run_metrics.json"))
+    assert m["cases"] == 3 and m["stop"] is None and m["skipped"] == 1
+    with pytest.raises(SystemExit, match="exists"):
+        cv.main(["stage2", "--stage1", runs, "--retry", str(retry), "--out", str(tmp_path / "s2")])
+    monkeypatch.setattr(cv, "stage2_object", lambda job: dict(fake(job), stop="ycb__a 0: replay gate: rows differ"))
+    with pytest.raises(SystemExit) as e:
+        cv.main(["stage2", "--stage1", runs, "--retry", str(retry), "--out", str(tmp_path / "s3"), "--cases", "ycb__a:1"])
+    assert e.value.code == 3
+    m = _json.load(open(tmp_path / "s3" / "run_metrics.json"))
+    assert m["stop"] == "ycb__a 0: replay gate: rows differ" and m["of_cases"] == 1
+    sm = cv.main(["stage2-smoke", "--runs", str(tmp_path / "s2"), "--out", str(tmp_path / "sm")])
+    assert sm["cases"] == 3 and sm["run_first_rows"] == 3 and sm["run_cases"] == 3
+    assert sm["seconds_per_first_row_seed0"] == 1.0                      # 2 simulated cases (the artifact is skipped), 1 s each
+    assert sm["projection_cpu_h"] == pytest.approx(3 * 1.0 / 3600.0)   # 3 non-skipped Stage 1 cases, one first row each
