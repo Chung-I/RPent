@@ -26,6 +26,7 @@ r = A / (5 kappa). Rates are over the counted cases (calibrate._counted: no erro
   give_up       the case ended abstained, no_row or unreachable.
 
     python -P -m robots.mujoco_lab.curve stage0 --m4 DIR --out DIR
+    python -P -m robots.mujoco_lab.curve split --bundle B --scenes S --out FILE [--seed 20261107]
 """
 
 from __future__ import annotations
@@ -42,7 +43,43 @@ from rpent.skills.pick_place.protocol import IRREVERSIBLE
 
 M4_PROTOCOLS = ("commit", "policy")
 GIVE_UP = ("abstained", "no_row", "unreachable")
+SPLIT_SEED = 20261107
 M4_NAME = re.compile(r"^(?P<protocol>[a-z_]+)_k(?P<care>[0-9.]+)_A(?P<A>[0-9.]+)_s(?P<s>[0-9.]+)_seed(?P<seed>\d+)\.json\.gz$")
+
+
+# ---------------------------------------------------------------- the object split (design 5.1)
+
+def stratum(o: str, entry: dict[str, Any]) -> tuple[str, str]:
+    """(source, damageable or rigid): the source is the id's prefix (ycb, hope, hot3d, handal, fruits_veggies); an object
+    can be damaged when its fragility class is not none or it is fillable (it can spill)."""
+    dmg = entry.get("class", "none") != "none" or bool(entry.get("fillable"))
+    return o.split("__", 1)[0], "damageable" if dmg else "rigid"
+
+
+def make_split(objects: list[str], entries: dict[str, dict[str, Any]], seed: int = SPLIT_SEED) -> dict[str, Any]:
+    """Half of the objects are validation, half test, per stratum (``stratum``). Strata in sorted order k = 0, 1, ...: the
+    stratum's objects sorted by id, permuted by default_rng([seed, k]); the first half is validation; an odd stratum's
+    extra object goes to validation, then test, alternately over the odd strata in that order."""
+    import numpy as np
+
+    by: dict[tuple[str, str], list[str]] = {}
+    for o in sorted(set(objects)):
+        by.setdefault(stratum(o, entries[o]), []).append(o)
+    out: dict[str, Any] = {"seed": int(seed), "validation": [], "test": [], "strata": {}}
+    n_odd = 0
+    for k, key in enumerate(sorted(by)):
+        objs = by[key]
+        perm = [objs[int(i)] for i in np.random.default_rng([int(seed), k]).permutation(len(objs))]
+        n_val = len(objs) // 2
+        if len(objs) % 2:
+            n_val += 1 if n_odd % 2 == 0 else 0
+            n_odd += 1
+        val, test = sorted(perm[:n_val]), sorted(perm[n_val:])
+        out["strata"]["|".join(key)] = {"validation": val, "test": test}
+        out["validation"] += val
+        out["test"] += test
+    out["validation"], out["test"] = sorted(out["validation"]), sorted(out["test"])
+    return out
 
 
 # ---------------------------------------------------------------- Stage 0: the m4 sweep's points
@@ -154,14 +191,46 @@ def stage0(a: argparse.Namespace) -> list[dict[str, Any]]:
     return pts
 
 
+def split(a: argparse.Namespace) -> dict[str, Any]:
+    """Write the object split of the scenes' objects (``make_split``) with the bundle's fragility entries; refuses an
+    existing file."""
+    import hashlib
+
+    from robots.mujoco_lab.fragility import entry_of
+    from robots.mujoco_lab.prior import fragility_world
+
+    if os.path.exists(a.out):
+        raise SystemExit(f"{a.out} exists: the split is fixed once")
+    manifest = json.load(open(os.path.join(a.bundle, "manifest.json")))
+    classes = fragility_world(manifest)[0]
+    objects = sorted(json.load(open(a.scenes)))
+    entries = {o: entry_of(o, classes)[0] for o in objects}
+    sp = make_split(objects, entries, a.seed)
+    sha = lambda path: hashlib.sha256(open(path, "rb").read()).hexdigest()  # noqa: E731
+    sp["provenance"] = {"bundle": os.path.realpath(a.bundle), "manifest_sha256": sha(os.path.join(a.bundle, "manifest.json")),
+                        "scenes": os.path.realpath(a.scenes), "scenes_sha256": sha(a.scenes), "n_objects": len(objects),
+                        "laws": {o: entries[o].get("law") for o in objects}}
+    with open(a.out, "w") as f:
+        json.dump(sp, f, indent=1)
+    for key, st in sp["strata"].items():
+        print(f"{key}: validation {len(st['validation'])}, test {len(st['test'])}")
+    print(f"validation {len(sp['validation'])}, test {len(sp['test'])}")
+    return sp
+
+
 def main(argv: list[str] | None = None) -> Any:
     p = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     sub = p.add_subparsers(dest="cmd", required=True)
     s0 = sub.add_parser("stage0", help="the m4 sweep's points (descriptive)")
     s0.add_argument("--m4", required=True)
     s0.add_argument("--out", required=True)
+    sp = sub.add_parser("split", help="the object split, fixed before any simulation")
+    sp.add_argument("--bundle", required=True)
+    sp.add_argument("--scenes", required=True)
+    sp.add_argument("--seed", type=int, default=SPLIT_SEED)
+    sp.add_argument("--out", required=True)
     a = p.parse_args(argv)
-    return {"stage0": stage0}[a.cmd](a)
+    return {"stage0": stage0, "split": split}[a.cmd](a)
 
 
 if __name__ == "__main__":

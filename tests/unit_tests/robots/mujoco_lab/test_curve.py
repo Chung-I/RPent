@@ -67,3 +67,38 @@ def test_stage0_reads_both_protocols_per_cell_at_one_time_scale(tmp_path):
 def test_label_groups_merge_points_whose_labels_would_overlap():
     groups = cv._label_groups([(2.5, 50.0, 4.0), (2.5, 50.0, 2.0), (1.5, 47.9, 0.2), (1.6, 47.9, 0.6), (0.0, 7.0, 0.00667)])
     assert groups == [((0.0, 7.0), [0.00667]), ((1.6, 47.9), [0.2, 0.6]), ((2.5, 50.0), [2.0, 4.0])]
+
+
+# ---------------------------------------------------------------- the object split
+
+def _entries():
+    objs = [f"ycb__o{i}" for i in range(7)] + [f"hope__o{i}" for i in range(6)] + [f"hot3d__o{i}" for i in range(5)]
+    ent = {o: {"class": "crushable" if i % 3 == 0 else "none", "fillable": i % 4 == 1} for i, o in enumerate(objs)}
+    return objs, ent
+
+
+def test_split_halves_each_stratum_and_balances_the_odd_extras():
+    objs, ent = _entries()
+    sp = cv.make_split(objs, ent, 20261107)
+    val, test = set(sp["validation"]), set(sp["test"])
+    assert val | test == set(objs) and not val & test
+    assert abs(len(val) - len(test)) <= 1
+    for key, st in sp["strata"].items():
+        members = [o for o in objs if cv.stratum(o, ent[o]) == tuple(key.split("|"))]
+        assert sorted(st["validation"] + st["test"]) == sorted(members)
+        assert abs(len(st["validation"]) - len(st["test"])) <= 1
+    odd = [st for st in sp["strata"].values() if (len(st["validation"]) + len(st["test"])) % 2]
+    extras = [len(st["validation"]) > len(st["test"]) for st in odd]
+    assert extras == [i % 2 == 0 for i in range(len(odd))]        # the odd extras go to validation, test, validation, ...
+
+
+def test_split_is_fixed_by_its_seed():
+    objs, ent = _entries()
+    assert cv.make_split(objs, ent, 20261107) == cv.make_split(list(reversed(objs)), ent, 20261107)
+    assert cv.make_split(objs, ent, 20261107)["validation"] != cv.make_split(objs, ent, 1)["validation"]
+
+
+def test_stratum_is_the_source_and_whether_the_object_can_be_damaged():
+    assert cv.stratum("ycb__mug", {"class": "none", "fillable": True}) == ("ycb", "damageable")
+    assert cv.stratum("hope__butter", {"class": "crushable", "fillable": False}) == ("hope", "damageable")
+    assert cv.stratum("handal__hammer", {"class": "none", "fillable": False}) == ("handal", "rigid")
