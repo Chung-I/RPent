@@ -69,7 +69,15 @@ MIN_CASES, MIN_OBJECTS = 30, 4    # plan 2b2 decision 9: a coverage cell below e
 MIN_ECE_CASES = 50                # and a P(filled) ECE below this
 P_FILLED_ECE = 0.05
 N_BOOT = 2000
-JUDGED = {None: ("mass", "mu", "com"), "A": ("mass", "mu"), "B": ("mass", "mu"), "C": ()}
+JUDGED = {
+    None: ("mass", "mu", "com"),
+    "A": ("mass", "mu"),
+    "B": ("mass", "mu"),
+    "C": (),
+    # identify (D): the joint fit reads only m and m*c, so judging mu would test the prior, not the probe. Coordinator
+    # call made on 2026-11-05 after m2b2_v12b's check_D died on the missing row (KeyError 'D'), before any D verdict.
+    "D": ("mass", "com"),
+}
 
 
 def true_com_frac(row: dict[str, Any]) -> float:
@@ -147,7 +155,7 @@ def check_rows(rows: list[dict[str, Any]], bundle: dict[str, Any], grid: list[fl
     return cases
 
 
-PROBE_TAGS = {"A": ("Apush", "Aweigh"), "B": ("Bweigh",), "C": ("Csqueeze",)}
+PROBE_TAGS = {"A": ("Apush", "Aweigh"), "B": ("Bweigh",), "C": ("Csqueeze",), "D": ("Didentify",)}
 
 
 def probe_cases(rows: list[dict[str, Any]], probes: str) -> list[list[dict[str, Any]]]:
@@ -288,7 +296,8 @@ def cell_verdict(hits: list[bool], objects: list[str], rng: np.random.Generator,
 
 def judged_keys(probes: str | None) -> tuple[str, ...]:
     """The property cells a check judges: those its evidence reads (one attempt: all three; the push and the weigh:
-    the mass and the friction; the squeeze: none, only the damage force). The others are reported."""
+    the mass and the friction; the squeeze: none, only the damage force; identify: the mass and the CoM). The others
+    are reported."""
     return JUDGED[probes]
 
 
@@ -355,7 +364,7 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
     ap.add_argument("--temper-grid", default=None, help="comma-separated tempers (always with 1 and the bundle's)")
     ap.add_argument("--choose-on", default=None, choices=("train", "val"), help="choose the temper on this split; write it into the bundle")
     ap.add_argument("--seed", type=int, default=0)
-    ap.add_argument("--probes", default=None, choices=tuple(PROBE_TAGS), help="check the update after the probes (A: push then weigh; B: weigh; C: squeeze)")
+    ap.add_argument("--probes", default=None, choices=tuple(PROBE_TAGS), help="check the update after the probes (A: push then weigh; B: weigh; C: squeeze; D: identify)")
     ap.add_argument("--out", required=True)
     a = ap.parse_args(argv)
     B = load_bundle(a.bundle)

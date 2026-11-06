@@ -61,7 +61,7 @@ from rpent.tools.base import ToolResult, tool
 G = 9.81
 MIN_FORCE_N = 10.0
 MODES = ("commit", "assess_only", "probe_first")
-PROBE_OPTIONS = {"probe_push": "push", "probe_weigh": "weigh", "probe_squeeze": "squeeze"}
+PROBE_OPTIONS = {"probe_push": "push", "probe_weigh": "weigh", "probe_squeeze": "squeeze", "probe_identify": "identify"}
 MAX_PROBES = 2                    # probe_first runs at most this many probes per call
 PROBE_FOLLOWS = {"push": ("weigh",)}   # the probes that may follow a probe: the probe models cover probes from rest
                                        # and the weigh after the push (the probe corpus's scenes); primitives.probe_follows
@@ -406,9 +406,9 @@ def _run_probe(row: Option, object: str, destination: str, care: str, primitives
     rec = _belief_record(loc, env, primitives, store)
     h0 = belief_hash(rec["belief"]) if sham else None
     probe, act = row.action["probe"], row.action
-    if probe in ("weigh", "squeeze"):
+    if probe in ("weigh", "squeeze", "identify"):
         prop = next(p for p in env.proposals() if abs(p.s - act["s"]) < 1e-9)
-        res = env.probe_weigh(prop, act["force"]) if probe == "weigh" else env.probe_squeeze(prop, act["force"])
+        res = getattr(env, f"probe_{probe}")(prop, act["force"])
     else:
         res = env.probe_push()
     rec["probes_run"].add(probe)
@@ -568,9 +568,10 @@ def pick_and_place(*, object: str, destination: str = "bin", mode: str = "commit
 
     With no option_id the best row for the requested destination runs, unless the
     recommendation is decline or probe (then nothing runs; pass an option_id to override). Rows that change the destination
-    (inboard_place) run only when named. option_id "probe_push", "probe_weigh" or "probe_squeeze" runs that probe
-    (once per episode, before the first attempt; after the push only the weigh): the object is pushed, lifted 2 cm and set back, or squeezed in place; the belief is updated,
-    and nothing is placed. A probe or an attempt that damages the object ends the case: every later call this
+    (inboard_place) run only when named. option_id "probe_push", "probe_weigh", "probe_squeeze" or "probe_identify"
+    runs that probe (once per episode, before the first attempt; after the push only the weigh): the object is pushed,
+    lifted 2 cm and set back, squeezed in place, or (identify) lifted 20 cm, moved through a short arm motion and set back,
+    the joint torques giving its mass and centre of mass; the belief is updated, and nothing is placed. A probe or an attempt that damages the object ends the case: every later call this
     episode returns "object is damaged". mode "probe_first" runs the recommended probes (at most two, while the
     recommendation is probe), then commits as above; mode "assess_only" returns the assessment
     without moving. After an attempt the result carries the pad readouts, a diagnosis of what
