@@ -34,7 +34,8 @@ from typing import Any
 import numpy as np
 
 MEASURED = "measured"
-TAG = "Bidentify"              # an identify row's key tag (identify_cases's, and a probe corpus's from m2b2_v12b on)
+TAG = "Bidentify"              # identify_cases's rows' key tag (option A's simulated rows), and a missing row's
+BUNDLE_TAG = "Didentify"       # a bundle's own identify rows (m2b2_v12b on): probe_corpus scene D, posterior_check's set D
 MISSING = "missing"            # a weigh case without an identify row (the run wrote none, or no pose: declined, error)
 SCENE = ("pose", "s", "base")  # the weigh case's scene: the prior's input and the menus' pinch
 DRAWS = ("seed", "theta", "com_end", "fill", "theta_frag")   # an identify row repeats its weigh case's
@@ -82,8 +83,8 @@ def identify_rows(path: str) -> list[dict[str, Any]]:
 
 
 def bundle_identify_rows(bundle_dir: str) -> list[dict[str, Any]]:
-    """The bundle's own identify rows: its probe corpus's rows tagged TAG, declined ones among them (a bundle built with
-    the identify probe, m2b2_v12b on); none for a bundle without them (m2b2_v12)."""
+    """The bundle's own identify rows: its probe corpus's rows tagged BUNDLE_TAG (scene D), declined ones among them (a
+    bundle built with the identify probe, m2b2_v12b on); none for a bundle without them (m2b2_v12)."""
     from robots.mujoco_lab.train_models import repo_path
 
     man = json.load(open(os.path.join(bundle_dir, "manifest.json")))
@@ -91,7 +92,7 @@ def bundle_identify_rows(bundle_dir: str) -> list[dict[str, Any]]:
         return []
     with open(repo_path(man["probe_corpus"])) as f:
         rows = [json.loads(line) for line in f if line.strip()]
-    return [r for r in rows if str(r.get("key", "")).endswith("__" + TAG)]
+    return [r for r in rows if str(r.get("key", "")).endswith("__" + BUNDLE_TAG)]
 
 
 def require_bundle_generator(bundle_dir: str) -> str:

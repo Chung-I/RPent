@@ -202,9 +202,10 @@ def run_attempt(rows: list[dict[str, Any]], B: dict[str, Any], n: int, seed: int
         X = particle_matrix(row_base(r), a, row_pose(r), r["force"], model_names(model))
         P = model.predict_matrix(X, r.get("planned"))[0]
         obs = {"label": r["label"], "readouts": r["readouts"], "force": r["force"]}
-        comp, _ = readout.components(obs, P, X, a, particle_sides(a, r["pose"]))
+        comp, terms = readout.components(obs, P, X, a, particle_sides(a, r["pose"]))
         rec = _record("attempt", r, b, b.reweight(readout.combine(comp)), B.get("classes"), r["label"])
         rec["p_prior"] = dict(zip(OUTCOMES, (b.weights @ P).tolist()))     # the prior predictive of the row's action
+        rec["terms"] = terms                                                # the readout terms used and rejected
         out.append(rec)
     return out
 
