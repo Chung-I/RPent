@@ -39,6 +39,12 @@ and the full menu at (b) (full_menu). Summary: per setting and prior the mean EV
 max(0, EVPI_i - c), object-bootstrap intervals, the stop rule on the class prior (verdict), the share of cases that reach
 (b), the ESS distribution and the table of the cases with an ESS of at least ESS_TABLE.
 
+post_identify (an amendment after the pre-registration, 2026-11-06; run --post-identify): one identify probe per case
+from a fresh reset of its draw (identify_probe, before the first setting; the lab is reset again after it), its update
+on belief 1 at (b) as the skill updates after a probe (point_b_identify), and that belief's choice priced on the
+yardstick (gain_identify); belief 1 itself when the rule already ran identify. A new column on its own streams: the
+primary columns do not change.
+
     python -P -m robots.mujoco_lab.com_gap run --bundle robots/mujoco_lab/data/m2b2_v12 --scenes S --out DIR [--sample 20]
     python -P -m robots.mujoco_lab.com_gap summary --dir DIR [--wandb]
 """
@@ -64,13 +70,13 @@ from robots.mujoco_lab.adapter import JOINT_RISE_M
 from robots.mujoco_lab.identify_fit import fit_loglik
 from robots.mujoco_lab.vision_prior import EXACT_SD
 from rpent.skills.pick_place.belief import MIN_ESS, REFRESH_DRAWS, ParticleBelief, refresh
-from rpent.skills.pick_place.costs import expected_cost
+from rpent.skills.pick_place.costs import TIME_COST_PER_S, expected_cost
 from rpent.skills.pick_place.destinations import DESTINATIONS, edge_distance
 from rpent.skills.pick_place.features import extract
-from rpent.skills.pick_place.menu import (A_GENTLE, EDGE_RISK_M, PLACEHOLDER, STD, _rows, build_menu, estimate, mid_proposal,
-                                         pinch_limit, usable_proposals)
-from rpent.skills.pick_place.probes import DAMAGED
-from rpent.skills.pick_place.tools import MAX_PROBES, assess_pick, entry_loglik, pick_and_place
+from rpent.skills.pick_place.menu import (A_GENTLE, EDGE_RISK_M, PLACEHOLDER, PROBE_DESTINATION, PROBE_V_LIFT, STD, _rows,
+                                         build_menu, decline_reason, estimate, mid_proposal, pinch_limit, usable_proposals)
+from rpent.skills.pick_place.probes import DAMAGED, PROBE_SECONDS, weigh_force
+from rpent.skills.pick_place.tools import HIDDEN_READING, MAX_PROBES, assess_pick, entry_loglik, pick_and_place, standard_force
 
 SETTINGS = (("k100_A3", 100.0, 3.0), ("k30_A3", 30.0, 3.0), ("k100_A10", 100.0, 10.0))
 PRIORS = ("class", "generic")
@@ -83,6 +89,8 @@ GRASP_FIT, TRUTH = "grasp_fit", "truth"     # the history entries com_gap adds: 
 CUT_HOLD_S = 1.0                  # the held last sample after the cut at (b) (0.5 s gave the same fits on four arm-sim cases)
 REFRESH_STREAM = 3                # calibrate._stream k of the refreshes at (b) (1: the menus, 2: the random row)
 WHOLE_LOG_STREAM = 4              # calibrate._stream k of the whole-log check's refreshes
+IDENTIFY_STREAM = 5               # calibrate._stream k of post_identify's refreshes (an amendment, 2026-11-06)
+IDENTIFY_KEYS = ("kind", "thrown", "damaged", "artifact", "seconds", "declined", "error", "wall_s")   # the probe in every record
 Z_KEYS = ("m", "m_cx", "m_cy", "m_cz")      # the fit's first four parameters (link 7's frame), for belief 1's diagnostic
 COVER_BELOW = 0.7                 # belief 1's diagnostic (coordinator, 2026-11-05): a flag below this CoM-fraction coverage
 UNDER_COVERS = "belief 1 under-covers; EVPI on a calibrated belief may differ"
@@ -439,6 +447,69 @@ def full_menu(model: Any, b1: ParticleBelief, b2: ParticleBelief, yard: Particle
             "evpi": float(y["choice1"] - y["choice2"]), "changed": (r1["id"], r1["action"]) != (r2["id"], r2["action"])}
 
 
+# ---------------------------------------------------------------- post_identify (an amendment after the pre-registration, 2026-11-06)
+
+def identify_probe(env: Any, o: str) -> dict[str, Any]:
+    """post_identify's probe: one identify probe from the lab's state (the case's fresh reset), as the menu's
+    probe_identify row runs it (tools._run_probe): the usable proposal nearest the middle, the weigh squeeze of the
+    standard force, the row's pose. Its outcome (kind, thrown, damaged, damage, artifact, seconds), the reading without its
+    hidden noise, and the pinch (s, point, yaw), pose, force and geometry (the lab's, in the world frame, taken before the
+    probe moves the object) that identify_entry needs; with no usable proposal, {"declined": the menu's reason}."""
+    props, lim = env.proposals(), pinch_limit(env)
+    usable = usable_proposals(props, lim)
+    if not usable:
+        return {"declined": decline_reason(props, lim)}
+    mid = mid_proposal(usable)
+    force = float(weigh_force(standard_force(env.nominal_mass(o))))
+    pose, geometry = env.proposal_pose(mid), env.geometry()
+    res = env.probe_identify(mid, force)
+    damage = getattr(res, "damage", None)
+    return {"kind": res.kind, "thrown": bool(res.thrown), "damaged": bool(res.kind == DAMAGED or damage), "damage": damage,
+            "artifact": bool(getattr(res, "artifact", False)), "seconds": res.seconds,
+            "reading": {k: v for k, v in dict(res.reading).items() if k not in HIDDEN_READING},
+            "s": mid.s, "point": list(np.asarray(mid.point, dtype=float)), "yaw": float(mid.yaw), "pose": pose, "force": force,
+            "geometry": geometry}
+
+
+def identify_entry(probe: dict[str, Any], visibility: float) -> dict[str, Any]:
+    """The skill's probe entry of post_identify's probe (tools._run_probe's form), with the menu's probe row base
+    (menu.PLACEHOLDER mass and mu, the probes' lift and destination) on the geometry the probe saw (a rule probe can move
+    the object before (b)) at the belief's visibility."""
+    base = extract(probe["geometry"], np.asarray(probe["point"], dtype=float), probe["yaw"], PLACEHOLDER["mass"], PLACEHOLDER["mu"],
+                   probe["force"], PROBE_V_LIFT, 0.0, PROBE_DESTINATION, None, visibility)
+    return {"type": "probe", "option": "probe_identify", "base": base, "pose": probe["pose"], "force": float(probe["force"]),
+            "planned": None, "obs": {"probe": "identify", "kind": probe["kind"], "reading": dict(probe["reading"]),
+                                     "thrown": bool(probe["thrown"])}}
+
+
+def point_b_identify(prims: Any, b1: ParticleBelief, probe: dict[str, Any], by_rule: bool, scene: Scene,
+                     rows: list[dict[str, Any]], yard: dict[str, float], choice1: str, truth: dict[str, Any], care: str | float,
+                     A: float | None, replay: Callable, prior_fn: Callable | None, rng: np.random.Generator,
+                     reset_s: float | None = None, reset_price: str = "time") -> dict[str, Any]:
+    """post_identify at (b): belief 1 times the case's identify probe, updated as the skill updates after a probe
+    (tools.entry_loglik: the probe model's kind and reading terms, the terms used recorded for a refresh), refreshed on
+    ``rng``; its cheapest row (the first on a tie) priced on the yardstick costs ``yard``: gain_identify = yard(choice1) -
+    yard(its choice). When the rule already ran identify, belief 1 holds its evidence: belief 1 itself (gain 0, no
+    double count). A declined or failed probe, or a failed update, is recorded with gain None (counted apart)."""
+    if by_rule:
+        return {"post_identify": {"by_rule": True, "choice": choice1, "changed": False}, "gain_identify": 0.0}
+    if "declined" in probe or "error" in probe:
+        return {"post_identify": {k: probe[k] for k in ("declined", "error") if k in probe}, "gain_identify": None}
+    try:
+        entry = identify_entry(probe, b1.visibility)
+        _, info = entry_loglik(b1, entry, prims)
+        entry = dict(entry, used_terms=list(info["used"]), rejected_terms=list(info["rejected"]))
+        bi, ii = condition(b1, [entry], replay, prior_fn, rng)
+        costs = price_rows(prims.model, bi, scene, rows, care, A, reset_s, reset_price)
+        choice = min(costs, key=lambda k: costs[k])
+        return {"post_identify": {"by_rule": False, "choice": choice, "changed": choice != choice1, "ess": ii, "costs": costs,
+                                  "used_terms": entry["used_terms"], "rejected_terms": entry["rejected_terms"],
+                                  "cover80": cover80(bi, truth)},
+                "gain_identify": float(yard[choice1] - yard[choice])}
+    except Exception as exc:  # noqa: BLE001  the new column must not fail the case
+        return {"post_identify": {"error": f"{type(exc).__name__}: {str(exc)[:300]}"}, "gain_identify": None}
+
+
 # ---------------------------------------------------------------- the policy up to its first attempt
 
 def first_attempt(prims: Any, destination: str, care: str | float, store: dict[str, Any], max_probes: int = MAX_PROBES) -> dict[str, Any]:
@@ -537,10 +608,13 @@ def cover80(b: ParticleBelief, truth: dict[str, Any]) -> dict[str, bool]:
 
 def case_b(prims: Any, env: Any, o: str, destination: str, care: float, A: float, prior_fn: Callable, truth: dict[str, Any],
            w0: ParticleBelief | None, rng: np.random.Generator, full: bool = True,
-           rng_whole_log: np.random.Generator | None = None) -> dict[str, Any]:
+           rng_whole_log: np.random.Generator | None = None, identify: dict[str, Any] | None = None,
+           rng_identify: np.random.Generator | None = None) -> dict[str, Any]:
     """One case under one prior and setting (``prims`` holds them, a fresh menu stream, the lab at the case's reset): the
     policy to its first attempt, the attempt with the lift-and-hold fit, and point (b); then the check column, point (b)
-    with the whole-log fit on its own stream ``rng_whole_log`` (after the primary, which never reads it)."""
+    with the whole-log fit on its own stream ``rng_whole_log`` (after the primary, which never reads it). With the case's
+    identify probe ``identify``: post_identify (point_b_identify) on its own stream ``rng_identify``, last; a case that
+    never reaches (b) gets gain_identify 0, unless its probe was declined or failed (gain None in every run)."""
     from robots.mujoco_lab.adapter import A_TRANSPORT
     from rpent.skills.pick_place.tools import _menu_recovery, _spread_kw, standard_force
 
@@ -553,6 +627,9 @@ def case_b(prims: Any, env: Any, o: str, destination: str, care: float, A: float
                            "evpi_no_inboard": 0.0, "evpi_full": 0.0 if full else None, "changed": False,
                            "evpi_whole_log": 0.0, "changed_whole_log": False,
                            "artifact": any(bool(p.get("artifact")) for p in fa["probes"])}
+    if identify is not None:
+        failed = {k: identify[k] for k in ("declined", "error") if k in identify}
+        out.update(post_identify=failed or None, gain_identify=None if failed else 0.0)
     if "error" in fa:
         out["error"] = fa["error"]
     if fa["ended"] != "attempt":
@@ -603,6 +680,10 @@ def case_b(prims: Any, env: Any, o: str, destination: str, care: float, A: float
     out.update(evpi_whole_log=pw["primary"]["evpi"], choice1_whole_log=pw["primary"]["choice1"], cover80_whole_log=cover80(bw, truth),
                changed_whole_log=pw["primary"]["changed"], fit_whole_log=_fit_summary(tap.fit_whole_log),
                ess_whole_log={"b1": iw["ess_final"], "b2": pw["ess"]["b2"]["ess_final"], "yard": pw["ess"]["yard"]["ess_final"]})
+    if identify is not None:
+        gi = rng_identify if rng_identify is not None else np.random.default_rng(0)
+        out.update(point_b_identify(prims, b1, identify, "identify" in out["probes"], scene, rows, pb["costs"]["yard"],
+                                    pb["primary"]["choice1"], truth, care, A, replay, draw, gi, reset_s, price))
     return out
 
 
@@ -611,7 +692,9 @@ def run_case(prims: Any, o: str, idx: int, s: dict[str, Any], priors: dict[str, 
     """One W0 case: first_menus' reset (a lab without joint sensing is refused), the case's truth and W0's exact_both
     (over the class prior ``base``), then per prior and setting case_b on a fresh menu stream (calibrate._stream k 1)
     and refresh stream (REFRESH_STREAM); the lab is reset again after a run that moved it, and every reset is checked
-    against the first (reset_match). A case's artifact flag follows calibrate.case_artifact."""
+    against the first (reset_match). A case's artifact flag follows calibrate.case_artifact. With ``s["post_identify"]``:
+    one identify probe (identify_probe) after W0's exact prior is drawn, then a new reset before the first setting;
+    every run gets the probe, its record (IDENTIFY_KEYS) and its own stream (IDENTIFY_STREAM)."""
     from robots.mujoco_lab import calibrate as cal
     from robots.mujoco_lab.adapter import object_props
     from robots.mujoco_lab.first_menus import exact_priors
@@ -637,7 +720,15 @@ def run_case(prims: Any, o: str, idx: int, s: dict[str, Any], priors: dict[str, 
     truth = {"mass": t["mass"], "com_frac": t["com_frac"]}
     n = _particles(prims)
     w0 = exact["exact_both"](env.pose_info(), n, cal._stream(seed, o, idx, 1), **_spread_kw(prims))
-    recs, dirty = [], False
+    recs, dirty, identify = [], False, None
+    if s.get("post_identify"):
+        t1 = time.time()
+        try:
+            identify = identify_probe(env, o)
+        except Exception as exc:  # noqa: BLE001  the new column must not stop the case
+            identify = {"error": f"{type(exc).__name__}: {str(exc)[:300]}"}
+        identify["wall_s"] = round(time.time() - t1, 2)
+        dirty = True                # the probe moved the lab: the first setting starts from a new reset
     for pname, fn in priors.items():
         for name, care, A in s["settings"]:
             t0 = time.time()
@@ -652,10 +743,13 @@ def run_case(prims: Any, o: str, idx: int, s: dict[str, Any], priors: dict[str, 
             try:
                 rec.update(case_b(prims, env, o, destination, care, A, fn, truth, w0, cal._stream(seed, o, idx, REFRESH_STREAM),
                                   full=bool(s.get("full_menu", True)),
-                                  rng_whole_log=cal._stream(seed, o, idx, WHOLE_LOG_STREAM)))
+                                  rng_whole_log=cal._stream(seed, o, idx, WHOLE_LOG_STREAM), identify=identify,
+                                  rng_identify=None if identify is None else cal._stream(seed, o, idx, IDENTIFY_STREAM)))
             except Exception as exc:  # noqa: BLE001  one bad case must not stop the run
                 rec.update(error=f"{type(exc).__name__}: {str(exc)[:300]}", moved=True)
             rec["artifact"] = cal.case_artifact(rec, reset_info)     # a flagged probe or attempt, or a reset off rest
+            if identify is not None:
+                rec["identify_probe"] = {k: identify[k] for k in IDENTIFY_KEYS if k in identify}
             dirty = bool(rec.get("moved", True))
             rec["seconds"] = round(time.time() - t0, 2)
             recs.append(rec)
@@ -711,6 +805,13 @@ def run(a: argparse.Namespace) -> str:
     path = os.path.join(a.out, "records.jsonl")
     if os.path.exists(path):
         raise SystemExit(f"{path} exists: pick a new --out")
+    if a.post_identify:
+        fold_of = json.load(open(os.path.join(a.bundle, "folds", "folds.json")))
+        missing = sorted({k for k in fold_of.values()
+                          if not os.path.exists(os.path.join(a.bundle, "folds", f"fold_{k}", "probe_identify.joblib"))})
+        if missing:
+            raise SystemExit(f"--post-identify needs the identify probe model (probe_identify.joblib) in every fold bundle; "
+                             f"missing in folds {missing}")
     generator = require_bundle_generator(a.bundle)
     tables, spreads = prior_tables(a.bundle, a.scenes, {})
     folds = json.load(open(os.path.join(a.bundle, "folds", "folds.json")))
@@ -728,7 +829,7 @@ def run(a: argparse.Namespace) -> str:
                    "stop_bound": STOP_BOUND, "h_costs": H_COSTS, "ess_table": ESS_TABLE}, f, indent=1)
     jobs = [(o, idxs, {"bundle": os.path.join(a.bundle, "folds", f"fold_{folds[o]}"), "fold": folds[o], "seed": a.seed,
                        "settings": settings, "priors": priors, "generic": {o: tables["generic"][o]}, "flat": flat.get(o),
-                       "full_menu": not a.no_full_menu}) for o, idxs in by.items()]
+                       "full_menu": not a.no_full_menu, "post_identify": bool(a.post_identify)}) for o, idxs in by.items()]
     t0 = time.time()
     with mp.get_context("spawn").Pool(a.workers) as pool, open(path, "w") as out:
         for rows in pool.imap_unordered(run_object, jobs):
@@ -742,7 +843,7 @@ def run(a: argparse.Namespace) -> str:
 # What a shard's records depend on: shards that differ in any of these are not one run.
 MERGE_KEYS = ("bundle", "scenes", "settings", "priors", "seed", "repeats", "sample", "sample_seed", "no_full_menu",
               "code_revision", "generator", "settings_parsed", "priors_parsed", "spreads", "generic", "exact_sd",
-              "stop_bound", "h_costs", "ess_table")
+              "stop_bound", "h_costs", "ess_table", "post_identify")
 
 
 def _shard_records(d: str) -> list[dict[str, Any]]:
@@ -885,12 +986,47 @@ def _b1_diagnostic(recs: list[dict[str, Any]], z_key: str = "fit_z", cover_key: 
             "cover80": {k: (float(np.mean([bool(c[k]) for c in cover])) if cover else None) for k in ("mass", "com_frac")}}
 
 
-def cell(recs: list[dict[str, Any]], rng: np.random.Generator, n_boot: int = N_BOOT) -> dict[str, Any]:
+def _identify_cell(recs: list[dict[str, Any]], rng: np.random.Generator, n_boot: int) -> dict[str, Any]:
+    """post_identify (an amendment after the pre-registration, 2026-11-06; not in the stop rule), over the counted cases:
+    the identify probe's kinds; the mean gain of belief 1 with the case's identify probe (a case that never reached (b)
+    counts 0, as in EVPI) over the cases whose probe was clean (not thrown, not damaging, not flagged), with the same
+    cases' mean EVPI and the share of it closed; the cases whose probe threw, damaged the object or was flagged, counted
+    apart with their own mean (not dropped; one whose update failed is counted there, n_no_gain); the cases where the rule
+    ran identify itself (gain 0); and the other cases without a gain (a declined or failed probe or update), counted and
+    left out."""
+    ok = [r for r in _counted(recs) if "gain_identify" in r]
+
+    def probe(r: dict[str, Any]) -> dict[str, Any]:
+        return r.get("identify_probe") or {}
+
+    def kind(r: dict[str, Any]) -> str:
+        q = probe(r)
+        return str(q.get("kind") or ("declined" if "declined" in q else "error" if "error" in q else None))
+
+    flagged = [r for r in ok if probe(r).get("thrown") or probe(r).get("damaged") or probe(r).get("artifact")]
+    rest = [r for r in ok if r not in flagged]
+    clean = [r for r in rest if r["gain_identify"] is not None]
+    flagged_gain = [float(r["gain_identify"]) for r in flagged if r["gain_identify"] is not None]
+    gain = np.array([float(r["gain_identify"]) for r in clean])
+    evpi = np.array([float(r["evpi"]) for r in clean])
+    return {"n": len(clean), "gain": _mean_ci(gain, [r["object"] for r in clean], rng, n_boot),
+            "evpi_same_cases": float(evpi.mean()) if len(clean) else None,
+            "share_closed": float(gain.mean() / evpi.mean()) if len(clean) and evpi.mean() > 0 else None,
+            "apart": {"n": len(flagged), **{k: sum(bool(probe(r).get(k)) for r in flagged) for k in ("thrown", "damaged", "artifact")},
+                      "gain_mean": float(np.mean(flagged_gain)) if flagged_gain else None,
+                      "n_no_gain": len(flagged) - len(flagged_gain)},
+            "n_errors": len(rest) - len(clean), "n_by_rule": sum(bool((r.get("post_identify") or {}).get("by_rule")) for r in ok),
+            "kinds": dict(Counter(kind(r) for r in ok))}
+
+
+def cell(recs: list[dict[str, Any]], rng: np.random.Generator, n_boot: int = N_BOOT,
+         rng_identify: np.random.Generator | None = None) -> dict[str, Any]:
     """One setting and prior: the mean EVPI over the counted cases (no error, no artifact flag; calibrate's convention:
     both left out and counted; a case that never reached (b) counts 0), H(c), the checks (w0, no inboard_place, the full
     menu), the share that reached (b) and the mean over those, the shares with EVPI above 0 and with a changed choice,
     the ESS distribution and Amendment 2's ESS table. H_all_cases is H over every record, with the errors and the
-    artifact cases at EVPI 0 (a sensitivity number next to the rule's denominator, not the rule's)."""
+    artifact cases at EVPI 0 (a sensitivity number next to the rule's denominator, not the rule's). With post_identify
+    records: its block (_identify_cell), bootstrapped on its own ``rng_identify`` so the primary intervals do not change."""
     ok = _counted(recs)
     objects = [r["object"] for r in ok]
     evpi = np.array([float(r["evpi"]) for r in ok])
@@ -898,7 +1034,7 @@ def cell(recs: list[dict[str, Any]], rng: np.random.Generator, n_boot: int = N_B
     tab = [r for r in ok if _ess_ok(r)]
     tab_evpi = np.array([float(r["evpi"]) for r in tab])
     left = [0.0 if ("error" in r or r.get("artifact")) else float(r["evpi"]) for r in recs]
-    return {"n": len(ok), "n_errors": sum("error" in r for r in recs),
+    out = {"n": len(ok), "n_errors": sum("error" in r for r in recs),
             "n_artifacts": sum("error" not in r and bool(r.get("artifact")) for r in recs),
             "n_reset_mismatch": sum(not r.get("reset_match", True) for r in ok),
             "n_reached": int(reached.sum()), "share_reached": float(reached.mean()) if len(ok) else None,
@@ -918,6 +1054,9 @@ def cell(recs: list[dict[str, Any]], rng: np.random.Generator, n_boot: int = N_B
                         for k in ("b2", "yard")},
             "ess_table": {"n": len(tab), "evpi": _mean_ci(tab_evpi, [r["object"] for r in tab], rng, n_boot),
                           "H": _h(tab_evpi, [r["object"] for r in tab], rng, n_boot)}}
+    if any("gain_identify" in r for r in recs):
+        out["post_identify"] = _identify_cell(recs, rng_identify if rng_identify is not None else np.random.default_rng(1), n_boot)
+    return out
 
 
 def verdict(h05: dict[str, dict[str, Any]]) -> str:
@@ -957,11 +1096,11 @@ def _top(recs: list[dict[str, Any]], k: int = 10) -> list[dict[str, Any]]:
 
 
 def summarize(records: list[dict[str, Any]], n_boot: int = N_BOOT, seed: int = 0) -> dict[str, Any]:
-    rng = np.random.default_rng(seed)
+    rng, rng_identify = np.random.default_rng(seed), np.random.default_rng([seed, IDENTIFY_STREAM])
     by: dict[str, dict[str, list[dict[str, Any]]]] = defaultdict(lambda: defaultdict(list))
     for r in records:
         by[r["setting"]][r["prior"]].append(r)
-    cells = {s: {p: cell(v, rng, n_boot) for p, v in block.items()} for s, block in by.items()}
+    cells = {s: {p: cell(v, rng, n_boot, rng_identify) for p, v in block.items()} for s, block in by.items()}
     verdicts, verdicts_all, verdicts_whole = {}, {}, {}
     for p in sorted({p for block in cells.values() for p in block}):
         verdicts[p] = verdict({s: block[p]["H"][str(H_COSTS[0])] for s, block in cells.items() if p in block})
@@ -1016,13 +1155,34 @@ def markdown(s: dict[str, Any]) -> str:
     for p, d in diag.items():
         dl.append(f"| all settings | {p} | {_diag_cells(d)} |")
     va = ", ".join(f"{p}: {x}" for p, x in s["verdict_all_cases"].items())
+    pi = [(setting, p, c["post_identify"]) for setting, block in s["cells"].items() for p, c in block.items() if c.get("post_identify")]
+    il = []
+    if pi:
+        il = ["", "## post_identify (an amendment after the pre-registration, 2026-11-06; not in the stop rule)", "",
+              "Belief 1 at (b) with the case's own identify probe (one per case, from a fresh reset of its draw), its choice "
+              "priced on the yardstick: gain = yardstick(belief 1's choice) - yardstick(its choice); a case that never reached "
+              "(b) counts 0. The menu charges the identify probe "
+              f"{PROBE_SECONDS['identify']:.0f} s ({PROBE_SECONDS['identify'] * TIME_COST_PER_S:.2f} at {TIME_COST_PER_S} per "
+              "second); H(0.30) keeps the pre-registered 6 s charge.", "",
+              "| setting | prior | n (clean probe) | gain [95 % CI] | EVPI, same cases | share closed | rule ran identify | "
+              "apart: n (thrown, damaged, flagged; no gain) | apart: mean gain | no gain | probe kinds |",
+              "|---|---|---|---|---|---|---|---|---|---|---|"]
+        for setting, p, c in pi:
+            a = c["apart"]
+            il.append(f"| {setting} | {p} | {c['n']} | {_fmt(c['gain'])} | "
+                      f"{'n/a' if c['evpi_same_cases'] is None else format(c['evpi_same_cases'], '+.4f')} | "
+                      f"{'n/a' if c['share_closed'] is None else format(c['share_closed'], '.2f')} | {c['n_by_rule']} | "
+                      f"{a['n']} ({a['thrown']}, {a['damaged']}, {a['artifact']}; {a['n_no_gain']}) | "
+                      f"{'n/a' if a['gain_mean'] is None else format(a['gain_mean'], '+.4f')} | {c['n_errors']} | "
+                      f"{', '.join(f'{k} {v}' for k, v in sorted(c['kinds'].items()))} |")
     vw = ", ".join(f"{p}: {x}" for p, x in s.get("verdict_whole_log", {}).items())
     return (f"# The CoM oracle gap at point (b)\n\nStop rule (on {s['primary_prior']}): {v}\n\n"
             f"The same rule on every record, errors and artifact cases at EVPI 0 (a sensitivity check): {va}\n\n"
             f"The same rule with belief 1 from the whole-log fit (the carry reaches it through the filter; a check): {vw}\n\n"
             + "\n".join(lines) + "\n\n## Belief 1 at (b), a diagnostic (not in the stop rule)\n\n"
             "z: the lift-and-hold fit against the window's hidden truth (joint_truth_l7), in the fit's floored sds. Coverage: "
-            "the share of cases whose 80 % interval of belief 1 holds the truth.\n\n" + "\n".join(dl) + "\n")
+            "the share of cases whose 80 % interval of belief 1 holds the truth.\n\n" + "\n".join(dl) + "\n"
+            + ("\n".join(il) + "\n" if il else ""))
 
 
 def summary(a: argparse.Namespace) -> dict[str, Any]:
@@ -1041,6 +1201,8 @@ def summary(a: argparse.Namespace) -> dict[str, Any]:
                      for m, v in (("cover80_mass", d["cover80"]["mass"]), ("cover80_com", d["cover80"]["com_frac"]),
                                   *((f"z_{k}_median", None if d["z"][k] is None else d["z"][k]["median"]) for k in ("m", "m_cx", "m_cz")))})
         flat.update({f"flag/{p}": x for p, x in out["flags"].items()})
+        flat.update({f"{setting}/{p}/gain_identify": c["post_identify"]["gain"]["mean"] for setting, block in out["cells"].items()
+                     for p, c in block.items() if c.get("post_identify")})
         out["wandb"] = tracking.log_run("com_gap", cfg, flat)
     with open(os.path.join(a.dir, "summary.json"), "w") as f:
         json.dump(out, f, indent=1)
@@ -1061,6 +1223,8 @@ def main(argv: list[str] | None = None) -> Any:
     r.add_argument("--sample", type=int, default=None, help="a fixed draw of this many cases (the timing run)")
     r.add_argument("--sample-seed", type=int, default=0)
     r.add_argument("--no-full-menu", action="store_true", help="skip the full menu check at (b)")
+    r.add_argument("--post-identify", action="store_true",
+                   help="the post_identify column (an amendment, 2026-11-06): one identify probe per case")
     r.add_argument("--workers", type=int, default=8)
     r.add_argument("--out", required=True)
     m = sub.add_parser("merge")

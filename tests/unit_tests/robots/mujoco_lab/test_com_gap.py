@@ -17,6 +17,7 @@ and 2): the lift-and-hold fit, the conditioned beliefs, the choices at (b), the 
 first attempt, the summary, the shard merge and the stop rule."""
 
 import json
+import os
 from collections import Counter
 from types import SimpleNamespace
 
@@ -792,7 +793,7 @@ def test_merge_refuses_a_case_in_two_shards(tmp_path):
 
 
 @pytest.mark.parametrize("key, value", [("seed", 12), ("code_revision", "def"), ("settings_parsed", [["k100_A3", 100.0, 10.0]]),
-                                        ("bundle", "B2")])
+                                        ("bundle", "B2"), ("post_identify", True)])
 def test_merge_refuses_shards_that_differ_in_what_the_records_depend_on(tmp_path, key, value):
     with pytest.raises(SystemExit, match=key):
         _merge([_shard(tmp_path, "a", ["o1"]), _shard(tmp_path, "b", ["o2"], **{key: value})], tmp_path / "m")
@@ -828,3 +829,402 @@ def test_merge_refuses_an_existing_out(tmp_path):
     _merge([a], tmp_path / "m")
     with pytest.raises(SystemExit, match="exists"):
         _merge([a], tmp_path / "m")
+
+
+# ---------------------------------------------------------------- post_identify (an amendment after the pre-registration, 2026-11-06)
+
+class _IdentifyModel:
+    """A probe model whose reading pins the CoM fraction at ``at`` (sd 0.01), the identify fit's role at (b); ``fail``
+    raises instead. Counts its calls."""
+
+    feature_names = None
+
+    def __init__(self, at=0.5, fail=False):
+        self.at, self.fail, self.calls = at, fail, 0
+
+    def loglik(self, obs, X, a, force, terms=None, thrown=None):
+        self.calls += 1
+        if self.fail:
+            raise ValueError("boom")
+        assert obs["probe"] == "identify" and len(X) == len(a["mass"])
+        return -0.5 * ((np.asarray(a["com_frac"], dtype=float) - self.at) / 0.01) ** 2, {"used": ["kind", "joint"], "rejected": []}
+
+
+def _identify(**kw):
+    """The case's identify probe as identify_probe returns it: measured at the pinch of s 0.5."""
+    return {"kind": "measured", "thrown": False, "damaged": False, "damage": None, "artifact": False, "seconds": 18.2,
+            "reading": {"m_hat": 0.2}, "s": 0.5, "point": [0.0, 0.0, 0.76], "yaw": 0.0, "pose": _pose(0.5), "force": 20.0,
+            "geometry": _geometry(), **kw}
+
+
+def _with_identify(prims, pm):
+    prims.probe_models = {"identify": pm}
+    return prims
+
+
+def _run_b(prims, env, b, identify=None, k=5):
+    return cg.case_b(prims, env, "x", "plate", 100.0, 3.0, None, {"mass": 0.2, "com_frac": 0.5}, b, np.random.default_rng(0),
+                     full=False, rng_whole_log=np.random.default_rng(1), identify=identify, rng_identify=np.random.default_rng(k))
+
+
+def test_post_identify_adds_the_cases_identify_probe_to_belief_one(monkeypatch):
+    """Belief 1 stays split on the CoM (the cut log's fit says nothing), so it pays for the gentle carry; the identify
+    probe pins the CoM fraction at 0.5, so belief 1 with it takes belief 2's carry: its gain on the yardstick is the
+    whole EVPI (0.05). The probe's update is the skill's (tools.entry_loglik), with its terms recorded."""
+    prims, env, b = _b_case(monkeypatch)
+    pm = _IdentifyModel(at=0.5)
+    r = _run_b(_with_identify(prims, pm), env, b, _identify())
+    assert r["evpi"] == pytest.approx(0.05) and r["choice1"] == "gentle|drop_release"
+    p = r["post_identify"]
+    assert p["choice"] == "standard|drop_release" and p["changed"] and not p["by_rule"]
+    assert r["gain_identify"] == pytest.approx(0.05) and p["used_terms"] == ["kind", "joint"]
+    assert pm.calls >= 1 and p["ess"]["ess_final"] > 0
+
+
+def test_post_identify_leaves_the_primary_columns_alone(monkeypatch):
+    """The new column runs on its own stream after the primary: every key of a run without it is the same with it."""
+    prims, env, b = _b_case(monkeypatch)
+    without = _run_b(prims, env, b)
+    with_ = _run_b(_with_identify(prims, _IdentifyModel(at=1.0)), env, b, _identify())
+    assert "post_identify" not in without and "gain_identify" not in without
+    assert set(with_) - set(without) == {"post_identify", "gain_identify"}
+    assert {k: with_[k] for k in without} == without
+
+
+def test_post_identify_is_belief_one_when_the_rule_already_ran_identify(monkeypatch):
+    """No double count: when the rule's own probes held identify, belief 1 already has its evidence, so post_identify is
+    belief 1 (gain 0) and the case's extra probe is not applied."""
+    prims, env, b = _b_case(monkeypatch)
+    first = cg.first_attempt
+
+    def ran_identify(*a, **k):
+        fa = first(*a, **k)
+        fa["probes"] = [{"probe": "identify", "kind": "measured", "artifact": False}]
+        return fa
+
+    monkeypatch.setattr(cg, "first_attempt", ran_identify)
+    pm = _IdentifyModel(at=0.5)
+    r = _run_b(_with_identify(prims, pm), env, b, _identify())
+    assert r["post_identify"]["by_rule"] and r["gain_identify"] == 0.0 and pm.calls == 0
+    assert r["post_identify"]["choice"] == r["choice1"]
+
+
+def test_a_failed_post_identify_is_recorded_and_leaves_the_case_alone(monkeypatch):
+    """The new column cannot fail the case: an error in its update is recorded (gain None, counted apart in the
+    summary) and the primary columns stay as they are."""
+    prims, env, b = _b_case(monkeypatch)
+    without = _run_b(prims, env, b)
+    r = _run_b(_with_identify(prims, _IdentifyModel(fail=True)), env, b, _identify())
+    assert r["post_identify"] == {"error": "ValueError: boom"} and r["gain_identify"] is None
+    assert {k: r[k] for k in without} == without
+
+
+def test_post_identify_counts_zero_for_a_case_that_never_reaches_b(monkeypatch):
+    _ended(monkeypatch, "abstained")
+    args = (None, SimpleNamespace(), "x", "plate", 100.0, 3.0, None, {}, None, None)
+    r = cg.case_b(*args, identify=_identify())
+    assert r["gain_identify"] == 0.0 and r["post_identify"] is None
+    assert "gain_identify" not in cg.case_b(*args)
+
+
+def test_a_late_post_identify_error_is_recorded_and_leaves_the_case_alone(monkeypatch):
+    """Every step of the new column is guarded, its diagnostic (cover80) and the yardstick lookup too: an error after
+    the update is recorded (gain None) and the primary columns stay as they are."""
+    prims, env, b = _b_case(monkeypatch)
+    real, calls = cg.cover80, []
+    monkeypatch.setattr(cg, "cover80", lambda *a, **k: calls.append(1) or real(*a, **k))
+    without = _run_b(prims, env, b)
+    k = len(calls)                      # the primary's calls; post_identify's comes after them, last
+
+    def late(*a, **kw):
+        calls.append(1)
+        if len(calls) > 2 * k:
+            raise RuntimeError("late")
+        return real(*a, **kw)
+
+    monkeypatch.setattr(cg, "cover80", late)
+    r = _run_b(_with_identify(prims, _IdentifyModel(at=0.5)), env, b, _identify())
+    assert len(calls) == 2 * k + 1
+    assert r["post_identify"] == {"error": "RuntimeError: late"} and r["gain_identify"] is None
+    assert {key: r[key] for key in without} == without
+
+
+def test_post_identify_reads_the_geometry_its_probe_saw_not_the_scene_at_b(monkeypatch):
+    """The lab's geometry is in the world frame, and a rule probe (a push) can move the object before (b). The identify
+    probe ran at the case's fresh reset, so its entry's features come from the geometry identify_probe saw there, not
+    from the scene at (b)."""
+    prims, env, b = _b_case(monkeypatch)
+    g = _geometry()
+    at_reset = Geometry(centres=g.centres + [0.05, 0.0, 0.0], normals=g.normals, com=g.com + [0.05, 0.0, 0.0],
+                        length=g.length, base_extent=g.base_extent, com_height=g.com_height,
+                        footprint_half_width=g.footprint_half_width)
+    real, seen = cg.extract, []
+    monkeypatch.setattr(cg, "extract", lambda geometry, *a, **k: seen.append(geometry) or real(geometry, *a, **k))
+    r = _run_b(_with_identify(prims, _IdentifyModel(at=0.5)), env, b, _identify(geometry=at_reset))
+    assert sum(x is at_reset for x in seen) == 1 and "error" not in r["post_identify"]
+
+
+def test_post_identify_has_no_gain_for_a_declined_or_failed_probe_even_without_b(monkeypatch):
+    """A declined or failed identify probe gives its case no post_identify belief in any run: gain None (counted apart),
+    also in a run that never reaches (b), so the clean mean never counts it as 0."""
+    _ended(monkeypatch, "abstained")
+    args = (None, SimpleNamespace(), "x", "plate", 100.0, 3.0, None, {}, None, None)
+    for probe in ({"declined": "every pinch is wider than the gripper"}, {"error": "RuntimeError: x"}):
+        r = cg.case_b(*args, identify=dict(probe, wall_s=1.0))
+        assert r["gain_identify"] is None and r["post_identify"] == probe
+
+
+class _ProbeEnv(_SceneEnv):
+    """_SceneEnv with the identify probe: records its proposal and force, returns ``res``."""
+
+    def __init__(self, res=None):
+        super().__init__()
+        self.ran, self.order = [], []
+        self.res = res or SimpleNamespace(kind="measured", thrown=False, damage=None, artifact=False, seconds=18.2,
+                                          reading={"m_hat": 0.21, "eps": [0.1]})
+
+    def nominal_mass(self, o):
+        return 0.2
+
+    def probe_identify(self, p, force):
+        self.ran.append((p.s, force))
+        self.order.append("probe")
+        return self.res
+
+
+def test_identify_probe_runs_the_menus_probe_identify_row():
+    """At the mid usable proposal with the weigh squeeze of the standard force, as the menu's probe rows; the reading's
+    hidden noise stays out, as tools._run_probe keeps it out."""
+    from rpent.skills.pick_place.probes import weigh_force
+    from rpent.skills.pick_place.tools import standard_force
+
+    env = _ProbeEnv()
+    p = cg.identify_probe(env, "x")
+    f = weigh_force(standard_force(0.2))
+    assert env.ran == [(0.5, f)] and p["s"] == 0.5 and p["force"] == f and p["pose"] == _pose(0.5)
+    assert p["kind"] == "measured" and p["reading"] == {"m_hat": 0.21} and not p["thrown"] and not p["damaged"]
+    assert p["seconds"] == 18.2 and not p["artifact"]
+
+
+def test_identify_probe_marks_a_damaging_or_throwing_probe():
+    env = _ProbeEnv(SimpleNamespace(kind="damaged", thrown=False, damage={"label": "crushed"}, artifact=True, seconds=3.0, reading={}))
+    p = cg.identify_probe(env, "x")
+    assert p["damaged"] and p["artifact"] and p["damage"] == {"label": "crushed"}
+    env = _ProbeEnv(SimpleNamespace(kind="lost", thrown=True, damage=None, artifact=False, seconds=9.0, reading={}))
+    assert cg.identify_probe(env, "x")["thrown"]
+
+
+def test_identify_probe_declines_without_a_usable_proposal():
+    env = _ProbeEnv()
+    env.proposals = lambda: [P(0.5, width=0.2)]
+    p = cg.identify_probe(env, "x")
+    assert "wider" in p["declined"] and env.ran == []
+
+
+def test_identify_probe_keeps_the_geometry_it_saw_before_the_probe():
+    """The probe entry's features need the object's geometry at the probe (the lab's geometry is in the world frame):
+    identify_probe takes it before the probe moves the object. It stays out of the record (IDENTIFY_KEYS)."""
+    env = _ProbeEnv()
+    env.geometry = lambda: env.order.append("geometry") or "G0"
+    p = cg.identify_probe(env, "x")
+    assert p["geometry"] == "G0" and env.order == ["geometry", "probe"] and "geometry" not in cg.IDENTIFY_KEYS
+
+
+def test_run_case_runs_one_identify_probe_per_case_and_resets_before_the_first_setting(monkeypatch):
+    """post_identify's probe runs once per case, from the case's fresh reset, after W0's exact prior is drawn; then the
+    lab is reset (and checked against the first reset) before the first prior and setting, and every run gets the same
+    probe and its own stream. Without the flag: no probe and no extra reset."""
+    from robots.mujoco_lab import adapter, first_menus
+    from robots.mujoco_lab import calibrate as cal
+    from rpent.skills.pick_place import tools
+
+    monkeypatch.setattr(cal, "case_draw", lambda *a, **k: ({}, None, "plate", {"fill": 0.0, "frag": None}))
+    monkeypatch.setattr(adapter, "object_props", lambda o: {"mass": 1.0})
+    monkeypatch.setattr(tools, "_particles", lambda prims: 10)
+    monkeypatch.setattr(tools, "_spread_kw", lambda prims: {})
+    settings = [("k100_A3", 100.0, 3.0), ("k30_A3", 30.0, 3.0)]
+    for flag in (True, False):
+        env, seen = _ProbeEnv(), []
+        env.joint_sensing, env.reset_info, env.resets = True, {"at_rest": True}, 0
+        env.reset = lambda *a, env=env, **k: setattr(env, "resets", env.resets + 1)
+        monkeypatch.setattr(first_menus, "exact_priors", lambda *a, env=env, **k: (
+            {"mass": 0.2, "com_frac": 0.5}, {"exact_both": lambda *a, **k: env.order.append("w0") or "w0"}))
+        monkeypatch.setattr(cg, "case_b", lambda prims, e, *a, seen=seen, **k: seen.append((e.resets, k)) or {"moved": False})
+        recs = cg.run_case(SimpleNamespace(env=env), "x", 0, {"seed": 11, "fold": 0, "settings": settings, "generic": {"x": None},
+                                                          "post_identify": flag},
+                           {"class": None, "generic": None}, None, None)
+        assert len(recs) == 4 and all(r["reset_match"] for r in recs)
+        if flag:
+            assert env.order == ["w0", "probe"] and len(env.ran) == 1
+            assert [n for n, _ in seen] == [2, 2, 2, 2] and all(k["identify"] is seen[0][1]["identify"] for _, k in seen)
+            assert all(k["rng_identify"] is not None for _, k in seen)
+            assert recs[0]["identify_probe"] == {"kind": "measured", "thrown": False, "damaged": False, "artifact": False,
+                                                 "seconds": 18.2, "wall_s": recs[0]["identify_probe"]["wall_s"]}
+        else:
+            assert env.ran == [] and [n for n, _ in seen] == [1, 1, 1, 1] and all(k.get("identify") is None for _, k in seen)
+            assert all("identify_probe" not in r for r in recs)
+
+
+def test_the_cell_reports_post_identify_with_thrown_damaged_or_flagged_probes_apart():
+    """The identify outcome counts, the mean gain over the cases whose probe was clean (with the same cases' EVPI and the
+    share it closes), the cases whose probe threw, damaged or was flagged counted apart with their own mean (not
+    dropped), the cases where the rule ran identify, and failed updates counted and left out."""
+    recs = _recs([None, 0.3, 0.1, 0.2, None, 0.4])
+    probe = {"kind": "measured", "thrown": False, "damaged": False, "artifact": False}
+    for r, g in zip(recs, (0.0, 0.3, 0.05, 0.2, 0.0, 0.1)):
+        r.update(gain_identify=g, identify_probe=dict(probe), post_identify={"by_rule": False} if r["reached"] else None)
+    recs[2]["post_identify"] = {"by_rule": True}
+    recs[3]["identify_probe"].update(kind="damaged", damaged=True)
+    recs[4]["identify_probe"].update(artifact=True)
+    recs[5]["identify_probe"].update(thrown=True)
+    recs.append({**_recs([0.5])[0], "object": "o7", "idx": 7, "gain_identify": None, "identify_probe": dict(probe),
+                 "post_identify": {"error": "ValueError: boom"}})
+    c = cg.cell(recs, np.random.default_rng(0), 50)["post_identify"]
+    assert c["n"] == 3 and c["gain"]["mean"] == pytest.approx(0.35 / 3)
+    assert c["evpi_same_cases"] == pytest.approx(0.4 / 3) and c["share_closed"] == pytest.approx(0.875)
+    assert c["apart"] == {"n": 3, "thrown": 1, "damaged": 1, "artifact": 1, "gain_mean": pytest.approx(0.1), "n_no_gain": 0}
+    assert c["n_errors"] == 1 and c["n_by_rule"] == 1 and c["kinds"] == {"measured": 6, "damaged": 1}
+    md = cg.markdown(cg.summarize(recs, n_boot=50, seed=0))
+    assert "## post_identify" in md and "18 s" in md
+    assert "post_identify" not in cg.markdown(cg.summarize(_recs([0.1]), n_boot=50, seed=0))
+    assert "post_identify" not in cg.cell(_recs([0.1]), np.random.default_rng(0), 50)
+
+
+def test_the_cell_counts_a_flagged_probe_apart_even_when_its_update_failed():
+    """The outcome counts (thrown, damaged, flagged) cover every probe: a flagged probe whose update failed is counted
+    apart, its missing gain left out of the apart mean and counted there, not among the errors."""
+    recs = _recs([0.3, 0.1, 0.2])
+    probe = {"kind": "measured", "thrown": False, "damaged": False, "artifact": False}
+    for r in recs:
+        r.update(gain_identify=0.1, identify_probe=dict(probe), post_identify={"by_rule": False})
+    recs[1].update(gain_identify=None, post_identify={"error": "ValueError: boom"})
+    recs[1]["identify_probe"].update(kind="lost", thrown=True)
+    c = cg.cell(recs, np.random.default_rng(0), 50)["post_identify"]
+    assert c["apart"] == {"n": 1, "thrown": 1, "damaged": 0, "artifact": 0, "gain_mean": None, "n_no_gain": 1}
+    assert c["n_errors"] == 0 and c["n"] == 2
+
+
+def test_the_post_identify_block_leaves_the_summarys_primary_numbers_alone():
+    """Its bootstrap draws from its own stream: every primary number and verdict of the summary is the same with the
+    post_identify fields and without them (two settings, so a shared stream would move the second cell's intervals)."""
+    recs = []
+    for setting in ("k100_A3", "k30_A3"):
+        rs = _recs([None, 0.3, 0.1, 0.2, None, 0.4], setting=setting)
+        for r, g in zip(rs, (0.0, 0.3, 0.05, 0.2, 0.0, 0.1)):
+            r.update(gain_identify=g, identify_probe={"kind": "measured"}, post_identify=None)
+        recs += rs
+    plain = [{k: v for k, v in r.items() if k not in ("gain_identify", "identify_probe", "post_identify")} for r in recs]
+    a, b = cg.summarize(plain, n_boot=50, seed=0), cg.summarize(recs, n_boot=50, seed=0)
+    for setting, block in a["cells"].items():
+        for p, c in block.items():
+            assert "post_identify" in b["cells"][setting][p]
+            assert {k: v for k, v in b["cells"][setting][p].items() if k != "post_identify"} == c
+    assert {k: v for k, v in b.items() if k != "cells"} == {k: v for k, v in a.items() if k != "cells"}
+
+
+def _identify_bundle(tmp_path, with_model):
+    b = tmp_path / "B"
+    (b / "folds" / "fold_0").mkdir(parents=True)
+    (b / "folds" / "folds.json").write_text(json.dumps({"o1": 0}))
+    if with_model:
+        (b / "folds" / "fold_0" / "probe_identify.joblib").write_text("x")
+    return b
+
+
+def test_run_refuses_post_identify_on_a_bundle_without_the_identify_model(tmp_path):
+    b = _identify_bundle(tmp_path, False)
+    with pytest.raises(SystemExit, match="probe_identify"):
+        cg.main(["run", "--bundle", str(b), "--scenes", "S", "--out", str(tmp_path / "out"), "--post-identify"])
+
+
+def test_the_post_identify_flag_reaches_the_workers_and_the_config(tmp_path, monkeypatch):
+    from robots.mujoco_lab import first_menus, identify_fit
+
+    b = _identify_bundle(tmp_path, True)
+    sc = tmp_path / "scenes.json"
+    sc.write_text(json.dumps({"o1": {"flat": False}}))
+    monkeypatch.setattr(identify_fit, "require_bundle_generator", lambda d: "v11")
+    monkeypatch.setattr(first_menus, "prior_tables", lambda *a: ({"generic": {"o1": {}}}, {}))
+    jobs = []
+
+    class _Pool:
+        def __init__(self, n):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def imap_unordered(self, f, js):
+            jobs.extend(js)
+            return iter([])
+
+    monkeypatch.setattr(cg.mp, "get_context", lambda kind: SimpleNamespace(Pool=_Pool))
+    for flag, out in ((True, "on"), (False, "off")):
+        jobs.clear()
+        cg.main(["run", "--bundle", str(b), "--scenes", str(sc), "--repeats", "1", "--out", str(tmp_path / out)]
+                + (["--post-identify"] if flag else []))
+        assert [j[2]["post_identify"] for j in jobs] == [flag]
+        assert json.load(open(tmp_path / out / "run_config.json"))["post_identify"] is flag
+
+
+SIM_CASE = ("ycb__tuna_can", 7, ("k30_A3", 30.0, 3.0))       # reached (b) on m2b2_v12 in 32 s
+
+
+@pytest.mark.skipif(not all(os.environ.get(k) for k in ("RPENT_V12B_BUNDLE", "RPENT_MUJOCO_SIM_DIR", "RPENT_COMGAP_SCENES")),
+                    reason="needs the m2b2_v12b bundle, the arm port's sim and the scenes file")
+def test_post_identify_leaves_a_real_cases_primary_columns_alone(monkeypatch):
+    """The amendment's condition (coordinator, 2026-11-06), on the arm sim and m2b2_v12b: one case that reaches (b), run
+    with and without post_identify, has the same primary columns (the probe runs from its own fresh reset, the lab is
+    reset before the first setting, and the new column draws from its own stream)."""
+    from robots.mujoco_lab import calibrate as cal
+    from robots.mujoco_lab.first_menus import prior_tables
+    from robots.mujoco_lab.prior import fragility_world
+
+    monkeypatch.setenv("RPENT_LAB_GENERATOR", "v11")
+    bundle, o, (idx, setting) = os.environ["RPENT_V12B_BUNDLE"], SIM_CASE[0], SIM_CASE[1:]
+    tables, _ = prior_tables(bundle, os.environ["RPENT_COMGAP_SCENES"], {})
+    fold = json.load(open(os.path.join(bundle, "folds", "folds.json")))[o]
+    runs = []
+    for flag in (False, True):
+        prims = cal._primitives(os.path.join(bundle, "folds", f"fold_{fold}"), None, None)
+        prims.force_noise = cal.job_force_noise(None, prims.manifest)
+        prims.env.force_noise = prims.force_noise
+        s = {"seed": 11, "fold": fold, "settings": [setting], "generic": {o: tables["generic"][o]}, "post_identify": flag}
+        runs.append(cg.run_case(prims, o, idx, s, {"class": prims.prior}, prims.prior, fragility_world(prims.manifest))[0])
+    without, with_ = runs
+    assert without["reached"] and "error" not in without and "error" not in with_
+    assert set(with_) - set(without) == {"post_identify", "gain_identify", "identify_probe"}
+    assert "error" not in with_["post_identify"] and with_["identify_probe"]["kind"] is not None
+    assert {k: with_[k] for k in without if k != "seconds"} == {k: v for k, v in without.items() if k != "seconds"}
+
+
+@pytest.mark.skipif(not all(os.environ.get(k) for k in ("RPENT_V12_BUNDLE", "RPENT_MUJOCO_SIM_DIR", "RPENT_COMGAP_SCENES")),
+                    reason="needs the m2b2_v12 bundle, the arm port's sim and the scenes file")
+def test_the_v12_records_reproduce_on_this_code(monkeypatch):
+    """The merge of arm-identify (the identify probe model, the attempt's joint term) leaves m2b2_v12's com_gap alone:
+    a case of the full v12 run (data/com_gap/full_v12_n20000), rerun on this code, gives its record again (all but the
+    wall time). The v12 bundle has no identify model and no joint readout term, so neither may reach its menus."""
+    import gzip
+
+    from robots.mujoco_lab import calibrate as cal
+    from robots.mujoco_lab.first_menus import prior_tables
+    from robots.mujoco_lab.prior import fragility_world
+
+    monkeypatch.setenv("RPENT_LAB_GENERATOR", "v11")
+    bundle, o, (idx, setting) = os.environ["RPENT_V12_BUNDLE"], SIM_CASE[0], SIM_CASE[1:]
+    path = os.path.join(os.path.dirname(cg.__file__), "data", "com_gap", "full_v12_n20000", "records.jsonl.gz")
+    stored = [r for r in map(json.loads, gzip.open(path, "rt"))
+              if (r["object"], r["idx"], r["prior"], r["setting"]) == (o, idx, "class", setting[0])]
+    tables, _ = prior_tables(bundle, os.environ["RPENT_COMGAP_SCENES"], {})
+    fold = json.load(open(os.path.join(bundle, "folds", "folds.json")))[o]
+    prims = cal._primitives(os.path.join(bundle, "folds", f"fold_{fold}"), None, None)
+    assert "identify" not in (getattr(prims, "probe_models", None) or {})
+    prims.force_noise = cal.job_force_noise(None, prims.manifest)
+    prims.env.force_noise = prims.force_noise
+    s = {"seed": 11, "fold": fold, "settings": [setting], "generic": {o: tables["generic"][o]}, "flat": stored[0]["flat"]}
+    rec = cg.run_case(prims, o, idx, s, {"class": prims.prior}, prims.prior, fragility_world(prims.manifest))[0]
+    assert len(stored) == 1 and stored[0]["reached"]
+    assert {k: v for k, v in rec.items() if k != "seconds"} == {k: v for k, v in stored[0].items() if k != "seconds"}
