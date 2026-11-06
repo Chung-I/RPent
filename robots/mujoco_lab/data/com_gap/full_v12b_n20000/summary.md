@@ -1,0 +1,44 @@
+# The CoM oracle gap at point (b)
+
+Stop rule (on class): class: stop, generic: stop
+
+The same rule on every record, errors and artifact cases at EVPI 0 (a sensitivity check): class: stop, generic: stop
+
+The same rule with belief 1 from the whole-log fit (the carry reaches it through the filter; a check): class: stop, generic: stop
+
+| setting | prior | n | errors | artifacts | reached | EVPI [95 % CI] | H(0.05) | H(0.10) | H(0.30) | H(0.05), all cases | w0 check | no inboard | full menu | EVPI, whole-log fit | H(0.05), whole-log fit | ESS table n | ESS table H(0.05) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| k100_A3 | class | 1007 | 0 | 38 | 1 | +0.0000 [+0.0000, +0.0000] | +0.0000 [+0.0000, +0.0000] | +0.0000 [+0.0000, +0.0000] | +0.0000 [+0.0000, +0.0000] | +0.0000 [+0.0000, +0.0000] | +0.0000 [+0.0000, +0.0000] | +0.0000 [+0.0000, +0.0000] | +0.0000 [+0.0000, +0.0000] | +0.0000 [+0.0000, +0.0000] | +0.0000 [+0.0000, +0.0000] | 1007 | +0.0000 [+0.0000, +0.0000] |
+| k100_A3 | generic | 1007 | 0 | 38 | 0 | +0.0000 [+0.0000, +0.0000] | +0.0000 [+0.0000, +0.0000] | +0.0000 [+0.0000, +0.0000] | +0.0000 [+0.0000, +0.0000] | +0.0000 [+0.0000, +0.0000] | +0.0000 [+0.0000, +0.0000] | +0.0000 [+0.0000, +0.0000] | +0.0000 [+0.0000, +0.0000] | +0.0000 [+0.0000, +0.0000] | +0.0000 [+0.0000, +0.0000] | 1007 | +0.0000 [+0.0000, +0.0000] |
+| k30_A3 | class | 1003 | 0 | 42 | 138 | +0.0004 [+0.0000, +0.0010] | +0.0002 [+0.0000, +0.0006] | +0.0001 [+0.0000, +0.0004] | +0.0000 [+0.0000, +0.0000] | +0.0002 [+0.0000, +0.0006] | +0.0002 [-0.0000, +0.0006] | +0.0004 [+0.0000, +0.0010] | +0.0029 [-0.0000, +0.0086] | +0.0001 [-0.0000, +0.0003] | +0.0001 [+0.0000, +0.0002] | 964 | +0.0000 [+0.0000, +0.0000] |
+| k30_A3 | generic | 1007 | 0 | 38 | 59 | +0.0000 [-0.0000, +0.0001] | +0.0000 [+0.0000, +0.0000] | +0.0000 [+0.0000, +0.0000] | +0.0000 [+0.0000, +0.0000] | +0.0000 [+0.0000, +0.0000] | +0.0002 [+0.0000, +0.0005] | +0.0000 [+0.0000, +0.0001] | +0.0000 [-0.0000, +0.0002] | +0.0001 [+0.0000, +0.0002] | +0.0000 [+0.0000, +0.0000] | 948 | +0.0000 [+0.0000, +0.0000] |
+| k100_A10 | class | 1003 | 0 | 42 | 185 | +0.0010 [-0.0006, +0.0035] | +0.0011 [+0.0000, +0.0034] | +0.0011 [+0.0000, +0.0033] | +0.0009 [+0.0000, +0.0027] | +0.0011 [+0.0000, +0.0032] | -0.0001 [-0.0004, +0.0001] | -0.0002 [-0.0006, +0.0000] | +0.0015 [-0.0109, +0.0144] | +0.0000 [+0.0000, +0.0000] | +0.0000 [+0.0000, +0.0000] | 955 | +0.0000 [+0.0000, +0.0000] |
+| k100_A10 | generic | 1005 | 0 | 40 | 92 | +0.0007 [-0.0001, +0.0022] | +0.0006 [+0.0000, +0.0016] | +0.0004 [+0.0000, +0.0013] | +0.0001 [+0.0000, +0.0003] | +0.0006 [+0.0000, +0.0016] | +0.0005 [-0.0006, +0.0019] | +0.0006 [-0.0001, +0.0019] | +0.0073 [-0.0002, +0.0206] | +0.0006 [+0.0000, +0.0018] | +0.0005 [+0.0000, +0.0016] | 913 | +0.0000 [+0.0000, +0.0000] |
+
+## Belief 1 at (b), a diagnostic (not in the stop rule)
+
+z: the lift-and-hold fit against the window's hidden truth (joint_truth_l7), in the fit's floored sds. Coverage: the share of cases whose 80 % interval of belief 1 holds the truth.
+
+| setting | prior | n z / n cover | z(m) median (share > 0) | z(m cx) | z(m cz) | 80 % coverage, mass | 80 % coverage, CoM fraction |
+|---|---|---|---|---|---|---|---|
+| k100_A3 | class | 1/1 | -0.98 (0.00) | -0.04 (0.00) | +1.71 (1.00) | 1.00 | 1.00 |
+| k100_A3 | generic | 0/0 | n/a | n/a | n/a | n/a | n/a |
+| k30_A3 | class | 138/138 | -0.14 (0.32) | +0.75 (0.85) | +1.35 (0.99) | 0.99 | 0.93 |
+| k30_A3 | generic | 59/59 | -0.24 (0.34) | +0.80 (0.86) | +1.33 (0.98) | 0.98 | 0.95 |
+| k100_A10 | class | 185/185 | -0.18 (0.30) | +0.78 (0.84) | +1.34 (0.96) | 0.99 | 0.91 |
+| k100_A10 | generic | 92/92 | -0.16 (0.34) | +0.75 (0.87) | +1.35 (0.99) | 0.93 | 0.91 |
+| all settings | class | 324/324 | -0.17 (0.31) | +0.76 (0.84) | +1.35 (0.97) | 0.99 | 0.92 |
+| all settings | generic | 151/151 | -0.17 (0.34) | +0.75 (0.87) | +1.35 (0.99) | 0.95 | 0.93 |
+
+## post_identify (an amendment after the pre-registration, 2026-11-06; not in the stop rule)
+
+Belief 1 at (b) with the case's own identify probe (one per case, from a fresh reset of its draw), its choice priced on the yardstick: gain = yardstick(belief 1's choice) - yardstick(its choice); a case that never reached (b) counts 0. The menu charges the identify probe 18 s (0.90 at 0.05 per second); H(0.30) keeps the pre-registered 6 s charge.
+
+| setting | prior | n (clean probe) | gain [95 % CI] | EVPI, same cases | share closed | rule ran identify | apart: n (thrown, damaged, flagged; no gain) | apart: mean gain | no gain | probe kinds |
+|---|---|---|---|---|---|---|---|---|---|---|
+| k100_A3 | class | 566 | +0.0000 [+0.0000, +0.0000] | +0.0000 | n/a | 0 | 273 (119, 166, 16; 0) | +0.0000 | 168 | damaged 166, declined 168, lost 54, measured 521, not_lifted 48, unplanned 50 |
+| k100_A3 | generic | 566 | +0.0000 [+0.0000, +0.0000] | +0.0000 | n/a | 0 | 273 (119, 166, 16; 0) | +0.0000 | 168 | damaged 166, declined 168, lost 54, measured 521, not_lifted 48, unplanned 50 |
+| k30_A3 | class | 566 | +0.0005 [+0.0000, +0.0013] | +0.0007 | 0.67 | 0 | 269 (118, 165, 12; 0) | +0.0000 | 168 | damaged 165, declined 168, lost 53, measured 519, not_lifted 48, unplanned 50 |
+| k30_A3 | generic | 566 | +0.0001 [-0.0000, +0.0002] | +0.0001 | 1.00 | 0 | 273 (119, 166, 16; 0) | +0.0000 | 168 | damaged 166, declined 168, lost 54, measured 521, not_lifted 48, unplanned 50 |
+| k100_A10 | class | 566 | -0.0001 [-0.0001, +0.0000] | +0.0017 | -0.03 | 0 | 269 (118, 165, 12; 0) | +0.0000 | 168 | damaged 165, declined 168, lost 53, measured 519, not_lifted 48, unplanned 50 |
+| k100_A10 | generic | 566 | +0.0010 [-0.0002, +0.0033] | +0.0013 | 0.77 | 0 | 271 (119, 165, 14; 0) | +0.0000 | 168 | damaged 165, declined 168, lost 54, measured 520, not_lifted 48, unplanned 50 |
