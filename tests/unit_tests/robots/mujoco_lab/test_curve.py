@@ -658,7 +658,8 @@ def test_stage2_writes_records_and_stops_the_run_on_a_gate(tmp_path, monkeypatch
     assert {r["object"]: r["skipped"] for r in recs}["ycb__b"] == "stage1 artifact"
     assert sorted(seen) == [("ycb__a", [0, 1], 5, "B/folds/fold_0"), ("ycb__b", [0], 5, "B/folds/fold_0")]
     cfg = _json.load(open(tmp_path / "s2" / "run_config.json"))
-    assert cfg["rules"] == list(cv.SIM_RULES) and cfg["n_seeds"] == 5 and set(cfg["stage1_records_sha256"]) == set(runs.split(","))
+    assert cfg["rules"] == ["R0", "R1", "R2", "R3", "R4", "R5", "R6"]          # R6 admitted by the Stage 1 check (7 Nov)
+    assert cfg["n_seeds"] == 5 and set(cfg["stage1_records_sha256"]) == set(runs.split(","))
     m = _json.load(open(tmp_path / "s2" / "run_metrics.json"))
     assert m["cases"] == 3 and m["stop"] is None and m["skipped"] == 1
     with pytest.raises(SystemExit, match="exists"):
@@ -839,7 +840,7 @@ def test_stage2_lock_then_summary_end_to_end_on_synthetic_runs(tmp_path, monkeyp
                    "--lock-commit", "abc123", "--out", str(tmp_path / "sum")])
     assert rep["q1"]["reading"] in ("SAGE keeps success and cuts damage", "cuts damage, success not shown to be kept", "undecided")
     assert rep["q1"]["boot"]["cases"] == 8 and rep["q1_no_thin"]["boot"]["cases"] == 6
-    assert set(rep["vs_r0"]) == {"R1", "R2", "R3", "R5"} and rep["checks"]["second_decision_mismatches"] == 0
+    assert set(rep["vs_r0"]) == {"R1", "R2", "R3", "R5", "R6"} and rep["checks"]["second_decision_mismatches"] == 0
     assert rep["checks"]["first_decision_mismatches"] == 0 and rep["checks"]["missing_cases"] == 0
     assert (tmp_path / "sum" / "stage2_summary.md").exists() and (tmp_path / "sum" / "stage2_curves.png").exists()
     bad = _json.load(open(tmp_path / "lock" / "locked.json"))

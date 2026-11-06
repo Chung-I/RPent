@@ -874,7 +874,7 @@ def stage1_summary(a: argparse.Namespace) -> dict[str, Any]:
 
 # ---------------------------------------------------------------- Stage 2: the episodes (design 5.2, 5.5)
 
-SIM_RULES = ("R0", "R1", "R2", "R3", "R4", "R5")   # R6 is model only unless the Stage 1 check admits it (stage2 --rules)
+SIM_RULES = ("R0", "R1", "R2", "R3", "R4", "R5", "R6")   # R6: admitted by the Stage 1 check (its curve differs from R0's, 7 Nov)
 
 
 def no_continuation(care: float, A: float) -> dict[str, float]:
@@ -1420,7 +1420,7 @@ def stage2_summary(a: argparse.Namespace) -> dict[str, Any]:
     b, bn = paired_bootstrap(test, key["R0"], key["R4"]), paired_bootstrap(no_thin, key["R0"], key["R4"])
     rep["q1"], rep["q1_no_thin"] = {"boot": b, "reading": q1_reading(b)}, {"boot": bn, "reading": q1_reading(bn)}
     rep["vs_r0"] = {}
-    for rule in (r for r in ("R1", "R2", "R3", "R5") if r in rules):
+    for rule in (r for r in ("R1", "R2", "R3", "R5", "R6") if r in rules):     # R5 and R6 beside Q2-Q4, never a main reading
         b, bn = paired_bootstrap(test, key[rule], key["R0"]), paired_bootstrap(no_thin, key[rule], key["R0"])
         rep["vs_r0"][rule] = {"boot": b, "reading": vs_r0_reading(b), "no_thin": {"boot": bn, "reading": vs_r0_reading(bn)}}
     rep["curves"] = {"validation": _curves(val, rules), "test": _curves(test, rules), "test_no_thin": _curves(no_thin, rules)}
