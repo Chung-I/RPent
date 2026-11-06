@@ -15,7 +15,8 @@
 """The option menu: never a bare decline.
 
 Each row is one concrete action (pinch, force, speeds, destination, release height) with
-its predicted outcome vector under the belief and its expected cost. Rows that change
+its predicted outcome vector under the belief and its task-unit score (higher is better).
+The equivalent expected cost is kept for records and probe continuation estimates. Rows that change
 the destination (``inboard_place``) are shown but never chosen by default. Predictions are
 made for every particle of the belief (the model is conditional on the CoM) and averaged
 with the belief's weights; each row keeps its per-particle costs for the probe values. A proposal
@@ -23,27 +24,31 @@ whose exact pinch width is over the substrate's opening (``env.max_pinch_width``
 MAX_OPEN_WIDTH) or nan (the pads close on nothing) gets no row; when no proposal is left the
 menu declines and says why ("every proposal is wider than the gripper opening").
 
-Probe rows (push, weigh, and the squeeze for a crushable or bruisable object at ``squeeze_cap``; when the substrate has
-probe models) are valued by preposterior analysis: the expected cost of the best continuation row after the probe's
-result, over results simulated from the belief (``probe_value``). Every probe may end the case, thrown or damaged
-(``terminal_risk``), at the irreversible cost and A. A probe row's expected cost is its time, the push's tip risk and
-that expected cost after it; it competes with the other rows in the same ranking. The plug-in value is
-estimated per simulated result against the best row now, so it is exactly 0 when no result can
-change that row; the held-out value (``evoi="heldout"``, plan 2b2) scores each particle with the row chosen without
-its draw (every copy of its ``ancestor``), so it is not biased upward by a chance correlation and can be below 0. A probe is recommended only when its value is
-above 0 and its row beats the best row by more than EVOI_Z Monte Carlo errors.
-
-The cost rule (milestone 2b, ``abstain_cost`` a number A): every row's expected cost adds A x (1 - P(placed_stable)),
-the cost of leaving the task undone, and abstaining costs A. The recommendation is the cheapest of the best row
-("commit"), the cheapest probe row ("probe", when it beats the cheaper of the best row and A by more than EVOI_Z errors)
-and abstaining ("decline"); ``threshold`` is then an optional floor on P(placed_stable). A probe's preposterior may
-abstain after the probe, and a probe that ends the case costs the irreversible cost and A. Under the recovery mode
+The score rule (``abstain_cost`` a number A): score = (A - J)/A = P(success) - alpha * P(damage) - beta * c,
+where P(damage) sums IRREVERSIBLE labels, alpha is the irreversible event cost / A, beta = 1/A, and c sums
+recoverable outcome costs and 0.05 per second. Giving up scores 0. Rank rows by highest score and commit when
+the best row scores at least 0; ``threshold`` is an optional floor on P(placed_stable). A probe scores (A - J_probe)/A,
+and its value and value_se are evoi/A and evoi_se/A. Recommend it when value > 0 and its score exceeds
+max(best.score, 0) by more than EVOI_Z * value_se. Equivalently J adds A * (1 - P(placed_stable)), decline costs A,
+and this is the original cost rule. A probe's preposterior may give up after the probe, and a probe that ends
+the case costs the irreversible cost and A. Under the recovery mode
 (``reset_s``, plan H3 decision 3) an irreversible outcome costs the reset's price (``reset_price``: the reset's time, or
 at "care", rec_hi, 5 kappa), and a probe that throws or damages the object costs that price plus the best continuation
 row now (the object is restored; its result is not valued); the menu stays one-step, so every row still adds A after
 every unplaced outcome and rec_hi prices the attempt rows exactly as absorbing does (plan H3 Addendum A). ``abstain_cost`` None keeps
 the milestone 2a rule: commit when the best row reaches the threshold (default DEFAULT_THRESHOLD), and a decline costs
 nothing.
+
+Probe rows (push, weigh, and the squeeze for a crushable or bruisable object at ``squeeze_cap``; when the substrate has
+probe models) are valued by preposterior analysis: the expected rise of the best continuation score after the
+reading, over results simulated from the belief (``probe_value``). Its value and error in task units are
+``value`` and ``value_se``; the equivalent cost-unit ``evoi`` and ``evoi_se`` remain in records. Every probe may end the case, thrown or damaged
+(``terminal_risk``), at the irreversible cost and A. A probe row's expected cost is its time, the push's tip risk and
+that expected cost after it; it competes with the other rows in the same ranking. The plug-in value is
+estimated per simulated result against the best row now, so it is exactly 0 when no result can
+change that row; the held-out value (``evoi="heldout"``, plan 2b2) scores each particle with the row chosen without
+its draw (every copy of its ``ancestor``), so it is not biased upward by a chance correlation and can be below 0. A probe is recommended only when its value is
+above 0 and its row beats the best row by more than EVOI_Z Monte Carlo errors.
 
 The novelty guard (``guard``, guard.KnnGuard) sees every commit and lower-risk row for every particle. When it flags
 the object as unlike the training objects, the menu declines and says why, whatever the threshold and the probe rows
@@ -52,6 +57,7 @@ say; the rows stay in the menu, and the decline row keeps the guard's check eith
 
 from __future__ import annotations
 
+import math
 from typing import Any, Callable
 
 import numpy as np
@@ -257,6 +263,8 @@ def probe_value(belief: ParticleBelief, continuation_costs: list[np.ndarray], pr
         out.update(reading_gain=mean(r), reading_gain_se=err(r))
         if heldout:
             out["plugin_reading_gain"] = mean(read)
+    out.update(value=None if abstain_cost is None else out["evoi"] / abstain_cost,
+               value_se=None if abstain_cost is None else out["evoi_se"] / abstain_cost)
     return out
 
 
@@ -296,7 +304,11 @@ def _probe_rows(probe_models: dict[str, Any], belief: ParticleBelief, geometry: 
                         reset_price=reset_price)
         tip = push_tip_charge(belief, pm, X) if probe == "push" else 0.0
         cost = time_scale * TIME_COST_PER_S * PROBE_SECONDS[probe] + tip + v["expected_cost_after"]
-        reason = f"{probe} first: value of information {v['evoi']:.2f}, expected cost of the best row after it {v['expected_cost_after']:.2f}"
+        if abstain_cost is None:
+            reason = f"{probe} first: value of information {v['evoi']:.2f}, expected cost of the best row after it {v['expected_cost_after']:.2f}"
+        else:
+            after = (float(abstain_cost) - v["expected_cost_after"]) / float(abstain_cost)
+            reason = f"{probe} first: value of information {v['value']:.3f} tasks, expected best score after it {after:.3f}"
         rows.append(Option(id=f"probe_{probe}", kind="probe", action={"probe": probe, "s": mid.s, "force": force}, pred=None,
                            cost_s=PROBE_SECONDS[probe], expected_cost=cost, reason=reason, probe=v, _base=base, _pose=pose))
     return rows
@@ -350,15 +362,14 @@ def build_menu(model: Any, belief: ParticleBelief | Belief, geometry: Geometry, 
                probe_models: dict[str, Any] | None = None, guard: Any = None,
                abstain_cost: float | None = None, evoi: str = "plugin", probe_time_scale: float = 1.0,
                reset_s: float | None = None, reset_price: str = "time") -> tuple[list[Option], str]:
-    """The ranked menu and the recommendation. ``pose_fn(proposal)`` gives the pose the particles map
-    through (default: ``geometry_pose``); a milestone 1 ``Belief`` becomes n particles at the
-    nominal CoM; ``threshold`` None reads DEFAULT_THRESHOLD now, not at import; ``probe_models``
-    ({probe: model}) adds a probe row per model. The recommendation is "probe" when the first row
-    that is a probe or the best same-destination row is a probe with a positive value of information
-    whose expected cost is below the best row's by more than EVOI_Z Monte Carlo errors (read at call
-    time), else "commit" when the best row reaches the threshold, else "decline". A ``guard`` (guard.KnnGuard) that
-    flags the rows makes it "decline" with the guard's reason; the decline row keeps the guard's check. With
-    ``abstain_cost`` a number, the cost rule of the module docstring decides instead, and the decline row costs it.
+    """Return the ranked menu and recommendation under the score rule (see module docstring).
+
+    With numeric ``abstain_cost`` A, highest score wins and decline scores 0; ``threshold`` is an optional
+    success-probability floor. With no A, preserve the milestone 2a cost ranking and threshold rule.
+    ``pose_fn(proposal)`` gives the pose the particles map through (default: ``geometry_pose``); a
+    milestone 1 ``Belief`` becomes n particles at the nominal CoM. ``threshold`` None reads
+    DEFAULT_THRESHOLD at call time on m2a. ``probe_models`` ({probe: model}) adds a probe row per model.
+    A flagged ``guard`` overrides the recommendation with decline; the decline row keeps its check.
     ``evoi`` names probe_value's estimator ("plugin" or "heldout"; another name raises ValueError);
     ``probe_time_scale`` multiplies every probe row's time charge (a finite number at least 0, else ValueError);
     ``reset_s`` (plan H3) prices every row's irreversible outcomes at the reset's price, ``reset_price`` "time" (the reset's
@@ -393,7 +404,13 @@ def build_menu(model: Any, belief: ParticleBelief | Belief, geometry: Geometry, 
         if probe_models and continuation:
             options += _probe_rows(probe_models, belief, geometry, mid, mid_pose, f_std, care, continuation, rng, abstain_cost,
                                    estimator=evoi, time_scale=time_scale, reset_s=reset_s, reset_price=reset_price)
-        options.sort(key=lambda o: o.expected_cost)
+        if abstain_cost is None:
+            options.sort(key=lambda o: o.expected_cost)
+        else:
+            for row in options:
+                row.score = (abstain_cost - row.expected_cost) / abstain_cost
+            # Stable ties retain the original row order. Cost resolves scores rounded to the same float.
+            options.sort(key=lambda o: (-o.score, o.expected_cost))
     same = [o for o in options if o.kind in ("commit", "lower_risk") and o.action["destination"] == destination]
     check = None
     if same:
@@ -418,22 +435,24 @@ def build_menu(model: Any, belief: ParticleBelief | Belief, geometry: Geometry, 
         reason = decline_reason(proposals, max_open) if proposals and not usable else "no row reaches the requested destination"
         recommendation = "decline"
     options.append(Option(id="decline", kind="decline", action={}, pred=None, cost_s=0.0,
-                          expected_cost=None if abstain_cost is None else float(abstain_cost), reason=reason, guard=check))
+                          expected_cost=None if abstain_cost is None else float(abstain_cost), reason=reason, guard=check,
+                          score=None if abstain_cost is None else 0.0))
     return options, recommendation
 
 
 def without_probe(options: list[Option], recommendation: str, destination: str, care: str | float, abstain_cost: float | None,
                   threshold: float | None, reset_s: float | None = None, reset_price: str = "time") -> str:
-    """The recommendation of the same menu without its probe rows, from the unrounded costs: the recommendation itself
-    unless it is probe (a guard flag has already declined); else the cost rule on the best row (commit when it costs at
-    most A and reaches the floor, if one is set), or without an abstain cost the milestone 2a rule (P(placed_stable) at
+    """The recommendation of the same menu without its probe rows, from the unrounded scores (costs on m2a): the recommendation itself
+    unless it is probe (a guard flag has already declined); else the score rule on the best row (commit when it scores at
+    least 0 and reaches the floor, if one is set), or without an abstain cost the milestone 2a rule (P(placed_stable) at
     the threshold). The policy that never probes follows it (plan m4 decision 2)."""
     if recommendation != "probe":
         return recommendation
     same = [o for o in options if o.kind in ("commit", "lower_risk") and o.action.get("destination") == destination]
     if not same:
         return "decline"
-    best = min(same, key=lambda o: o.expected_cost)
+    best = (min(same, key=lambda o: o.expected_cost) if abstain_cost is None
+            else max(same, key=lambda o: (o.score, -o.expected_cost)))
     if abstain_cost is None:
         floor = DEFAULT_THRESHOLD if threshold is None else float(threshold)
         return "commit" if best.pred.p["placed_stable"] >= floor else "decline"
@@ -443,8 +462,8 @@ def without_probe(options: list[Option], recommendation: str, destination: str, 
 
 def _cost_rule(options: list[Option], best: Option, care: str | float, A: float, floor: float | None,
                reset_s: float | None = None, reset_price: str = "time") -> tuple[str, str]:
-    """(recommendation, decline reason) under the cost rule: commit when the best row costs at most A (and reaches
-    the floor, if one is set), a probe that beats the cheaper of the two by more than EVOI_Z errors, else decline. The
+    """(recommendation, decline reason) under the score rule: commit when best.score >= 0 (and reaches
+    the floor, if set); probe when its positive value beats max(best.score, 0) by more than EVOI_Z errors. The
     reason names the outcome with the largest expected cost under the costs in force (``reset_s``: the recovery mode, at
     ``reset_price``)."""
     scale = care_scale(care)
@@ -456,15 +475,22 @@ def _cost_rule(options: list[Option], best: Option, care: str | float, A: float,
         return best.pred.p[k] * COST[k] * (scale if k in IRREVERSIBLE else 1.0)
 
     worst = max(best.pred.p, key=charge)
-    c, p_ok = float(best.expected_cost), float(best.pred.p["placed_stable"])
-    if floor is not None and c <= A and p_ok < float(floor):
+    s, p_ok = float(best.score), float(best.pred.p["placed_stable"])
+    if floor is not None and s >= 0 and p_ok < float(floor):
         recommendation, reason = "decline", f"best row's P(placed_stable) {p_ok:.2f} is below the floor {float(floor):.2f}"
     else:
-        recommendation = "commit" if c <= A else "decline"
-        reason = f"best row costs {c:.2f} {'>' if c > A else '<='} abstain {A:.2f}: {worst} carries the largest expected cost"
+        recommendation = "commit" if s >= 0 else "decline"
+        reason = f"best row scores {s:.3f} {'<' if s < 0 else '>='} 0 (giving up): {worst} carries the largest expected penalty"
     probes = [o for o in options if o.kind == "probe"]
     if probes:
-        pr = min(probes, key=lambda o: o.expected_cost)
-        if pr.probe["evoi"] > 0 and min(c, A) - pr.expected_cost > EVOI_Z * pr.probe["evoi_se"]:
+        pr = max(probes, key=lambda o: (o.score, -o.expected_cost))
+        gap, margin = pr.score - max(s, 0.0), EVOI_Z * pr.probe["value_se"]
+        beats = gap > margin
+        # Resolve rounding at the strict margin in the original units. Subtracting rounded scores
+        # can turn an exact cost-rule tie into a probe (or hide a one-ulp improvement).
+        rounding = 4 * sum(math.ulp(x) for x in (pr.score, s, gap, margin))
+        if abs(gap - margin) <= rounding:
+            beats = min(best.expected_cost, A) - pr.expected_cost > EVOI_Z * pr.probe["evoi_se"]
+        if pr.probe["value"] > 0 and beats:
             recommendation = "probe"
     return recommendation, reason

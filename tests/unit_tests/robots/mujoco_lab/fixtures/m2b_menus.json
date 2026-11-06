@@ -72,7 +72,7 @@
     "kind": "probe",
     "p": null,
     "expected_cost": 0.6068850520504412,
-    "reason": "squeeze first: value of information 0.01, expected cost of the best row after it 0.46",
+    "reason": "squeeze first: value of information 0.008 tasks, expected best score after it 0.543",
     "probe": {
      "p_kind": {
       "measured": 1.0000000000000007
@@ -108,7 +108,7 @@
     "kind": "probe",
     "p": null,
     "expected_cost": 0.693904845060032,
-    "reason": "push first: value of information 0.00, expected cost of the best row after it 0.55",
+    "reason": "push first: value of information 0.000 tasks, expected best score after it 0.448",
     "probe": {
      "p_kind": {
       "slid": 0.9265666584702212,
@@ -168,7 +168,7 @@
     "kind": "probe",
     "p": null,
     "expected_cost": 3.106978059407723,
-    "reason": "weigh first: value of information 0.01, expected cost of the best row after it 2.91",
+    "reason": "weigh first: value of information 0.008 tasks, expected best score after it -1.907",
     "probe": {
      "p_kind": {
       "measured": 0.5524451311434359,
@@ -187,7 +187,7 @@
     "kind": "decline",
     "p": null,
     "expected_cost": 1.0,
-    "reason": "best row costs 0.46 <= abstain 1.00: dropped_high carries the largest expected cost",
+    "reason": "best row scores 0.536 >= 0 (giving up): dropped_high carries the largest expected penalty",
     "probe": null
    }
   ]
@@ -265,7 +265,7 @@
     "kind": "probe",
     "p": null,
     "expected_cost": 0.6070924668050066,
-    "reason": "squeeze first: value of information 0.01, expected cost of the best row after it 0.46",
+    "reason": "squeeze first: value of information 0.007 tasks, expected best score after it 0.543",
     "probe": {
      "p_kind": {
       "measured": 1.0000000000000007
@@ -301,7 +301,7 @@
     "kind": "probe",
     "p": null,
     "expected_cost": 0.6940709682212141,
-    "reason": "push first: value of information 0.00, expected cost of the best row after it 0.55",
+    "reason": "push first: value of information 0.000 tasks, expected best score after it 0.449",
     "probe": {
      "p_kind": {
       "slid": 0.9234944716889791,
@@ -361,7 +361,7 @@
     "kind": "probe",
     "p": null,
     "expected_cost": 3.1519221000218964,
-    "reason": "weigh first: value of information 0.01, expected cost of the best row after it 2.95",
+    "reason": "weigh first: value of information 0.006 tasks, expected best score after it -1.952",
     "probe": {
      "p_kind": {
       "measured": 0.545810156316208,
@@ -380,7 +380,7 @@
     "kind": "decline",
     "p": null,
     "expected_cost": 1.0,
-    "reason": "best row costs 0.46 <= abstain 1.00: dropped_high carries the largest expected cost",
+    "reason": "best row scores 0.536 >= 0 (giving up): dropped_high carries the largest expected penalty",
     "probe": null
    }
   ]
@@ -418,7 +418,7 @@
     "kind": "probe",
     "p": null,
     "expected_cost": 1.1607833195845232,
-    "reason": "weigh first: value of information 0.17, expected cost of the best row after it 0.96",
+    "reason": "weigh first: value of information 0.172 tasks, expected best score after it 0.039",
     "probe": {
      "p_kind": {
       "measured": 0.9472912360209483,
@@ -437,7 +437,7 @@
     "kind": "probe",
     "p": null,
     "expected_cost": 1.2465269099471814,
-    "reason": "push first: value of information 0.03, expected cost of the best row after it 1.07",
+    "reason": "push first: value of information 0.027 tasks, expected best score after it -0.067",
     "probe": {
      "p_kind": {
       "slid": 0.9064285341491918,
@@ -577,7 +577,7 @@
     "kind": "decline",
     "p": null,
     "expected_cost": 1.0,
-    "reason": "best row costs 1.04 > abstain 1.00: spilled carries the largest expected cost",
+    "reason": "best row scores -0.041 < 0 (giving up): spilled carries the largest expected penalty",
     "probe": null
    }
   ]
@@ -615,7 +615,7 @@
     "kind": "probe",
     "p": null,
     "expected_cost": 1.1218520256803797,
-    "reason": "weigh first: value of information 0.17, expected cost of the best row after it 0.92",
+    "reason": "weigh first: value of information 0.166 tasks, expected best score after it 0.078",
     "probe": {
      "p_kind": {
       "measured": 0.9487770034998637,
@@ -654,7 +654,7 @@
     "kind": "probe",
     "p": null,
     "expected_cost": 1.2184460635770304,
-    "reason": "push first: value of information 0.02, expected cost of the best row after it 1.04",
+    "reason": "push first: value of information 0.023 tasks, expected best score after it -0.039",
     "probe": {
      "p_kind": {
       "slid": 0.9064342098564124,
@@ -774,7 +774,7 @@
     "kind": "decline",
     "p": null,
     "expected_cost": 1.0,
-    "reason": "best row costs 0.97 <= abstain 1.00: spilled carries the largest expected cost",
+    "reason": "best row scores 0.031 >= 0 (giving up): spilled carries the largest expected penalty",
     "probe": null
    }
   ]
@@ -812,7 +812,7 @@
     "kind": "probe",
     "p": null,
     "expected_cost": 1.0997034926901097,
-    "reason": "weigh first: value of information 0.21, expected cost of the best row after it 0.90",
+    "reason": "weigh first: value of information 0.212 tasks, expected best score after it 0.100",
     "probe": {
      "p_kind": {
       "measured": 0.9452595273898023,
@@ -871,7 +871,7 @@
     "kind": "probe",
     "p": null,
     "expected_cost": 1.2185052367492983,
-    "reason": "push first: value of information 0.05, expected cost of the best row after it 1.04",
+    "reason": "push first: value of information 0.046 tasks, expected best score after it -0.039",
     "probe": {
      "p_kind": {
       "slid": 0.906394911361498,
@@ -971,7 +971,7 @@
     "kind": "decline",
     "p": null,
     "expected_cost": 1.0,
-    "reason": "best row costs 0.99 <= abstain 1.00: spilled carries the largest expected cost",
+    "reason": "best row scores 0.007 >= 0 (giving up): spilled carries the largest expected penalty",
     "probe": null
    }
   ]
@@ -1009,7 +1009,7 @@
     "kind": "probe",
     "p": null,
     "expected_cost": 1.0903017547923752,
-    "reason": "weigh first: value of information 0.21, expected cost of the best row after it 0.89",
+    "reason": "weigh first: value of information 0.214 tasks, expected best score after it 0.110",
     "probe": {
      "p_kind": {
       "measured": 0.9497713036824474,
@@ -1048,7 +1048,7 @@
     "kind": "probe",
     "p": null,
     "expected_cost": 1.221312243731892,
-    "reason": "push first: value of information 0.04, expected cost of the best row after it 1.04",
+    "reason": "push first: value of information 0.040 tasks, expected best score after it -0.042",
     "probe": {
      "p_kind": {
       "slid": 0.9059681760722513,
@@ -1148,7 +1148,7 @@
     "kind": "decline",
     "p": null,
     "expected_cost": 1.0,
-    "reason": "best row costs 0.99 <= abstain 1.00: spilled carries the largest expected cost",
+    "reason": "best row scores 0.010 >= 0 (giving up): spilled carries the largest expected penalty",
     "probe": null
    }
   ]
@@ -1226,7 +1226,7 @@
     "kind": "probe",
     "p": null,
     "expected_cost": 0.8444188532322818,
-    "reason": "weigh first: value of information 0.02, expected cost of the best row after it 0.64",
+    "reason": "weigh first: value of information 0.017 tasks, expected best score after it 0.356",
     "probe": {
      "p_kind": {
       "measured": 0.8977297122761546,
@@ -1245,7 +1245,7 @@
     "kind": "probe",
     "p": null,
     "expected_cost": 0.859902006544894,
-    "reason": "push first: value of information 0.00, expected cost of the best row after it 0.73",
+    "reason": "push first: value of information 0.002 tasks, expected best score after it 0.273",
     "probe": {
      "p_kind": {
       "slid": 0.9599705696231277,
@@ -1345,7 +1345,7 @@
     "kind": "decline",
     "p": null,
     "expected_cost": 1.0,
-    "reason": "best row costs 0.66 <= abstain 1.00: rolled_off carries the largest expected cost",
+    "reason": "best row scores 0.345 >= 0 (giving up): rolled_off carries the largest expected penalty",
     "probe": null
    }
   ]
@@ -1403,7 +1403,7 @@
     "kind": "probe",
     "p": null,
     "expected_cost": 0.7934530104829329,
-    "reason": "weigh first: value of information 0.01, expected cost of the best row after it 0.59",
+    "reason": "weigh first: value of information 0.007 tasks, expected best score after it 0.407",
     "probe": {
      "p_kind": {
       "measured": 0.9036806198426459,
@@ -1462,7 +1462,7 @@
     "kind": "probe",
     "p": null,
     "expected_cost": 0.8023075887669436,
-    "reason": "push first: value of information 0.00, expected cost of the best row after it 0.67",
+    "reason": "push first: value of information 0.000 tasks, expected best score after it 0.330",
     "probe": {
      "p_kind": {
       "slid": 0.9601319410045189,
@@ -1542,7 +1542,7 @@
     "kind": "decline",
     "p": null,
     "expected_cost": 1.0,
-    "reason": "best row costs 0.59 <= abstain 1.00: tipped carries the largest expected cost",
+    "reason": "best row scores 0.406 >= 0 (giving up): tipped carries the largest expected penalty",
     "probe": null
    }
   ]
@@ -1560,7 +1560,7 @@
     "kind": "probe",
     "p": null,
     "expected_cost": 1.2058593750000008,
-    "reason": "weigh first: value of information 0.00, expected cost of the best row after it 1.01",
+    "reason": "weigh first: value of information 0.000 tasks, expected best score after it -0.006",
     "probe": {
      "p_kind": {
       "measured": 0.03167432296674262,
@@ -1579,7 +1579,7 @@
     "kind": "probe",
     "p": null,
     "expected_cost": 1.206840870527334,
-    "reason": "push first: value of information 0.00, expected cost of the best row after it 1.07",
+    "reason": "push first: value of information 0.000 tasks, expected best score after it -0.070",
     "probe": {
      "p_kind": {
       "slid": 0.6092354830417748,
@@ -1739,7 +1739,7 @@
     "kind": "decline",
     "p": null,
     "expected_cost": 1.0,
-    "reason": "best row costs 1.90 > abstain 1.00: not_lifted carries the largest expected cost",
+    "reason": "best row scores -0.896 < 0 (giving up): not_lifted carries the largest expected penalty",
     "probe": null
    }
   ]
@@ -1757,7 +1757,7 @@
     "kind": "probe",
     "p": null,
     "expected_cost": 1.2058593750000008,
-    "reason": "weigh first: value of information 0.00, expected cost of the best row after it 1.01",
+    "reason": "weigh first: value of information 0.000 tasks, expected best score after it -0.006",
     "probe": {
      "p_kind": {
       "measured": 0.048460431692079906,
@@ -1776,7 +1776,7 @@
     "kind": "probe",
     "p": null,
     "expected_cost": 1.2636402724831697,
-    "reason": "push first: value of information 0.00, expected cost of the best row after it 1.07",
+    "reason": "push first: value of information 0.000 tasks, expected best score after it -0.070",
     "probe": {
      "p_kind": {
       "slid": 0.866542256612005,
@@ -1936,7 +1936,7 @@
     "kind": "decline",
     "p": null,
     "expected_cost": 1.0,
-    "reason": "best row costs 1.88 > abstain 1.00: not_lifted carries the largest expected cost",
+    "reason": "best row scores -0.878 < 0 (giving up): not_lifted carries the largest expected penalty",
     "probe": null
    }
   ]
@@ -2052,7 +2052,7 @@
     "kind": "probe",
     "p": null,
     "expected_cost": 0.6753904131351915,
-    "reason": "squeeze first: value of information 0.03, expected cost of the best row after it 0.53",
+    "reason": "squeeze first: value of information 0.026 tasks, expected best score after it 0.475",
     "probe": {
      "p_kind": {
       "measured": 1.0000000000000007
@@ -2088,7 +2088,7 @@
     "kind": "probe",
     "p": null,
     "expected_cost": 0.7691517353119824,
-    "reason": "push first: value of information 0.00, expected cost of the best row after it 0.64",
+    "reason": "push first: value of information 0.000 tasks, expected best score after it 0.363",
     "probe": {
      "p_kind": {
       "slid": 0.893285049262588,
@@ -2128,7 +2128,7 @@
     "kind": "probe",
     "p": null,
     "expected_cost": 2.870013749337174,
-    "reason": "weigh first: value of information 0.02, expected cost of the best row after it 2.67",
+    "reason": "weigh first: value of information 0.016 tasks, expected best score after it -1.670",
     "probe": {
      "p_kind": {
       "measured": 0.595445403995674,
@@ -2167,7 +2167,7 @@
     "kind": "decline",
     "p": null,
     "expected_cost": 1.0,
-    "reason": "best row costs 0.55 <= abstain 1.00: rolled_off carries the largest expected cost",
+    "reason": "best row scores 0.448 >= 0 (giving up): rolled_off carries the largest expected penalty",
     "probe": null
    }
   ]
@@ -2185,7 +2185,7 @@
     "kind": "probe",
     "p": null,
     "expected_cost": 1.1500000000000008,
-    "reason": "squeeze first: value of information 0.00, expected cost of the best row after it 1.00",
+    "reason": "squeeze first: value of information 0.000 tasks, expected best score after it -0.000",
     "probe": {
      "p_kind": {
       "measured": 1.0000000000000007
@@ -2201,7 +2201,7 @@
     "kind": "probe",
     "p": null,
     "expected_cost": 1.2275924395119582,
-    "reason": "push first: value of information 0.00, expected cost of the best row after it 1.08",
+    "reason": "push first: value of information 0.000 tasks, expected best score after it -0.082",
     "probe": {
      "p_kind": {
       "slid": 0.9323637793904436,
@@ -2361,7 +2361,7 @@
     "kind": "probe",
     "p": null,
     "expected_cost": 3.0999277442031357,
-    "reason": "weigh first: value of information 0.01, expected cost of the best row after it 2.90",
+    "reason": "weigh first: value of information 0.009 tasks, expected best score after it -1.900",
     "probe": {
      "p_kind": {
       "measured": 0.5715708074936401,
@@ -2380,7 +2380,7 @@
     "kind": "decline",
     "p": null,
     "expected_cost": 1.0,
-    "reason": "best row costs 1.27 > abstain 1.00: bruised carries the largest expected cost",
+    "reason": "best row scores -0.266 < 0 (giving up): bruised carries the largest expected penalty",
     "probe": null
    }
   ]
@@ -2418,7 +2418,7 @@
     "kind": "probe",
     "p": null,
     "expected_cost": 0.7500554862454595,
-    "reason": "squeeze first: value of information 0.01, expected cost of the best row after it 0.60",
+    "reason": "squeeze first: value of information 0.012 tasks, expected best score after it 0.400",
     "probe": {
      "p_kind": {
       "measured": 1.0000000000000007
@@ -2514,7 +2514,7 @@
     "kind": "probe",
     "p": null,
     "expected_cost": 1.5476486063510464,
-    "reason": "push first: value of information 0.00, expected cost of the best row after it 1.41",
+    "reason": "push first: value of information 0.000 tasks, expected best score after it -0.405",
     "probe": {
      "p_kind": {
       "slid": 0.9265666584702212,
@@ -2554,7 +2554,7 @@
     "kind": "probe",
     "p": null,
     "expected_cost": 23.09532193442605,
-    "reason": "weigh first: value of information 0.01, expected cost of the best row after it 22.90",
+    "reason": "weigh first: value of information 0.015 tasks, expected best score after it -21.895",
     "probe": {
      "p_kind": {
       "measured": 0.5524451311434359,
@@ -2573,7 +2573,7 @@
     "kind": "decline",
     "p": null,
     "expected_cost": 1.0,
-    "reason": "best row costs 0.61 <= abstain 1.00: dropped_high carries the largest expected cost",
+    "reason": "best row scores 0.388 >= 0 (giving up): dropped_high carries the largest expected penalty",
     "probe": null
    }
   ]
@@ -2611,7 +2611,7 @@
     "kind": "probe",
     "p": null,
     "expected_cost": 0.7518231413374348,
-    "reason": "squeeze first: value of information 0.01, expected cost of the best row after it 0.60",
+    "reason": "squeeze first: value of information 0.008 tasks, expected best score after it 0.398",
     "probe": {
      "p_kind": {
       "measured": 1.0000000000000007
@@ -2687,7 +2687,7 @@
     "kind": "probe",
     "p": null,
     "expected_cost": 1.5462516607021268,
-    "reason": "push first: value of information 0.00, expected cost of the best row after it 1.40",
+    "reason": "push first: value of information 0.000 tasks, expected best score after it -0.403",
     "probe": {
      "p_kind": {
       "slid": 0.9234944716889791,
@@ -2747,7 +2747,7 @@
     "kind": "probe",
     "p": null,
     "expected_cost": 23.51267954475523,
-    "reason": "weigh first: value of information 0.01, expected cost of the best row after it 23.31",
+    "reason": "weigh first: value of information 0.011 tasks, expected best score after it -22.313",
     "probe": {
      "p_kind": {
       "measured": 0.545810156316208,
@@ -2766,7 +2766,7 @@
     "kind": "decline",
     "p": null,
     "expected_cost": 1.0,
-    "reason": "best row costs 0.61 <= abstain 1.00: dropped_high carries the largest expected cost",
+    "reason": "best row scores 0.390 >= 0 (giving up): dropped_high carries the largest expected penalty",
     "probe": null
    }
   ]
@@ -2784,7 +2784,7 @@
     "kind": "probe",
     "p": null,
     "expected_cost": 2.122978854745674,
-    "reason": "push first: value of information 0.00, expected cost of the best row after it 1.94",
+    "reason": "push first: value of information 0.000 tasks, expected best score after it -0.944",
     "probe": {
      "p_kind": {
       "slid": 0.9064285341491918,
@@ -2804,7 +2804,7 @@
     "kind": "probe",
     "p": null,
     "expected_cost": 2.488286380692396,
-    "reason": "weigh first: value of information 0.03, expected cost of the best row after it 2.29",
+    "reason": "weigh first: value of information 0.035 tasks, expected best score after it -1.288",
     "probe": {
      "p_kind": {
       "measured": 0.9472912360209483,
@@ -2963,7 +2963,7 @@
     "kind": "decline",
     "p": null,
     "expected_cost": 1.0,
-    "reason": "best row costs 5.03 > abstain 1.00: spilled carries the largest expected cost",
+    "reason": "best row scores -4.027 < 0 (giving up): spilled carries the largest expected penalty",
     "probe": null
    }
   ]
@@ -2981,7 +2981,7 @@
     "kind": "probe",
     "p": null,
     "expected_cost": 2.133631501094822,
-    "reason": "push first: value of information 0.00, expected cost of the best row after it 1.95",
+    "reason": "push first: value of information 0.000 tasks, expected best score after it -0.955",
     "probe": {
      "p_kind": {
       "slid": 0.9064342098564124,
@@ -3001,7 +3001,7 @@
     "kind": "probe",
     "p": null,
     "expected_cost": 2.443769792299795,
-    "reason": "weigh first: value of information 0.08, expected cost of the best row after it 2.24",
+    "reason": "weigh first: value of information 0.075 tasks, expected best score after it -1.244",
     "probe": {
      "p_kind": {
       "measured": 0.9487770034998637,
@@ -3160,7 +3160,7 @@
     "kind": "decline",
     "p": null,
     "expected_cost": 1.0,
-    "reason": "best row costs 4.29 > abstain 1.00: spilled carries the largest expected cost",
+    "reason": "best row scores -3.287 < 0 (giving up): spilled carries the largest expected penalty",
     "probe": null
    }
   ]
@@ -3178,7 +3178,7 @@
     "kind": "probe",
     "p": null,
     "expected_cost": 2.126030925305922,
-    "reason": "push first: value of information 0.00, expected cost of the best row after it 1.95",
+    "reason": "push first: value of information 0.000 tasks, expected best score after it -0.947",
     "probe": {
      "p_kind": {
       "slid": 0.906394911361498,
@@ -3198,7 +3198,7 @@
     "kind": "probe",
     "p": null,
     "expected_cost": 2.42056771606292,
-    "reason": "weigh first: value of information 0.12, expected cost of the best row after it 2.22",
+    "reason": "weigh first: value of information 0.119 tasks, expected best score after it -1.221",
     "probe": {
      "p_kind": {
       "measured": 0.9452595273898023,
@@ -3357,7 +3357,7 @@
     "kind": "decline",
     "p": null,
     "expected_cost": 1.0,
-    "reason": "best row costs 4.66 > abstain 1.00: spilled carries the largest expected cost",
+    "reason": "best row scores -3.661 < 0 (giving up): spilled carries the largest expected penalty",
     "probe": null
    }
   ]
@@ -3375,7 +3375,7 @@
     "kind": "probe",
     "p": null,
     "expected_cost": 2.1325810702692847,
-    "reason": "push first: value of information 0.00, expected cost of the best row after it 1.95",
+    "reason": "push first: value of information 0.000 tasks, expected best score after it -0.953",
     "probe": {
      "p_kind": {
       "slid": 0.9059681760722513,
@@ -3395,7 +3395,7 @@
     "kind": "probe",
     "p": null,
     "expected_cost": 2.406720801624048,
-    "reason": "weigh first: value of information 0.10, expected cost of the best row after it 2.21",
+    "reason": "weigh first: value of information 0.096 tasks, expected best score after it -1.207",
     "probe": {
      "p_kind": {
       "measured": 0.9497713036824474,
@@ -3534,7 +3534,7 @@
     "kind": "decline",
     "p": null,
     "expected_cost": 1.0,
-    "reason": "best row costs 4.66 > abstain 1.00: spilled carries the largest expected cost",
+    "reason": "best row scores -3.664 < 0 (giving up): spilled carries the largest expected penalty",
     "probe": null
    }
   ]
@@ -3572,7 +3572,7 @@
     "kind": "probe",
     "p": null,
     "expected_cost": 1.2514553278990312,
-    "reason": "weigh first: value of information 0.01, expected cost of the best row after it 1.05",
+    "reason": "weigh first: value of information 0.007 tasks, expected best score after it -0.051",
     "probe": {
      "p_kind": {
       "measured": 0.8977297122761546,
@@ -3611,7 +3611,7 @@
     "kind": "probe",
     "p": null,
     "expected_cost": 1.8283806826704196,
-    "reason": "push first: value of information 0.00, expected cost of the best row after it 1.70",
+    "reason": "push first: value of information 0.000 tasks, expected best score after it -0.696",
     "probe": {
      "p_kind": {
       "slid": 0.9599705696231277,
@@ -3731,7 +3731,7 @@
     "kind": "decline",
     "p": null,
     "expected_cost": 1.0,
-    "reason": "best row costs 1.66 > abstain 1.00: rolled_off carries the largest expected cost",
+    "reason": "best row scores -0.660 < 0 (giving up): rolled_off carries the largest expected penalty",
     "probe": null
    }
   ]
@@ -3769,7 +3769,7 @@
     "kind": "probe",
     "p": null,
     "expected_cost": 1.060349248566624,
-    "reason": "weigh first: value of information 0.11, expected cost of the best row after it 0.86",
+    "reason": "weigh first: value of information 0.109 tasks, expected best score after it 0.140",
     "probe": {
      "p_kind": {
       "measured": 0.9036806198426459,
@@ -3908,7 +3908,7 @@
     "kind": "probe",
     "p": null,
     "expected_cost": 1.735272024815076,
-    "reason": "push first: value of information 0.01, expected cost of the best row after it 1.60",
+    "reason": "push first: value of information 0.005 tasks, expected best score after it -0.603",
     "probe": {
      "p_kind": {
       "slid": 0.9601319410045189,
@@ -3928,7 +3928,7 @@
     "kind": "decline",
     "p": null,
     "expected_cost": 1.0,
-    "reason": "best row costs 0.91 <= abstain 1.00: dropped_high carries the largest expected cost",
+    "reason": "best row scores 0.089 >= 0 (giving up): dropped_high carries the largest expected penalty",
     "probe": null
    }
   ]
@@ -3946,7 +3946,7 @@
     "kind": "probe",
     "p": null,
     "expected_cost": 1.2585937500000022,
-    "reason": "weigh first: value of information 0.00, expected cost of the best row after it 1.06",
+    "reason": "weigh first: value of information 0.000 tasks, expected best score after it -0.059",
     "probe": {
      "p_kind": {
       "measured": 0.03167432296674262,
@@ -3965,7 +3965,7 @@
     "kind": "probe",
     "p": null,
     "expected_cost": 1.8328068674361448,
-    "reason": "push first: value of information 0.00, expected cost of the best row after it 1.70",
+    "reason": "push first: value of information 0.000 tasks, expected best score after it -0.696",
     "probe": {
      "p_kind": {
       "slid": 0.6092354830417748,
@@ -4125,7 +4125,7 @@
     "kind": "decline",
     "p": null,
     "expected_cost": 1.0,
-    "reason": "best row costs 2.18 > abstain 1.00: not_lifted carries the largest expected cost",
+    "reason": "best row scores -1.183 < 0 (giving up): not_lifted carries the largest expected penalty",
     "probe": null
    }
   ]
@@ -4143,7 +4143,7 @@
     "kind": "probe",
     "p": null,
     "expected_cost": 1.2585937500000022,
-    "reason": "weigh first: value of information 0.00, expected cost of the best row after it 1.06",
+    "reason": "weigh first: value of information 0.000 tasks, expected best score after it -0.059",
     "probe": {
      "p_kind": {
       "measured": 0.048460431692079906,
@@ -4162,7 +4162,7 @@
     "kind": "probe",
     "p": null,
     "expected_cost": 1.8896062693919808,
-    "reason": "push first: value of information 0.00, expected cost of the best row after it 1.70",
+    "reason": "push first: value of information 0.000 tasks, expected best score after it -0.696",
     "probe": {
      "p_kind": {
       "slid": 0.866542256612005,
@@ -4322,7 +4322,7 @@
     "kind": "decline",
     "p": null,
     "expected_cost": 1.0,
-    "reason": "best row costs 2.16 > abstain 1.00: not_lifted carries the largest expected cost",
+    "reason": "best row scores -1.164 < 0 (giving up): not_lifted carries the largest expected penalty",
     "probe": null
    }
   ]
@@ -4378,7 +4378,7 @@
     "kind": "probe",
     "p": null,
     "expected_cost": 1.1470135070597358,
-    "reason": "squeeze first: value of information 0.00, expected cost of the best row after it 1.00",
+    "reason": "squeeze first: value of information 0.003 tasks, expected best score after it 0.003",
     "probe": {
      "p_kind": {
       "measured": 1.0000000000000007
@@ -4474,7 +4474,7 @@
     "kind": "probe",
     "p": null,
     "expected_cost": 1.917985635214948,
-    "reason": "push first: value of information 0.00, expected cost of the best row after it 1.79",
+    "reason": "push first: value of information 0.000 tasks, expected best score after it -0.786",
     "probe": {
      "p_kind": {
       "slid": 0.893285049262588,
@@ -4514,7 +4514,7 @@
     "kind": "probe",
     "p": null,
     "expected_cost": 20.784766782961768,
-    "reason": "weigh first: value of information 0.01, expected cost of the best row after it 20.58",
+    "reason": "weigh first: value of information 0.007 tasks, expected best score after it -19.585",
     "probe": {
      "p_kind": {
       "measured": 0.595445403995674,
@@ -4553,7 +4553,7 @@
     "kind": "decline",
     "p": null,
     "expected_cost": 1.0,
-    "reason": "best row costs 1.13 > abstain 1.00: rolled_off carries the largest expected cost",
+    "reason": "best row scores -0.129 < 0 (giving up): rolled_off carries the largest expected penalty",
     "probe": null
    }
   ]
@@ -4571,7 +4571,7 @@
     "kind": "probe",
     "p": null,
     "expected_cost": 1.1500000000000008,
-    "reason": "squeeze first: value of information 0.00, expected cost of the best row after it 1.00",
+    "reason": "squeeze first: value of information 0.000 tasks, expected best score after it -0.000",
     "probe": {
      "p_kind": {
       "measured": 1.0000000000000007
@@ -4587,7 +4587,7 @@
     "kind": "probe",
     "p": null,
     "expected_cost": 1.968796445789502,
-    "reason": "push first: value of information 0.00, expected cost of the best row after it 1.82",
+    "reason": "push first: value of information 0.000 tasks, expected best score after it -0.824",
     "probe": {
      "p_kind": {
       "slid": 0.9323637793904436,
@@ -4747,7 +4747,7 @@
     "kind": "probe",
     "p": null,
     "expected_cost": 20.28571973464486,
-    "reason": "weigh first: value of information 0.00, expected cost of the best row after it 20.09",
+    "reason": "weigh first: value of information 0.000 tasks, expected best score after it -19.086",
     "probe": {
      "p_kind": {
       "measured": 0.5715708074936401,
@@ -4766,7 +4766,7 @@
     "kind": "decline",
     "p": null,
     "expected_cost": 1.0,
-    "reason": "best row costs 5.46 > abstain 1.00: bruised carries the largest expected cost",
+    "reason": "best row scores -4.460 < 0 (giving up): bruised carries the largest expected penalty",
     "probe": null
    }
   ]

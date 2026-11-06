@@ -91,6 +91,7 @@ def _probe_data(probe: dict[str, Any] | None) -> dict[str, Any] | None:
     if probe is None:
         return None
     return {"p_kind": {k: _r(v) for k, v in probe["p_kind"].items()}, "p_thrown": _r(probe["p_thrown"]),
+            "value": _r(probe.get("value")), "value_se": _r(probe.get("value_se")),
             "evoi": _r(probe["evoi"]), "evoi_se": _r(probe["evoi_se"]), "expected_cost_after": _r(probe["expected_cost_after"])}
 
 
@@ -102,7 +103,7 @@ def _guard_data(check: dict[str, Any] | None) -> dict[str, Any] | None:
 
 @dataclass
 class Option:
-    """One menu row: an action, its predicted outcomes and its expected cost. A probe row (kind
+    """One menu row: an action, predicted outcomes, task-unit score and equivalent expected cost. A probe row (kind
     ``probe``) has no outcome prediction; ``probe`` holds its predicted kinds, its risk of throwing the
     object, its value of information and the expected cost of the best row after it."""
 
@@ -120,6 +121,8 @@ class Option:
     _pose: dict[str, Any] | None = field(default=None, repr=False, compare=False)
     _planned: list[dict[str, Any]] | None = field(default=None, repr=False, compare=False)
 
+    score: float | None = None
+
     def to_data(self) -> dict[str, Any]:
         pred = self.pred
         return {
@@ -131,6 +134,7 @@ class Option:
             else {k: _r(v) for k, v in pred.drop_height.items()},
             "expected_loss_t": None if pred is None else _r(pred.expected_loss_t),
             "cost_s": _r(self.cost_s),
+            "score": _r(self.score),
             "expected_cost": _r(self.expected_cost),
             "reason": self.reason,
             "probe": _probe_data(self.probe),
@@ -192,6 +196,8 @@ class Assessment:
         return None
 
     def to_data(self) -> dict[str, Any]:
+        from rpent.skills.pick_place.costs import alpha, beta
+
         best = self.best()
         pred = None if best is None else best.pred
         if pred is None:
@@ -221,9 +227,35 @@ class Assessment:
             "care": self.care,
             "care_scale": self.care_scale,
             "abstain_cost": self.abstain_cost,
+            "alpha": None if self.abstain_cost is None else alpha(self.care, self.abstain_cost, self.reset_s, self.reset_price),
+            "beta": None if self.abstain_cost is None else beta(self.abstain_cost),
             "probe_time_scale": self.probe_time_scale,
             "reset_s": self.reset_s,
             "reset_price": self.reset_price,
             "visibility": _r(self.visibility),
             "guard": _guard_data(self.guard()),
         }
+
+
+def planner_view(data: dict[str, Any]) -> dict[str, Any]:
+    """Return model-visible task scores, preserving cost-bearing records in data.
+
+    Project nested assessments and declared rows too, including action results after state capture.
+    Probe and decline rows have no attempt prediction, so their success and damage probabilities are null.
+    """
+    def project(value: Any) -> Any:
+        if isinstance(value, list):
+            return [project(item) for item in value]
+        if not isinstance(value, dict):
+            return value
+        out = {k: project(v) for k, v in value.items() if k not in ("expected_cost", "expected_cost_after")}
+        if "cost_s" in value and "kind" in value and "id" in value:
+            p = value.get("p")
+            out.update(p_success=None if p is None else p.get("placed_stable", 0.0),
+                       p_damage=None if p is None else sum(p.get(k, 0.0) for k in IRREVERSIBLE),
+                       seconds=value["cost_s"])
+        if value.get("assessed") and "options" in value:
+            out["score_rule"] = "give up scores 0" if value.get("abstain_cost") is not None else "threshold rule; score is null"
+        return out
+
+    return project(data)

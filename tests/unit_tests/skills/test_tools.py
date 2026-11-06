@@ -706,7 +706,7 @@ def test_numeric_care_reaches_the_menu():
 def test_pick_and_place_executes_only_a_commit_recommendation():
     prims = _aprims(StubModel(ps=0.8))                      # every row costs more than abstaining
     r = pick_and_place(object="mug", destination="table_centre", primitives=prims, store={}).data
-    assert r["placed"] is False and r["recommendation"] == "decline" and "abstain 1.00" in r["reason"] and prims.env.calls == []
+    assert r["placed"] is False and r["recommendation"] == "decline" and "< 0 (giving up)" in r["reason"] and prims.env.calls == []
     prims = _aprims(StubModel(ps=0.95))
     r = pick_and_place(object="mug", destination="table_centre", primitives=prims, store={}).data
     assert r["outcome"] == "placed_stable" and len(prims.env.calls) == 1

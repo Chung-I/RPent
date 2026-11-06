@@ -12,7 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Cost of each outcome and of time. ``care`` scales only the irreversible outcomes: a name (low, normal, high) or a
+"""Task-unit score: P(success) - alpha * P(damage) - beta * c, with decline scoring 0.
+
+Here P(damage) sums IRREVERSIBLE labels, alpha is the irreversible event cost divided by the task value A,
+beta = 1/A, and c sums recoverable outcome costs and 0.05 per second. Equivalently score = (A - J)/A, where
+J is expected_cost below; maximizing score gives the same decisions as minimizing J, and score >= 0 means J <= A.
+There is no score when abstain_cost is None.
+
+Cost of each outcome and of time. ``care`` scales only the irreversible outcomes: a name (low, normal, high) or a
 number above 0 (the care level kappa of the paper's sweep).
 
 The abstain cost (milestone 2b) is the value of the task: a case that ends without the object placed costs it, so a
@@ -144,3 +151,26 @@ def particle_costs(preds: list[Prediction], cost_s: float, care: str | float = "
     """Expected cost of one row under each particle (the row's expected cost is their weighted mean)."""
     P = prediction_matrix(preds)
     return P @ cost_vector(care, reset_s, reset_price) + TIME_COST_PER_S * cost_s + _unfinished(P[:, OUTCOMES.index("placed_stable")], abstain_cost)
+
+
+def alpha(care: str | float, abstain_cost: float, reset_s: float | None = None,
+          reset_price: str = "time") -> float:
+    """Return the irreversible event penalty in units of one task, including recovery pricing."""
+    return irreversible_cost(care, reset_s, reset_price) / abstain_cost
+
+
+def beta(abstain_cost: float) -> float:
+    """Return the cost penalty per task unit."""
+    return 1.0 / abstain_cost
+
+
+def score(pred: Prediction, cost_s: float, care: str | float, abstain_cost: float,
+          reset_s: float | None = None, reset_price: str = "time") -> float:
+    """Return a row's score in task units; zero is the score of giving up."""
+    return (abstain_cost - expected_cost(pred, cost_s, care, abstain_cost, reset_s, reset_price)) / abstain_cost
+
+
+def particle_scores(preds: list[Prediction], cost_s: float, care: str | float, abstain_cost: float,
+                    reset_s: float | None = None, reset_price: str = "time") -> np.ndarray:
+    """Return one row's task-unit score under each particle, in particle_costs order."""
+    return (abstain_cost - particle_costs(preds, cost_s, care, abstain_cost, reset_s, reset_price)) / abstain_cost

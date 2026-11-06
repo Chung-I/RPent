@@ -41,6 +41,9 @@ class ToolResult:
 
     data: dict[str, Any] = field(default_factory=dict)
     images: list[bytes] = field(default_factory=list)
+    planner_view: Callable[[dict[str, Any]], dict[str, Any]] | None = field(
+        default=None, repr=False, compare=False
+    )
 
     @property
     def is_error(self) -> bool:
@@ -51,10 +54,15 @@ class ToolResult:
         return dict(self.data)
 
     def to_text(self) -> str:
-        """Encode the original tool payload without truncating internal state."""
+        """Encode the planner view, leaving the original payload available to records."""
         # ASCII output makes character counts equal to UTF-8 byte counts.
+        data = self.to_dict()
         text = json.dumps(
-            self.to_dict(), indent=2, allow_nan=False, ensure_ascii=True, default=str
+            data if self.planner_view is None else self.planner_view(data),
+            indent=2,
+            allow_nan=False,
+            ensure_ascii=True,
+            default=str,
         )
         if len(text) <= MAX_TOOL_TEXT_BYTES:
             return text

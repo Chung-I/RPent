@@ -280,7 +280,7 @@ def test_probe_rows_present_when_models_exist():
     for pid, probe in (("probe_push", "push"), ("probe_weigh", "weigh")):
         o = rows[pid]
         assert o.kind == "probe" and o.pred is None and o.action == {"probe": probe, "s": 0.5, "force": weigh_force(20.0)}
-        assert set(o.probe) == {"p_kind", "p_thrown", "evoi", "evoi_se", "expected_cost_after", "estimator"}
+        assert set(o.probe) == {"p_kind", "p_thrown", "evoi", "evoi_se", "expected_cost_after", "estimator", "value", "value_se"}
         tip = o.probe["p_kind"]["tipped"] * COST["tipped"] if probe == "push" else 0.0
         assert o.expected_cost == pytest.approx(TIME_COST_PER_S * PROBE_SECONDS[probe] + tip + o.probe["expected_cost_after"])
     assert rows["probe_push"].probe["p_kind"]["tipped"] == pytest.approx(0.1)
@@ -538,7 +538,7 @@ def test_numeric_care_changes_the_recommendation():
     options, rec = _cmenu(care=30.0, **p)
     assert _best(options).expected_cost == pytest.approx(8.10) and rec == "decline"
     reason = options[-1].reason
-    assert reason.startswith("best row costs 8.10 > abstain 1.00") and "dropped_high" in reason
+    assert reason.startswith("best row scores -7.100 < 0 (giving up)") and "dropped_high" in reason
 
 
 def test_abstain_cost_none_keeps_the_2a_rule():
@@ -673,7 +673,7 @@ def test_empty_window_declines_at_high_care():
     costs more than abstaining and the reason names crushed; at care 0.5 the rule commits."""
     belief = _frag_belief(f_damage=np.full(64, 20.0))
     options, rec = _dmenu(WindowModel(), belief, CRUSHABLE, care=30.0, abstain_cost=1.0)
-    assert rec == "decline" and "crushed carries the largest expected cost" in options[-1].reason
+    assert rec == "decline" and "crushed carries the largest expected penalty" in options[-1].reason
     _, rec = _dmenu(WindowModel(), belief, CRUSHABLE, care=0.5, abstain_cost=1.0)
     assert rec == "commit"
 
@@ -1115,7 +1115,7 @@ from rpent.skills.pick_place.protocol import Option  # noqa: E402
 def _row(id_, kind, cost, p_ok=0.9):
     pred = None if kind == "probe" else Prediction(p={**{k: 0.0 for k in OUTCOMES}, "placed_stable": p_ok, "not_lifted": 1.0 - p_ok})
     action = {"probe": "push"} if kind == "probe" else {"destination": "table_centre"}
-    return Option(id=id_, kind=kind, action=action, pred=pred, cost_s=8.0, expected_cost=cost)
+    return Option(id=id_, kind=kind, action=action, pred=pred, cost_s=8.0, expected_cost=cost, score=1.0 - cost)
 
 
 def test_without_probe_uses_the_unrounded_cost():
@@ -1187,7 +1187,7 @@ def test_the_cost_rule_names_the_costliest_outcome_under_the_reset():
     p = {k: 0.0 for k in OUTCOMES}
     p.update(placed_stable=0.5, dropped_high=0.1, tipped=0.4)
     best = Option(id="commit_std", kind="commit", action={"destination": "table_centre"}, pred=Prediction(p=p), cost_s=8.0,
-                  expected_cost=5.0, reason="")
+                  expected_cost=5.0, score=(0.1 - 5.0) / 0.1, reason="")
     assert "dropped_high carries" in _cost_rule([best], best, 10.0, 0.1, None)[1]
     assert "tipped carries" in _cost_rule([best], best, 10.0, 0.1, None, reset_s=20.0)[1]
     assert "dropped_high carries" in _cost_rule([best], best, 10.0, 0.1, None, reset_s=0.0, reset_price="care")[1]

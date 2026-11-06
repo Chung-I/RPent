@@ -94,9 +94,10 @@ def test_system_prompt_names_the_fields():
     from robots.mujoco_lab.prompts.system import RESULT_FIELDS, DESTINATIONS_TEXT
 
     for k in ("p_success", "p_held_to_release", "p_irreversible", "p_recoverable", "p_drop_height", "options",
-              "expected_cost", "recommendation", "decline_reason", "care", "inboard_place", "`guard`"):
+              "score", "p_damage", "seconds", "alpha", "beta", "recommendation", "decline_reason", "care", "inboard_place", "`guard`"):
         assert k in RESULT_FIELDS, k
     assert "unlike the training objects" in RESULT_FIELDS
+    assert "expected_cost" not in RESULT_FIELDS and "expected_cost_after" not in RESULT_FIELDS
     for d in ("table_centre", "table_edge", "table_gap", "mouse_pad", "plate", "box", "bin"):
         assert d in DESTINATIONS_TEXT, d
 
@@ -105,8 +106,7 @@ def test_system_prompt_explains_probes_and_the_belief():
     from robots.mujoco_lab.prompts.system import system_prompt
 
     text = system_prompt()
-    for k in ("probe_push", "probe_weigh", "probe_first", "`probe`", "recommended_option", "evoi", "evoi_se",
-              "expected_cost_after", "p_kind", "p_thrown", "`belief`", "`belief_before`", "`diagnosis`",
+    for k in ("probe_push", "probe_weigh", "probe_first", "`probe`", "recommended_option", "value", "value_se", "p_kind", "p_thrown", "`belief`", "`belief_before`", "`diagnosis`",
               "`assessment`", "mass_80", "mu_80", "p_com_shifted"):
         assert k in text, k
     assert "retry" in text.lower()
@@ -161,7 +161,7 @@ def test_solved_reads_the_last_pick_result(tmp_path):
     assert tk2.exploration_continuation() is None
 
 
-def test_system_prompt_states_the_cost_rule_and_damage():
+def test_system_prompt_states_the_score_rule_and_damage():
     """Milestone 2b: the cost rule with the abstain cost, numeric care, the eleven outcomes, the squeeze probe and a
     damaged object."""
     from robots.mujoco_lab.prompts.system import system_prompt
@@ -176,7 +176,7 @@ def test_system_prompt_states_the_cost_rule_and_damage():
         assert k in text.split("Outcomes (eleven outcomes):")[1], k
     held = next(line for line in text.splitlines() if line.startswith("- `p_held_to_release`"))
     assert "damage outcomes are left out" in held, held
-    for k in ("abstain cost", "`abstain_cost`", "`care_scale`", "a number above 0", "probe_squeeze", "k_hat",
+    for k in ("in units of one task", "scores 0", "`abstain_cost`", "`care_scale`", "a number above 0", "probe_squeeze", "k_hat",
               "light_grip", "gentle_carry", "`damage`", "`meter_max`", "`damaged`", "object is damaged"):
         assert k in text, k
 

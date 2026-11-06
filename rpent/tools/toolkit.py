@@ -295,6 +295,7 @@ class Toolkit:
                     native = ToolResult(
                         data=observed.data,
                         images=native.images + observed.images,
+                        planner_view=native.planner_view,
                     )
                 if record is not None:
                     self._publish_step(record)

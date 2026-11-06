@@ -50,21 +50,22 @@ release height). The top-level numbers repeat the best row's values; `best_optio
 - `p_recoverable`: P(tipped), P(missed), P(dropped_low), P(not_lifted).
 - `p_drop_height`: how high above the surface a drop would happen, when the model has it.
 - `options`: the ranked menu. Each row has `id`, `kind` (commit, lower_risk, decline), `action`,
-  `p` (the eleven outcomes), `p_drop_height`, `cost_s` (time), `expected_cost` (lower is better;
-  the cost rule below) and `reason`. Rows: `commit_std`, `slow_lift`, `firm_grip`, `regrasp_com`,
+  `p` (the eleven outcomes), `p_drop_height`, `p_success`, `p_damage` (the sum of the irreversible
+  probabilities), `seconds` (time), `score` (higher is better; the score rule below) and `reason`. Rows: `commit_std`, `slow_lift`, `firm_grip`, `regrasp_com`,
   `inboard_place`, `drop_release`, and `decline` last. When the model predicts damage, the menu also
   has `light_grip` (half the squeeze: less crush and bruise risk, more slip) and `gentle_carry` (a
   gentle carry: less spill risk, slower).
-- The cost rule: a row's `expected_cost` sums each outcome's probability times its cost (an
-  irreversible outcome costs 5 times the care factor, a recoverable one 1, not_lifted 0.5), 0.05 per
-  second (a probe's seconds cost `probe_time_scale` times 0.05 each), and the abstain cost A times
-  P(the object does not end placed_stable). `abstain_cost` is A,
-  the value of the task: a case that ends without the object placed costs A, and the `decline` row
-  (abstaining) costs A. When `abstain_cost` is null, that term is absent and a decline costs nothing.
-  When `reset_s` is a number (the recovery mode), an irreversible outcome costs 0.05 per second of the
-  reset (`reset_s` seconds) in place of 5 times the care factor: the object is then restored to its
-  start pose and you may try again, and no probe runs after a restore. When `reset_s` is null, an
-  irreversible outcome is not undone.
+- The score rule: `score` = P(success) - alpha * P(damage) - beta * c, in units of one task.
+  P(damage) sums all irreversible outcomes, including dropped_high and rolled_off. c sums the
+  recoverable outcome penalties (1 each, not_lifted 0.5), weighted by their probabilities, and
+  0.05 per second. `abstain_cost` A is the value of the task; `alpha` is the irreversible event
+  penalty divided by A (normally 5 times the care factor / A), and `beta` is 1/A. They appear
+  once per menu. The `decline` row gives up and scores 0. A positive score is better than giving up.
+  When `abstain_cost` is null, there is no score: the threshold rule below applies.
+  When `reset_s` is a number (the recovery mode), an irreversible outcome's penalty is 0.05 per
+  second of the reset (`reset_s` seconds) at `reset_price` time, or 5 times the care factor at
+  `reset_price` care. The object is then restored to its start pose and you may try again, and
+  no probe runs after a restore. When `reset_s` is null, an irreversible outcome is not undone.
 - `inboard_place` sets the object down at `table_centre` instead of the requested place. It is
   never chosen by default; name it in `option_id` if you accept the trade. The result then reports
   `placed_at_requested: false`.
@@ -77,21 +78,24 @@ release height). The top-level numbers repeat the best row's values; `best_optio
   before the first attempt of an episode; after the push only the weigh may follow. Every probe can
   damage the object (the result kind `damaged`), and a probe that damages it ends the case. A probe row's
   `probe` field has `p_kind` (the probabilities of its result kinds), `p_thrown` (P(the probe
-  knocks the object off the table or more than 10 cm away)), `evoi` (the value of information:
-  the expected fall in the best row's expected cost after the probe, an estimate that can be below 0
-  when the probe is unlikely to change the best row), `evoi_se` (the Monte Carlo error of `evoi`)
-  and `expected_cost_after`. Its
-  `expected_cost` is the probe's time (at `probe_time_scale` times 0.05 per second), the push's tip risk
-  and `expected_cost_after`.
-- `recommendation`: with `abstain_cost` A, `commit` when the best row's `expected_cost` is at most
-  A, and `probe` instead when the cheapest probe row's `expected_cost` is below the smaller of the
-  best row's and A by more than twice `evoi_se` and its `evoi` is above 0; else `decline` (abstain).
-  With `abstain_cost` null: `probe` when the highest-ranked probe row ranks above the best row by more
-  than twice `evoi_se` and has `evoi` above 0; else `commit` when the best row's `p_success` is at
-  least 0.7; else `decline`. The novelty guard overrides these: when it finds the object
-  unlike the training objects, the recommendation is `decline`, and `decline_reason` says so.
+  knocks the object off the table or more than 10 cm away)), `value` (the value of information:
+  the expected rise of the best continuation score after the reading, including the choice to
+  give up, in task units; an estimate that can be below 0 when the probe is unlikely to change
+  the best row), and `value_se` (the Monte Carlo error of `value`). A probe is worth it when its
+  value beats its own cost in task units: time (at `probe_time_scale` times 0.05 per second),
+  tip risk and terminal risk, all divided by A. Its `score` includes these charges and the
+  expected continuation after the reading. With `abstain_cost` null, value and score are null.
+- `recommendation`: with `abstain_cost` A, `commit` when the highest-scoring row for the requested
+  destination scores at least 0. Recommend `probe` instead when its `value` is above 0 and its
+  `score` exceeds the larger of the best row's score and 0 by more than twice `value_se`;
+  else `decline` (give up). An optional success-probability floor still applies to a commit.
+  With `abstain_cost` null: `probe` when the highest-ranked probe row beats the best row by more
+  than twice the Monte Carlo error and has positive information value; else `commit` when the
+  best row's `p_success` is at least 0.7; else `decline`. The novelty guard overrides these:
+  when it finds the object unlike the training objects, the recommendation is `decline`, and
+  `decline_reason` says so.
   Then the rows' predictions are not trusted. `recommended_option` names the row it means. `decline_reason` says which outcome
-  carries the cost. With no `option_id`, a `decline` recommendation executes nothing, and a
+  carries the penalty. With no `option_id`, a `decline` recommendation executes nothing, and a
   `probe` recommendation executes nothing (with `abstain_cost` null: while the best row's
   `p_success` is below 0.7). Pass `option_id` `probe_push`, `probe_weigh` or `probe_squeeze`, or
   mode `probe_first`, to run the probe. Pass a row's `option_id` to run that row anyway.

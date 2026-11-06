@@ -55,7 +55,7 @@ from rpent.skills.pick_place.diagnose import diagnose
 from rpent.skills.pick_place.features import A_TRANSPORT, model_names, particle_matrix, particle_sides
 from rpent.skills.pick_place.menu import build_menu, estimate, geometry_pose, pinch_limit, without_probe
 from rpent.skills.pick_place.probes import DAMAGED
-from rpent.skills.pick_place.protocol import DAMAGE, IRREVERSIBLE, OUTCOMES, RECOVERABLE, Assessment, Option
+from rpent.skills.pick_place.protocol import DAMAGE, IRREVERSIBLE, OUTCOMES, RECOVERABLE, Assessment, Option, planner_view
 from rpent.tools.base import ToolResult, tool
 
 G = 9.81
@@ -319,7 +319,7 @@ def assess_pick(*, object: str, destination: str = "bin", care: str | float = "n
 
     Returns the best menu row's probabilities (success, held to release, irreversible and
     recoverable failures, drop-height distribution), the evidence, the ranked menu of options
-    with their expected costs, and a recommendation. Every probability is conditional on the
+    with task-unit scores (null on the threshold path), and a recommendation. Every probability is conditional on the
     object and one menu row. The recommendation is decline when the novelty guard finds the
     object unlike the training objects (``guard``).
 
@@ -331,8 +331,8 @@ def assess_pick(*, object: str, destination: str = "bin", care: str | float = "n
     """
     err, a = _assess(object, destination, care, primitives, store)
     if err is not None:
-        return ToolResult(data=err)
-    return ToolResult(data=a.to_data())
+        return ToolResult(planner_view=planner_view, data=err)
+    return ToolResult(planner_view=planner_view, data=a.to_data())
 
 
 def _threshold(primitives: Any) -> float:
@@ -479,7 +479,9 @@ def _attempt(option: Option, object: str, destination: str, care: str, primitive
         "declared": {"p_success": declared["p"]["placed_stable"],
                      "p_irreversible": {k: declared["p"][k] for k in IRREVERSIBLE},
                      "p_recoverable": {k: declared["p"][k] for k in RECOVERABLE},
-                     "p_drop_height": declared["p_drop_height"], "expected_cost": declared["expected_cost"]},
+                     "p_drop_height": declared["p_drop_height"], "expected_cost": declared["expected_cost"],
+                     "p_damage": sum(declared["p"][k] for k in IRREVERSIBLE),
+                     "seconds": declared["cost_s"], "score": declared["score"]},
         "readouts": readouts,
         "diagnosis": diagnose(r.label, readouts, act, before.to_data(), after.to_data(), laws=_laws(primitives, r.label),
                               mu_range=(float(np.min(before.arrays()["mu"])), float(np.max(before.arrays()["mu"])))),
@@ -586,17 +588,17 @@ def pick_and_place(*, object: str, destination: str = "bin", mode: str = "commit
         care: low, normal, high, or a number above 0.
     """
     if mode not in MODES:
-        return ToolResult(data={"error": f"mode must be one of {MODES}, not {mode!r}"})
+        return ToolResult(planner_view=planner_view, data={"error": f"mode must be one of {MODES}, not {mode!r}"})
     probe_models = getattr(primitives, "probe_models", None) or {}
     if option_id in PROBE_OPTIONS and PROBE_OPTIONS[option_id] not in probe_models:
-        return ToolResult(data={"error": "probe models are not loaded"})
+        return ToolResult(planner_view=planner_view, data={"error": "probe models are not loaded"})
     err, a = _assess(object, destination, care, primitives, store)
     if err is not None:
-        return ToolResult(data=err)
+        return ToolResult(planner_view=planner_view, data=err)
     if mode == "assess_only":
-        return ToolResult(data=a.to_data())
+        return ToolResult(planner_view=planner_view, data=a.to_data())
     if option_id in PROBE_OPTIONS:
-        return ToolResult(data=_named_probe(option_id, a, object, destination, care, primitives, store))
+        return ToolResult(planner_view=planner_view, data=_named_probe(option_id, a, object, destination, care, primitives, store))
     probes: list[dict[str, Any]] = []
     if mode == "probe_first" and probe_models:
         for _ in range(MAX_PROBES):
@@ -605,11 +607,11 @@ def pick_and_place(*, object: str, destination: str = "bin", mode: str = "commit
             d = _run_probe(a.best_overall(), object, destination, care, primitives, store)
             probes.append(_probe_brief(d))
             if d["thrown"] or not d["assessment"].get("assessed", False):
-                return ToolResult(data=dict(d, probes=probes))
+                return ToolResult(planner_view=planner_view, data=dict(d, probes=probes))
             err, a = _assess(object, destination, care, primitives, store)
             if err is not None:
-                return ToolResult(data=dict(err, probes=probes))
+                return ToolResult(planner_view=planner_view, data=dict(err, probes=probes))
     data = _commit(a, option_id, object, destination, care, primitives, store)
     if mode == "probe_first":
         data["probes"] = probes
-    return ToolResult(data=data)
+    return ToolResult(planner_view=planner_view, data=data)
