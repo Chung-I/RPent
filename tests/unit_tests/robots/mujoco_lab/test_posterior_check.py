@@ -362,6 +362,14 @@ def test_judged_cells_are_what_each_probe_set_reads():
     assert judged_keys(None) == ("mass", "mu", "com")
     assert judged_keys("A") == judged_keys("B") == ("mass", "mu")
     assert judged_keys("C") == ()
+    assert judged_keys("D") == ("mass", "com")          # identify (arm port): the fit reads the mass and the CoM
+
+
+def test_every_probe_set_has_its_judged_cells():
+    """m2b2_v12b's check_D died at the end (KeyError 'D') after its posterior: every --probes choice needs a JUDGED row."""
+    from robots.mujoco_lab.posterior_check import JUDGED, PROBE_TAGS
+
+    assert set(PROBE_TAGS) | {None} == set(JUDGED)
 
 
 def test_squeeze_cells_judge_only_the_damage_force(tmp_path, monkeypatch):

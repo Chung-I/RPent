@@ -840,7 +840,7 @@ def guard_block(rows: list[dict[str, Any]]) -> dict[str, int] | None:
 
 def probes_run(rows: list[dict[str, Any]]) -> dict[str, int]:
     c = Counter(p["probe"] for r in rows for p in (r.get("probes") or []))
-    return {"push": c["push"], "weigh": c["weigh"], "squeeze": c["squeeze"], "cases_with_probes": sum(1 for r in rows if r.get("probes")), "cases": len(rows)}
+    return {"push": c["push"], "weigh": c["weigh"], "squeeze": c["squeeze"], "identify": c["identify"], "cases_with_probes": sum(1 for r in rows if r.get("probes")), "cases": len(rows)}
 
 
 def _mean_ci(values: np.ndarray, inv: np.ndarray, n_objects: int, rng: np.random.Generator, n_boot: int = N_BOOT) -> list[float]:
