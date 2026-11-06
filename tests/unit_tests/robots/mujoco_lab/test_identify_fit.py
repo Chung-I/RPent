@@ -177,7 +177,7 @@ def test_a_bundles_own_identify_rows_come_first_and_keep_their_declines(tmp_path
     from robots.mujoco_lab.identify_fit import bundle_identify_rows, identify_source
 
     declined = {"key": "a__v11s0__d0__Didentify", "object": "a", "draw": 0, "declined": "no proposal"}
-    own = _bundle(tmp_path, [_weigh("a", 0), declined, _scene_d(_ident("a", 1))])
+    own = _bundle(tmp_path, [_weigh("a", 0), declined, _scene_d(_ident("a", 1)), _ident("a", 2)])   # d2: scene B's tag
     assert [r["draw"] for r in bundle_identify_rows(own)] == [0, 1]
     ext = tmp_path / "ext.jsonl"
     ext.write_text(json.dumps(_ident("a", 0)) + "\n")

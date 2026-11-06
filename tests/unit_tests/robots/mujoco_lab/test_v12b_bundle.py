@@ -70,6 +70,8 @@ def test_v12bs_attempt_update_reads_the_joint_fit_where_v12s_read_the_hold(monke
         for rec in run_attempt(rows, load_bundle(bundle), 200, 0):
             used = rec.get("terms", {}).get("used", [])
             assert has in used and lacks not in used, (bundle, rec["key"], used)
+            terms = json.loads(json.dumps(rec["terms"]))                  # as the records file holds them
+            assert isinstance(terms.get("used"), list) and isinstance(terms.get("rejected"), list), (bundle, rec["key"], terms)
 
 
 @need_v12
