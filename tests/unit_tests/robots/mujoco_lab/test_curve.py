@@ -672,3 +672,195 @@ def test_stage2_writes_records_and_stops_the_run_on_a_gate(tmp_path, monkeypatch
     assert sm["cases"] == 3 and sm["run_first_rows"] == 3 and sm["run_cases"] == 3
     assert sm["seconds_per_first_row_seed0"] == 1.0                      # 2 simulated cases (the artifact is skipped), 1 s each
     assert sm["projection_cpu_h"] == pytest.approx(3 * 1.0 / 3600.0)   # 3 non-skipped Stage 1 cases, one first row each
+
+
+# ---------------------------------------------------------------- Stage 2: the lock and the test reading (design 6)
+
+def _r0dec(by_knob, r4="firm_grip", default="give_up", extra=None):
+    dec = {cv.dkey("R0", 10.0, k): by_knob.get(k, default) for k in cv.R_GRID}
+    dec[cv.dkey("R4", 10.0, None)] = r4
+    return dict(dec, **(extra or {}))
+
+
+def _s2(o, idx, dec, sims, side="test", **kw):
+    rec = {"object": o, "idx": idx, "side": side, "class": "none", "law": None, "fillable": False, "thin": False,
+           "decisions": dec, "sims": sims, "dropped": False, "skipped": None, "error": None, "stop": None, "n_seeds": 1,
+           "row_stats": {}, "first_rows": sorted({d for d in dec.values() if d != "give_up"})}
+    return dict(rec, **kw)
+
+
+def _m2(decisions, rows=None):
+    return {"status": "ok", "rows": rows or [], "decisions": decisions}
+
+
+def test_rule_point_counts_every_episode_give_ups_included_and_skips_dropped_cases():
+    k = cv.dkey("R0", 10.0, 1.0)
+    recs = [_s2("a", 0, {k: "commit_std"}, [_sim("commit_std", "tipped", menu2=_m2({k: "slow_lift"}),
+                                                  second={"slow_lift": {"label": "placed_stable"}})]),
+            _s2("b", 0, {k: "give_up"}, []),
+            _s2("c", 0, {k: "commit_std"}, [_sim("commit_std", "crushed")]),
+            _s2("d", 0, {k: "commit_std"}, [_sim("commit_std", "placed_stable")], dropped=True)]
+    p = cv.rule_point(recs, k)
+    assert (p["n"], p["n_success"], p["n_irr"], p["n_give_up"], p["n_second"]) == (3, 1, 1, 1, 1)
+    assert p["success"] == pytest.approx(1 / 3) and p["irr"] == pytest.approx(1 / 3)
+
+
+def test_lock_takes_the_lowest_damage_at_r4s_success_else_the_highest_success():
+    sims = {"a": [_sim("firm_grip", "placed_stable"), _sim("commit_std", "placed_stable")],
+            "b": [_sim("firm_grip", "placed_stable"), _sim("commit_std", "placed_stable")],
+            "c": [_sim("firm_grip", "crushed"), _sim("commit_std", "tipped", menu2=_m2({cv.dkey("R0", 10.0, k): "give_up" for k in cv.R_GRID}))]}
+    by = {0.02: "give_up", 0.05: "commit_std"}
+    dec = _r0dec(by, default="firm_grip")
+    val = [_s2(o, 0, dec, sims[o], side="validation") for o in "abc"]
+    lk = cv.lock(val, ("R0", "R4"))
+    assert lk["R4"]["knob"] is None and lk["r4_success"] == pytest.approx(2 / 3)
+    assert lk["R0"]["knob"] == 0.05 and lk["R0"]["qualifies"] is True          # 2/3 success, no damage
+    dec2 = _r0dec({0.02: "give_up"}, default="commit_std")
+    hard = [dict(r, decisions=dec2, sims=[_sim("firm_grip", "placed_stable"), r["sims"][1]]) for r in val]   # R4 places all three
+    lk = cv.lock(hard, ("R0", "R4"))
+    assert lk["R0"]["qualifies"] is False and lk["R0"]["knob"] == 0.05       # the highest success (2/3), first in the grid
+    with pytest.raises(ValueError, match="validation"):
+        cv.lock(val + [_s2("t", 0, dec, sims["a"], side="test")], ("R0", "R4"))
+
+
+def _q1_recs(r0_gives_up_on_placed=False, r0_crushes=False):
+    k0, k4 = cv.dkey("R0", 10.0, 1.0), cv.dkey("R4", 10.0, None)
+    recs = []
+    for i in range(10):
+        o = f"o{i}"
+        d1 = {k0: "give_up" if not r0_crushes else "firm_grip", k4: "firm_grip"}
+        recs.append(_s2(o, 0, d1, [_sim("firm_grip", "crushed")]))
+        d2 = {k0: "give_up" if r0_gives_up_on_placed else "commit_std", k4: "commit_std"}
+        recs.append(_s2(o, 1, d2, [_sim("commit_std", "placed_stable")], thin=i < 3))
+    return recs
+
+
+def test_q1_reads_success_kept_and_damage_cut_from_the_object_bootstrap():
+    k0, k4 = cv.dkey("R0", 10.0, 1.0), cv.dkey("R4", 10.0, None)
+    b = cv.paired_bootstrap(_q1_recs(), k0, k4, draws=200, seed=1)
+    assert b["success"]["diff"] == 0.0 and b["irr"]["diff"] == pytest.approx(-0.5) and b["irr"]["hi"] == pytest.approx(-0.5)
+    assert b["objects"] == 10 and b["cases"] == 20
+    assert cv.q1_reading(b) == "SAGE keeps success and cuts damage"
+    b = cv.paired_bootstrap(_q1_recs(r0_gives_up_on_placed=True), k0, k4, draws=200, seed=1)
+    assert cv.q1_reading(b) == "cuts damage, success not shown to be kept"
+    b = cv.paired_bootstrap(_q1_recs(r0_crushes=True), k0, k4, draws=200, seed=1)
+    assert cv.q1_reading(b) == "undecided"
+
+
+def test_paired_bootstrap_resamples_objects_not_cases():
+    k0, k4 = cv.dkey("R0", 10.0, 1.0), cv.dkey("R4", 10.0, None)
+    recs = _q1_recs()
+    recs[0] = dict(recs[0], decisions={k0: "firm_grip", k4: "firm_grip"})     # object o0 now equal under both rules
+    b = cv.paired_bootstrap(recs, k0, k4, draws=500, seed=3)
+    assert b["irr"]["lo"] < b["irr"]["diff"] < b["irr"]["hi"] < 0
+    again = cv.paired_bootstrap(recs, k0, k4, draws=500, seed=3)
+    assert again == b
+
+
+def test_vs_r0_reading_needs_the_damage_interval_off_zero_and_the_better_rule_non_inferior():
+    def boot(irr, succ):
+        return {"irr": dict(zip(("diff", "lo", "hi"), irr)), "success": dict(zip(("diff", "lo", "hi"), succ))}
+    assert cv.vs_r0_reading(boot((-0.02, -0.03, -0.01), (0.0, -0.01, 0.01))) == "differs (lower damage than R0)"
+    assert cv.vs_r0_reading(boot((-0.02, -0.03, -0.01), (-0.05, -0.08, -0.03))) == "no detectable difference"
+    assert cv.vs_r0_reading(boot((0.02, 0.01, 0.03), (0.0, -0.01, 0.01))) == "differs (higher damage than R0)"
+    assert cv.vs_r0_reading(boot((0.02, 0.01, 0.03), (0.05, 0.03, 0.08))) == "no detectable difference"
+    assert cv.vs_r0_reading(boot((-0.02, -0.03, 0.01), (0.0, -0.01, 0.01))) == "no detectable difference"
+
+
+def test_calibration_compares_the_selected_rows_predicted_damage_with_the_labels():
+    k, k0 = cv.dkey("R2", 10.0, 0.02), cv.dkey("R0", 10.0, 1.0)
+    rows2 = [{"id": "slow_lift", "p_irr": 0.015, "q_irr": 0.05, "p_placed": 0.9}]
+    recs = [_s2("a", 0, {k: "commit_std", k0: "commit_std"}, [_sim("commit_std", "tipped", menu2=_m2({k: "slow_lift", k0: "slow_lift"}, rows2),
+                                                                    second={"slow_lift": {"label": "crushed"}})],
+                row_stats={"commit_std": {"p_irr": 0.004, "q_irr": 0.01, "p_placed": 0.8}}),
+            _s2("b", 0, {k: "commit_std", k0: "commit_std"}, [_sim("commit_std", "placed_stable")],
+                row_stats={"commit_std": {"p_irr": 0.012, "q_irr": 0.03, "p_placed": 0.8}})]
+    c = cv.calibration(recs, k)
+    assert c["all"]["attempts"] == 3 and c["all"]["predicted"] == pytest.approx(0.004 + 0.015 + 0.012) and c["all"]["observed"] == 1
+    assert c["near_cap"]["attempts"] == 2 and c["near_cap"]["predicted"] == pytest.approx(0.027)   # 0.01 <= p_irr <= 0.04
+    c0 = cv.calibration(recs, k0)
+    assert "near_cap" not in c0 and c0["all"]["attempts"] == 3
+
+
+def test_second_decision_check_recomputes_every_stored_second_decision():
+    rows2 = [dict(_row("commit_std", 0.9, irr=0.0), cvar=_cv(0.1))]
+    good = cv.second_decisions(rows2, ("R0", "R4"))
+    recs = [_s2("a", 0, {}, [_sim("commit_std", "tipped", menu2={"status": "ok", "rows": rows2, "decisions": good})])]
+    assert cv.second_decision_mismatches(recs, ("R0", "R4")) == 0
+    bad = dict(good, **{cv.dkey("R4", 10.0, None): "give_up"})
+    recs = [_s2("a", 0, {}, [_sim("commit_std", "tipped", menu2={"status": "ok", "rows": rows2, "decisions": bad})])]
+    assert cv.second_decision_mismatches(recs, ("R0", "R4")) == 1
+
+
+def _fake_stage2_object(job):
+    """stage2_object without the simulator: commit_std places; any other first row tips, and the second menu's rows place."""
+    o, items, s = job
+    rows2 = [dict(_row("commit_std", 0.9, irr=0.0), cvar=_cv(0.1)), dict(_row("slow_lift", 0.95, irr=0.01), cvar=_cv(0.1))]
+    recs = []
+    for rec1, dec in items:
+        sims = []
+        for first in cv.first_rows(dec, tuple(s["rules"])):
+            if first == "commit_std":
+                sims.append(_sim(first, "placed_stable", seconds=1.0))
+            else:
+                d2 = cv.second_decisions(rows2, tuple(s["rules"]))
+                sims.append(_sim(first, "tipped", menu2={"status": "ok", "rows": rows2, "decisions": d2}, seconds=1.0,
+                                 second={r: {"label": "placed_stable", "artifact": False, "error": None} for r in cv.first_rows(d2, tuple(s["rules"]))}))
+        recs.append(dict(cv.stage2_record(rec1, dec, tuple(s["rules"]), {"sims": sims, "stop": None}, s["n_seeds"]), seconds=1.0))
+    return {"records": recs, "stop": None}
+
+
+def test_stage2_lock_then_summary_end_to_end_on_synthetic_runs(tmp_path, monkeypatch):
+    import gzip as _gzip
+    import json as _json
+
+    from robots.mujoco_lab import identify_fit
+
+    monkeypatch.setenv("WANDB_MODE", "disabled")
+    monkeypatch.setattr(identify_fit, "require_bundle_generator", lambda b: "v11")
+    monkeypatch.setattr(cv, "stage2_object", _fake_stage2_object)
+    rows_a = [dict(_row("commit_std", 0.6, irr=0.0), cvar=_cv(0.1)), dict(_row("firm_grip", 0.95, irr=0.03), cvar=_cv(0.1))]
+    rows_b = [dict(_row("commit_std", 0.9, irr=0.001), cvar=_cv(0.1))]
+    s1 = [_s1(f"ycb__v{i}", j, rows=rows_a if j else rows_b) for i in range(4) for j in range(2)]
+    s1 += [_s1(f"hope__t{i}", j, rows=rows_a if j else rows_b, side="test", thin=i == 0, **{"class": "crushable"})
+           for i in range(4) for j in range(2)]
+    _write_run(str(tmp_path / "s1"), s1)
+    retry = tmp_path / "retry.json.gz"
+    with _gzip.open(retry, "wt") as f:
+        _json.dump({"rows": [{"attempts": [{"label": "tipped", "cost_s": 8.0}, {"label": "placed_stable", "cost_s": 8.0}]}]}, f)
+    cv.main(["stage2", "--stage1", str(tmp_path / "s1"), "--retry", str(retry), "--out", str(tmp_path / "s2")])
+    lk = cv.main(["stage2-lock", "--runs", str(tmp_path / "s2"), "--out", str(tmp_path / "lock")])
+    assert set(lk["lock"]) >= set(cv.SIM_RULES) and lk["lock"]["n"] == 8
+    assert all(p["n"] == 8 for pts in lk["curves_validation"].values() for p in pts)
+    with pytest.raises(SystemExit, match="exists"):
+        cv.main(["stage2-lock", "--runs", str(tmp_path / "s2"), "--out", str(tmp_path / "lock")])
+    rep = cv.main(["stage2-summary", "--runs", str(tmp_path / "s2"), "--locked", str(tmp_path / "lock" / "locked.json"),
+                   "--lock-commit", "abc123", "--out", str(tmp_path / "sum")])
+    assert rep["q1"]["reading"] in ("SAGE keeps success and cuts damage", "cuts damage, success not shown to be kept", "undecided")
+    assert rep["q1"]["boot"]["cases"] == 8 and rep["q1_no_thin"]["boot"]["cases"] == 6
+    assert set(rep["vs_r0"]) == {"R1", "R2", "R3", "R5"} and rep["checks"]["second_decision_mismatches"] == 0
+    assert rep["checks"]["first_decision_mismatches"] == 0 and rep["checks"]["missing_cases"] == 0
+    assert (tmp_path / "sum" / "stage2_summary.md").exists() and (tmp_path / "sum" / "stage2_curves.png").exists()
+    bad = _json.load(open(tmp_path / "lock" / "locked.json"))
+    bad["lock"]["R0"]["knob"] = 10.0 if bad["lock"]["R0"]["knob"] != 10.0 else 0.02
+    _json.dump(bad, open(tmp_path / "bad.json", "w"))
+    with pytest.raises(SystemExit, match="lock"):
+        cv.main(["stage2-summary", "--runs", str(tmp_path / "s2"), "--locked", str(tmp_path / "bad.json"), "--lock-commit", "abc123",
+                 "--out", str(tmp_path / "sum2")])
+
+
+def test_lock_loader_never_holds_test_records(tmp_path):
+    import json as _json
+
+    d = tmp_path / "s2"
+    d.mkdir()
+    (d / "run_config.json").write_text(_json.dumps({"rules": ["R0", "R4"], "n_seeds": 1, "bundle": "B", "seed": 11}))
+    (d / "run_metrics.json").write_text("{}")
+    with open(d / "records.jsonl", "w") as f:
+        for side in ("validation", "test"):
+            f.write(_json.dumps(_s2(f"o_{side}", 0, {}, [], side=side)) + "\n")
+    recs, _ = cv.load_stage2([str(d)], sides=("validation",))
+    assert [r["side"] for r in recs] == ["validation"]
+    (d / "records.jsonl").write_text(_json.dumps(_s2("o", 0, {}, [], side="validation", stop="gate")) + "\n")
+    with pytest.raises(SystemExit, match="stop"):
+        cv.load_stage2([str(d)], sides=("validation",))

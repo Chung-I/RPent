@@ -58,6 +58,9 @@ A_MAIN = 10.0
 R_CHECK = ((3.0, 0.2), (3.0, 2.0))                               # the only-r-matters check: (A, r), decisions only
 QUANTILE = 0.9                                                   # R3 and R5: the tail of the per-particle P(irr)
 CVAR_LEVEL = 0.1                                                 # R6: the lowest share of the particle weight
+EPS = 0.02                        # design 6: the success margin of the test reading (2 points)
+BOOT_DRAWS = 2000                 # design 6: the object bootstrap's draws
+BOOT_SEED = 20261108              # the bootstrap's stream (fixed before any Stage 2 record)
 ROW_ORDER = ("commit_std", "slow_lift", "firm_grip", "light_grip", "gentle_carry", "regrasp_com", "inboard_place",
              "drop_release")                                     # menu._rows' order: a tie goes to the earlier row
 GIVE_UP_ROW = "give_up"                                          # a rule's decision not to grasp (not an m4 ended value)
@@ -1037,6 +1040,384 @@ def projection(sm: dict[str, Any], n_first_rows: int) -> float:
     return float(sm["seconds_per_first_row_seed0"]) * int(n_first_rows) / 3600.0
 
 
+
+# ---------------------------------------------------------------- Stage 2: the lock and the test reading (design 6)
+
+def _kept(recs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [r for r in recs if not r["dropped"]]
+
+
+def rule_point(recs: list[dict[str, Any]], key: str) -> dict[str, Any]:
+    """One rule and knob's episodes (``episode``) over the cases that are not dropped: counts and rates of success,
+    irreversible damage, give-ups (at either decision) and second attempts; every episode counts, give-ups included."""
+    eps = [episode(r["decisions"], r["sims"], key) for r in _kept(recs)]
+    n = len(eps)
+    out: dict[str, Any] = {"key": key, "n": n, "n_success": sum(e["success"] for e in eps), "n_irr": sum(e["irr"] for e in eps),
+                           "n_give_up": sum(e["give_up"] for e in eps), "n_second": sum(e["attempts"] == 2 for e in eps)}
+    for k in ("success", "irr", "give_up", "second"):
+        out[k] = out[f"n_{k}"] / n if n else None
+    return out
+
+
+def knob_of(key: str) -> float | None:
+    k = key.split("|")[2]
+    return None if k == "-" else float(k)
+
+
+def lock(val: list[dict[str, Any]], rules: tuple[str, ...]) -> dict[str, Any]:
+    """Each rule's operating point on validation records only (design 6): among its knob values whose success count is at
+    least R4's, the lowest irreversible count (then the higher success, then the grid order); if none qualifies, the
+    highest success (then the lower damage, then the grid order). R4 has one point."""
+    if any(r["side"] != "validation" for r in val):
+        raise ValueError("lock reads validation records only")
+    r4 = rule_point(val, dkey("R4", A_MAIN, None))
+    out: dict[str, Any] = {"r4_success": r4["success"], "r4_n_success": r4["n_success"], "n": r4["n"],
+                           "R4": {"knob": None, "key": r4["key"], "qualifies": True, "point": r4}}
+    for rule in rules:
+        if rule == "R4":
+            continue
+        pts = [(i, rule_point(val, dkey(rule, A_MAIN, k))) for i, k in enumerate(KNOBS[rule])]
+        ok = [(i, p) for i, p in pts if p["n_success"] >= r4["n_success"]]
+        if ok:
+            i, p = min(ok, key=lambda t: (t[1]["n_irr"], -t[1]["n_success"], t[0]))
+        else:
+            i, p = min(pts, key=lambda t: (-t[1]["n_success"], t[1]["n_irr"], t[0]))
+        out[rule] = {"knob": KNOBS[rule][i], "key": p["key"], "qualifies": bool(ok), "point": p}
+    return out
+
+
+def paired_bootstrap(recs: list[dict[str, Any]], key_a: str, key_b: str, draws: int = BOOT_DRAWS,
+                     seed: int = BOOT_SEED) -> dict[str, Any]:
+    """a - b in success and in irreversible damage, paired by case over the cases that are not dropped, with a 95 % object
+    bootstrap (objects drawn with replacement, every case of a drawn object kept; percentile interval)."""
+    kept = _kept(recs)
+    objs = sorted({r["object"] for r in kept})
+    at = {o: i for i, o in enumerate(objs)}
+    ds, di, cnt = np.zeros(len(objs)), np.zeros(len(objs)), np.zeros(len(objs))
+    for r in kept:
+        ea, eb = episode(r["decisions"], r["sims"], key_a), episode(r["decisions"], r["sims"], key_b)
+        j = at[r["object"]]
+        ds[j] += float(ea["success"]) - float(eb["success"])
+        di[j] += float(ea["irr"]) - float(eb["irr"])
+        cnt[j] += 1.0
+    rng = np.random.default_rng(int(seed))
+    idx = rng.integers(0, len(objs), size=(int(draws), len(objs)))
+    M = np.zeros((int(draws), len(objs)))
+    np.add.at(M, (np.arange(int(draws))[:, None], idx), 1.0)
+    n = M @ cnt
+    out: dict[str, Any] = {"a": key_a, "b": key_b, "objects": len(objs), "cases": len(kept), "draws": int(draws), "seed": int(seed)}
+    for name, d in (("success", ds), ("irr", di)):
+        lo, hi = np.percentile((M @ d) / n, [2.5, 97.5])
+        out[name] = {"diff": float(d.sum() / cnt.sum()), "lo": float(lo), "hi": float(hi)}
+    return out
+
+
+def q1_reading(b: dict[str, Any], eps: float = EPS) -> str:
+    """Design 6, Q1 (a = R0, b = R4): (a) the success difference's lower bound above -eps, (b) the damage difference's
+    upper bound below 0."""
+    kept, cut = b["success"]["lo"] > -eps, b["irr"]["hi"] < 0
+    if kept and cut:
+        return "SAGE keeps success and cuts damage"
+    return "cuts damage, success not shown to be kept" if cut else "undecided"
+
+
+def vs_r0_reading(b: dict[str, Any], eps: float = EPS) -> str:
+    """Design 6, Q2-Q4 (a = the rule, b = R0): "differs" only if the damage interval excludes 0 and the rule with the lower
+    damage is non-inferior in success (its success lower bound against the other above -eps)."""
+    if b["irr"]["hi"] < 0:
+        return "differs (lower damage than R0)" if b["success"]["lo"] > -eps else "no detectable difference"
+    if b["irr"]["lo"] > 0:
+        return "differs (higher damage than R0)" if b["success"]["hi"] < eps else "no detectable difference"
+    return "no detectable difference"
+
+
+def _row_of(rows: list[dict[str, Any]], rid: str) -> dict[str, Any]:
+    return next(x for x in rows if x["id"] == rid)
+
+
+def calibration(recs: list[dict[str, Any]], key: str) -> dict[str, Any]:
+    """Predicted P(irr) of the rows the rule grasped with (first attempts: the first menu's row_stats; second attempts: the
+    second menu's rows) against the irreversible labels, over the cases that are not dropped. For R2 and R5 also on the
+    attempts whose capped statistic (p_irr, q_irr) is within a factor of 2 of the cap delta."""
+    rule = key.split("|")[0]
+    cap = {"R2": "p_irr", "R5": "q_irr"}.get(rule)
+    delta = knob_of(key) if cap else None
+    out: dict[str, Any] = {"all": {"attempts": 0, "predicted": 0.0, "observed": 0}}
+    if cap:
+        out["near_cap"] = {"attempts": 0, "predicted": 0.0, "observed": 0, "window": [delta / 2.0, 2.0 * delta], "stat": cap}
+    for r in _kept(recs):
+        e = episode(r["decisions"], r["sims"], key)
+        for j, (row, label) in enumerate(zip(e["rows"], e["labels"])):
+            if j == 0:
+                st = r["row_stats"][row]
+            else:
+                s = next(x for x in r["sims"] if x["seed_k"] == 0 and x["first"] == e["rows"][0])
+                st = _row_of(s["menu2"]["rows"], row)
+            bins = ["all"] + (["near_cap"] if cap and delta / 2.0 <= st[cap] <= 2.0 * delta else [])
+            for b in bins:
+                out[b]["attempts"] += 1
+                out[b]["predicted"] += float(st["p_irr"])
+                out[b]["observed"] += int(label in IRREVERSIBLE)
+    return out
+
+
+def second_decision_mismatches(recs: list[dict[str, Any]], rules: tuple[str, ...]) -> int:
+    """The stored second decisions that differ from second_decisions on the stored second menu (every record and seed)."""
+    bad = 0
+    for r in recs:
+        for s in r["sims"]:
+            m = s.get("menu2")
+            if not m or "decisions" not in m:
+                continue
+            again = second_decisions(m["rows"], rules)
+            bad += sum(m["decisions"].get(k) != v for k, v in again.items())
+    return bad
+
+
+
+STAGE2_CONFIG_KEYS = ("bundle", "seed", "rules", "n_seeds", "stage1_records_sha256", "retry_sha256", "split_sha256")
+
+
+def load_stage2(dirs: list[str], sides: tuple[str, ...] | None = None) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """The records of finished Stage 2 runs that agree on STAGE2_CONFIG_KEYS, each case once. With ``sides`` only the
+    records of those sides are kept (the lock never holds a test record). A run that stopped is refused."""
+    recs: list[dict[str, Any]] = []
+    cfgs = []
+    for d in dirs:
+        if not os.path.exists(os.path.join(d, "run_metrics.json")):
+            raise SystemExit(f"{d}: the run has not finished (no run_metrics.json)")
+        if json.load(open(os.path.join(d, "run_metrics.json"))).get("stop"):
+            raise SystemExit(f"{d}: the run stopped on a gate")
+        cfgs.append(json.load(open(os.path.join(d, "run_config.json"))))
+        for line in open(os.path.join(d, "records.jsonl")):
+            r = json.loads(line)
+            if r.get("stop"):
+                raise SystemExit(f"{d}: {r['object']} {r['idx']} holds a stop: the run did not finish")
+            if sides is None or r["side"] in sides:
+                recs.append(r)
+    for k in STAGE2_CONFIG_KEYS:
+        if len({json.dumps(c.get(k)) for c in cfgs}) > 1:
+            raise SystemExit(f"the runs differ in {k}")
+    twice = [k for k, n in Counter((r["object"], int(r["idx"])) for r in recs).items() if n > 1]
+    if twice:
+        raise SystemExit(f"{len(twice)} cases appear twice, the first {twice[0]}")
+    return recs, cfgs[0]
+
+
+def stage2_checks(recs: list[dict[str, Any]], cfg: dict[str, Any], sides: tuple[str, ...]) -> dict[str, Any]:
+    """Before any reading: the Stage 1 records and the retry run are the ones the run hashed, every Stage 1 case of the
+    sides is here once, and every stored first and second decision equals its recomputation. Refuses a failed check."""
+    rules = tuple(cfg["rules"])
+    dirs1 = cfg["stage1"].split(",")
+    for d in dirs1:
+        if _sha(os.path.join(d, "records.jsonl")) != cfg["stage1_records_sha256"][d]:
+            raise SystemExit(f"{d}: the Stage 1 records changed since the Stage 2 run")
+    if _sha(cfg["retry"]) != cfg["retry_sha256"]:
+        raise SystemExit("the retry run changed since the Stage 2 run")
+    recs1, _ = load_stage1(dirs1)
+    by1 = {(r["object"], int(r["idx"])): r for r in recs1 if r["side"] in sides}
+    have = {(r["object"], int(r["idx"])) for r in recs}
+    c = retry_continuation(json.load(gzip.open(cfg["retry"]))["rows"])
+    V = lambda care, A: continuation_values(c, care, A)  # noqa: E731
+    keys = [dkey(rule, A_MAIN, k) for rule in rules for k in KNOBS[rule]]
+    first_bad = 0
+    for r in recs:
+        r1 = by1.get((r["object"], int(r["idx"])))
+        if r1 is not None:
+            again = decisions(r1, V)
+            first_bad += sum(r["decisions"].get(k) != again[k] for k in keys)
+    out = {"cases": len(recs), "missing_cases": len(set(by1) - have), "extra_cases": len(have - set(by1)),
+           "first_decision_mismatches": first_bad, "second_decision_mismatches": second_decision_mismatches(recs, rules),
+           "skipped": sum(bool(r["skipped"]) for r in recs), "case_errors": sum(bool(r.get("error")) for r in recs),
+           "dropped": sum(bool(r["dropped"]) for r in recs)}
+    bad = {k: out[k] for k in ("missing_cases", "extra_cases", "first_decision_mismatches", "second_decision_mismatches") if out[k]}
+    if bad:
+        raise SystemExit(f"the Stage 2 records fail the checks: {bad}")
+    return out
+
+
+def _curves(recs: list[dict[str, Any]], rules: tuple[str, ...]) -> dict[str, list[dict[str, Any]]]:
+    return {rule: [dict(rule_point(recs, dkey(rule, A_MAIN, k)), knob=k) for k in KNOBS[rule]] for rule in rules}
+
+
+def stage2_lock(a: argparse.Namespace) -> dict[str, Any]:
+    """The operating points from the validation records only (``lock``): locked.json and locked.md in --out (refuses an
+    existing locked.json), wandb. Commit locked.json before stage2-summary reads a test record."""
+    from robots.mujoco_lab.tracking import log_run
+
+    os.makedirs(a.out, exist_ok=True)
+    jpath = os.path.join(a.out, "locked.json")
+    if os.path.exists(jpath):
+        raise SystemExit(f"{jpath} exists: pick a new --out")
+    dirs = a.runs.split(",")
+    val, cfg = load_stage2(dirs, sides=("validation",))
+    rules = tuple(cfg["rules"])
+    checks = stage2_checks(val, cfg, ("validation",))
+    lk = lock(val, rules)
+    out = {"lock": lk, "curves_validation": _curves(val, rules), "checks": checks,
+           "provenance": {"runs": a.runs, "records_sha256": {d: _sha(os.path.join(d, "records.jsonl")) for d in dirs},
+                          "code_revision": cfg["code_revision"], "stage1": cfg["stage1"], "rules": rules}}
+    out["wandb"] = log_run("curve-stage2-lock", {"runs": a.runs, "rules": rules},
+                           {"checks": checks, "lock": {r: {"knob": v["knob"], "qualifies": v["qualifies"]} for r, v in lk.items()
+                                                       if isinstance(v, dict)}})
+    with open(jpath, "w") as f:
+        json.dump(out, f, indent=1)
+    L = ["# Success-damage curve, Stage 2: the locked operating points (validation objects only)", "",
+         f"- Runs: {a.runs}", f"- Validation cases {checks['cases']}: dropped {checks['dropped']} (skipped {checks['skipped']}, "
+         f"case errors {checks['case_errors']}); decision mismatches 0.",
+         f"- R4's validation success: {_pc(lk['r4_success'])} % ({lk['r4_n_success']} of {lk['n']}).", "",
+         "| rule | knob | qualifies | success | irreversible | give-up | second attempts |", "|---|---|---|---|---|---|---|"]
+    for rule in rules:
+        v = lk[rule]
+        p = v["point"]
+        L.append(f"| {rule} | {_knob(v['knob'])} | {'yes' if v['qualifies'] else 'no'} | {_pc(p['success'])} | {_pc(p['irr'], 2)} | "
+                 f"{_pc(p['give_up'])} | {_pc(p['second'])} |")
+    with open(os.path.join(a.out, "locked.md"), "w") as f:
+        f.write("\n".join(L) + "\n")
+    print(f"wrote {jpath}", flush=True)
+    return out
+
+
+def _ci(b: dict[str, Any], name: str) -> str:
+    x = b[name]
+    return f"{100 * x['diff']:+.2f} [{100 * x['lo']:+.2f}, {100 * x['hi']:+.2f}]"
+
+
+def stage2_markdown(rep: dict[str, Any]) -> str:
+    pv, ck, lk = rep["provenance"], rep["checks"], rep["lock"]
+    L = ["# Success-damage curve, Stage 2: the reading (design 6)", ""] + [f"- {k}: {v}" for k, v in pv.items()] + [""]
+    L += ["## Counts and checks", "",
+          f"- Cases {ck['cases']}: dropped {ck['dropped']} (skipped {ck['skipped']}, case errors {ck['case_errors']}). Missing 0, "
+          "first and second decision mismatches 0.", "",
+          "## 1. Locked operating points (validation objects, locked before the test reading)", "",
+          f"R4's validation success {_pc(lk['r4_success'])} %.", "",
+          "| rule | knob | qualifies | validation success | validation irreversible |", "|---|---|---|---|---|"]
+    for rule in rep["rules"]:
+        v = lk[rule]
+        L.append(f"| {rule} | {_knob(v['knob'])} | {'yes' if v['qualifies'] else 'no'} | {_pc(v['point']['success'])} | "
+                 f"{_pc(v['point']['irr'], 2)} |")
+    q, qn = rep["q1"], rep["q1_no_thin"]
+    L += ["", "## 2. Q1 on test objects: R0 against R4 (differences in points, 95 % object bootstrap)", "",
+          "| cases | success R0 − R4 | irreversible R0 − R4 | reading |", "|---|---|---|---|",
+          f"| all test ({q['boot']['cases']}, {q['boot']['objects']} objects) | {_ci(q['boot'], 'success')} | {_ci(q['boot'], 'irr')} | "
+          f"{q['reading']} |",
+          f"| without thin plastic ({qn['boot']['cases']}, {qn['boot']['objects']} objects; beside, not the reading) | "
+          f"{_ci(qn['boot'], 'success')} | {_ci(qn['boot'], 'irr')} | {qn['reading']} |", "",
+          "## 3. Q2–Q4 on test objects: each rule against R0 at the locked points", "",
+          "| rule | success rule − R0 | irreversible rule − R0 | reading | irreversible without thin plastic | reading without thin plastic |",
+          "|---|---|---|---|---|---|"]
+    for rule, v in rep["vs_r0"].items():
+        L.append(f"| {rule} | {_ci(v['boot'], 'success')} | {_ci(v['boot'], 'irr')} | {v['reading']} | {_ci(v['no_thin']['boot'], 'irr')} | "
+                 f"{v['no_thin']['reading']} |")
+    L += ["", "## 4. Curves (rates over all episodes, give-ups included, %)", "",
+          "| rule | knob | val success | val irr | val give-up | val second | test success | test irr | test give-up | test second | test irr without thin |",
+          "|---|---|---|---|---|---|---|---|---|---|---|"]
+    for rule in rep["rules"]:
+        for pv_, pt, pn in zip(rep["curves"]["validation"][rule], rep["curves"]["test"][rule], rep["curves"]["test_no_thin"][rule]):
+            L.append(f"| {rule} | {_knob(pv_['knob'])} | {_pc(pv_['success'])} | {_pc(pv_['irr'], 2)} | {_pc(pv_['give_up'])} | "
+                     f"{_pc(pv_['second'])} | {_pc(pt['success'])} | {_pc(pt['irr'], 2)} | {_pc(pt['give_up'])} | {_pc(pt['second'])} | "
+                     f"{_pc(pn['irr'], 2)} |")
+    L += ["", "## 5. Calibration of P(irr) on the attempts at the locked points (test objects)", "",
+          "| rule | attempts | predicted irreversible (sum) | observed | near the cap: attempts | predicted | observed |",
+          "|---|---|---|---|---|---|---|"]
+    for rule, c in rep["calibration"].items():
+        nc = c.get("near_cap")
+        L.append(f"| {rule} | {c['all']['attempts']} | {c['all']['predicted']:.2f} | {c['all']['observed']} | "
+                 + (f"{nc['attempts']} | {nc['predicted']:.2f} | {nc['observed']} |" if nc else "– | – | – |"))
+    L += ["", "## 6. Damage by object group at the locked points (test objects, irreversible %, cases)", "",
+          "| group | " + " | ".join(rep["rules"]) + " |", "|---|" + "---|" * len(rep["rules"])]
+    for g in sorted(next(iter(rep["groups"].values()))):
+        L.append(f"| {g} | " + " | ".join(f"{_pc(rep['groups'][rule][g]['irr'], 2)} ({rep['groups'][rule][g]['n']})"
+                                           for rule in rep["rules"]) + " |")
+    return "\n".join(L) + "\n"
+
+
+def stage2_figure(rep: dict[str, Any], path: str) -> None:
+    """Simulated success against irreversible damage per rule (validation left, test right); locked points ringed, R4 a star."""
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    fig, axes = plt.subplots(1, 2, figsize=(10.4, 4.6), sharey=True)
+    for ax, side in ((axes[0], "validation"), (axes[1], "test")):
+        ends = []
+        for rule in (r for r in rep["rules"] if r != "R4"):
+            pts = rep["curves"][side][rule]
+            x, y = [100 * p["irr"] for p in pts], [100 * p["success"] for p in pts]
+            ax.plot(x, y, color=RULE_COLOURS[rule], lw=2, marker="o", ms=4, mec="white", mew=1, zorder=3, label=RULE_NAMES[rule])
+            at = next(p for p in pts if p["knob"] == rep["lock"][rule]["knob"])
+            ax.scatter([100 * at["irr"]], [100 * at["success"]], s=90, facecolors="none", edgecolors=RULE_COLOURS[rule], linewidths=1.5,
+                       zorder=4)
+            ends.append((x[-1], y[-1], rule))
+        r4 = rep["curves"][side]["R4"][0]
+        ax.scatter([100 * r4["irr"]], [100 * r4["success"]], marker="*", s=110, color="#52514e", edgecolors="white", linewidths=1,
+                   zorder=5, label=RULE_NAMES["R4"])
+        ax.annotate("R4", (100 * r4["irr"], 100 * r4["success"]), xytext=(5, -9), textcoords="offset points", fontsize=8, color="#52514e")
+        ax.set_xlim(left=0.0)
+        _end_labels(ax, ends)
+        ax.set_xlabel("irreversible damage (% of episodes)")
+        ax.set_title(f"{side} objects ({r4['n']} cases); rings: locked points", fontsize=10)
+        ax.grid(True, color="#e6e5e0", linewidth=0.8, zorder=0)
+        for sp in ("top", "right"):
+            ax.spines[sp].set_visible(False)
+        ax.legend(frameon=False, fontsize=7.5, loc="lower right")
+    axes[0].set_ylabel("task success (% of episodes)")
+    fig.suptitle("Stage 2, simulated episodes of up to 2 attempts (m2b2_v12b, class prior)", fontsize=10)
+    fig.tight_layout()
+    fig.savefig(path, dpi=200)
+    plt.close(fig)
+
+
+def stage2_summary(a: argparse.Namespace) -> dict[str, Any]:
+    """The test reading (design 6) from finished Stage 2 runs and the committed lock: stage2_summary.{json,md} and
+    stage2_curves.png in --out (refuses an existing json), wandb. Refuses a lock file that differs from the lock of the
+    validation records."""
+    from robots.mujoco_lab.tracking import log_run
+
+    os.makedirs(a.out, exist_ok=True)
+    jpath = os.path.join(a.out, "stage2_summary.json")
+    if os.path.exists(jpath):
+        raise SystemExit(f"{jpath} exists: pick a new --out")
+    dirs = a.runs.split(",")
+    recs, cfg = load_stage2(dirs)
+    rules = tuple(cfg["rules"])
+    checks = stage2_checks(recs, cfg, ("validation", "test"))
+    val, test = [r for r in recs if r["side"] == "validation"], [r for r in recs if r["side"] == "test"]
+    locked = json.load(open(a.locked))
+    lk = lock(val, rules)
+    if any(locked["lock"][rule]["knob"] != lk[rule]["knob"] for rule in rules):
+        raise SystemExit("the lock file differs from the lock of the validation records")
+    key = {rule: lk[rule]["key"] for rule in rules}
+    no_thin = [r for r in test if not r["thin"]]
+    rep: dict[str, Any] = {"rules": rules, "lock": lk, "checks": checks}
+    b, bn = paired_bootstrap(test, key["R0"], key["R4"]), paired_bootstrap(no_thin, key["R0"], key["R4"])
+    rep["q1"], rep["q1_no_thin"] = {"boot": b, "reading": q1_reading(b)}, {"boot": bn, "reading": q1_reading(bn)}
+    rep["vs_r0"] = {}
+    for rule in (r for r in ("R1", "R2", "R3", "R5") if r in rules):
+        b, bn = paired_bootstrap(test, key[rule], key["R0"]), paired_bootstrap(no_thin, key[rule], key["R0"])
+        rep["vs_r0"][rule] = {"boot": b, "reading": vs_r0_reading(b), "no_thin": {"boot": bn, "reading": vs_r0_reading(bn)}}
+    rep["curves"] = {"validation": _curves(val, rules), "test": _curves(test, rules), "test_no_thin": _curves(no_thin, rules)}
+    rep["calibration"] = {rule: calibration(test, key[rule]) for rule in rules}
+    groups = sorted({"|".join(stratum(r["object"], r)) for r in test})
+    rep["groups"] = {rule: {g: rule_point([r for r in test if "|".join(stratum(r["object"], r)) == g], key[rule]) for g in groups}
+                     for rule in rules}
+    rep["provenance"] = {"runs": a.runs, "records_sha256": {d: _sha(os.path.join(d, "records.jsonl")) for d in dirs},
+                         "code_revision": cfg["code_revision"], "stage1": cfg["stage1"],
+                         "locked": f"{a.locked} (sha256 {_sha(a.locked)}, commit {a.lock_commit})",
+                         "bootstrap": f"{BOOT_DRAWS} object draws, seed {BOOT_SEED}, 95 % percentile interval", "eps": EPS}
+    rep["wandb"] = log_run("curve-stage2-summary", {"runs": a.runs, "rules": rules, "lock_commit": a.lock_commit},
+                           {"checks": checks, "q1": {"reading": rep["q1"]["reading"], **{k: rep["q1"]["boot"][k] for k in ("success", "irr")}},
+                            "vs_r0": {r: v["reading"] for r, v in rep["vs_r0"].items()}})
+    with open(jpath, "w") as f:
+        json.dump(rep, f, indent=1)
+    with open(os.path.join(a.out, "stage2_summary.md"), "w") as f:
+        f.write(stage2_markdown(rep))
+    stage2_figure(rep, os.path.join(a.out, "stage2_curves.png"))
+    print(f"wrote {a.out}", flush=True)
+    return rep
+
+
 def mean_row(x: Any) -> dict[str, Any]:
     """A menu row as the replay gate compares it: its id, action key and mean prediction."""
     from robots.mujoco_lab.evpi_props import action_key
@@ -1323,9 +1704,17 @@ def main(argv: list[str] | None = None) -> Any:
     sk = sub.add_parser("stage2-smoke", help="the smoke test's times, counts and the full run's projection")
     sk.add_argument("--runs", required=True, help="comma-separated smoke run dirs")
     sk.add_argument("--out", required=True)
+    sl = sub.add_parser("stage2-lock", help="the operating points from the validation records only")
+    sl.add_argument("--runs", required=True, help="comma-separated Stage 2 run dirs")
+    sl.add_argument("--out", required=True)
+    sm = sub.add_parser("stage2-summary", help="the test reading (design 6) from finished runs and the committed lock")
+    sm.add_argument("--runs", required=True, help="comma-separated Stage 2 run dirs")
+    sm.add_argument("--locked", required=True, help="locked.json from stage2-lock, committed")
+    sm.add_argument("--lock-commit", required=True, help="the commit that holds locked.json")
+    sm.add_argument("--out", required=True)
     a = p.parse_args(argv)
     return {"stage0": stage0, "split": split, "stage1": stage1, "stage1-summary": stage1_summary, "stage2": stage2,
-            "stage2-smoke": stage2_smoke}[a.cmd](a)
+            "stage2-smoke": stage2_smoke, "stage2-lock": stage2_lock, "stage2-summary": stage2_summary}[a.cmd](a)
 
 
 if __name__ == "__main__":
