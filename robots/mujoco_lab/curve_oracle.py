@@ -635,7 +635,7 @@ def summary(a: argparse.Namespace) -> dict[str, Any]:
     dirs = a.runs.split(",")
     cfgs = [_finished(d) for d in dirs]
     for k in ("knob", "key", "bundle", "seed", "locked_sha256", "stage1_records_sha256", "code_revision", "replan_hold",
-              "plan_without_hand_boxes", "sim_dir"):
+              "plan_without_hand_boxes", "sim_dir", "skip_list"):
         if len({json.dumps(c.get(k), sort_keys=True) for c in cfgs}) > 1:
             raise SystemExit(f"the oracle runs differ in {k}")
     cfg = cfgs[0]
@@ -651,6 +651,8 @@ def summary(a: argparse.Namespace) -> dict[str, Any]:
     s2, s2cfg = load_stage2(s2dirs, ("test",))
     if s2cfg["stage1_records_sha256"] != cfg["stage1_records_sha256"]:
         raise SystemExit("the oracle runs and Stage 2 read different Stage 1 records")
+    if json.dumps(s2cfg.get("skip_list"), sort_keys=True) != json.dumps(cfg.get("skip_list"), sort_keys=True):
+        raise SystemExit("the oracle runs and Stage 2 have different skip lists")
     for d, h in cfg["stage1_records_sha256"].items():
         if _sha(os.path.join(d, "records.jsonl")) != h:
             raise SystemExit(f"{d}: the Stage 1 records changed since the oracle runs")

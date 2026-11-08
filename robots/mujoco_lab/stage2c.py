@@ -18,17 +18,18 @@ reading 5 other than the model lock (model_lock.py) and the smoke's 2-seed repla
 
 - gate-published: the records of the new code path with the flags off on the published sim equal the published records
   of the same cases in every field but the seconds (the code path is unchanged);
-- gate-cases: the new runs' case lists equal the published runs' (each case once)."""
+- gate-cases: the new runs' case lists equal the published runs' (each case once) but for exactly the cases of the
+  skip list (the megaphone ruling), which every new run carries in its config."""
 
 from __future__ import annotations
 
 import argparse
 import json
 import os
-from collections import Counter
+from collections import Counter, defaultdict
 from typing import Any
 
-from robots.mujoco_lab.curve import SIDES, records_path
+from robots.mujoco_lab.curve import GIVE_UP_ROW, SIDES, episode, read_skip_list, records_path
 
 
 def _plain(rec: dict[str, Any]) -> dict[str, Any]:
@@ -101,14 +102,80 @@ def _cases(dirs: list[str]) -> list[tuple[str, int]]:
 
 
 def gate_cases(a: argparse.Namespace) -> dict[str, Any]:
-    """gate_cases.json in --out; exit 3 when the new runs' cases (each once) differ from the published runs'."""
+    """gate_cases.json in --out; exit 3 when the new runs' cases (each once) differ from the published runs' other than by
+    exactly the --skip-list's cases ("skipped": each a published case the new runs lack), or a new run's config holds
+    another skip list (none without --skip-list)."""
     _new_out(a.out, "gate_cases.json")
-    new, pub = _cases(a.runs.split(",")), set(_cases(a.published.split(",")))
+    sl = read_skip_list(a.skip_list)
+    listed = {(o, int(i)) for o, i in sl["cases"]} if sl else set()
+    runs = a.runs.split(",")
+    off = [d for d in runs if json.dumps(json.load(open(os.path.join(d, "run_config.json"))).get("skip_list"), sort_keys=True)
+           != json.dumps(sl, sort_keys=True)]
+    new, pub = _cases(runs), set(_cases(a.published.split(",")))
     twice = sorted([o, i] for (o, i), n in Counter(new).items() if n > 1)
-    missing, extra = sorted([o, i] for o, i in pub - set(new)), sorted([o, i] for o, i in set(new) - pub)
-    rep = {"cases": len(set(new)), "published_cases": len(pub), "missing": missing, "extra": extra, "twice": twice,
-           "runs": a.runs, "published": a.published, "pass": not (missing or extra or twice)}
+    lack = pub - set(new)
+    missing, extra = sorted([o, i] for o, i in lack - listed), sorted([o, i] for o, i in set(new) - pub)
+    present, unpublished = sorted([o, i] for o, i in listed & set(new)), sorted([o, i] for o, i in listed - pub)
+    rep = {"cases": len(set(new)), "published_cases": len(pub), "skipped": sorted([o, i] for o, i in lack & listed),
+           "missing": missing, "extra": extra, "twice": twice, "skip_list": sl, "skip_list_present": present,
+           "skip_list_not_published": unpublished, "runs_off_list": off, "runs": a.runs, "published": a.published,
+           "pass": not (missing or extra or twice or present or unpublished or off)}
     return _write(a.out, "gate_cases.json", rep)
+
+
+def _final(e: dict[str, Any]) -> str:
+    return "give_up" if e["give_up"] else e["labels"][-1]
+
+
+def _outcome(e: dict[str, Any]) -> str:
+    return "success" if e["success"] else "irr" if e["irr"] else "give_up" if e["give_up"] else "fail"
+
+
+def _second(e: dict[str, Any]) -> str | None:
+    """The episode's second decision (a row or a give-up), None when it never reached one."""
+    if e["attempts"] == 2:
+        return e["rows"][1]
+    return GIVE_UP_ROW if e["give_up"] and e["attempts"] == 1 else None
+
+
+def case_change(pub: list[dict[str, Any]], new: list[dict[str, Any]], keys: list[str]) -> dict[str, Any]:
+    """Reading 3 against the published records, per decision key, on the cases kept (not dropped) in both: each case's
+    episode (curve.episode) before and after; the final label (the last attempt's, or "give_up") changed, by transition
+    ("published -> new") and by object; the outcome transitions (success, irr, give_up, fail); the first decisions that
+    agree; the second decisions that agree where both episodes reached one; second attempts and give-ups before and
+    after; and the cases dropped on one side only, missing from the new records, or not published."""
+    P, N = {(r["object"], int(r["idx"])): r for r in pub}, {(r["object"], int(r["idx"])): r for r in new}
+    both = sorted(set(P) & set(N))
+    kept = [k for k in both if not P[k]["dropped"] and not N[k]["dropped"]]
+    sides = {"dropped_new_only": sorted([o, i] for o, i in both if N[(o, i)]["dropped"] and not P[(o, i)]["dropped"]),
+             "dropped_published_only": sorted([o, i] for o, i in both if P[(o, i)]["dropped"] and not N[(o, i)]["dropped"]),
+             "missing": sorted([o, i] for o, i in set(P) - set(N)), "extra": sorted([o, i] for o, i in set(N) - set(P))}
+    out: dict[str, Any] = {}
+    for key in keys:
+        trans: Counter = Counter()
+        outc: Counter = Counter()
+        by_obj: dict[str, dict[str, int]] = defaultdict(lambda: {"cases": 0, "changed": 0})
+        agree1 = both2 = agree2 = 0
+        second = {"published": 0, "new": 0}
+        give = {"published": 0, "new": 0}
+        for k in kept:
+            ep, en = episode(P[k]["decisions"], P[k]["sims"], key), episode(N[k]["decisions"], N[k]["sims"], key)
+            by_obj[k[0]]["cases"] += 1
+            if _final(ep) != _final(en):
+                trans[f"{_final(ep)} -> {_final(en)}"] += 1
+                by_obj[k[0]]["changed"] += 1
+            outc[f"{_outcome(ep)} -> {_outcome(en)}"] += 1
+            agree1 += P[k]["decisions"][key] == N[k]["decisions"][key]
+            if _second(ep) is not None and _second(en) is not None:
+                both2 += 1
+                agree2 += _second(ep) == _second(en)
+            for name, e in (("published", ep), ("new", en)):
+                second[name] += e["attempts"] == 2
+                give[name] += bool(e["give_up"])
+        out[key] = {"cases": len(kept), "changed": sum(trans.values()), "by_transition": dict(trans),
+                    "by_object": {o: dict(v) for o, v in sorted(by_obj.items())}, "outcomes": dict(outc), "first_agree": agree1,
+                    "second_both": both2, "second_agree": agree2, "second_attempts": second, "give_ups": give, **sides}
+    return out
 
 
 def main(argv: list[str] | None = None) -> Any:
@@ -121,6 +188,7 @@ def main(argv: list[str] | None = None) -> Any:
     c = sub.add_parser("gate-cases", help="the new runs' case lists equal the published runs'")
     c.add_argument("--runs", required=True)
     c.add_argument("--published", required=True)
+    c.add_argument("--skip-list", default=None, help="the runs' skip list: its cases are the only published ones they may lack")
     c.add_argument("--out", required=True)
     a = ap.parse_args(argv)
     return {"gate-published": gate_published, "gate-cases": gate_cases}[a.cmd](a)

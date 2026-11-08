@@ -1201,7 +1201,7 @@ def second_decision_mismatches(recs: list[dict[str, Any]], rules: tuple[str, ...
 
 
 STAGE2_CONFIG_KEYS = ("bundle", "seed", "rules", "n_seeds", "stage1_records_sha256", "retry_sha256", "split_sha256",
-                      "replan_hold", "plan_without_hand_boxes", "sim_dir")
+                      "replan_hold", "plan_without_hand_boxes", "sim_dir", "skip_list")
 
 
 SIDES = ("validation", "test")
@@ -1253,6 +1253,7 @@ def stage2_checks(recs: list[dict[str, Any]], cfg: dict[str, Any], sides: tuple[
     recs1, _ = load_stage1(dirs1)
     by1 = {(r["object"], int(r["idx"])): r for r in recs1 if r["side"] in sides}
     have = {(r["object"], int(r["idx"])) for r in recs}
+    skip = {(c[0], int(c[1])) for c in (cfg.get("skip_list") or {}).get("cases", [])}
     c = retry_continuation(json.load(gzip.open(cfg["retry"]))["rows"])
     V = lambda care, A: continuation_values(c, care, A)  # noqa: E731
     keys = [dkey(rule, A_MAIN, k) for rule in rules for k in KNOBS[rule]]
@@ -1262,11 +1263,13 @@ def stage2_checks(recs: list[dict[str, Any]], cfg: dict[str, Any], sides: tuple[
         if r1 is not None:
             again = decisions(r1, V)
             first_bad += sum(r["decisions"].get(k) != again[k] for k in keys)
-    out = {"cases": len(recs), "missing_cases": len(set(by1) - have), "extra_cases": len(have - set(by1)),
+    out = {"cases": len(recs), "missing_cases": len(set(by1) - skip - have), "extra_cases": len(have - set(by1)),
+           "skip_list_cases": len(set(by1) & skip), "skip_list_present": len(have & skip),
            "first_decision_mismatches": first_bad, "second_decision_mismatches": second_decision_mismatches(recs, rules),
            "skipped": sum(bool(r["skipped"]) for r in recs), "case_errors": sum(bool(r.get("error")) for r in recs),
            "dropped": sum(bool(r["dropped"]) for r in recs)}
-    bad = {k: out[k] for k in ("missing_cases", "extra_cases", "first_decision_mismatches", "second_decision_mismatches") if out[k]}
+    bad = {k: out[k] for k in ("missing_cases", "extra_cases", "skip_list_present", "first_decision_mismatches",
+                               "second_decision_mismatches") if out[k]}
     if bad:
         raise SystemExit(f"the Stage 2 records fail the checks: {bad}")
     return out
@@ -1624,23 +1627,51 @@ def stage2_object(job: tuple[str, list[tuple[dict[str, Any], dict[str, str]]], d
     return out
 
 
+def read_skip_list(path: str | None) -> dict[str, Any] | None:
+    """A run's skip list (design 2026-11-09-stage2-contacts-rerun, the megaphone ruling): the JSON file {"reason": text,
+    "cases": ["object:idx", ...]} as {"path", "sha256", "reason", "cases" ([object, idx] in order)}; None without a path.
+    Refuses a list without a reason or cases, or with a case twice."""
+    if not path:
+        return None
+    d = json.load(open(path))
+    reason = str(d.get("reason") or "").strip()
+    if not reason:
+        raise SystemExit(f"{path}: the skip list names no reason")
+    cases = [(c.rsplit(":", 1)[0], int(c.rsplit(":", 1)[1])) for c in d.get("cases") or []]
+    if not cases:
+        raise SystemExit(f"{path}: the skip list names no cases")
+    if len(set(cases)) != len(cases):
+        raise SystemExit(f"{path}: a case is on the skip list twice")
+    return {"path": path, "sha256": _sha(path), "reason": reason, "cases": [[o, i] for o, i in sorted(cases)]}
+
+
 def _stage2_cases(a: argparse.Namespace, recs1: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """The run's Stage 1 records: --cases, or the shard's objects on the --sides, in (object, idx) order."""
+    """The run's Stage 1 records: --cases, or the shard's objects on the --sides, in (object, idx) order, without the
+    cases of the --skip-list (each a Stage 1 case; --cases must not name one)."""
+    sl = read_skip_list(getattr(a, "skip_list", None))
+    skip = {(o, int(i)) for o, i in sl["cases"]} if sl else set()
+    unknown = skip - {(r["object"], int(r["idx"])) for r in recs1}
+    if unknown:
+        raise SystemExit(f"{len(unknown)} of the skip list's cases are not in the Stage 1 records, the first {sorted(unknown)[0]}")
     if a.cases:
         want = {(c.rsplit(":", 1)[0], int(c.rsplit(":", 1)[1])) for c in a.cases.split(",")}
+        if want & skip:
+            raise SystemExit(f"{len(want & skip)} of the --cases are on the skip list")
         recs = [r for r in recs1 if (r["object"], int(r["idx"])) in want]
         if len(recs) != len(want):
             raise SystemExit(f"{len(want) - len(recs)} of the --cases are not in the Stage 1 records")
     else:
         sides = set(a.sides.split(","))
         objs = set(shard_objects([r["object"] for r in recs1 if r["side"] in sides], a.shard, a.shards))
-        recs = [r for r in recs1 if r["object"] in objs and r["side"] in sides]
+        recs = [r for r in recs1 if r["object"] in objs and r["side"] in sides and (r["object"], int(r["idx"])) not in skip]
     return sorted(recs, key=lambda r: (r["object"], int(r["idx"])))
 
 
 def run_executor(a: argparse.Namespace) -> dict[str, Any]:
-    """The run config's executor lines: the sim dir and the model lock's sha256 (the flags come with vars(a))."""
-    return {"sim_dir": os.environ.get("RPENT_MUJOCO_SIM_DIR"), "model_lock_sha256": _sha(a.model_lock) if a.model_lock else None}
+    """The run config's executor lines: the sim dir, the model lock's sha256 and the skip list (read_skip_list; the flags
+    come with vars(a))."""
+    return {"sim_dir": os.environ.get("RPENT_MUJOCO_SIM_DIR"), "model_lock_sha256": _sha(a.model_lock) if a.model_lock else None,
+            "skip_list": read_skip_list(getattr(a, "skip_list", None))}
 
 
 def add_executor_args(p: argparse.ArgumentParser) -> None:
@@ -1649,6 +1680,7 @@ def add_executor_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--plan-without-hand-boxes", action="store_true",
                    help="the reach and free-move checks test the published collision set (ruling A)")
     p.add_argument("--model-lock", default=None, help="a model_lock.py lock: the bundle must hold its files before the first case")
+    p.add_argument("--skip-list", default=None, help="a JSON file {reason, cases}: the cases the run leaves out (read_skip_list)")
 
 
 def stage2(a: argparse.Namespace) -> str:
