@@ -120,6 +120,20 @@ def _rz(t: float) -> np.ndarray:
     return np.array([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]])
 
 
+def return_rotation(a: Any, frac: float) -> np.ndarray:
+    """Design amendment 7's return toward vertical: the rotation about the horizontal axis k = a x down that turns the
+    approach ``a`` toward straight down by ``frac`` of its angle from it (Rodrigues; the identity at no tilt)."""
+    a = np.asarray(a, dtype=float)
+    c = np.cross(a, [0.0, 0.0, -1.0])
+    s = float(np.linalg.norm(c))
+    if s == 0.0:
+        return np.eye(3)
+    k = c / s
+    t = float(frac) * math.atan2(s, -float(a[2]))
+    K = np.array([[0.0, -k[2], k[1]], [k[2], 0.0, -k[0]], [-k[1], k[0], 0.0]])
+    return np.eye(3) + math.sin(t) * K + (1.0 - math.cos(t)) * (K @ K)
+
+
 def turn_deg(env: Any, p: Grasp6, destination: str) -> float:
     """Design amendment 5's transport turn, degrees: the pad centre's bearing change about the arm's base (joint 1's
     axis), from the pinch to the destination's xy."""
@@ -133,10 +147,13 @@ def hand_path6(env: Any, p: Grasp6, v_lift: float, v_transport: float, destinati
     """The hand pose per control step of the tilted path from the pregrasp on, as MuJoCoLabEnv.hand_path: the 0.3 s
     open wait at the pregrasp APPROACH_M back along the approach, the approach along it (the sim's approach_profile at
     V_DOWN), the close, the lift LIFT_H straight up, the hold, the transport of the pad centre in a straight line to the
-    destination's xy, the lower, the release, and the retreat RETREAT_M back along the turned approach; the held object
-    rigid in the hand: [(phase, hand position, hand rotation)]. The rotation is the pinch's to the end of the hold;
-    during the transport it turns about the world vertical by turn_deg times the transport's fraction, then holds that
-    turn (design amendment 5: the tilt is kept). At no tilt the positions are today's path, the yaw turns."""
+    destination's xy, the lower, the release, and the retreat RETREAT_M back along the approach (straight up); the held
+    object rigid in the hand: [(phase, hand position, hand rotation)]. The rotation is the pinch's to the end of the
+    hold. During the transport it turns about the world vertical by turn_deg (design amendment 5) and returns toward
+    vertical by return_rotation (amendment 7), both by the transport's fraction, about the pad centre, then holds the
+    full turn and return (vertical, the pads down) through the lower, the release and the retreat. The lower puts the
+    lowest hull vertex of the object, turned and returned with the hand, at the release height. At no tilt the
+    positions are today's path, the yaw turns."""
     sc, gr = env.s["scene"], env.s["grasp"]
     dest = env._dest(destination)
     hz = sc.CTRL_HZ
@@ -155,12 +172,13 @@ def hand_path6(env: Any, p: Grasp6, v_lift: float, v_transport: float, destinati
     turn = math.radians(turn_deg(env, p, destination))
     start, goal = tcp[:2], np.asarray(dest["xy"], dtype=float)
     for frac in transport_profile(float(np.linalg.norm(goal - start)), v_transport, hz, accel=a_transport):
-        Rz = _rz(turn * frac)
+        Q = _rz(turn * frac) @ return_rotation(a, frac)
         c = start + (goal - start) * frac
-        out.append(("transport", np.array([c[0], c[1], tcp[2]]) + Rz @ off, Rz @ Rh))
-    Rz = _rz(turn)
-    Re, end = Rz @ Rh, np.array([goal[0], goal[1], tcp[2]]) + Rz @ off
-    z_rel = env._release_target_low_z(dest, release_height) - (env.sim.obj_low_z() - hp[2])
+        out.append(("transport", np.array([c[0], c[1], tcp[2]]) + Q @ off, Q @ Rh))
+    Q = _rz(turn) @ return_rotation(a, 1.0)
+    Re, end = Q @ Rh, np.array([goal[0], goal[1], tcp[2]]) + Q @ off
+    V = np.concatenate(env._hull_vertex_list()) - np.asarray(p.tcp, dtype=float)     # the object from the pad centre, at rest
+    z_rel = env._release_target_low_z(dest, release_height) + float((Q @ off)[2]) - float((V @ Q.T)[:, 2].min())
     z0 = z = float(end[2])
     for frac in ramp_profile(z0 - z_rel, V_LOWER, hz):
         z = z0 + (z_rel - z0) * frac
@@ -168,7 +186,7 @@ def hand_path6(env: Any, p: Grasp6, v_lift: float, v_transport: float, destinati
     rel = np.array([end[0], end[1], z])
     out += [("release", rel, Re)] * int(RELEASE_S * hz)
     for frac in ramp_profile(RETREAT_M, V_LOWER, hz):
-        out.append(("retreat", rel - RETREAT_M * frac * (Rz @ a), Re))
+        out.append(("retreat", rel - RETREAT_M * frac * (Q @ a), Re))
     return out
 
 

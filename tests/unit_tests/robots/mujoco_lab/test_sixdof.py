@@ -237,8 +237,24 @@ def test_at_no_tilt_the_tilted_hand_path_is_todays_but_for_the_transport_turn():
     assert all(np.allclose(x[2], _yaw_frame(y[2] + turn), atol=1e-12) for x, y in zip(a[k1:], b[k1:]))
 
 
+def test_the_return_rotation_takes_the_approach_to_straight_down_about_a_horizontal_axis():
+    rng = np.random.default_rng(3)
+    down = np.array([0.0, 0.0, -1.0])
+    for _ in range(50):
+        g = _random_within(rng, 45.0)
+        a, th = g[:3, 2], math.radians(gg.approach_deg(g))
+        U = sixdof.return_rotation(a, 1.0)
+        assert np.allclose(U @ a, down, rtol=0.0, atol=1e-12)
+        assert np.allclose(U @ U.T, np.eye(3), rtol=0.0, atol=1e-12) and np.linalg.det(U) == pytest.approx(1.0)
+        assert abs((U - U.T)[1, 0]) < 1e-12                                     # the axis is horizontal: no turn about z
+        assert math.acos(np.clip((np.trace(U) - 1.0) / 2.0, -1.0, 1.0)) == pytest.approx(th, abs=1e-7)
+        for f in (0.25, 0.5):
+            assert math.acos(np.clip(-(sixdof.return_rotation(a, f) @ a)[2], -1.0, 1.0)) == pytest.approx((1.0 - f) * th, abs=1e-7)
+    assert np.array_equal(sixdof.return_rotation(down, 0.7), np.eye(3))
+
+
 @SIM
-def test_a_tilted_hand_path_approaches_along_the_approach_lifts_straight_up_and_retreats_back_along_it():
+def test_a_tilted_hand_path_approaches_along_the_approach_lifts_straight_up_returns_to_vertical_and_retreats_up():
     from robots.mujoco_lab import adapter
 
     env, p = _sugar_box()
@@ -253,19 +269,34 @@ def test_a_tilted_hand_path_approaches_along_the_approach_lifts_straight_up_and_
     assert [x[0] for x in path] == sorted((x[0] for x in path), key=list(by).index)
     k0 = [x[0] for x in path].index("transport")
     assert all(np.array_equal(x[2], Rh) for x in path[:k0])
-    ez = np.array([0.0, 0.0, 1.0])
-    assert all(abs(x[2][:, 2] @ ez - Rh[:, 2] @ ez) < 1e-12 and abs(x[2][:, 0] @ ez - Rh[:, 0] @ ez) < 1e-12 for x in path)  # the tilt kept
-    Rt = _yaw_frame(math.radians(sixdof.turn_deg(env, p6, "bin")))
-    assert all(np.allclose(x[2], Rt @ Rh, atol=1e-12) for x in by["lower"] + by["release"] + by["retreat"])
     assert np.allclose(by["wait"][0][1], hp - adapter.APPROACH_M * a)
     s = [float((x[1] - by["wait"][0][1]) @ a) for x in by["approach"]]
     assert all(np.allclose(x[1], by["wait"][0][1] + si * a) for x, si in zip(by["approach"], s)) and s == sorted(s)
     assert np.array_equal(by["approach"][-1][1], hp) and all(np.array_equal(x[1], hp) for x in by["close"])
     assert all(np.allclose(x[1][:2], hp[:2]) for x in by["lift"]) and by["lift"][-1][1][2] == pytest.approx(hp[2] + adapter.LIFT_H)
-    goal = np.asarray(env._dest("bin")["xy"]) + (Rt @ (hp - np.asarray(p6.tcp)))[:2]       # the pad centre ends over the destination
-    assert np.allclose(by["transport"][-1][1][:2], goal) and np.allclose(by["transport"][-1][2], Rt @ Rh)
+    # the transport: the pad centre on a straight line at the lifted height, the hand turned about the vertical and
+    # returned toward vertical by the same fraction (amendments 5 and 7)
+    turn = math.radians(sixdof.turn_deg(env, p6, "bin"))
+    start, goal = np.asarray(p6.tcp)[:2], np.asarray(env._dest("bin")["xy"])
+    z_top = float(np.asarray(p6.tcp)[2] + adapter.LIFT_H)
+    for x in by["transport"]:
+        c = x[1] - sixdof.HAND_OFF * x[2][:, 2]                                     # the pad centre
+        f = float((c[:2] - start) @ (goal - start) / ((goal - start) @ (goal - start)))
+        assert c[2] == pytest.approx(z_top, abs=1e-12) and np.allclose(c[:2], start + f * (goal - start), rtol=0.0, atol=1e-12)
+        assert np.allclose(x[2], _yaw_frame(turn * f) @ sixdof.return_rotation(a, f) @ Rh, rtol=0.0, atol=1e-9)
+    Re = _yaw_frame(turn) @ sixdof.return_rotation(a, 1.0) @ Rh
+    assert np.allclose(Re[:, 2], [0.0, 0.0, 1.0], rtol=0.0, atol=1e-12)                # vertical, the pads down
+    assert all(np.allclose(x[2], Re, rtol=0.0, atol=1e-12) for x in by["transport"][-1:] + by["lower"] + by["release"] + by["retreat"])
+    assert np.allclose(by["transport"][-1][1][:2], goal, rtol=0.0, atol=1e-12)            # the pad centre under the hand, over the goal
+    assert all(np.allclose(x[1][:2], goal, rtol=0.0, atol=1e-12) for x in by["lower"] + by["release"])
+    zs = [x[1][2] for x in by["lower"]]
+    assert zs == sorted(zs, reverse=True)
     rel = by["release"][0][1]
-    assert np.allclose(by["retreat"][-1][1], rel - adapter.RETREAT_M * (Rt @ a))
+    V = np.concatenate(env._hull_vertex_list())                     # the object rigid in the hand: its rest pose turned and returned
+    Q = _yaw_frame(turn) @ sixdof.return_rotation(a, 1.0)
+    low = rel[2] - sixdof.HAND_OFF + float(((V - np.asarray(p6.tcp)) @ Q.T)[:, 2].min())
+    assert low == pytest.approx(env._release_target_low_z(env._dest("bin"), None), abs=1e-9)   # the release height's rule
+    assert np.allclose(by["retreat"][-1][1], rel + [0.0, 0.0, adapter.RETREAT_M], rtol=0.0, atol=1e-12)
 
 
 # ------------------------------------------------------------------ the rotation IK, the candidates and the path check
