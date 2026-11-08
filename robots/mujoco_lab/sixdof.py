@@ -82,8 +82,9 @@ def as_vertical(p: Grasp6) -> Proposal:
 
 
 def _today(p: Proposal | Grasp6) -> Proposal:
-    """The Proposal today's executor runs: a Proposal as it is, a Grasp6 within VERTICAL_DEG by the vertical mapping."""
-    if isinstance(p, Proposal):
+    """The Proposal today's executor runs: a Proposal (anything but a Grasp6) as it is, a Grasp6 within VERTICAL_DEG by the
+    vertical mapping."""
+    if not isinstance(p, Grasp6):
         return p
     if approach_deg(p) <= VERTICAL_DEG:
         return as_vertical(p)
