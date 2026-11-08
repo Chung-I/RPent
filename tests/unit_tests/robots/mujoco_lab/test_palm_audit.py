@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import dataclasses
 import math
 
 import numpy as np
@@ -155,3 +156,38 @@ def test_the_state_hash_sees_a_moved_object():
     a = pa.state_sha(env)
     env.sim.d.qpos[0] += 1e-6
     assert pa.state_sha(env) != a
+
+
+@SIM
+def test_the_audits_closed_fingers_put_each_pad_on_its_own_side_of_the_slab():
+    from robots.mujoco_lab import sixdof
+
+    env = _sugar_box()
+    sc = env.s["scene"]
+    p = env.proposals((0.5,), turn=-math.pi / 2)[0]                  # the 6 cm side (the 9.75 cm side is wider than the hand opens)
+    lo, hi = env.pinch_extent(p.point, p.yaw)
+    q = pa.pads_on_extent(env, p)
+    assert 0.0 < min(q) and max(q) < sc.MAX_OPEN - 0.002
+    L = sixdof.local_poses(env.sim, [env.sim.pad_l, env.sim.pad_r], q)
+    assert L[env.sim.pad_l][0][0] + sc.PAD_HALF[0] == pytest.approx(lo, abs=1e-9)
+    assert L[env.sim.pad_r][0][0] - sc.PAD_HALF[0] == pytest.approx(hi, abs=1e-9)
+
+
+@SIM
+def test_the_audit_checks_the_finger_boxes_against_the_object_with_the_pads_on_the_slabs_faces(monkeypatch):
+    from robots.mujoco_lab import sixdof
+
+    env = _sugar_box()
+    p = env.proposals((0.9,), turn=-math.pi / 2)[0]
+    act = pa.parse_action(COMMIT)[1]
+    assert pa.audit_path(env, dataclasses.replace(p, width=0.02), act)["pairs"] == {}   # the stored width does not place the pads
+    seen = {}
+    real = sixdof.clearance_on_path
+
+    def spy(*a, **k):
+        seen.update(k)
+        return real(*a, **k)
+
+    monkeypatch.setattr(sixdof, "clearance_on_path", spy)
+    pa.audit_path(env, p, act)
+    assert seen["fingers_on_object"] is True and seen["closed_q"] == pa.pads_on_extent(env, p)

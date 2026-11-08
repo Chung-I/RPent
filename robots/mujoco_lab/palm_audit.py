@@ -111,12 +111,26 @@ def today_path(env: Any, prop: Any, act: dict[str, Any]) -> list[tuple[str, np.n
     return [(ph, pos, sixdof._rz(float(yaw))) for ph, pos, yaw in path]
 
 
+def pads_on_extent(env: Any, prop: Any) -> tuple[float, float]:
+    """The left and right finger joints that put each pad's inner face on its side of the hulls inside the pads' slab
+    (MuJoCoLabEnv.pinch_extent's lo and hi along the closing axis): the two finger motors close independently, so each pad
+    stops on the object's face on its own side (the stored width is a lower bound on the slab's, and the slab can be off
+    centre). Within the joints' range [0, MAX_OPEN - 0.002]."""
+    sc = env.s["scene"]
+    lo, hi = env.pinch_extent(prop.point, prop.yaw)
+    if not (math.isfinite(lo) and math.isfinite(hi)):
+        raise ValueError(f"no hull inside the pads' slab at s {prop.s}")
+    top, t = sc.MAX_OPEN - 0.002, 2.0 * sc.PAD_HALF[0]
+    return float(np.clip(lo + sc.MAX_OPEN - t, 0.0, top)), float(np.clip(sc.MAX_OPEN - t - hi, 0.0, top))
+
+
 def audit_path(env: Any, prop: Any, act: dict[str, Any]) -> dict[str, Any]:
-    """flags_of the clearance of ``prop``'s planned path under ``act``, the fingers closed on the pinch's width."""
-    w = float(prop.width)
-    if not math.isfinite(w):
-        raise ValueError(f"the pinch at s {prop.s} has no width")
-    return flags_of(sixdof.clearance_on_path(env, today_path(env, prop, act), w, act["destination"]))
+    """flags_of the clearance of ``prop``'s planned path under ``act``: the palm, wrist and finger boxes against the object
+    from the pregrasp to the close (the design's; sixdof's own check leaves the finger boxes to the width rule) and against
+    the table, the fixtures and the destination at every step, the closed fingers each on its side of the slab
+    (pads_on_extent)."""
+    return flags_of(sixdof.clearance_on_path(env, today_path(env, prop, act), float(prop.width), act["destination"],
+                                             fingers_on_object=True, closed_q=pads_on_extent(env, prop)))
 
 
 def state_sha(env: Any) -> str:
