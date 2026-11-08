@@ -199,6 +199,182 @@ def test_the_metrics_count_rows_mismatches_and_stops_by_source_and_hold_no_label
     assert cs.g1_metrics([dict(done[0], rows=rows[:1])])["passed"] is True and cs.g1_metrics([])["passed"] is False
 
 
+# ------------------------------------------------------------------ the box-contact recorder (revised G1′)
+
+BOXES_XML = """
+<mujoco>
+  <option timestep="0.002"/>
+  <worldbody>
+    <geom name="table" type="box" size="0.5 0.5 0.02" pos="0 0 -0.02"/>
+    <body name="obj" pos="0 0 0.05"><freejoint/><geom name="hull0" type="box" size="0.03 0.03 0.05" mass="0.2"/></body>
+    <body name="shelf" pos="0.3 0 0.05"><freejoint/><geom name="fx_shelf_0" type="box" size="0.03 0.03 0.05" mass="0.2"/></body>
+    <body name="hand" mocap="true" pos="0 0 0.3">
+      <geom name="palm" type="box" size="0.045 0.02 0.01" contype="2" conaffinity="1"/>
+      <geom name="wrist" type="cylinder" size="0.02 0.03" pos="0 0 0.05" contype="2" conaffinity="1"/>
+      <body name="finger_l" pos="0.3 0 0.01">
+        <geom type="box" size="0.004 0.008 0.02" contype="2" conaffinity="1"/>
+        <geom name="pad_l" type="box" size="0.002 0.008 0.008" pos="0.006 0 -0.014"/>
+      </body>
+    </body>
+  </worldbody>
+</mujoco>
+"""
+
+
+class _BoxSim:
+    """A free object (hull0) and a free fixture on a table; a mocap hand with the palm, the wrist and a finger (its box
+    unnamed, as in the lab, and its pad). At hand height 0.105 m the palm is 5 mm into the object's top, the finger box
+    5 mm and the pad 7 mm into the fixture's top; at 0.3 m nothing touches."""
+
+    def __init__(self):
+        import mujoco
+
+        self.m = mujoco.MjModel.from_xml_string(BOXES_XML)
+        self.d = mujoco.MjData(self.m)
+        self.hull_ids = [self.m.geom("hull0").id]
+        mujoco.mj_forward(self.m, self.d)
+
+    def substep(self):
+        import mujoco
+
+        mujoco.mj_step(self.m, self.d)
+
+
+class _BoxEnv:
+    def __init__(self):
+        self.sim = _BoxSim()
+        self.s = {"scene": SimpleNamespace(CTRL_HZ=10, SUB=4)}
+
+    def _tracer(self, pt, yaw):
+        trace = []
+        return trace, lambda phase: trace.append({"phase": phase})
+
+    def at(self, z):
+        self.sim.d.mocap_pos[0][2] = z
+
+    def run(self, script):
+        """script: [(phase or None, hand z)]: SUB substeps at that height, then the traced step's on_step (None: untraced,
+        as the free move to the pregrasp)."""
+        trace, on_step = self._tracer(None, 0.0)
+        for phase, z in script:
+            self.at(z)
+            for _ in range(self.s["scene"].SUB):
+                self.sim.substep()
+            if phase is not None:
+                on_step(phase)
+        return trace
+
+
+SCRIPT = [(None, 0.105), ("approach", 0.3), ("close", 0.105), ("lift", 0.3)]
+
+
+def test_the_recorder_reads_every_substeps_box_contacts_by_phase_and_partner():
+    env = _BoxEnv()
+    with cs.BoxContacts(env) as bc:
+        env.run(SCRIPT)
+        env.at(0.105)
+        for _ in range(3):                                           # after the last traced step
+            env.sim.substep()
+    s = bc.summary()
+    assert s["observed"] is True and s["first"]["phase"] == "untraced" and s["first"]["t"] is None
+    assert s["first"]["box"] in ("palm", "finger") and s["first"]["partner"] == ("object" if s["first"]["box"] == "palm" else "fx_shelf_0")
+    assert set(s["by"]) == {f"{ph}|{pair}" for ph in ("untraced", "close", "after") for pair in ("palm/object", "finger/fx_shelf_0")}
+    assert s["by"]["close|palm/object"]["substeps"] == 4 and 3.0 < s["by"]["close|palm/object"]["deepest_mm"] < 6.0
+    assert 3.0 < s["by"]["close|finger/fx_shelf_0"]["deepest_mm"] < 6.0                       # the box, not the deeper pad
+    assert s["by"]["untraced|palm/object"]["substeps"] == 4 and s["by"]["after|palm/object"]["substeps"] == 3
+
+
+def test_the_recorder_dates_a_traced_first_contact_and_keeps_the_deepest():
+    env = _BoxEnv()
+    with cs.BoxContacts(env) as bc:
+        env.run([("approach", 0.3), ("approach", 0.3), ("close", 0.105), ("close", 0.103)])
+    s = bc.summary()
+    assert s["first"]["phase"] == "close" and s["first"]["t"] == pytest.approx(0.2) and s["first"]["mm"] > 4.0
+    assert s["by"]["close|palm/object"]["substeps"] == 8 and s["by"]["close|palm/object"]["deepest_mm"] > 6.0
+
+
+def test_a_second_rollout_in_one_context_counts_each_substep_once():
+    env = _BoxEnv()
+    wrapped = env.sim.substep
+    env.sim.substep = wrapped
+    with cs.BoxContacts(env) as bc:
+        env.run([("close", 0.105)])
+        env.run([("close", 0.105)])
+    assert bc.summary()["by"]["close|palm/object"]["substeps"] == 8 and env.sim.substep is wrapped
+
+
+def test_the_recorder_reads_only():
+    a, b = _BoxEnv(), _BoxEnv()
+    a.run(SCRIPT)
+    with cs.BoxContacts(b):
+        b.run(SCRIPT)
+    assert np.array_equal(a.sim.d.qpos, b.sim.d.qpos) and np.array_equal(a.sim.d.qvel, b.sim.d.qvel)
+
+
+def test_the_recorder_restores_the_tracer_and_the_substep_and_sees_nothing_without_a_rollout():
+    env = _BoxEnv()
+    wrapped = env.sim.substep
+    env.sim.substep = wrapped                                        # the adapter's meter: an instance attribute
+    with cs.BoxContacts(env) as bc:
+        pass
+    assert bc.summary() == {"observed": False, "first": None, "by": {}}
+    with cs.BoxContacts(env):
+        env.run([("close", 0.105)])
+    assert "_tracer" not in vars(env) and env.sim.substep is wrapped
+    with cs.BoxContacts(SimpleNamespace()) as bc:                    # an env without a tracer
+        pass
+    assert bc.summary() == {"observed": False, "first": None, "by": {}}
+
+
+def test_with_the_recorder_on_every_replayed_row_carries_its_box_contacts(lab):
+    rec, entry = _pilot(lab)
+    out = cs.g1_case(SimpleNamespace(env=lab), _rec1(), 3, None, rec, "pilot", entry, record=True)
+    assert [r["box_contacts"] for r in out["rows"]] == [{"observed": False, "first": None, "by": {}}] * 4   # the fake has no tracer
+    assert all(r["same"] for r in out["rows"])
+    assert all("box_contacts" not in r for r in cs.g1_case(SimpleNamespace(env=lab), _rec1(), 3, None, rec, "pilot", entry)["rows"])
+
+
+def test_with_the_recorder_on_each_row_hands_its_env_to_the_recorder(lab, monkeypatch):
+    got = []
+
+    class Spy(cs.BoxContacts):
+        def __init__(self, env):
+            got.append(env)
+            super().__init__(env)
+
+    monkeypatch.setattr(cs, "BoxContacts", Spy)
+    rec, entry = _pilot(lab)
+    cs.g1_case(SimpleNamespace(env=lab), _rec1(), 3, None, rec, "pilot", entry, record=True)
+    cs.g1_case(SimpleNamespace(env=lab), _rec1(), 3, None, rec, "pilot", entry)
+    assert got == [lab] * 4 + [None] * 4
+
+
+def test_an_objects_job_hands_the_recorder_flag_to_each_case(monkeypatch):
+    from robots.mujoco_lab import calibrate as cal
+    from robots.mujoco_lab import prior
+
+    seen = []
+    monkeypatch.setattr(cal, "_primitives", lambda b, t, k: SimpleNamespace(env=SimpleNamespace(), manifest={}))
+    monkeypatch.setattr(cal, "job_force_noise", lambda o, m: None)
+    monkeypatch.setattr(prior, "fragility_world", lambda m: None)
+    monkeypatch.setattr(cs, "g1_case", lambda *a, record=False, **k: seen.append(record) or
+                        {"source": "poseset", "object": "box", "idx": 0, "rows": [], "stop": None, "error": None})
+    item = ({"object": "box", "idx": 0}, {"object": "box", "idx": 0})
+    for flag in (True, False):
+        cs.g1_object(("box", [item, item], {"bundle": "b", "seed": 0, "source": "poseset", "grasps": None, "record": flag}))
+    assert seen == [True, True, False, False]
+
+
+def test_the_metrics_count_the_rows_the_recorder_saw_and_the_changed_rows_without_a_box_contact():
+    seen, hit = {"observed": True, "first": None, "by": {}}, {"observed": True, "first": _contact("release"), "by": {}}
+    rows = [{"id": "g0", "same": True, "diffs": {}, "mapping": None, "hand_path": None, "box_contacts": seen},
+            {"id": "g1", "same": False, "diffs": {"trace_sha": ["a", "b"]}, "mapping": None, "hand_path": None, "box_contacts": hit},
+            {"id": "g2", "same": False, "diffs": {"trace_sha": ["a", "b"]}, "mapping": None, "hand_path": None, "box_contacts": seen},
+            {"id": "g3", "same": False, "diffs": {"trace_sha": ["a", "b"]}, "mapping": None, "hand_path": None}]
+    m = cs.g1_metrics([{"source": "pilot", "side": "test", "rows": rows, "stop": None, "error": None}])
+    assert (m["rows_recorded"], m["rows_with_box_contact"], m["changed_without_box_contact"]) == (3, 1, 1)
+
+
 # ------------------------------------------------------------------ the report over G1's units
 
 def _unit(tmp_path, k, cases, rows_of, exit_="EXIT 0"):
@@ -264,39 +440,86 @@ def test_a_g1_prime_unit_fails_only_on_a_stop_an_error_or_a_geometry_check_while
     assert not cs.g1_unit_ok(dict(m, rows=0), allow_diffs=True)
 
 
-def _row(i, stored="placed_stable", label="placed_stable", diffs=None, error=None, mapping=None):
-    return {"id": i, "same": not diffs and mapping is not False, "diffs": diffs or {}, "mapping": mapping, "hand_path": None,
-            "seconds": 1.0, "stored_label": stored, "label": label, "error": error}
+def _contact(phase, box="finger", partner="object", mm=0.1, t=1.0):
+    return {"phase": phase, "t": t, "box": box, "partner": partner, "mm": mm}
 
 
-def _g1p_units(tmp_path):
+def _row(i, stored="placed_stable", label="placed_stable", diffs=None, error=None, mapping=None, contact=None, recorded=True):
+    r = {"id": i, "same": not diffs and mapping is not False, "diffs": diffs or {}, "mapping": mapping, "hand_path": None,
+         "seconds": 1.0, "stored_label": stored, "label": label, "error": error}
+    if recorded:
+        by = {f"{contact['phase']}|{contact['box']}/{contact['partner']}": {"substeps": 3, "deepest_mm": contact["mm"]}} if contact else {}
+        r["box_contacts"] = {"observed": True, "first": contact, "by": by}
+    return r
+
+
+def _g1p_units(tmp_path, mug_g0=None):
+    """A pose-set box case (across_0.5 changed after a palm contact at the approach; across_0.1 and across_0.7 identical
+    without one) and a pilot mug case (g0 changed after a finger contact at the release; g1 identical with a contact)."""
     tmp_path.mkdir(parents=True, exist_ok=True)
     a = {"source": "poseset", "side": "test", "object": "box", "idx": 0, "stop": None, "error": None, "seconds": 4.0,
-         "rows": [_row("across_0.1"), _row("across_0.5", label="not_lifted", diffs={"label": ["placed_stable", "not_lifted"]}),
-                  _row("across_0.7")]}
+         "rows": [_row("across_0.1"), _row("across_0.5", label="not_lifted", diffs={"label": ["placed_stable", "not_lifted"]},
+                                            contact=_contact("approach", "palm", mm=2.0)), _row("across_0.7")]}
     b = {"source": "pilot", "side": "validation", "object": "mug", "idx": 2, "stop": None, "error": None, "seconds": 2.0,
-         "rows": [_row("g0", label=None, error="Unreachable: free move: palm - fx_shelf_0",
-                       diffs={"label": ["tipped", None], "error": [None, "Unreachable: free move: palm - fx_shelf_0"]}, stored="tipped")]}
-    return [_unit(tmp_path, 0, [a], 3), _unit(tmp_path, 1, [b], 1)]
+         "rows": [mug_g0 or _row("g0", diffs={"trace_sha": ["a", "b"]}, contact=_contact("release", t=10.5)),
+                  _row("g1", contact=_contact("release", mm=0.001, t=10.4))]}
+    return [_unit(tmp_path, 0, [a], 3), _unit(tmp_path, 1, [b], 2)]
 
 
-def test_g1_prime_sorts_the_rows_by_the_audits_list_and_names_every_changed_row_the_list_lacks(tmp_path):
-    flagged = {("poseset", "test", "box", 0, "across_0.5"), ("poseset", "test", "box", 0, "across_0.7"), ("poseset", "test", "box", 0, "along_0.9")}
-    rep = cs.g1p_report(_g1p_units(tmp_path), flagged, {"pilot": 1, "poseset": 3})
-    assert rep["unflagged"] == {"rows": 2, "identical": 1, "changed": 1} and rep["flagged"] == {"rows": 2, "changed": 1, "identical": 1}
+FLAGGED = {("poseset", "test", "box", 0, "across_0.5"), ("poseset", "test", "box", 0, "across_0.7"), ("poseset", "test", "box", 0, "along_0.9")}
+
+
+def test_revised_g1_prime_passes_when_every_changed_row_shows_a_box_contact_and_reads_the_audits_list_beside_it(tmp_path):
+    rep = cs.g1p_report(_g1p_units(tmp_path), FLAGGED, {"pilot": 2, "poseset": 3})
+    assert rep["passed"] is True and rep["rows_not_recorded"] == 0
+    assert rep["gate"] == {"changed": 2, "changed_with_contact": 2, "changed_without_contact": []}
+    assert rep["flagged"] == {"rows": 2, "changed": 1, "identical": 1}
+    assert rep["unflagged"] == {"rows": 3, "identical": 2, "changed": 1, "changed_by_first_phase": {"release": 1}}
+    assert rep["unflagged_changed_by_first_contact"] == {"release finger/object": 1}
+    assert rep["identical_with_contact"] == [{"source": "pilot", "side": "validation", "object": "mug", "idx": 2, "id": "g1",
+                                              "first_contact": _contact("release", mm=0.001, t=10.4)}]
+    assert rep["transitions_by_object"] == {"box": {"placed_stable → not_lifted": 1}, "mug": {"placed_stable → placed_stable": 1}}
     assert rep["flagged_by_transition"] == {"placed_stable → not_lifted": 1} and rep["flagged_by_object"] == {"box": 1}
-    assert rep["changed_not_in_list"] == [{"source": "pilot", "side": "validation", "object": "mug", "idx": 2, "id": "g0",
-                                           "fields": ["error", "label"], "stored_label": "tipped", "label": None,
-                                           "error": "Unreachable: free move: palm - fx_shelf_0"}]
-    assert rep["flagged_not_replayed"] == [["poseset", "test", "box", 0, "along_0.9"]] and rep["passed"] is False
-    flagged.add(("pilot", "validation", "mug", 2, "g0"))
-    rep = cs.g1p_report(_g1p_units(tmp_path / "x"), flagged, {"pilot": 1, "poseset": 3})
-    assert rep["passed"] is True and rep["unflagged"] == {"rows": 1, "identical": 1, "changed": 0}
-    assert rep["flagged_by_transition"] == {"placed_stable → not_lifted": 1, "tipped → None": 1}
-    assert not cs.g1p_report(_g1p_units(tmp_path / "y"), flagged, {"pilot": 2, "poseset": 3})["passed"]      # a row was not replayed
+    assert [(x["object"], x["id"], x["fields"], x["first_contact"]) for x in rep["changed_not_in_list"]] == [
+        ("mug", "g0", ["trace_sha"], _contact("release", t=10.5))]
+    assert rep["flagged_not_replayed"] == [["poseset", "test", "box", 0, "along_0.9"]]
 
 
-def test_the_g1_command_exits_0_on_differing_rows_with_allow_diffs_and_3_without(tmp_path, monkeypatch):
+def test_revised_g1_prime_fails_on_a_changed_row_without_a_box_contact_whatever_the_list_says(tmp_path):
+    bare = _row("g0", stored="tipped", label=None, error="Unreachable: x", diffs={"label": ["tipped", None]})
+    flagged = FLAGGED | {("pilot", "validation", "mug", 2, "g0")}
+    rep = cs.g1p_report(_g1p_units(tmp_path, mug_g0=bare), flagged, {"pilot": 2, "poseset": 3})
+    assert rep["passed"] is False and rep["gate"]["changed_with_contact"] == 1
+    assert rep["gate"]["changed_without_contact"] == [{"source": "pilot", "side": "validation", "object": "mug", "idx": 2, "id": "g0",
+                                                       "fields": ["label"], "stored_label": "tipped", "label": None,
+                                                       "error": "Unreachable: x", "observed": True}]
+    bare["box_contacts"]["observed"] = False                                          # the recorder ran, no rollout did
+    rep = cs.g1p_report(_g1p_units(tmp_path / "b", mug_g0=bare), flagged, {"pilot": 2, "poseset": 3})
+    assert rep["passed"] is False and rep["gate"]["changed_without_contact"][0]["observed"] is False
+
+
+def test_revised_g1_prime_fails_on_a_row_the_recorder_did_not_see_a_stop_a_missing_row_a_bad_exit_or_a_geometry_check(tmp_path):
+    rep = cs.g1p_report(_g1p_units(tmp_path / "a", mug_g0=_row("g0", recorded=False)), FLAGGED, {"pilot": 2, "poseset": 3})
+    assert rep["passed"] is False and rep["rows_not_recorded"] == 1 and rep["gate"]["changed_without_contact"] == []
+    units = _g1p_units(tmp_path / "b")
+    assert cs.g1p_report(units, FLAGGED, {"pilot": 2, "poseset": 3})["passed"] is True
+    stop = {"source": "poseset", "side": "test", "object": "can", "idx": 1, "stop": "g1: the hulls after the reset differ from the record's",
+            "error": None, "seconds": 1.0, "rows": []}
+    rep = cs.g1p_report(units + [_unit(tmp_path / "b", 2, [stop], 0)], FLAGGED, {"pilot": 2, "poseset": 3})
+    assert rep["passed"] is False and rep["stops"] == 1 and rep["missing_rows"] == {"pilot": 0, "poseset": 0}
+    assert cs.g1p_report(units, FLAGGED, {"pilot": 3, "poseset": 3})["passed"] is False                 # a row was not replayed
+    units = _g1p_units(tmp_path / "c")
+    (tmp_path / "c" / "unit_1" / "run.exit").write_text("EXIT 1\n")
+    rep = cs.g1p_report(units, FLAGGED, {"pilot": 2, "poseset": 3})
+    assert rep["passed"] is False and rep["units_not_exit_0"] == [units[1]]
+    geo = {"source": "pilot", "side": "test", "object": "can", "idx": 4, "stop": None, "error": None, "seconds": 1.0,
+           "rows": [_row("g3", mapping=False, contact=_contact("approach"))]}
+    rep = cs.g1p_report(_g1p_units(tmp_path / "d") + [_unit(tmp_path / "d", 2, [geo], 1)], FLAGGED, {"pilot": 3, "poseset": 3})
+    assert rep["passed"] is False and rep["mapping_failures"] == 1
+    assert [x["fields"] for x in rep["changed_not_in_list"] if x["id"] == "g3"] == [["mapping"]]
+
+
+def _g1_run(tmp_path, monkeypatch, seen=None):
     import robots.mujoco_lab.curve as cv
 
     monkeypatch.setenv("WANDB_MODE", "disabled")
@@ -308,49 +531,43 @@ def test_the_g1_command_exits_0_on_differing_rows_with_allow_diffs_and_3_without
     monkeypatch.setattr(cv, "load_stage1", lambda dirs: ([{"object": "box", "idx": 0, "fold": 0}], {}))
     case = {"source": "poseset", "side": "test", "object": "box", "idx": 0, "stop": None, "error": None, "seconds": 2.0,
             "rows": [_row("a", label="not_lifted", diffs={"label": ["placed_stable", "not_lifted"]})]}
-    monkeypatch.setattr(cs, "g1_object", lambda job: iter([case]))
-    args = ["g1", "--source", "poseset", "--runs", str(run), "--sides", "test"]
+    monkeypatch.setattr(cs, "g1_object", lambda job: (seen.append(job[2]["record"]) if seen is not None else None) or iter([case]))
+    return ["g1", "--source", "poseset", "--runs", str(run), "--sides", "test"]
+
+
+def test_the_g1_command_exits_0_on_differing_rows_with_allow_diffs_and_3_without(tmp_path, monkeypatch):
+    args = _g1_run(tmp_path, monkeypatch)
     assert cs.main(args + ["--allow-diffs", "--out", str(tmp_path / "o1")]) == str(tmp_path / "o1")
     with pytest.raises(SystemExit) as e:
         cs.main(args + ["--out", str(tmp_path / "o2")])
     assert e.value.code == 3
 
 
-def test_g1_prime_fails_on_a_stop_a_unit_without_exit_0_or_a_geometry_check_even_when_the_list_holds_every_changed_row(tmp_path):
-    flagged = {("poseset", "test", "box", 0, "across_0.5"), ("pilot", "validation", "mug", 2, "g0")}
-    units = _g1p_units(tmp_path / "a")
-    assert cs.g1p_report(units, flagged, {"pilot": 1, "poseset": 3})["passed"]
-    stop = {"source": "poseset", "side": "test", "object": "can", "idx": 1, "stop": "g1: the hulls after the reset differ from the record's",
-            "error": None, "seconds": 1.0, "rows": []}
-    rep = cs.g1p_report(units + [_unit(tmp_path / "a", 2, [stop], 0)], flagged, {"pilot": 1, "poseset": 3})
-    assert not rep["passed"] and rep["stops"] == 1 and rep["missing_rows"] == {"pilot": 0, "poseset": 0}
-    units = _g1p_units(tmp_path / "b")
-    (tmp_path / "b" / "unit_1" / "run.exit").write_text("EXIT 1\n")
-    rep = cs.g1p_report(units, flagged, {"pilot": 1, "poseset": 3})
-    assert not rep["passed"] and rep["units_not_exit_0"] == [units[1]]
-    geo = {"source": "pilot", "side": "test", "object": "can", "idx": 4, "stop": None, "error": None, "seconds": 1.0,
-           "rows": [_row("g3", mapping=False)]}
-    rep = cs.g1p_report(_g1p_units(tmp_path / "c") + [_unit(tmp_path / "c", 2, [geo], 1)], flagged, {"pilot": 2, "poseset": 3})
-    assert not rep["passed"] and rep["mapping_failures"] == 1
-    assert [x["fields"] for x in rep["changed_not_in_list"]] == [["mapping"]]
+def test_the_g1_command_hands_the_recorder_flag_to_every_object_and_records_it(tmp_path, monkeypatch):
+    seen = []
+    args = _g1_run(tmp_path, monkeypatch, seen)
+    cs.main(args + ["--allow-diffs", "--box-contacts", "--out", str(tmp_path / "o1")])
+    cs.main(args + ["--allow-diffs", "--out", str(tmp_path / "o2")])
+    assert seen == [True, False]
+    assert json.loads((tmp_path / "o1" / "run_config.json").read_text())["box_contacts"] is True
 
 
-def test_the_g1_prime_report_command_reads_the_audits_list_and_exits_3_when_an_unflagged_row_changed(tmp_path, monkeypatch):
+def test_the_g1_prime_report_command_writes_the_gate_and_the_audit_reading_and_exits_3_on_a_changed_row_without_contact(tmp_path, monkeypatch):
     monkeypatch.setenv("WANDB_MODE", "disabled")
-    monkeypatch.setattr(cs, "G1_EXPECTED", {"pilot": 1, "poseset": 3})
-    q = tmp_path / "q"
-    q.mkdir()
-    _g1p_units(q)
+    monkeypatch.setattr(cs, "G1_EXPECTED", {"pilot": 2, "poseset": 3})
     lst = tmp_path / "flagged_rows.jsonl"
     lines = [{"source": "poseset", "side": "test", "object": "box", "idx": 0, "id": i, "label": "placed_stable", "depth_mm": 3.0}
              for i in ("across_0.5", "across_0.7")]
     lines.append({"source": "stage2", "side": "test", "object": "box", "idx": 0, "first": "a", "attempt": 1, "row": "a", "depth_mm": 2.0})
     lst.write_text("".join(json.dumps(x) + "\n" for x in lines))
-    with pytest.raises(SystemExit) as e:
-        cs.main(["g1p-report", "--queue", str(q), "--flagged", str(lst), "--out", str(tmp_path / "s")])
+    _g1p_units(tmp_path / "q")
+    rep = cs.main(["g1p-report", "--queue", str(tmp_path / "q"), "--flagged", str(lst), "--out", str(tmp_path / "s")])
     md = (tmp_path / "s" / "g1p_summary.md").read_text()
-    assert e.value.code == 3 and "Result: FAILED." in md and "mug" in md and "free move" in md
-    lst.write_text(lst.read_text() + json.dumps({"source": "pilot", "side": "validation", "object": "mug", "idx": 2, "id": "g0"}) + "\n")
-    rep = cs.main(["g1p-report", "--queue", str(q), "--flagged", str(lst), "--out", str(tmp_path / "s2")])
-    assert rep["passed"] and "Result: PASSED." in (tmp_path / "s2" / "g1p_summary.md").read_text()
-    assert json.loads((tmp_path / "s2" / "g1p_summary.json").read_text())["unflagged"]["identical"] == 1
+    assert rep["passed"] and "Result: PASSED." in md and "| release | 1 |" in md and "| mug | placed_stable → placed_stable | 1 |" in md
+    assert json.loads((tmp_path / "s" / "g1p_summary.json").read_text())["unflagged"]["changed"] == 1
+    _g1p_units(tmp_path / "q2", mug_g0=_row("g0", diffs={"trace_sha": ["a", "b"]}))
+    with pytest.raises(SystemExit) as e:
+        cs.main(["g1p-report", "--queue", str(tmp_path / "q2"), "--flagged", str(lst), "--out", str(tmp_path / "s2")])
+    md = (tmp_path / "s2" / "g1p_summary.md").read_text()
+    assert e.value.code == 3 and "Result: FAILED." in md
+    assert md.index("mug 2 g0: fields trace_sha; no box contact") < md.index("## Beside the gate")   # listed under the gate
