@@ -459,6 +459,9 @@ def _break(T, what):
         edit(T / "gc_o" / "gate_cases.json", lambda c: c.update(published=str(T / "pub_o_test")))
     elif what == "oracle_sides":
         edit(T / "new_o_validation" / "run_config.json", lambda c: c.update(sides="test"))
+    elif what == "gate_revision":                                    # the gate ran at another code revision than the runs
+        _write_json(T / "old_gate" / "run_config.json", {"code_revision": "0ld"})
+        edit(T / "gp_o" / "gate_published.json", lambda c: c.update(runs=str(T / "old_gate")))
     return {}
 
 
@@ -471,7 +474,8 @@ def _break(T, what):
                                          ("audit_oracle_rates", "audit"), ("audit_keys", "audit"), ("sim_dir", "sim_dir"),
                                          ("gate_published_arm", "gate"), ("gate_published_other", "gate"),
                                          ("smoke_one_seed", "smoke"), ("smoke_oracle_missing", "smoke"), ("rules", "rules"),
-                                         ("gate_cases_published", "gate"), ("oracle_sides", "side")])
+                                         ("gate_cases_published", "gate"), ("oracle_sides", "side"),
+                                         ("gate_revision", "revision")])
 def test_summary_refuses_a_failed_gate_or_an_input_that_changed_before_it_opens_a_new_record(tmp_path, monkeypatch, what, match):
     T = tmp_path
     _world(T, monkeypatch)

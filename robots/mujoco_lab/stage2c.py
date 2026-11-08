@@ -406,6 +406,10 @@ def summary(a: argparse.Namespace) -> dict[str, Any]:
                                                     "split_sha256"))
     _same("Stage 2c", new_s2, STAGE2_SAME, _cfg(a.published.split(",")[0]))
     _same("Stage 2c", new_s2, ("rules",))
+    for g in gates["gate_published"]:
+        if g["code_revisions"] != [new_s2[0]["code_revision"]]:
+            raise SystemExit(f"{g['file']}: the gate ran at the code revision {g['code_revisions']}, the runs at "
+                             f"{new_s2[0]['code_revision']}")
     _same("oracle-c", new_o, ORACLE_SAME, _cfg(a.published_oracle.split(",")[0]))
     oside, posides = _split_sides(oruns), _split_sides(a.published_oracle.split(","))
     pub = _published(a)
