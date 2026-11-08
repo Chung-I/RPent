@@ -354,8 +354,9 @@ def obstacle_sets(sim: Any, destination: str) -> dict[str, set[int]]:
     return {"object": set(sim.hull_ids), "table": {sim.table}, "fixture": scene - dest, "destination": dest}
 
 
-def local_poses(sim: Any, geoms: list[int], jl: float) -> dict[int, tuple[np.ndarray, np.ndarray]]:
-    """Each geom's pose in the hand frame with both finger joints at ``jl`` (kinematics scratch)."""
+def local_poses(sim: Any, geoms: list[int], jl: Any) -> dict[int, tuple[np.ndarray, np.ndarray]]:
+    """Each geom's pose in the hand frame with both finger joints at ``jl``, or the left and right at a pair (kinematics
+    scratch)."""
     import mujoco
 
     m, kd, h = sim.m, sim.arm.kd, sim.arm.hand
@@ -377,11 +378,14 @@ def clearance(env: Any, p: Grasp6, w: float, destination: str, v_lift: float = 0
     return clearance_on_path(env, hand_path6(env, p, v_lift, v_transport, destination, release_height, a_transport), w, destination)
 
 
-def clearance_on_path(env: Any, path: list[tuple[str, Any, Any]], w: float, destination: str) -> dict[str, Any] | None:
+def clearance_on_path(env: Any, path: list[tuple[str, Any, Any]], w: float, destination: str,
+                      fingers_on_object: bool = False, closed_q: tuple[float, float] | None = None) -> dict[str, Any] | None:
     """clearance's check along a given hand path [(phase, hand position, hand rotation)] (hand_path6's, or today's
-    MuJoCoLabEnv.hand_path with each yaw as a rotation about the vertical). None when clear, else {"pairs": the failing
-    body/obstacle pairs, "first": the earliest failure, "by_pair": {pair: its first phase and step, its steps, its deepest
-    overlap and its geoms, and per phase its steps and deepest overlap}}."""
+    MuJoCoLabEnv.hand_path with each yaw as a rotation about the vertical); with ``fingers_on_object`` the finger boxes
+    are also checked against the object's hulls in OBJECT_PHASES, and ``closed_q`` (the left and right finger joints)
+    places the closed fingers instead of finger_q on ``w`` (both are the palm-contact audit's). None when clear, else
+    {"pairs": the failing body/obstacle pairs, "first": the earliest failure, "by_pair": {pair: its first phase and step,
+    its steps, its deepest overlap and its geoms, and per phase its steps and deepest overlap}}."""
     import mujoco
 
     sim, sc = env.sim, env.s["scene"]
@@ -389,7 +393,7 @@ def clearance_on_path(env: Any, path: list[tuple[str, Any, Any]], w: float, dest
     body_of = {g: b for b, gs in hand_geoms(sim).items() for g in gs}
     kind_of = {o: k for k, os_ in obstacle_sets(sim, destination).items() for o in os_}
     hand = list(body_of)
-    loc = {"open": local_poses(sim, hand, 0.0), "closed": local_poses(sim, hand, finger_q(sc, w))}
+    loc = {"open": local_poses(sim, hand, 0.0), "closed": local_poses(sim, hand, finger_q(sc, w) if closed_q is None else closed_q)}
     kd.qpos[:] = sim.d.qpos                     # the obstacles where they are now (the object at rest)
     mujoco.mj_kinematics(m, kd)
     obs = np.array(sorted(kind_of), dtype=int)
@@ -405,7 +409,7 @@ def clearance_on_path(env: Any, path: list[tuple[str, Any, Any]], w: float, dest
             near = obs[np.linalg.norm(centres - gp, axis=1) <= rb + m.geom_rbound[g] + CLEAR_DISTMAX]
             for o in near:
                 kind = kind_of[int(o)]
-                if kind == "object" and (body_of[g] == "finger" or ph not in OBJECT_PHASES):
+                if kind == "object" and ((body_of[g] == "finger" and not fingers_on_object) or ph not in OBJECT_PHASES):
                     continue
                 dist = float(mujoco.mj_geomDistance(m, kd, int(g), int(o), CLEAR_DISTMAX, None))
                 if dist < 0.0:

@@ -486,6 +486,31 @@ def test_the_clearance_of_a_pinch_is_the_clearance_on_its_tilted_path_with_each_
 
 
 @SIM
+def test_the_finger_boxes_meet_the_object_only_when_asked_and_only_on_the_way_to_the_close():
+    env, _ = _sugar_box()
+    p = env.proposals((0.9,), turn=-math.pi / 2)[0]          # the box's 6 cm side, 1.8 cm below its top: the palm is clear
+    path = [(ph, pos, sixdof._rz(y)) for ph, pos, y in env.hand_path(p, 0.15, 0.5, "table_centre")]
+    assert sixdof.clearance_on_path(env, path, p.width, "table_centre", fingers_on_object=True) is None   # closed on the pinch
+    narrow = sixdof.clearance_on_path(env, path, 0.02, "table_centre", fingers_on_object=True)           # closed on 2 cm: inside
+    assert "finger/object" in narrow["pairs"] and set(narrow["by_pair"]["finger/object"]["phases"]) == {"close"}
+    assert sixdof.clearance_on_path(env, path, 0.02, "table_centre") is None                             # the default skips them
+
+
+@SIM
+def test_the_closed_fingers_can_sit_each_on_its_own_side():
+    env, _ = _sugar_box()
+    sc = env.s["scene"]
+    p = env.proposals((0.9,), turn=-math.pi / 2)[0]
+    path = [(ph, pos, sixdof._rz(y)) for ph, pos, y in env.hand_path(p, 0.15, 0.5, "table_centre")]
+    lo, hi = env.pinch_extent(p.point, p.yaw)
+    q_l, q_r = lo + sc.MAX_OPEN - 2 * sc.PAD_HALF[0], sc.MAX_OPEN - 2 * sc.PAD_HALF[0] - hi    # each pad on its side's face
+    assert sixdof.clearance_on_path(env, path, p.width, "table_centre", fingers_on_object=True, closed_q=(q_l, q_r)) is None
+    c = sixdof.clearance_on_path(env, path, p.width, "table_centre", fingers_on_object=True, closed_q=(q_l + 0.01, q_r - 0.01))
+    b = c["by_pair"]["finger/object"]               # the left pad 1 cm into the box: its finger box up to 2 mm into it
+    assert set(b["phases"]) == {"close"} and 0.0005 < b["depth"] < 0.0025
+
+
+@SIM
 def test_a_pinch_near_the_top_set_down_on_the_table_is_clear():
     env, _ = _sugar_box()
     p = _pinch(env, 0.9)
