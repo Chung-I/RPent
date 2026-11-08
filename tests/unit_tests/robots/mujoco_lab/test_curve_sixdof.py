@@ -377,11 +377,11 @@ def test_the_metrics_count_the_rows_the_recorder_saw_and_the_changed_rows_withou
 
 # ------------------------------------------------------------------ the report over G1's units
 
-def _unit(tmp_path, k, cases, rows_of, exit_="EXIT 0"):
+def _unit(tmp_path, k, cases, rows_of, exit_="EXIT 0", cfg=None):
     d = tmp_path / f"unit_{k}"
     d.mkdir()
     (d / "g1_records.jsonl").write_text("".join(json.dumps(c) + "\n" for c in cases))
-    (d / "run_config.json").write_text(json.dumps({"source": cases[0]["source"], "rows": rows_of, "code_revision": "abc"}))
+    (d / "run_config.json").write_text(json.dumps(dict({"source": cases[0]["source"], "rows": rows_of, "code_revision": "abc"}, **(cfg or {}))))
     (d / "run.exit").write_text(exit_ + "\n")
     return str(d)
 
@@ -444,9 +444,11 @@ def _contact(phase, box="finger", partner="object", mm=0.1, t=1.0):
     return {"phase": phase, "t": t, "box": box, "partner": partner, "mm": mm}
 
 
-def _row(i, stored="placed_stable", label="placed_stable", diffs=None, error=None, mapping=None, contact=None, recorded=True):
+def _row(i, stored="placed_stable", label="placed_stable", diffs=None, error=None, mapping=None, contact=None, recorded=True, replan=None):
     r = {"id": i, "same": not diffs and mapping is not False, "diffs": diffs or {}, "mapping": mapping, "hand_path": None,
          "seconds": 1.0, "stored_label": stored, "label": label, "error": error}
+    if replan is not None:
+        r["replan"] = replan
     if recorded:
         by = {f"{contact['phase']}|{contact['box']}/{contact['partner']}": {"substeps": 3, "deepest_mm": contact["mm"]}} if contact else {}
         r["box_contacts"] = {"observed": True, "first": contact, "by": by}
@@ -472,7 +474,10 @@ FLAGGED = {("poseset", "test", "box", 0, "across_0.5"), ("poseset", "test", "box
 def test_revised_g1_prime_passes_when_every_changed_row_shows_a_box_contact_and_reads_the_audits_list_beside_it(tmp_path):
     rep = cs.g1p_report(_g1p_units(tmp_path), FLAGGED, {"pilot": 2, "poseset": 3})
     assert rep["passed"] is True and rep["rows_not_recorded"] == 0
-    assert rep["gate"] == {"changed": 2, "changed_with_contact": 2, "changed_without_contact": []}
+    assert rep["gate"] == {"changed": 2, "changed_with_contact": 2, "by_cause": {"contact only": 2, "raise only": 0, "both": 0},
+                           "changed_without_cause": []}
+    assert rep["replan"] is None and rep["transitions_by_cause"] == {"contact only": {"placed_stable → not_lifted": 1,
+                                                                                      "placed_stable → placed_stable": 1}}
     assert rep["flagged"] == {"rows": 2, "changed": 1, "identical": 1}
     assert rep["unflagged"] == {"rows": 3, "identical": 2, "changed": 1, "changed_by_first_phase": {"release": 1}}
     assert rep["unflagged_changed_by_first_contact"] == {"release finger/object": 1}
@@ -503,17 +508,17 @@ def test_revised_g1_prime_fails_on_a_changed_row_without_a_box_contact_whatever_
     flagged = FLAGGED | {("pilot", "validation", "mug", 2, "g0")}
     rep = cs.g1p_report(_g1p_units(tmp_path, mug_g0=bare), flagged, {"pilot": 2, "poseset": 3})
     assert rep["passed"] is False and rep["gate"]["changed_with_contact"] == 1
-    assert rep["gate"]["changed_without_contact"] == [{"source": "pilot", "side": "validation", "object": "mug", "idx": 2, "id": "g0",
-                                                       "fields": ["label"], "stored_label": "tipped", "label": None,
-                                                       "error": "Unreachable: x", "observed": True}]
+    assert rep["gate"]["changed_without_cause"] == [{"source": "pilot", "side": "validation", "object": "mug", "idx": 2, "id": "g0",
+                                                     "fields": ["label"], "stored_label": "tipped", "label": None,
+                                                     "error": "Unreachable: x", "observed": True}]
     bare["box_contacts"]["observed"] = False                                          # the recorder ran, no rollout did
     rep = cs.g1p_report(_g1p_units(tmp_path / "b", mug_g0=bare), flagged, {"pilot": 2, "poseset": 3})
-    assert rep["passed"] is False and rep["gate"]["changed_without_contact"][0]["observed"] is False
+    assert rep["passed"] is False and rep["gate"]["changed_without_cause"][0]["observed"] is False
 
 
 def test_revised_g1_prime_fails_on_a_row_the_recorder_did_not_see_a_stop_a_missing_row_a_bad_exit_or_a_geometry_check(tmp_path):
     rep = cs.g1p_report(_g1p_units(tmp_path / "a", mug_g0=_row("g0", recorded=False)), FLAGGED, {"pilot": 2, "poseset": 3})
-    assert rep["passed"] is False and rep["rows_not_recorded"] == 1 and rep["gate"]["changed_without_contact"] == []
+    assert rep["passed"] is False and rep["rows_not_recorded"] == 1 and rep["gate"]["changed_without_cause"] == []
     units = _g1p_units(tmp_path / "b")
     assert cs.g1p_report(units, FLAGGED, {"pilot": 2, "poseset": 3})["passed"] is True
     stop = {"source": "poseset", "side": "test", "object": "can", "idx": 1, "stop": "g1: the hulls after the reset differ from the record's",
@@ -532,7 +537,7 @@ def test_revised_g1_prime_fails_on_a_row_the_recorder_did_not_see_a_stop_a_missi
     assert [x["fields"] for x in rep["changed_not_in_list"] if x["id"] == "g3"] == [["mapping"]]
 
 
-def _g1_run(tmp_path, monkeypatch, seen=None):
+def _g1_run(tmp_path, monkeypatch, seen=None, key="record"):
     import robots.mujoco_lab.curve as cv
 
     monkeypatch.setenv("WANDB_MODE", "disabled")
@@ -544,7 +549,7 @@ def _g1_run(tmp_path, monkeypatch, seen=None):
     monkeypatch.setattr(cv, "load_stage1", lambda dirs: ([{"object": "box", "idx": 0, "fold": 0}], {}))
     case = {"source": "poseset", "side": "test", "object": "box", "idx": 0, "stop": None, "error": None, "seconds": 2.0,
             "rows": [_row("a", label="not_lifted", diffs={"label": ["placed_stable", "not_lifted"]})]}
-    monkeypatch.setattr(cs, "g1_object", lambda job: (seen.append(job[2]["record"]) if seen is not None else None) or iter([case]))
+    monkeypatch.setattr(cs, "g1_object", lambda job: (seen.append(job[2][key]) if seen is not None else None) or iter([case]))
     return ["g1", "--source", "poseset", "--runs", str(run), "--sides", "test"]
 
 
@@ -584,4 +589,159 @@ def test_the_g1_prime_report_command_writes_the_gate_and_the_audit_reading_and_e
         cs.main(["g1p-report", "--queue", str(tmp_path / "q2"), "--flagged", str(lst), "--out", str(tmp_path / "s2")])
     md = (tmp_path / "s2" / "g1p_summary.md").read_text()
     assert e.value.code == 3 and "Result: FAILED." in md
-    assert md.index("mug 2 g0: fields trace_sha; no box contact") < md.index("## Beside the gate")   # listed under the gate
+    assert md.index("mug 2 g0: fields trace_sha; no box contact and no raise") < md.index("## Beside the gate")   # under the gate
+
+
+# ------------------------------------------------------------------ the re-plan at the hold (amendment 8, rules (f) and (g))
+
+class ReplanEnv(G1Env):
+    """G1Env whose rollouts carry a re-plan record while its flag is on (the executor's, MuJoCoLabEnv.replan_hold)."""
+
+    replan_hold = False
+
+    def execute(self, *a, **k):
+        ro = super().execute(*a, **k)
+        if self.replan_hold:
+            ro.replan = _rp(raise_mm=4.0, d_mm=4.0)
+        return ro
+
+
+def _rp(raise_mm=0.0, d_mm=0.5, held=True, lifted=True, unreachable=False):
+    return {"held": held, "lifted": lifted, "planned_mm": -80.0, "measured_mm": -80.0 - d_mm, "d_mm": d_mm, "raise_mm": raise_mm,
+            "unreachable": unreachable}
+
+
+def test_the_outcome_carries_a_rollouts_re_plan_record_and_nothing_without_one():
+    ro = SimpleNamespace(label="placed_stable", trace=[], replan=_rp(raise_mm=4.0, d_mm=4.0))
+    assert cs.outcome(SimpleNamespace(), ro, True)["replan"] == _rp(raise_mm=4.0, d_mm=4.0)
+    assert "replan" not in cs.outcome(SimpleNamespace(), SimpleNamespace(label="placed_stable", trace=[]), True)
+
+
+def test_with_the_re_plan_on_every_replayed_row_carries_its_rollouts_record(lab):
+    env = ReplanEnv(LABELS)
+    rec, entry = _pilot(env)
+    env.replan_hold = True
+    out = cs.g1_case(SimpleNamespace(env=env), _rec1(), 3, None, rec, "pilot", entry)
+    assert [r["replan"] for r in out["rows"]] == [_rp(raise_mm=4.0, d_mm=4.0)] * 4
+    env.replan_hold = False
+    assert all("replan" not in r for r in cs.g1_case(SimpleNamespace(env=env), _rec1(), 3, None, rec, "pilot", entry)["rows"])
+
+
+def test_an_objects_job_sets_the_executors_re_plan_flag_for_its_cases_and_restores_it(monkeypatch):
+    from robots.mujoco_lab import calibrate as cal
+    from robots.mujoco_lab import prior
+
+    env, seen = SimpleNamespace(replan_hold=False), []
+    monkeypatch.setattr(cal, "_primitives", lambda b, t, k: SimpleNamespace(env=env, manifest={}))
+    monkeypatch.setattr(cal, "job_force_noise", lambda o, m: None)
+    monkeypatch.setattr(prior, "fragility_world", lambda m: None)
+    monkeypatch.setattr(cs, "g1_case", lambda prims, *a, **k: seen.append(prims.env.replan_hold) or
+                        {"source": "poseset", "object": "box", "idx": 0, "rows": [], "stop": None, "error": None})
+    item = ({"object": "box", "idx": 0}, {"object": "box", "idx": 0})
+    for flag in (True, False):
+        cs.g1_object(("box", [item, item], {"bundle": "b", "seed": 0, "source": "poseset", "grasps": None, "record": True, "replan": flag}))
+        assert env.replan_hold is False
+    assert seen == [True, True, False, False]
+
+
+def test_the_g1_command_hands_the_re_plan_flag_to_every_object_and_records_it(tmp_path, monkeypatch):
+    seen = []
+    args = _g1_run(tmp_path, monkeypatch, seen, key="replan")
+    cs.main(args + ["--allow-diffs", "--box-contacts", "--replan-hold", "--out", str(tmp_path / "o1")])
+    cs.main(args + ["--allow-diffs", "--box-contacts", "--out", str(tmp_path / "o2")])
+    assert seen == [True, False]
+    assert json.loads((tmp_path / "o1" / "run_config.json").read_text())["replan_hold"] is True
+
+
+def _replan_units(tmp_path, g0=None, a07=None, flags=(True, True)):
+    """The G1′ units of a run with the re-plan on: a pose-set box case (across_0.1 identical, d 0.5 mm; across_0.5 changed
+    after a palm contact, d 2 mm, no raise; across_0.7 changed after a 4.5 mm raise without a contact) and a pilot mug case
+    (g0 changed after a finger contact at the release and a 12 mm raise; g1 identical, not lifted, d 25 mm)."""
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    a = {"source": "poseset", "side": "test", "object": "box", "idx": 0, "stop": None, "error": None, "seconds": 4.0,
+         "rows": [_row("across_0.1", replan=_rp()),
+                  _row("across_0.5", label="not_lifted", diffs={"label": ["placed_stable", "not_lifted"]},
+                       contact=_contact("approach", "palm", mm=2.0), replan=_rp(d_mm=2.0)),
+                  a07 or _row("across_0.7", diffs={"trace_sha": ["a", "b"]}, replan=_rp(raise_mm=4.5, d_mm=4.5))]}
+    b = {"source": "pilot", "side": "validation", "object": "mug", "idx": 2, "stop": None, "error": None, "seconds": 2.0,
+         "rows": [g0 or _row("g0", label="crushed", diffs={"label": ["placed_stable", "crushed"]}, contact=_contact("release", t=10.5),
+                             replan=_rp(raise_mm=12.0, d_mm=12.0)),
+                  _row("g1", contact=_contact("release", mm=0.001, t=10.4), replan=_rp(d_mm=25.0, lifted=False))]}
+    return [_unit(tmp_path, 0, [a], 3, cfg={"replan_hold": flags[0]}), _unit(tmp_path, 1, [b], 2, cfg={"replan_hold": flags[1]})]
+
+
+def test_with_the_re_plan_on_the_gate_counts_the_changed_rows_by_cause_and_reads_d_in_bins(tmp_path):
+    rep = cs.g1p_report(_replan_units(tmp_path), FLAGGED, {"pilot": 2, "poseset": 3})
+    assert rep["passed"] is True
+    assert rep["gate"] == {"changed": 3, "changed_with_contact": 2, "by_cause": {"contact only": 1, "raise only": 1, "both": 1},
+                           "changed_without_cause": []}
+    assert rep["transitions_by_cause"] == {"contact only": {"placed_stable → not_lifted": 1}, "raise only": {"placed_stable → placed_stable": 1},
+                                           "both": {"placed_stable → crushed": 1}}
+    r = rep["replan"]
+    assert (r["units"], r["rows"], r["with_record"], r["not_lifted"], r["lifted_not_held"], r["eligible"]) == (2, 5, 5, 1, 0, 4)
+    assert (r["raised"], r["unreachable"], r["identical_with_raise"]) == (2, 0, 0)
+    assert r["bins"] == {"≤ 1 mm": {"rows": 1, "raised": 0, "unreachable": 0}, "1 to 3 mm": {"rows": 1, "raised": 0, "unreachable": 0},
+                         "3 to 10 mm": {"rows": 1, "raised": 1, "unreachable": 0}, "> 10 mm": {"rows": 1, "raised": 1, "unreachable": 0}}
+    assert r["raise_mm"] == {"min": 4.5, "median": 8.25, "max": 12.0} and r["raised_by_object"] == {"box": 1, "mug": 1}
+
+
+def test_with_the_re_plan_on_the_gate_fails_on_a_changed_row_with_neither_a_box_contact_nor_a_raise(tmp_path):
+    a07 = _row("across_0.7", diffs={"trace_sha": ["a", "b"]}, replan=_rp(d_mm=4.5, unreachable=True))     # the raise did not run
+    rep = cs.g1p_report(_replan_units(tmp_path, a07=a07), FLAGGED, {"pilot": 2, "poseset": 3})
+    assert rep["passed"] is False and [x["id"] for x in rep["gate"]["changed_without_cause"]] == ["across_0.7"]
+    assert rep["replan"]["unreachable"] == 1 and rep["replan"]["bins"]["3 to 10 mm"] == {"rows": 1, "raised": 0, "unreachable": 1}
+
+
+def test_with_the_re_plan_on_the_gate_fails_on_a_row_without_its_record_or_units_that_disagree_on_the_flag(tmp_path):
+    g0 = _row("g0", label="crushed", diffs={"label": ["placed_stable", "crushed"]}, contact=_contact("release", t=10.5))
+    rep = cs.g1p_report(_replan_units(tmp_path / "a", g0=g0), FLAGGED, {"pilot": 2, "poseset": 3})
+    assert rep["passed"] is False and rep["replan"]["without_record"] == [
+        {"source": "pilot", "side": "validation", "object": "mug", "idx": 2, "id": "g0"}]
+    err = _row("g0", label=None, error="RuntimeError: x", diffs={"label": ["placed_stable", None]}, contact=_contact("approach"))
+    rep = cs.g1p_report(_replan_units(tmp_path / "b", g0=err), FLAGGED, {"pilot": 2, "poseset": 3})
+    assert rep["passed"] is True and rep["replan"]["without_record"] == []                 # a row that raised has no rollout
+    rep = cs.g1p_report(_replan_units(tmp_path / "c", flags=(True, False)), FLAGGED, {"pilot": 2, "poseset": 3})
+    assert rep["passed"] is False and rep["replan"]["units_without_flag"] == [str(tmp_path / "c" / "unit_1")]
+
+
+def test_the_report_checks_the_rows_without_a_raise_against_the_contacts_only_pass(tmp_path):
+    first = _g1p_units(tmp_path / "first")          # the contacts-only pass: box across_0.5 and mug g0 changed, with contacts
+    rep = cs.g1p_report(_replan_units(tmp_path / "a"), FLAGGED, {"pilot": 2, "poseset": 3}, first_pass=first)
+    assert rep["vs_first_pass"] == {"rows_without_raise": 3, "equal": 3, "differ": [], "missing": 0}
+    g0 = _row("g0", diffs={"qpos_sha": ["a", "b"]}, contact=_contact("release", t=10.5), replan=_rp(d_mm=0.4))   # same label
+    rep = cs.g1p_report(_replan_units(tmp_path / "b", g0=g0), FLAGGED, {"pilot": 2, "poseset": 3}, first_pass=first)
+    assert rep["vs_first_pass"] == {"rows_without_raise": 4, "equal": 3, "missing": 0, "differ": [
+        {"source": "pilot", "side": "validation", "object": "mug", "idx": 2, "id": "g0", "first_fields": ["trace_sha"],
+         "fields": ["qpos_sha"], "first_label": "placed_stable", "label": "placed_stable"}]}
+    assert rep["passed"] is True                    # beside the gate: the approved rule alone decides the pass
+    rep = cs.g1p_report(_replan_units(tmp_path / "c"), FLAGGED, {"pilot": 2, "poseset": 3}, first_pass=first[:1])
+    assert rep["vs_first_pass"]["missing"] == 1     # mug g1 has no row in the first pass's units
+    assert cs.g1p_report(_replan_units(tmp_path / "d"), FLAGGED, {"pilot": 2, "poseset": 3})["vs_first_pass"] is None
+
+
+def test_the_g1_prime_report_command_writes_the_causes_the_re_plan_and_the_check_against_the_first_pass(tmp_path, monkeypatch):
+    monkeypatch.setenv("WANDB_MODE", "disabled")
+    monkeypatch.setattr(cs, "G1_EXPECTED", {"pilot": 2, "poseset": 3})
+    lst = tmp_path / "flagged_rows.jsonl"
+    lst.write_text(json.dumps({"source": "poseset", "side": "test", "object": "box", "idx": 0, "id": "across_0.5"}) + "\n")
+    _replan_units(tmp_path / "q")
+    _g1p_units(tmp_path / "f")
+    rep = cs.main(["g1p-report", "--queue", str(tmp_path / "q"), "--flagged", str(lst), "--first-pass", str(tmp_path / "f"),
+                   "--out", str(tmp_path / "s")])
+    md = (tmp_path / "s" / "g1p_summary.md").read_text()
+    assert rep["passed"] and "By cause: contact only 1, raise only 1, both 1." in md
+    assert "| 3 to 10 mm | 1 | 1 | 0 |" in md and "| raise only | placed_stable → placed_stable | 1 |" in md
+    assert "Rows without a raise equal to the contacts-only pass: 3 of 3 (differ 0, missing 0)." in md
+    assert json.loads((tmp_path / "s" / "g1p_summary.json").read_text())["replan"]["raised"] == 2
+
+
+def test_d_bins_take_their_upper_edge_and_read_only_the_rows_lifted_and_held_by_both_pads(tmp_path):
+    rows = [_row("r1", replan=_rp(d_mm=1.0)), _row("r3", replan=_rp(d_mm=3.0)),
+            _row("r10", diffs={"trace_sha": ["a", "b"]}, replan=_rp(raise_mm=10.0, d_mm=10.0)), _row("rh", replan=_rp(d_mm=20.0, held=False))]
+    case = {"source": "poseset", "side": "test", "object": "box", "idx": 0, "stop": None, "error": None, "seconds": 1.0, "rows": rows}
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    rep = cs.g1p_report([_unit(tmp_path, 0, [case], 4, cfg={"replan_hold": True})], set(), {"pilot": 0, "poseset": 4})
+    r = rep["replan"]
+    assert rep["passed"] is True and (r["lifted_not_held"], r["eligible"], r["raised"]) == (1, 3, 1)
+    assert r["bins"] == {"≤ 1 mm": {"rows": 1, "raised": 0, "unreachable": 0}, "1 to 3 mm": {"rows": 1, "raised": 0, "unreachable": 0},
+                         "3 to 10 mm": {"rows": 1, "raised": 1, "unreachable": 0}, "> 10 mm": {"rows": 0, "raised": 0, "unreachable": 0}}

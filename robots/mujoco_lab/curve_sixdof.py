@@ -26,6 +26,12 @@ Gate G1′, revised (design amendment 8, ruling (b)): the same rows on the sim w
 collide. A row may change only if one of those boxes touches something during its rollout: g1 --allow-diffs
 --box-contacts records each row's box contacts (BoxContacts), and g1p-report fails on a changed row without one. The
 palm-contact audit's list is read beside the gate, as the prediction for box contacts before the close.
+
+The re-plan at the hold (amendment 8, rules (a) to (g)): g1 --replan-hold sets the executor's flag (the carry rises by
+d when both pads hold the object at the end of the hold and it hangs more than the dead band below its planned offset);
+each row carries the executor's record, and a row may then change only through a box contact or a raise. g1p-report
+counts the changed rows by cause (contact only, raise only, both), reads d in bins and, with --first-pass, checks the
+rows without a raise against the contacts-only pass.
 """
 
 from __future__ import annotations
@@ -44,6 +50,7 @@ import numpy as np
 
 from robots.mujoco_lab import curve_graspgen as gg
 from robots.mujoco_lab import sixdof
+from robots.mujoco_lab.adapter import REPLAN_BAND_M
 from robots.mujoco_lab.curve_poseset import SAME, trace_sha
 
 SOURCES = ("pilot", "poseset")
@@ -56,13 +63,16 @@ def _js(x: Any) -> str:
 def outcome(env: Any, ro: Any, at_rest: Any) -> dict[str, Any]:
     """A rollout's outcome fields as the pilot and the pose set write them (simulate_rows): the label, the artifact flag
     (also when the reset was not at rest), the damage and loss fields, the highest rise, the hashes of the final state
-    (qpos to 9 digits) and of the trace."""
+    (qpos to 9 digits) and of the trace; with the executor's re-plan at the hold on, its record."""
     d = getattr(getattr(env, "sim", None), "d", None)
-    return {"label": ro.label, "artifact": bool(getattr(ro, "artifact", False)) or at_rest is False,
-            "damage": getattr(ro, "damage", None), "drop_z": getattr(ro, "drop_z", None), "loss_phase": getattr(ro, "loss_phase", None),
-            "max_z": getattr(ro, "max_z", None),
-            "qpos_sha": None if d is None else hashlib.sha256(np.round(np.asarray(d.qpos, dtype=float), 9).tobytes()).hexdigest()[:16],
-            "trace_sha": trace_sha(getattr(ro, "trace", []))}
+    out = {"label": ro.label, "artifact": bool(getattr(ro, "artifact", False)) or at_rest is False,
+           "damage": getattr(ro, "damage", None), "drop_z": getattr(ro, "drop_z", None), "loss_phase": getattr(ro, "loss_phase", None),
+           "max_z": getattr(ro, "max_z", None),
+           "qpos_sha": None if d is None else hashlib.sha256(np.round(np.asarray(d.qpos, dtype=float), 9).tobytes()).hexdigest()[:16],
+           "trace_sha": trace_sha(getattr(ro, "trace", []))}
+    if getattr(ro, "replan", None) is not None:          # the re-plan at the hold's record (the executor's flag on)
+        out["replan"] = ro.replan
+    return out
 
 
 def _checked_reset(env: Any, reset: Any, fingerprint: Any, want: str, hull_sha: str | None) -> tuple[Any, str | None]:
@@ -256,6 +266,8 @@ def _g1_row(env: Any, reset: Any, r: dict[str, Any], source: str, entry: dict[st
                stored_label=r.get("label"), label=new.get("label"), error=new.get("error"))
     if record:
         res["box_contacts"] = bc.summary()
+    if "replan" in new:
+        res["replan"] = new["replan"]
     return res, None
 
 
@@ -317,7 +329,8 @@ def g1_line(c: dict[str, Any]) -> str:
 
 def g1_object(job: tuple[str, list[tuple[dict[str, Any], dict[str, Any]]], dict[str, Any]]) -> list[dict[str, Any]]:
     """One object's stored cases, in the record's order, on its fold's bundle with the run's sensor and world
-    (curve_graspgen.graspgen_object's set-up); the pilot's grasps from the request step's files."""
+    (curve_graspgen.graspgen_object's set-up); the pilot's grasps from the request step's files; the executor's re-plan at
+    the hold set from the job's flag for its cases."""
     from robots.mujoco_lab import calibrate as cal
     from robots.mujoco_lab.prior import fragility_world
 
@@ -327,6 +340,7 @@ def g1_object(job: tuple[str, list[tuple[dict[str, Any], dict[str, Any]]], dict[
     if getattr(prims, "reset_s", None) is not None:
         raise RuntimeError("G1 replays the absorbing attempt only (this bundle restores the object after damage)")
     probes, prims.probe_models = getattr(prims, "probe_models", None), {}
+    replan0, prims.env.replan_hold = getattr(prims.env, "replan_hold", False), bool(s.get("replan"))
     prims.force_noise = cal.job_force_noise(None, prims.manifest)
     prims.env.force_noise = prims.force_noise
     world = fragility_world(prims.manifest)
@@ -340,7 +354,7 @@ def g1_object(job: tuple[str, list[tuple[dict[str, Any], dict[str, Any]]], dict[
             out.append(c)
             print(g1_line(c), file=sys.stderr, flush=True)
     finally:
-        prims.probe_models = probes
+        prims.probe_models, prims.env.replan_hold = probes, replan0
     return out
 
 
@@ -420,9 +434,21 @@ def g1_report(units: list[str], expected: dict[str, int]) -> dict[str, Any]:
 
 
 TO_CLOSE = ("untraced", "approach", "close")    # the recorder's phases up to the close: the audit's scope for the object
+CAUSES = ("contact only", "raise only", "both")   # what may change a row in G1′ with the re-plan on (amendment 8, rule (g))
+D_BINS = (("≤ 1 mm", -math.inf, 1.0), ("1 to 3 mm", 1.0, 3.0), ("3 to 10 mm", 3.0, 10.0), ("> 10 mm", 10.0, math.inf))  # d, (lo, hi]
 
 
-def g1p_report(units: list[str], flagged: set[tuple[Any, ...]], expected: dict[str, int]) -> dict[str, Any]:
+def _unit_config(u: str) -> dict[str, Any]:
+    p = os.path.join(u, "run_config.json")
+    return json.load(open(p)) if os.path.exists(p) else {}
+
+
+def _raised(r: dict[str, Any]) -> bool:
+    return float((r.get("replan") or {}).get("raise_mm") or 0.0) > 0.0
+
+
+def g1p_report(units: list[str], flagged: set[tuple[Any, ...]], expected: dict[str, int],
+               first_pass: list[str] | None = None) -> dict[str, Any]:
     """Revised gate G1′ (design amendment 8, ruling (b): a row changes only if a palm, wrist or finger box touches
     something during the rollout) over its units: g1_report's counts, then the gate: the changed rows (a differing field
     or a failed geometry check), those whose recorder (BoxContacts) saw a box contact, and those it saw without one (their
@@ -433,9 +459,17 @@ def g1p_report(units: list[str], flagged: set[tuple[Any, ...]], expected: dict[s
     rows with a box contact up to the close (the untraced free move and settle, the approach, the close), and those of
     them deeper than 1 mm (the audit's primary threshold); the identical rows that show a box contact; the label transitions (stored → new) of the changed rows by object; the flagged rows changed by transition
     and by object; every changed row that the list lacks (its fields, labels, error and first contact) and the list's
-    rows that no unit replayed. Passes when every unit ended with EXIT 0, every expected row was replayed, no case
-    stopped or raised, no mapping or hand-path check failed, the recorder saw every row and every changed row shows a box
-    contact."""
+    rows that no unit replayed. With the executor's re-plan at the hold on (the units' run_config replan_hold, rule (g)),
+    a row may also change through a raise: the gate counts the changed rows by cause (CAUSES) with their label
+    transitions, and ``replan`` reads the records: the units without the flag, the rows without a record (a row that
+    raised has none), the rows not lifted, lifted but not held, and lifted and held (the rows the rule reads), the
+    raised and the unreachable rows, the identical rows with a raise, d in D_BINS over the lifted and held rows with the
+    raises and the unreachable rows per bin, the raises (mm) and the raised rows by object. With ``first_pass`` (the
+    contacts-only pass's units), beside the gate: the rows without a raise whose differing fields, label and error equal
+    that pass's, differ from them, or have no row there. Passes when every unit ended with EXIT 0, every expected row was
+    replayed, no case stopped or raised, no mapping or hand-path check failed, the recorder saw every row, every changed
+    row shows a box contact or a raise and, with the re-plan on, every unit had the flag and every row that ran carries
+    its record."""
     rep = g1_report(units, expected)
     done, _, _ = _load_units(units)
     rows = [(c, r) for c in done for r in c["rows"]]
@@ -457,19 +491,29 @@ def g1p_report(units: list[str], flagged: set[tuple[Any, ...]], expected: dict[s
                     default=None) for _, r in part]
         return {"rows": len(part), "contact": sum(x is not None for x in deep), "contact_over_1mm": sum(x is not None and x > 1.0 for x in deep)}
 
+    def cause(r: dict[str, Any]) -> str | None:
+        c, up = first(r) is not None, _raised(r)
+        return "both" if c and up else "contact only" if c else "raise only" if up else None
+
     changed = [(c, r) for c, r in rows if not r["same"]]
-    bare = [(c, r) for c, r in changed if "box_contacts" in r and first(r) is None]
+    bare = [(c, r) for c, r in changed if "box_contacts" in r and cause(r) is None]
     unf = [(c, r) for c, r in rows if key(c, r) not in flagged]
     fl = [(c, r) for c, r in rows if key(c, r) in flagged]
     cu, cf = [(c, r) for c, r in unf if not r["same"]], [(c, r) for c, r in fl if not r["same"]]
     trans: dict[str, Counter] = defaultdict(Counter)
     for c, r in changed:
         trans[c["object"]][f"{r.get('stored_label')} → {r.get('label')}"] += 1
+    by_cause: dict[str, Counter] = defaultdict(Counter)
+    for c, r in changed:
+        if cause(r):
+            by_cause[cause(r)][f"{r.get('stored_label')} → {r.get('label')}"] += 1
     rep.update(rows_not_recorded=sum("box_contacts" not in r for _, r in rows),
                gate={"changed": len(changed), "changed_with_contact": sum(first(r) is not None for _, r in changed),
-                     "changed_without_contact": [dict(where(c, r), fields=_changed_fields(r), stored_label=r.get("stored_label"),
-                                                      label=r.get("label"), error=r.get("error"), observed=r["box_contacts"]["observed"])
-                                                 for c, r in bare]},
+                     "by_cause": {k: sum(by_cause[k].values()) for k in CAUSES},
+                     "changed_without_cause": [dict(where(c, r), fields=_changed_fields(r), stored_label=r.get("stored_label"),
+                                                    label=r.get("label"), error=r.get("error"), observed=r["box_contacts"]["observed"])
+                                               for c, r in bare]},
+               transitions_by_cause={k: dict(by_cause[k]) for k in CAUSES if by_cause[k]},
                flagged={"rows": len(fl), "changed": len(cf), "identical": len(fl) - len(cf)},
                unflagged={"rows": len(unf), "identical": len(unf) - len(cu), "changed": len(cu),
                           "changed_by_first_phase": dict(Counter(phase(r) for _, r in cu))},
@@ -483,9 +527,46 @@ def g1p_report(units: list[str], flagged: set[tuple[Any, ...]], expected: dict[s
                changed_not_in_list=[dict(where(c, r), fields=_changed_fields(r), stored_label=r.get("stored_label"), label=r.get("label"),
                                          error=r.get("error"), first_contact=first(r)) for c, r in cu],
                flagged_not_replayed=[list(k) for k in sorted(flagged - {key(c, r) for c, r in rows}, key=repr)])
+    on = [u for u in units if _unit_config(u).get("replan_hold")]
+    rep["replan"] = None
+    if on:
+        recs = [(c, r, r["replan"]) for c, r in rows if r.get("replan")]
+        held = [(c, r, p) for c, r, p in recs if p["lifted"] and p["held"] and p["d_mm"] is not None]
+        bins = {name: {"rows": 0, "raised": 0, "unreachable": 0} for name, _, _ in D_BINS}
+        for _, r, p in held:
+            b = bins[next(name for name, lo, hi in D_BINS if lo < p["d_mm"] <= hi)]
+            b["rows"] += 1
+            b["raised"] += int(_raised(r))
+            b["unreachable"] += int(bool(p["unreachable"]))
+        ups = sorted(float(p["raise_mm"]) for _, r, p in recs if _raised(r))
+        rep["replan"] = {"band_mm": 1e3 * REPLAN_BAND_M, "units": len(on), "units_without_flag": [u for u in units if u not in on],
+                         "rows": len(rows), "with_record": len(recs),
+                         "without_record": [where(c, r) for c, r in rows if not r.get("replan") and r.get("error") is None],
+                         "not_lifted": sum(not p["lifted"] for _, _, p in recs),
+                         "lifted_not_held": sum(bool(p["lifted"]) and not p["held"] for _, _, p in recs), "eligible": len(held),
+                         "raised": len(ups), "unreachable": sum(bool(p["unreachable"]) for _, _, p in recs),
+                         "identical_with_raise": sum(bool(r["same"]) for _, r, _ in recs if _raised(r)), "bins": bins,
+                         "raise_mm": {"min": ups[0], "median": float(np.median(ups)), "max": ups[-1]} if ups else None,
+                         "raised_by_object": dict(Counter(c["object"] for c, r, _ in recs if _raised(r)))}
+    rep["vs_first_pass"] = None
+    if first_pass is not None:
+        fdone, _, _ = _load_units(first_pass)
+        fby = {key(c, r): r for c in fdone for r in c["rows"]}
+
+        def sig(r: dict[str, Any]) -> str:
+            return _js([r.get("diffs") or {}, r.get("label"), r.get("error")])
+
+        nr = [(c, r) for c, r in rows if not _raised(r)]
+        missing = sum(key(c, r) not in fby for c, r in nr)
+        differ = [dict(where(c, r), first_fields=sorted(fby[key(c, r)].get("diffs") or {}), fields=sorted(r.get("diffs") or {}),
+                       first_label=fby[key(c, r)].get("label"), label=r.get("label"))
+                  for c, r in nr if key(c, r) in fby and sig(fby[key(c, r)]) != sig(r)]
+        rep["vs_first_pass"] = {"rows_without_raise": len(nr), "equal": len(nr) - missing - len(differ), "differ": differ, "missing": missing}
+    rp = rep["replan"]
     rep["passed"] = bool(not rep["units_not_exit_0"] and all(v == 0 for v in rep["missing_rows"].values()) and rep["rows"] > 0
                          and not any(rep[k] for k in ("stops", "case_errors", "mapping_failures", "hand_path_failures"))
-                         and rep["rows_not_recorded"] == 0 and not bare)
+                         and rep["rows_not_recorded"] == 0 and not bare
+                         and (rp is None or not (rp["units_without_flag"] or rp["without_record"])))
     return rep
 
 
@@ -506,32 +587,59 @@ def _row_text(x: dict[str, Any], contact: str) -> str:
 
 def g1p_report_cmd(a: argparse.Namespace) -> dict[str, Any]:
     """The g1p-report command: g1p_report over --units or every unit_* dir of --queue, with the audit's list --flagged
-    (flagged_rows.jsonl; its pilot and pose-set lines); g1p_summary.json and g1p_summary.md in --out, wandb. Exit 3 when
-    G1′ fails."""
+    (flagged_rows.jsonl; its pilot and pose-set lines) and, with --first-pass, every unit_* dir of the contacts-only pass's
+    queue; g1p_summary.json and g1p_summary.md in --out, wandb. Exit 3 when G1′ fails."""
     import glob
 
     from robots.mujoco_lab.curve import _sha
     from robots.mujoco_lab.tracking import log_run
 
-    units = a.units.split(",") if a.units else sorted(glob.glob(os.path.join(a.queue, "unit_*")), key=lambda d: int(d.rsplit("_", 1)[1]))
+    def queue(q: str) -> list[str]:
+        return sorted(glob.glob(os.path.join(q, "unit_*")), key=lambda d: int(d.rsplit("_", 1)[1]))
+
+    units = a.units.split(",") if a.units else queue(a.queue)
     lines = [json.loads(line) for line in open(a.flagged) if line.strip()]
     flagged = {(x["source"], x["side"], x["object"], int(x["idx"]), x["id"]) for x in lines if x["source"] in SOURCES}
-    rep = g1p_report(units, flagged, G1_EXPECTED)
+    rep = g1p_report(units, flagged, G1_EXPECTED, first_pass=queue(a.first_pass) if a.first_pass else None)
     rep["flagged_list"] = f"{a.flagged} (sha256 {_sha(a.flagged)}), {len(flagged)} pilot and pose-set rows"
     os.makedirs(a.out, exist_ok=True)
     with open(os.path.join(a.out, "g1p_summary.json"), "w") as f:
         json.dump(rep, f, indent=1)
-    g, u, fl, tc = rep["gate"], rep["unflagged"], rep["flagged"], rep["list_vs_contact_to_close"]
-    md = ["# Gate G1′, revised (amendment 8, ruling (b): a row changes only if a palm, wrist or finger box touches something)", "",
+    g, u, fl, tc, rp, vf = (rep[k] for k in ("gate", "unflagged", "flagged", "list_vs_contact_to_close", "replan", "vs_first_pass"))
+    md = ["# Gate G1′, revised (amendment 8: a row changes only if a palm, wrist or finger box touches something"
+          + (", or the re-plan at the hold raises its carry)" if rp else ")"), "",
           f"Result: {'PASSED' if rep['passed'] else 'FAILED'}.", "", "## The gate", "",
           f"- Changed rows (a differing label, qpos_sha or trace_sha, or a failed geometry check): {g['changed']}. With a box contact:"
-          f" {g['changed_with_contact']}. Without one: {len(g['changed_without_contact'])}.",
+          f" {g['changed_with_contact']}. By cause: {', '.join(f'{k} {n}' for k, n in g['by_cause'].items())}. Without a box contact"
+          f" or a raise: {len(g['changed_without_cause'])}.",
           f"- Rows the recorder did not see: {rep['rows_not_recorded']}.",
           f"- Rows replayed {rep['rows']} of {sum(rep['of_rows'].values())}; stopped cases {rep['stops']}; case errors {rep['case_errors']};"
           f" mapping failures {rep['mapping_failures']}; hand-path failures {rep['hand_path_failures']}; units not ending with EXIT 0:"
           f" {len(rep['units_not_exit_0'])} of {rep['units']}.",
           f"- Code: {', '.join(rep['code_revisions'])}.", ""]
-    md += [_row_text(x, "no box contact") + ("" if x["observed"] else "; no rollout") for x in g["changed_without_contact"]]
+    if rp:
+        md.insert(md.index("- Rows the recorder did not see: " + str(rep["rows_not_recorded"]) + ".") + 1,
+                  f"- The re-plan: units with the flag {rp['units']} of {rep['units']}; rows that ran without a record"
+                  f" {len(rp['without_record'])}.")
+    md += [_row_text(x, "no box contact and no raise") + ("" if x["observed"] else "; no rollout") for x in g["changed_without_cause"]]
+    md += ["", "### Label transitions of the changed rows, by cause (stored → new)", "", "| cause | transition | rows |", "|---|---|---|"]
+    md += [f"| {k} | {t} | {n} |" for k, ts in rep["transitions_by_cause"].items() for t, n in sorted(ts.items(), key=lambda x: -x[1])]
+    if rp:
+        rm = rp["raise_mm"]
+        md += ["", f"## The re-plan at the hold (dead band {rp['band_mm']:g} mm; d = planned − measured offset of the lowest point)", "",
+               f"- Rows with a record: {rp['with_record']} of {rp['rows']}. Not lifted: {rp['not_lifted']}. Lifted but not held by both"
+               f" pads at the end of the hold: {rp['lifted_not_held']}. Lifted and held (the rows the rule reads): {rp['eligible']}.",
+               f"- Raised: {rp['raised']}" + (f" (min {rm['min']:.1f}, median {rm['median']:.1f}, max {rm['max']:.1f} mm)" if rm else "")
+               + f". Raise unreachable: {rp['unreachable']}. Identical rows with a raise: {rp['identical_with_raise']}.", "",
+               "| d (lifted and held rows) | rows | raised | unreachable |", "|---|---|---|---|"]
+        md += [f"| {name} | {b['rows']} | {b['raised']} | {b['unreachable']} |" for name, b in rp["bins"].items()]
+        md += ["", "| object | raised rows |", "|---|---|"]
+        md += [f"| {o} | {n} |" for o, n in sorted(rp["raised_by_object"].items(), key=lambda x: -x[1])]
+    if vf:
+        md += ["", f"- Rows without a raise equal to the contacts-only pass: {vf['equal']} of {vf['rows_without_raise']} (differ"
+               f" {len(vf['differ'])}, missing {vf['missing']})."]
+        md += [f"- {x['source']} {x['side']} {x['object']} {x['idx']} {x['id']}: contacts-only pass fields {', '.join(x['first_fields']) or 'none'},"
+               f" {x['first_label']}; now fields {', '.join(x['fields']) or 'none'}, {x['label']}" for x in vf["differ"][:MD_LIST]]
     md += ["", "## Beside the gate: the palm-contact audit's list (the prediction for box contacts before the close)", "",
            f"- Flagged rows changed: {fl['changed']} of {fl['rows']} (identical {fl['identical']}).",
            f"- Unflagged rows changed: {u['changed']} of {u['rows']} (identical {u['identical']}).",
@@ -561,8 +669,10 @@ def g1p_report_cmd(a: argparse.Namespace) -> dict[str, Any]:
         f.write("\n".join(md) + "\n")
     rep["wandb"] = log_run("sixdof-g1p-report", {"units": units, "expected": G1_EXPECTED, "flagged": a.flagged},
                            {"passed": rep["passed"], "rows": rep["rows"], "rows_not_recorded": rep["rows_not_recorded"],
-                            "changed": g["changed"], "changed_with_contact": g["changed_with_contact"],
-                            "changed_without_contact": len(g["changed_without_contact"]), "unflagged": u, "flagged": fl,
+                            "changed": g["changed"], "changed_with_contact": g["changed_with_contact"], "by_cause": g["by_cause"],
+                            "changed_without_cause": len(g["changed_without_cause"]), "unflagged": u, "flagged": fl,
+                            "replan": None if rp is None else {k: v for k, v in rp.items() if k not in ("without_record", "units_without_flag")},
+                            "vs_first_pass": None if vf is None else {k: v for k, v in vf.items() if k != "differ"},
                             "identical_with_contact": len(rep["identical_with_contact"]), "stops": rep["stops"], "case_errors": rep["case_errors"]})
     print("\n".join(md), flush=True)
     if not rep["passed"]:
@@ -639,7 +749,8 @@ def g1(a: argparse.Namespace) -> str:
     with open(os.path.join(a.out, "run_config.json"), "w") as f:
         json.dump(config, f, indent=1)
     jobs = [(o, items, {"bundle": os.path.join(cfg["bundle"], "folds", f"fold_{items[0][0]['fold']}"), "seed": cfg["seed"],
-                        "source": a.source, "grasps": cfg.get("grasps"), "record": a.box_contacts}) for o, items in by.items()]
+                        "source": a.source, "grasps": cfg.get("grasps"), "record": a.box_contacts, "replan": a.replan_hold})
+            for o, items in by.items()]
     t0 = time.time()
     with open(rec_path, "w") as f:
         for job in jobs:
@@ -667,6 +778,7 @@ def main(argv: list[str] | None = None) -> Any:
     g.add_argument("--sides", default="validation,test")
     g.add_argument("--allow-diffs", action="store_true", help="gate G1′: rows may differ (the exit counts stops, errors and geometry checks)")
     g.add_argument("--box-contacts", action="store_true", help="revised gate G1′: record each row's palm, wrist and finger-box contacts")
+    g.add_argument("--replan-hold", action="store_true", help="the executor's re-plan at the hold on (amendment 8): each row records it")
     g.add_argument("--out", required=True)
     r = sub.add_parser("g1-report", help="G1 over its units: the summary (counts and field names only)")
     r.add_argument("--units", default=None, help="comma-separated g1 run dirs")
@@ -676,6 +788,7 @@ def main(argv: list[str] | None = None) -> Any:
     p.add_argument("--units", default=None, help="comma-separated g1 run dirs")
     p.add_argument("--queue", default=None, help="a queue dir: every unit_* dir in it")
     p.add_argument("--flagged", required=True, help="the audit's flagged_rows.jsonl")
+    p.add_argument("--first-pass", default=None, help="the contacts-only pass's queue dir: the rows without a raise are checked against it")
     p.add_argument("--out", required=True)
     a = ap.parse_args(argv)
     return {"g1": g1, "g1-report": g1_report_cmd, "g1p-report": g1p_report_cmd}[a.cmd](a)
