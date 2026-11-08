@@ -517,7 +517,7 @@ def test_the_ceiling_reading_is_the_designs_two_point_rule():
     b = lambda d, lo, hi: {"cases": 481, "success": {"diff": d, "lo": lo, "hi": hi}}  # noqa: E731
     assert ps.ceiling_reading(b(0.05, 0.01, 0.09)) == ps.POSE_LIMIT
     assert ps.ceiling_reading(b(0.005, 0.0, 0.019)) == ps.POSE_NOT
-    assert ps.ceiling_reading(b(-0.03, -0.05, -0.01)) == ps.POSE_BELOW
+    assert ps.ceiling_reading(b(-0.03, -0.05, -0.01)) == ps.POSE_NOT        # as written: a top below 2 points is "not"
     assert ps.ceiling_reading(b(0.015, 0.002, 0.029)) == "undecided at n = 481"
     assert ps.ceiling_reading(b(0.04, -0.005, 0.085)) == "undecided at n = 481"
 
@@ -646,7 +646,11 @@ def _summary_inputs(tmp_path, cases):
     _write(f"{s2}/run_metrics.json", {"stop": None})
     _write(f"{t}/stage2_summary.json", {"provenance": {"records_sha256": {f"{s2} test": _sha256(f"{s2}/records_test.jsonl")}}})
     _write(f"{od}/records_test.jsonl", lines=[dict(c["oracle"], side="test", stop=None, skipped=None) for c in cases])
-    _write(f"{t}/oracle_summary.json", {"provenance": {"oracle_records_sha256": {od: _sha256(f"{od}/records_test.jsonl")}, "keys": [K0, K4]}})
+    _write(f"{od}/run_config.json", {"bundle": "b", "seed": 1, "stage1_records_sha256": h1, "code_revision": "o"})
+    _write(f"{od}/run_metrics.json", {"stop": None})
+    open(f"{od}/run.exit", "w").write("EXIT 0\n")
+    _write(f"{t}/oracle_summary.json", {"provenance": {"oracle_records_sha256": {od: _sha256(f"{od}/records_test.jsonl")}, "keys": [K0, K4],
+                                                       "stage2": s2, "stage1": [s1]}})
     _write(f"{pd}/records_test.jsonl", lines=[dict(c["pose"], side="test", stop=None, error=None) for c in cases])
     _write(f"{pd}/run_config.json", {"bundle": "b", "seed": 1, "stage1_records_sha256": h1, "code_revision": "x", "fracs": list(FRACS),
                                      "row_order": [list(x) for x in ps.ROW_ORDER], "replay": False, "sides": "test"})
@@ -706,3 +710,63 @@ def test_the_selector_term_and_reading_2_carry_no_reading_rule():
     b = ps._block(ps.views([_case()], K0, K4))
     assert set(k for k in b if k.endswith("_reading")) == {"1p_reading", "1_reading"}
     assert ps._block([])["1p_reading"] is None
+
+
+def test_a_replay_that_differs_from_the_first_pass_stops_the_case(lab):
+    first = lab.execute
+
+    def execute(*a, **kw):
+        out = first(*a, **kw)
+        return SimpleNamespace(**dict(vars(out), label="tipped")) if lab.resets[-1] == 777 else out
+
+    lab.execute = execute
+    rec = ps.poseset_case(SimpleNamespace(env=lab), _rec1(), 3, None, replay=True)
+    assert len(rec["replay"]["mismatches"]) == 3 and "replay" in (rec["stop"] or "") and "3 rows" in rec["stop"]   # the 3 along rows
+
+
+def test_the_summary_refuses_oracle_runs_on_other_cases(tmp_path, monkeypatch):
+    monkeypatch.setenv("WANDB_MODE", "disabled")
+    for name, edit in (("seed", lambda a: _write(os.path.join(a.oracle, "run_config.json"),
+                                                  dict(json.load(open(os.path.join(a.oracle, "run_config.json"))), seed=2))),
+                       ("stage2", lambda a: _write(a.oracle_summary, {"provenance": dict(json.load(open(a.oracle_summary))["provenance"],
+                                                                                          stage2="elsewhere")}))):
+        a = _summary_inputs(tmp_path / name, _three_cases())
+        edit(a)
+        with pytest.raises(SystemExit) as e:
+            ps.summary(a)
+        assert "oracle" in str(e.value) and name in str(e.value)
+
+
+def test_the_summary_reads_4_to_6_also_without_thin_plastic(tmp_path, monkeypatch):
+    monkeypatch.setenv("WANDB_MODE", "disabled")
+    a = _summary_inputs(tmp_path, _three_cases())
+    R = ps.summary(a)["readings"]
+    nt = R["4_to_6_no_thin"]
+    assert R["4_kinds"]["fruit"]["n"] == 1 and nt["4_kinds"]["fruit"]["n"] == 0 and nt["4_kinds"]["boxes"]["n"] == 1
+    assert R["5_no_row"]["cases"] == 1 and nt["5_no_row"]["cases"] == 0 and nt["4_hammer"]["cases"] == 1
+    assert sum(nt["6_pose_change"]["all"].values()) == 2 and set(nt) == {"4_kinds", "4_hammer", "5_no_row", "6_pose_change", "6_balance"}
+    md = open(os.path.join(a.out, "poseset_summary.md")).read()
+    for sec in ("## 4.", "## 5.", "## 6."):
+        assert "without thin plastic" in md.split(sec)[1].split("\n## ")[0].lower()
+
+
+def test_a_ceiling_below_the_comparison_arm_is_flagged_beside_the_rule():
+    lose = _case(o="ycb__sugar_box", rows=_rows(across_0_5="tipped"), oracle=_ep(success=True, labels=["placed_stable"]))
+    b = ps._block(ps.views([lose, dict(lose, pose=dict(lose["pose"], object="ycb__cracker_box"))], K0, K4))
+    assert b["1_reading"] == ps.POSE_NOT and b["1_below"] and not b["1p_below"]
+
+
+def test_the_summary_opens_each_pose_set_records_file_once(tmp_path, monkeypatch):
+    import builtins
+
+    monkeypatch.setenv("WANDB_MODE", "disabled")
+    a = _summary_inputs(tmp_path, _three_cases())
+    path, real, n = os.path.join(a.runs, "records_test.jsonl"), builtins.open, []
+
+    def counting(f, *x, **kw):
+        n.append(os.path.abspath(str(f)) == os.path.abspath(path))
+        return real(f, *x, **kw)
+
+    monkeypatch.setattr(builtins, "open", counting)
+    ps.summary(a)
+    assert sum(n) == 1

@@ -359,7 +359,7 @@ def poseset_case(prims: Any, rec1: dict[str, Any], seed: int, world: Any, replay
     fingerprint must be Stage 1's, else the case stops the run); the tilt, the length and the balance point (env.truth);
     commit_std's base (base_gate against Stage 1's row, else a stop); the ten pose rows; one simulation per feasible row,
     each after its own reset; both ceilings (an undetermined one drops the case); with ``replay`` the 2-seed gate at
-    evpi_sim.seeds_of's second seed (replay_rows)."""
+    evpi_sim.seeds_of's second seed (replay_rows: a row that differs stops the case)."""
     from robots.mujoco_lab import calibrate as cal
     from robots.mujoco_lab import com_gap, evpi_sim
     from robots.mujoco_lab import adapter
@@ -411,6 +411,8 @@ def poseset_case(prims: Any, rec1: dict[str, Any], seed: int, world: Any, replay
             rec["replay_seconds"] = round(time.time() - t1, 2)
             if rec["replay"]["stop"]:
                 return dict(rec, stop=f"replay: {rec['replay']['stop']}")
+            if rec["replay"]["mismatches"]:
+                return dict(rec, stop=f"replay: {len(rec['replay']['mismatches'])} rows differ at the second seed (the 2-seed gate)")
     except Exception as exc:  # noqa: BLE001  a case that raises outside a row's simulation is dropped
         return dict(rec, error=_err(exc), dropped=True)
     c10, c3 = ceiling(rows), ceiling(rows, current_only=True)
@@ -565,22 +567,20 @@ def smoke_report(recs: list[dict[str, Any]], s2: list[dict[str, Any]], recs1: li
 
 # ---------------------------------------------------------------- the readings (design 3 and 3.1)
 
-POSE_LIMIT, POSE_NOT, POSE_BELOW = ("the pose set is a limit", "the pose set is not a limit",
-                                    "below the comparison arm (interval below 0)")
+POSE_LIMIT, POSE_NOT = "the pose set is a limit", "the pose set is not a limit"
 EXPECTED_COVERAGE = {"across_0.1": 297, "across_0.3": 384, "across_0.5": 398, "across_0.7": 384, "across_0.9": 364, "along_0.1": 67,
                      "along_0.3": 103, "along_0.5": 150, "along_0.7": 99, "along_0.9": 98}   # design 3.1, the probe's 500 cases
 ARMS = ("c10", "c3", "oracle", "r4")
 
 
 def ceiling_reading(b: dict[str, Any], eps: float | None = None) -> str:
-    """Design reading 1's rule on a paired success difference g with its interval [lo, hi]: hi < 0, below the comparison
-    arm; g > eps and lo > 0, the pose set is a limit; hi < eps, it is not; else undecided at the view's case count."""
+    """Design reading 1's rule, as written, on a paired success difference g with its interval [lo, hi]: g > eps and
+    lo > 0, the pose set is a limit; hi < eps, it is not; else undecided at the view's case count. An interval below 0 is
+    _block's flag beside the rule."""
     from robots.mujoco_lab.curve import EPS
 
     eps = EPS if eps is None else eps
     x = b["success"]
-    if x["hi"] < 0.0:
-        return POSE_BELOW
     if x["diff"] > eps and x["lo"] > 0.0:
         return POSE_LIMIT
     if x["hi"] < eps:
@@ -775,7 +775,8 @@ def smoke(a: argparse.Namespace) -> dict[str, Any]:
 
 def _block(vs: list[dict[str, Any]]) -> dict[str, Any]:
     """Readings 1', 1, 2 and the selector term on one view, paired by case (curve_oracle.paired_outcomes: the object
-    bootstrap, BOOT_DRAWS draws, BOOT_SEED), with design reading 1's rule on 1' (design 3.1) and 1 only."""
+    bootstrap, BOOT_DRAWS draws, BOOT_SEED), with design reading 1's rule on 1' (design 3.1) and 1 only, and beside each
+    rule the flag that the success interval lies below 0 (the ceiling under the comparison arm)."""
     from robots.mujoco_lab.curve_oracle import paired_outcomes
 
     def b(x: str, y: str) -> dict[str, Any]:
@@ -783,9 +784,15 @@ def _block(vs: list[dict[str, Any]]) -> dict[str, Any]:
 
     out = {"1p_pose_term": b("c10", "c3"), "1_vs_oracle": b("c10", "oracle"), "2_vs_r4": b("c10", "r4"), "2_vs_r0": b("c10", "r0"),
            "selector_term": b("c3", "oracle")}
-    for k, name in (("1p_reading", "1p_pose_term"), ("1_reading", "1_vs_oracle")):
-        out[k] = ceiling_reading(out[name]) if vs else None
+    for k, name in (("1p", "1p_pose_term"), ("1", "1_vs_oracle")):
+        out[f"{k}_reading"] = ceiling_reading(out[name]) if vs else None
+        out[f"{k}_below"] = bool(vs) and out[name]["success"]["hi"] < 0.0
     return out
+
+
+def _four_to_six(vs: list[dict[str, Any]]) -> dict[str, Any]:
+    return {"4_kinds": kind_table(vs), "4_hammer": hammer_line(vs), "5_no_row": no_row_line(vs), "6_pose_change": pose_change_table(vs),
+            "6_balance": balance_line(vs)}
 
 
 def _damage(vs: list[dict[str, Any]]) -> dict[str, Any]:
@@ -796,11 +803,24 @@ def _load_lines(paths: list[str]) -> list[dict[str, Any]]:
     return [json.loads(line) for path in paths for line in open(path) if line.strip()]
 
 
+def _read_once(paths: list[str]) -> tuple[list[dict[str, Any]], dict[str, str]]:
+    """The records in ``paths`` and each file's sha256, from one open per file."""
+    import hashlib
+
+    recs, shas = [], {}
+    for path in paths:
+        with open(path, "rb") as f:
+            raw = f.read()
+        shas[path] = hashlib.sha256(raw).hexdigest()
+        recs += [json.loads(line) for line in raw.decode().splitlines() if line.strip()]
+    return recs, shas
+
+
 def summary(a: argparse.Namespace) -> dict[str, Any]:
     """The readings (design 3 and 3.1) from finished pose-set test runs, Stage 2's test records and the oracle arm's:
     poseset_summary.{json,md} and poseset_points.png in --out (refuses an existing summary), wandb. Refuses a run without
-    EXIT 0, Stage 2 or oracle records other than the ones their summaries read, Stage 1 records that changed, and records
-    that do not cover the same cases. The pose set's test records are opened once. A Stage 2 gate mismatch (design 3.1)
+    EXIT 0, Stage 2 or oracle records other than the ones their summaries read, oracle runs on another bundle, seed, Stage 1
+    or Stage 2, Stage 1 records that changed, and records that do not cover the same cases. The pose set's test records are opened once. A Stage 2 gate mismatch (design 3.1)
     writes poseset_summary_stop.json and exits 3 before any reading."""
     from robots.mujoco_lab.curve import BOOT_DRAWS, BOOT_SEED, EPS, _curves, _sha, load_stage1, load_stage2, records_path
     from robots.mujoco_lab.curve_oracle import _finished
@@ -830,6 +850,12 @@ def summary(a: argparse.Namespace) -> dict[str, Any]:
     for d in odirs:
         if _sha(records_path(d, "test")) != oprov["oracle_records_sha256"].get(d):
             raise SystemExit(f"{d}: the oracle test records are not the ones the oracle summary read")
+        ocfg = _finished(d)
+        for k in ("bundle", "seed", "stage1_records_sha256"):
+            if json.dumps(ocfg.get(k), sort_keys=True) != json.dumps(cfg.get(k), sort_keys=True):
+                raise SystemExit(f"{d}: the oracle run's {k} is not the pose-set runs'")
+    if set(str(oprov.get("stage2") or "").split(",")) != set(s2dirs) or sorted(oprov.get("stage1") or []) != sorted(cfg["stage1_records_sha256"]):
+        raise SystemExit("the oracle summary read another stage2 or Stage 1 than the pose-set summary")
     s2, s2cfg = load_stage2(s2dirs, ("test",))
     if s2cfg["stage1_records_sha256"] != cfg["stage1_records_sha256"]:
         raise SystemExit("the pose-set runs and Stage 2 read different Stage 1 records")
@@ -838,7 +864,7 @@ def summary(a: argparse.Namespace) -> dict[str, Any]:
             raise SystemExit(f"{d}: the Stage 1 records changed since the pose-set runs")
     recs1, _ = load_stage1(list(cfg["stage1_records_sha256"]))
     orecs = _load_lines([records_path(d, "test") for d in odirs])
-    precs = _load_lines([records_path(d, "test") for d in dirs])                 # the pose set's test records, once
+    precs, psha = _read_once([records_path(d, "test") for d in dirs])            # the pose set's test records, once
     if any(r["side"] != "test" or r.get("stop") for r in precs):
         raise SystemExit("a pose-set test record holds a stop or another side")
     byp, byo, by1 = {_key(r): r for r in precs}, {_key(r): r for r in orecs}, {_key(r): r for r in recs1}
@@ -850,7 +876,7 @@ def summary(a: argparse.Namespace) -> dict[str, Any]:
     joined = [{"pose": byp[_key(r)], "stage2": r, "stage1": by1[_key(r)], "oracle": byo[_key(r)]} for r in s2]
     gate = stage2_gate([j for j in joined if not j["pose"]["skipped"]])
     me = _revision()
-    prov = {"runs": a.runs, "records_sha256": {d: _sha(records_path(d, "test")) for d in dirs}, "code_revision": cfg["code_revision"],
+    prov = {"runs": a.runs, "records_sha256": {d: psha[records_path(d, "test")] for d in dirs}, "code_revision": cfg["code_revision"],
             "summary_code_revision": me["code_revision"], "summary_dirty": me["dirty"], "stage2": a.stage2,
             "stage2_summary": f"{a.stage2_summary} (sha256 {_sha(a.stage2_summary)})", "oracle": a.oracle,
             "oracle_summary": f"{a.oracle_summary} (sha256 {_sha(a.oracle_summary)})", "locked": f"{a.locked} (sha256 {_sha(a.locked)})",
@@ -874,8 +900,7 @@ def summary(a: argparse.Namespace) -> dict[str, Any]:
               "upright_cases": sum(v["upright"] for v in vs), "groups": dict(Counter(v["group"] for v in vs))}
     readings = {"all": _block(vs), "no_thin": _block(nt), "upright": _block([v for v in vs if v["upright"]]),
                 "lying": _block([v for v in vs if not v["upright"]]),
-                "3_damage": {"all": _damage(vs), "no_thin": _damage(nt)}, "4_kinds": kind_table(vs), "4_hammer": hammer_line(vs),
-                "5_no_row": no_row_line(vs), "6_pose_change": pose_change_table(vs), "6_balance": balance_line(vs)}
+                "3_damage": {"all": _damage(vs), "no_thin": _damage(nt)}, **_four_to_six(vs), "4_to_6_no_thin": _four_to_six(nt)}
     disclosures = {"stage2_gate": gate, "off_centre_current": off_centre_current(kept), "coverage": coverage(precs)}
     rules = tuple(s2cfg["rules"])
     figure = {"curves": _curves([j["stage2"] for j in paired], rules), "locked": {r: lk[r]["knob"] for r in rules},
@@ -913,6 +938,44 @@ COMPARISONS = (("1p_pose_term", "1′ (primary): 10-row − 3-row ceiling (the p
                ("2_vs_r0", "2: 10-row ceiling − R0 at r 2"), ("selector_term", "selector term: 3-row ceiling − oracle arm"))
 
 
+def _rule(x: dict[str, Any], k: str) -> str:
+    """A reading rule's label, with the flag that its success interval lies below 0."""
+    out = x[k] or "–"
+    return out + (" (interval below 0: the ceiling is under the comparison arm)" if x.get(k.replace("reading", "below")) else "")
+
+
+def _md4(X: dict[str, Any]) -> list[str]:
+    L = ["| kind | cases (objects) | 10-row ceiling | 3-row ceiling | oracle arm | R4 |", "|---|---|---|---|---|---|"]
+    for k, x in X["4_kinds"].items():
+        L.append(f"| {k} | {x['n']} ({x['objects']}) | " + " | ".join(_cells(x[a]).replace(" | ", " / ") for a in ARMS) + " |")
+    h = X["4_hammer"]
+    med = lambda v: "–" if not v else f"{float(np.median(v)):.2f}"  # noqa: E731
+    return L + ["", f"Hammers ({h['cases']} cases, {', '.join(h['objects']) or '–'}): {h['classes']}. Distance from the balance point "
+                f"(pinch fractions), median: {med(h['success_distance'])} for the clean rows that placed a hammer "
+                f"({len(h['success_distance'])} rows), {med(h['failure_distance'])} for the others ({len(h['failure_distance'])} rows). "
+                f"The clean row nearest the balance point placed the hammer in {h['nearest_succeeds']['succeeds']} of "
+                f"{h['nearest_succeeds']['cases']} cases.", ""]
+
+
+def _md5(X: dict[str, Any]) -> list[str]:
+    n5 = X["5_no_row"]
+    return [f"{n5['gain_a_row']} of {n5['cases']} cases gain a feasible pose row. By object: {n5['by_object']}. The 10-row ceiling "
+            f"over all {n5['cases']}: {_cells(n5['c10']).replace(' | ', ' / ')}; over the {n5['gain_a_row']} with a row: "
+            f"{_cells(n5['c10_gained']).replace(' | ', ' / ')} (success % / irreversible % / give-up %).", ""]
+
+
+def _md6(X: dict[str, Any]) -> list[str]:
+    t, bl = X["6_pose_change"], X["6_balance"]
+    L = ["| class | cases | of them gain cases | 10-row ceiling success % | oracle arm success % |", "|---|---|---|---|---|"]
+    for cl in POSE_CHANGES:
+        if cl in t["all"]:
+            L.append(f"| {cl} | {t['all'][cl]} | {t['gain'].get(cl, 0)} | {_pc(t['outcomes'][cl]['c10']['success'])} | "
+                     f"{_pc(t['outcomes'][cl]['oracle']['success'])} |")
+    return L + ["", f"Balance point: in {bl['mixed']} cases some clean rows place the object and some do not; the row nearest the "
+                f"balance point places it in {bl['nearest_succeeds']} ({_pc(bl['nearest_succeeds'] / bl['mixed']) if bl['mixed'] else '–'} %), "
+                f"chance {_pc(bl['chance'])} %.", ""]
+
+
 def summary_markdown(rep: dict[str, Any]) -> str:
     c, R, D = rep["counts"], rep["readings"], rep["disclosures"]
     nd, g, cov, oc = c["paired_dropped"], D["stage2_gate"], D["coverage"], D["off_centre_current"]
@@ -942,7 +1005,7 @@ def summary_markdown(rep: dict[str, Any]) -> str:
         for view, label in (("all", "all"), ("no_thin", "without thin plastic")):
             b = R[view][k]
             L.append(f"| {name} | {label} | {b['cases']} ({b['objects']}) | {_ci(b, 'success')} | {_ci(b, 'irr')} | {_ci(b, 'give_up')} | "
-                     f"{R[view][rule_of[k]] or '–' if k in rule_of else '–'} |")
+                     f"{_rule(R[view], rule_of[k]) if k in rule_of else '–'} |")
     L += ["", "The selector term also carries the oracle arm's force and speed rows and its second attempt: it is not pure.", "",
           "| arm (paired cases) | success % | irreversible % | give-up % |", "|---|---|---|---|"]
     b = R["all"]
@@ -953,38 +1016,18 @@ def summary_markdown(rep: dict[str, Any]) -> str:
     for view in ("upright", "lying"):
         x = R[view]
         L.append(f"| {view} | {x['1p_pose_term']['cases']} ({x['1p_pose_term']['objects']}) | {_ci(x['1p_pose_term'], 'success')} | "
-                 f"{x['1p_reading'] or '–'} | {_ci(x['1_vs_oracle'], 'success')} | {x['1_reading'] or '–'} |")
+                 f"{_rule(x, '1p_reading')} | {_ci(x['1_vs_oracle'], 'success')} | {_rule(x, '1_reading')} |")
     L += ["", "## 3. Irreversible damage and the label that ends each episode", "",
           "| arm | view | irreversible % | labels |", "|---|---|---|---|"]
     for arm in ARMS + ("r0",):
         for view, label in (("all", "all"), ("no_thin", "without thin plastic")):
             x = R["3_damage"][view][arm]
             L.append(f"| {ARM_NAMES[arm]} | {label} | {_pc(x['rates']['irr'], 2)} | {dict(sorted(x['labels'].items()))} |")
-    L += ["", "## 4. By kind (success % | irreversible % | give-up %)", "",
-          "| kind | cases (objects) | 10-row ceiling | 3-row ceiling | oracle arm | R4 |", "|---|---|---|---|---|---|"]
-    for k, x in R["4_kinds"].items():
-        L.append(f"| {k} | {x['n']} ({x['objects']}) | " + " | ".join(_cells(x[a]).replace(" | ", " / ") for a in ARMS) + " |")
-    h = R["4_hammer"]
-    med = lambda v: "–" if not v else f"{float(np.median(v)):.2f}"  # noqa: E731
-    L += ["", f"Hammers ({h['cases']} cases, {', '.join(h['objects'])}): {h['classes']}. Distance from the balance point (pinch "
-          f"fractions), median: {med(h['success_distance'])} for the clean rows that placed a hammer ({len(h['success_distance'])} rows), "
-          f"{med(h['failure_distance'])} for the others ({len(h['failure_distance'])} rows). The clean row nearest the balance point "
-          f"placed the hammer in {h['nearest_succeeds']['succeeds']} of {h['nearest_succeeds']['cases']} cases.", ""]
-    n5 = R["5_no_row"]
-    L += ["## 5. The no-row cases (Stage 2 group a)", "",
-          f"{n5['gain_a_row']} of {n5['cases']} cases gain a feasible pose row. By object: {n5['by_object']}. The 10-row ceiling over "
-          f"all {n5['cases']}: {_cells(n5['c10']).replace(' | ', ' / ')}; over the {n5['gain_a_row']} with a row: "
-          f"{_cells(n5['c10_gained']).replace(' | ', ' / ')} (success % / irreversible % / give-up %).", ""]
-    t, bl = R["6_pose_change"], R["6_balance"]
-    L += ["## 6. The smallest pose change that places the object, against the oracle arm's first pinch", "",
-          "| class | cases | of them gain cases | 10-row ceiling success % | oracle arm success % |", "|---|---|---|---|---|"]
-    for cl in POSE_CHANGES:
-        if cl in t["all"]:
-            L.append(f"| {cl} | {t['all'][cl]} | {t['gain'].get(cl, 0)} | {_pc(t['outcomes'][cl]['c10']['success'])} | "
-                     f"{_pc(t['outcomes'][cl]['oracle']['success'])} |")
-    L += ["", f"Balance point: in {bl['mixed']} cases some clean rows place the object and some do not; the row nearest the balance "
-          f"point places it in {bl['nearest_succeeds']} ({_pc(bl['nearest_succeeds'] / bl['mixed']) if bl['mixed'] else '–'} %), "
-          f"chance {_pc(bl['chance'])} %.", ""]
+    nt = R["4_to_6_no_thin"]
+    L += ["", "## 4. By kind (success % | irreversible % | give-up %)", ""] + _md4(R) + ["Without thin plastic:", ""] + _md4(nt)
+    L += ["## 5. The no-row cases (Stage 2 group a)", ""] + _md5(R) + ["Without thin plastic: " + _md5(nt)[0], ""]
+    L += ["## 6. The smallest pose change that places the object, against the oracle arm's first pinch", ""] + _md6(R)
+    L += ["Without thin plastic:", ""] + _md6(nt)
     return "\n".join(L) + "\n"
 
 
