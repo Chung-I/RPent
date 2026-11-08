@@ -259,3 +259,236 @@ def test_every_kind_is_one_of_the_designs_kinds():
     assert ps.KIND_OF["fruits_veggies__avocado"] == "fruit" and ps.KIND_OF["ycb__bowl"] == "bowls and containers"
     assert ps.KIND_OF["hot3d__birdhouse"] == "other" and len(ps.KIND_OF) == 95
     assert sum("hammer" in o for o in ps.KIND_OF) == 9
+
+
+# ------------------------------------------------------------------ the case's fields and gates
+
+KEY = 'commit_std|{"a_transport": 2.0, "destination": "bin", "force": 12.0, "release_height": null, "s": 0.5, "v_lift": 0.15, "v_transport": 0.5}'
+
+
+def test_a_stage1_rows_action_is_read_from_its_key():
+    rec1 = {"rows": [{"id": "commit_std", "action": KEY}]}
+    assert ps.stage1_action(rec1, "commit_std") == dict(BASE, s=0.5) and ps.stage1_action(rec1, "slow_lift") is None
+    assert ps.stage1_action({"rows": None}, "commit_std") is None
+
+
+def test_the_base_gate_needs_stage1s_commit_std_action_at_a_current_pinch():
+    rec1 = {"rows": [{"id": "commit_std", "action": KEY}]}
+    assert ps.base_gate(rec1, BASE) is None and ps.base_gate({"rows": []}, BASE) is None      # a no-row case has no row to match
+    assert "commit_std" in ps.base_gate(rec1, dict(BASE, force=10.0))
+    assert "pinch" in ps.base_gate({"rows": [{"id": "commit_std", "action": KEY.replace('"s": 0.5', '"s": 0.1')}]}, BASE)
+
+
+def test_a_reset_that_is_not_at_rest_marks_every_row_an_artifact():
+    env = SimEnv({("across", f): "placed_stable" for f in FRACS} | {("along", f): "tipped" for f in FRACS})
+    rows = ps.pose_rows(env, "bin")
+    assert ps.simulate_rows(env, lambda: False, rows, BASE, lambda e: "fp", "fp") is None
+    assert all(r["artifact"] for r in rows if r["feasible"]) and not ps.ceiling(rows)["determined"]
+
+
+def test_the_trace_hash_reads_every_field_to_nine_digits():
+    a = [{"phase": "lift", "z": 0.1, "fz": 1.0, "pads": [True, False], "pad_nz": [None, 0.5]}]
+    assert ps.trace_sha(a) == ps.trace_sha([dict(a[0], z=0.1 + 1e-12)])
+    assert ps.trace_sha(a) != ps.trace_sha([dict(a[0], fz=1.000001)]) != ps.trace_sha([dict(a[0], pads=[True, True])])
+
+
+def test_the_replay_runs_the_rows_in_reverse_on_a_copy_and_lists_what_changed():
+    labels = {("across", f): "placed_stable" for f in FRACS} | {("along", f): "tipped" for f in FRACS}
+    env = SimEnv(labels)
+    rows = ps.pose_rows(env, "bin")
+    ps.simulate_rows(env, lambda: True, rows, BASE, lambda e: "fp", "fp")
+    keep = json.dumps(rows, sort_keys=True)
+    env.calls.clear()
+    same = ps.replay_rows(env, lambda: True, rows, BASE, lambda e: "fp", "fp")
+    assert same == {"rows": 8, "mismatches": [], "stop": None} and json.dumps(rows, sort_keys=True) == keep
+    assert [c[:2] for c in env.calls] == [(d, f) for d, f in reversed(ps.ROW_ORDER) if (d, f) not in (("along", 0.1), ("along", 0.9))]
+    env.labels = labels | {("across", 0.3): "tipped"}
+    bad = ps.replay_rows(env, lambda: True, rows, BASE, lambda e: "fp", "fp")
+    assert [m["id"] for m in bad["mismatches"]] == ["across_0.3"]
+    assert bad["mismatches"][0]["first"][0] == "placed_stable" and bad["mismatches"][0]["replay"][0] == "tipped"
+
+
+def test_the_balance_fraction_and_the_tilt():
+    props = {"axis": [1.0, 0.0, 0.0], "centre": [0.0, 0.01, 0.0], "axis_lo": -0.05, "length": 0.1}
+    assert ps.balance_fraction(props, [0.02, 0.0, 0.0]) == pytest.approx(0.7)
+    assert ps.tilt_deg(np.eye(3), [1.0, 0.0, 0.0]) == pytest.approx(0.0)
+    R = np.array([[0.0, 0.0, 1.0], [0.0, 1.0, 0.0], [-1.0, 0.0, 0.0]])            # the x axis turned onto -z
+    assert ps.tilt_deg(R, [1.0, 0.0, 0.0]) == pytest.approx(90.0)
+
+
+def _rows(**labels):
+    """Clean simulated rows in ROW_ORDER; ``labels`` by row id (across_0_5 for across_0.5); the others not feasible."""
+    out = []
+    for d, f in ps.ROW_ORDER:
+        rid = ps.row_id(d, f)
+        lab = labels.get(rid.replace(".", "_"))
+        out.append(_r(rid, lab, feasible=lab is not None))
+    return out
+
+
+def test_the_pose_change_class_takes_the_smallest_change_that_succeeds():
+    assert ps.pose_change(_rows(across_0_5="placed_stable"), None) == "the oracle gives up"
+    assert ps.pose_change(_rows(across_0_5="tipped"), 0.5) == "no pose succeeds"
+    assert ps.pose_change(_rows(across_0_5="placed_stable", along_0_5="placed_stable"), 0.5) == "the oracle's pose"
+    assert ps.pose_change(_rows(across_0_5="tipped", across_0_9="placed_stable", along_0_5="placed_stable"), 0.5) == \
+        "fraction change only"
+    assert ps.pose_change(_rows(across_0_5="tipped", along_0_5="placed_stable", along_0_3="placed_stable"), 0.5) == \
+        "direction change only"
+    assert ps.pose_change(_rows(across_0_5="tipped", along_0_3="placed_stable"), 0.5) == "fraction and direction change"
+
+
+def test_the_nearest_row_to_the_balance_point_is_a_clean_feasible_row():
+    rows = _rows(across_0_5="tipped", across_0_3="placed_stable", along_0_7="placed_stable")
+    assert ps.nearest_row(rows, 0.32)["id"] == "across_0.3" and ps.nearest_row(rows, 0.62)["id"] == "along_0.7"
+    assert ps.nearest_row(rows, 0.4)["id"] == "across_0.5"                      # a tie goes to the first in ROW_ORDER
+    assert ps.nearest_row(_rows(), 0.5) is None
+
+
+def test_the_hammer_class():
+    assert ps.hammer_class(_rows()) == "no feasible pose"
+    assert ps.hammer_class(_rows(across_0_5="not_lifted", along_0_5="missed")) == "not lifted by any pose"
+    assert ps.hammer_class(_rows(across_0_5="not_lifted", across_0_3="dropped_high")) == "lifted, never placed"
+    assert ps.hammer_class(_rows(across_0_5="not_lifted", across_0_9="placed_stable")) == "placed by a pose"
+
+
+def _s2(first, label, artifact=False, seed_k=0):
+    return {"first": first, "seed_k": seed_k, "label": label, "artifact": artifact}
+
+
+def test_the_stage2_gate_compares_the_rows_with_commit_stds_action_at_a_pinch():
+    pose = {"object": "o", "idx": 1, "base": BASE, "rows": _rows(across_0_5="tipped", across_0_3="placed_stable")}
+    s1 = {"rows": [{"id": "commit_std", "action": KEY}, {"id": "regrasp_com", "action": KEY.replace("commit_std", "regrasp_com").replace('"s": 0.5', '"s": 0.3')},
+                   {"id": "firm_grip", "action": KEY.replace("commit_std", "firm_grip").replace("12.0", "24.0")}]}
+    s2 = {"sims": [_s2("commit_std", "tipped"), _s2("regrasp_com", "placed_stable"), _s2("firm_grip", "crushed"),
+                   _s2("commit_std", "placed_stable", seed_k=1)]}
+    g = ps.stage2_gate([{"pose": pose, "stage1": s1, "stage2": s2}])
+    assert g == {"compared": 2, "missing": 0, "mismatches": []}
+    s2["sims"][1]["label"] = "tipped"
+    g = ps.stage2_gate([{"pose": pose, "stage1": s1, "stage2": s2}])
+    assert g["compared"] == 2 and g["mismatches"] == [{"object": "o", "idx": 1, "row": "across_0.3", "stage2_row": "regrasp_com",
+                                                       "pose": ["placed_stable", False], "stage2": ["tipped", False]}]
+
+
+def test_the_stage2_gate_counts_a_matching_row_the_pose_set_did_not_simulate_as_missing():
+    pose = {"object": "o", "idx": 1, "base": BASE, "rows": _rows(across_0_3="placed_stable")}
+    s1 = {"rows": [{"id": "commit_std", "action": KEY}]}
+    g = ps.stage2_gate([{"pose": pose, "stage1": s1, "stage2": {"sims": [_s2("commit_std", "tipped")]}}])
+    assert g == {"compared": 0, "missing": 1, "mismatches": []}
+
+
+def test_the_off_centre_disclosure_counts_feasible_current_rows():
+    def rec(o, flags):
+        rows = [dict(_r(ps.row_id("across", f), "placed_stable"), centred=c) for f, c in zip((0.5, 0.3, 0.7), flags)]
+        return {"object": o, "rows": rows + [dict(_r("along_0.5", "tipped"), centred=False)]}
+    d = ps.off_centre_current([rec("a", (False, False, False)), rec("a", (True, False, True)), rec("b", (True, True, True))])
+    assert d == {"rows": 4, "objects": {"a": 4}, "cases_all_flagged": 1, "cases": 3}
+
+
+# ------------------------------------------------------------------ one case, end to end on a fake lab
+
+class CaseEnv(SimEnv):
+    """SimEnv with the reset, truth and pose fields poseset_case reads; ``resets`` holds the reset seeds in order."""
+
+    def __init__(self, labels, **kw):
+        super().__init__(labels, **kw)
+        self.resets, self.reset_info = [], {"at_rest": True}
+        self.props = {"axis": [1.0, 0.0, 0.0], "centre": [0.0, 0.0, 0.0], "axis_lo": -0.03, "length": 0.06}
+        self.sim = SimpleNamespace(obj_mat=lambda: np.eye(3), d=None)
+
+    def reset(self, o, theta, seed, com_end, fixture, fill, frag):
+        self.resets.append(int(seed))
+
+    def truth(self):
+        return {"mass": 0.3, "com_s": 0.6, "com_obj": [0.006, 0.0, 0.0], "fill": 0.0, "mu": 0.5}
+
+    def nominal_mass(self, o):
+        return 1.2                                                    # standard_force: 14.7 N
+
+
+KEY147 = KEY.replace("12.0", "14.7")
+
+
+@pytest.fixture
+def lab(monkeypatch):
+    from robots.mujoco_lab import adapter, calibrate, com_gap, evpi_sim
+
+    monkeypatch.setattr(calibrate, "case_draw", lambda seed, o, idx, m, flag, fragility=None:
+                        ({"mu": 0.5}, 1, "bin", {"fill": 0.0, "frag": None}))
+    monkeypatch.setattr(adapter, "object_props", lambda o: {"mass": 1.0})
+    monkeypatch.setattr(com_gap, "fingerprint", lambda env: "fp")
+    monkeypatch.setattr(evpi_sim, "seeds_of", lambda seed, o, idx: [seed * 1000 + idx, 777, 778])
+    labels = {("across", f): "tipped" for f in FRACS} | {("along", f): "placed_stable" for f in FRACS}
+    return CaseEnv(labels)
+
+
+def _rec1(**kw):
+    return dict({"object": "ycb__sugar_box", "idx": 3, "fold": 0, "side": "validation", "destination": "bin", "fingerprint": "fp",
+                 "status": "ok", "thin": False, "rows": [{"id": "commit_std", "action": KEY147}]}, **kw)
+
+
+def test_a_case_resets_at_its_own_seed_before_each_row_and_reads_both_ceilings(lab):
+    rec = ps.poseset_case(SimpleNamespace(env=lab), _rec1(), 3, None)
+    assert lab.resets == [3003] * 9 and rec["stop"] is None and rec["error"] is None and not rec["dropped"]
+    assert rec["kind"] == "boxes" and not rec["hammer"] and not rec["upright"] and rec["tilt_deg"] == pytest.approx(0.0)
+    assert rec["com_f"] == pytest.approx(0.6) and rec["sim_truth"]["com_s"] == 0.6 and rec["length"] == 0.06
+    assert rec["base"] == dict(BASE, force=14.7) and {c[2] for c in lab.calls} == {14.7}
+    assert rec["ceiling10"]["success"] and rec["ceiling10"]["rows"] == ["along_0.5"] and not rec["ceiling3"]["success"]
+    assert rec["replay"] is None and len(rec["rows"]) == 10
+
+
+def test_the_replay_resets_at_the_second_seed(lab):
+    rec = ps.poseset_case(SimpleNamespace(env=lab), _rec1(), 3, None, replay=True)
+    assert lab.resets == [3003] * 9 + [777] * 8 and rec["replay"] == {"rows": 8, "mismatches": [], "stop": None}
+    assert rec["replay_seconds"] >= 0.0
+
+
+def test_a_case_stops_on_a_fingerprint_or_a_base_that_is_not_stage1s(lab):
+    rec = ps.poseset_case(SimpleNamespace(env=lab), _rec1(fingerprint="other"), 3, None)
+    assert "fingerprint" in rec["stop"] and lab.calls == []
+    rec = ps.poseset_case(SimpleNamespace(env=lab), _rec1(rows=[{"id": "commit_std", "action": KEY}]), 3, None)
+    assert "commit_std" in rec["stop"] and lab.calls == []
+
+
+def test_a_skipped_case_is_dropped_without_a_reset(lab):
+    rec = ps.poseset_case(SimpleNamespace(env=lab), _rec1(status="error"), 3, None)
+    assert rec["skipped"] == "stage1 error" and rec["dropped"] and rec["rows"] == [] and lab.resets == []
+
+
+def test_an_undetermined_ceiling_drops_the_case(lab):
+    lab.fail = {("along", f) for f in FRACS}                           # every success raises: no clean success
+    rec = ps.poseset_case(SimpleNamespace(env=lab), _rec1(), 3, None)
+    assert rec["dropped"] and not rec["ceiling10"]["determined"] and rec["ceiling3"]["determined"]
+
+
+# ------------------------------------------------------------------ the smoke report
+
+def test_the_smoke_report_counts_both_gates_and_projects_the_first_pass():
+    rows = _rows(across_0_5="tipped", across_0_3="placed_stable")
+    for r in rows:
+        if r["feasible"]:
+            r["seconds"] = 1.0
+    pose = {"object": "o", "idx": 1, "side": "validation", "skipped": None, "dropped": False, "stop": None, "error": None,
+            "base": BASE, "rows": rows, "seconds": 10.0, "replay_seconds": 4.0, "upright": False,
+            "replay": {"rows": 2, "mismatches": [{"id": "across_0.3"}], "stop": None},
+            "ceiling10": ps.ceiling(rows), "ceiling3": ps.ceiling(rows, current_only=True)}
+    s1 = {"object": "o", "idx": 1, "side": "validation", "rows": [{"id": "commit_std", "action": KEY}], "status": "ok"}
+    t1 = [{"object": "t", "idx": i, "side": "test", "status": "ok"} for i in range(3)] + [{"object": "t", "idx": 9, "side": "test", "status": "error"}]
+    s2 = {"object": "o", "idx": 1, "sims": [_s2("commit_std", "tipped")]}
+    sm = ps.smoke_report([pose], [s2], [s1] + t1)
+    assert sm["cases"] == 1 and sm["rows_simulated"] == 2 and sm["row_errors"] == 0 and sm["stops"] == []
+    assert sm["replay"] == {"cases": 1, "rows": 2, "mismatches": 1} and sm["stage2_gate"]["compared"] == 1
+    assert sm["run_cases"] == 3 and sm["seconds_per_case"] == 6.0 and sm["projection_cpu_h"] == pytest.approx(18.0 / 3600)
+    assert sm["table"][0]["labels"] == {"across_0.5": "tipped", "across_0.3": "placed_stable"}
+
+
+def test_the_smoke_markdown_states_both_gates_and_the_projection():
+    sm = {"cases": 1, "dropped": 0, "case_errors": 0, "rows_simulated": 2, "row_errors": 0, "stops": [], "skipped": 0,
+          "replay": {"cases": 1, "rows": 2, "mismatches": 0}, "stage2_gate": {"compared": 1, "missing": 0, "mismatches": []},
+          "run_cases": 3, "seconds_per_case": 6.0, "seconds_per_case_max": 6.0, "projection_cpu_h": 0.005, "projection_cpu_h_at_max": 0.005,
+          "table": [{"object": "o", "idx": 1, "upright": False, "skipped": None, "dropped": False, "stop": None,
+                     "feasible": ["across_0.5"], "labels": {"across_0.5": "tipped"}, "artifacts": [], "errors": [],
+                     "ceiling10": ps.ceiling([_r("across_0.5", "tipped")]), "ceiling3": ps.ceiling([_r("across_0.5", "tipped")], True),
+                     "seconds": 6.0, "replay_seconds": 3.0}]}
+    md = ps.smoke_markdown(sm)
+    assert "2-seed gate: 1 cases, 2 rows replayed, 0 mismatches" in md and "Stage 2 gate: 1 rows compared, 0 mismatches" in md
+    assert "0.01 CPU-h" in md and "| o 1 | lying |" in md and "across_0.5 tipped" in md
