@@ -108,13 +108,35 @@ def pregrasp(p: Grasp6) -> tuple[np.ndarray, np.ndarray]:
     return hp - APPROACH_M * np.asarray(p.R, dtype=float)[:, 2], Rh
 
 
+def bearing_turn(base: Any, start: Any, goal: Any) -> float:
+    """The signed angle (rad, -pi to pi) from ``start``'s bearing to ``goal``'s about ``base`` in the plane, the short
+    way round."""
+    return math.remainder(math.atan2(goal[1] - base[1], goal[0] - base[0]) - math.atan2(start[1] - base[1], start[0] - base[0]),
+                          2 * math.pi)
+
+
+def _rz(t: float) -> np.ndarray:
+    c, s = math.cos(t), math.sin(t)
+    return np.array([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]])
+
+
+def turn_deg(env: Any, p: Grasp6, destination: str) -> float:
+    """Design amendment 5's transport turn, degrees: the pad centre's bearing change about the arm's base (joint 1's
+    axis), from the pinch to the destination's xy."""
+    arm = env.sim.arm
+    base = arm.d.xpos[arm.m.body("link0").id][:2]
+    return math.degrees(bearing_turn(base, np.asarray(p.tcp, dtype=float)[:2], np.asarray(env._dest(destination)["xy"], dtype=float)))
+
+
 def hand_path6(env: Any, p: Grasp6, v_lift: float, v_transport: float, destination: str, release_height: float | None = None,
                a_transport: float = A_TRANSPORT) -> list[tuple[str, np.ndarray, np.ndarray]]:
     """The hand pose per control step of the tilted path from the pregrasp on, as MuJoCoLabEnv.hand_path: the 0.3 s
     open wait at the pregrasp APPROACH_M back along the approach, the approach along it (the sim's approach_profile at
-    V_DOWN), the close, the lift LIFT_H straight up, the hold, the transport of the pad centre to the destination's xy,
-    the lower, the release, and the retreat RETREAT_M back along the approach; the rotation kept throughout, the held
-    object rigid in the hand: [(phase, hand position, hand rotation)]. At no tilt it is today's path."""
+    V_DOWN), the close, the lift LIFT_H straight up, the hold, the transport of the pad centre in a straight line to the
+    destination's xy, the lower, the release, and the retreat RETREAT_M back along the turned approach; the held object
+    rigid in the hand: [(phase, hand position, hand rotation)]. The rotation is the pinch's to the end of the hold;
+    during the transport it turns about the world vertical by turn_deg times the transport's fraction, then holds that
+    turn (design amendment 5: the tilt is kept). At no tilt the positions are today's path, the yaw turns."""
     sc, gr = env.s["scene"], env.s["grasp"]
     dest = env._dest(destination)
     hz = sc.CTRL_HZ
@@ -128,19 +150,25 @@ def hand_path6(env: Any, p: Grasp6, v_lift: float, v_transport: float, destinati
         out.append(("lift", hp + np.array([0.0, 0.0, LIFT_H * frac]), Rh))
     top = hp + np.array([0.0, 0.0, LIFT_H])
     out += [("hold", top, Rh)] * int(HOLD_S * hz)
-    start, goal = top[:2], np.asarray(dest["xy"], dtype=float) + (hp - np.asarray(p.tcp, dtype=float))[:2]
+    tcp = np.asarray(p.tcp, dtype=float) + np.array([0.0, 0.0, LIFT_H])       # the pad centre at the top
+    off = top - tcp
+    turn = math.radians(turn_deg(env, p, destination))
+    start, goal = tcp[:2], np.asarray(dest["xy"], dtype=float)
     for frac in transport_profile(float(np.linalg.norm(goal - start)), v_transport, hz, accel=a_transport):
+        Rz = _rz(turn * frac)
         c = start + (goal - start) * frac
-        out.append(("transport", np.array([c[0], c[1], top[2]]), Rh))
+        out.append(("transport", np.array([c[0], c[1], tcp[2]]) + Rz @ off, Rz @ Rh))
+    Rz = _rz(turn)
+    Re, end = Rz @ Rh, np.array([goal[0], goal[1], tcp[2]]) + Rz @ off
     z_rel = env._release_target_low_z(dest, release_height) - (env.sim.obj_low_z() - hp[2])
-    z0 = z = top[2]
+    z0 = z = float(end[2])
     for frac in ramp_profile(z0 - z_rel, V_LOWER, hz):
         z = z0 + (z_rel - z0) * frac
-        out.append(("lower", np.array([goal[0], goal[1], z]), Rh))
-    rel = np.array([goal[0], goal[1], z])
-    out += [("release", rel, Rh)] * int(RELEASE_S * hz)
+        out.append(("lower", np.array([end[0], end[1], z]), Re))
+    rel = np.array([end[0], end[1], z])
+    out += [("release", rel, Re)] * int(RELEASE_S * hz)
     for frac in ramp_profile(RETREAT_M, V_LOWER, hz):
-        out.append(("retreat", rel - RETREAT_M * frac * a, Rh))
+        out.append(("retreat", rel - RETREAT_M * frac * (Rz @ a), Re))
     return out
 
 

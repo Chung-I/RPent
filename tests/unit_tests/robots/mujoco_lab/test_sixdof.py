@@ -201,14 +201,40 @@ def _at(p, tilt_deg=0.0):
     return _grasp(z, ex, pad - gg.DEPTH * z)
 
 
+def test_the_bearing_turn_is_the_shortest_signed_angle_about_the_base():
+    assert sixdof.bearing_turn((0.0, 0.0), (1.0, 0.0), (0.0, 1.0)) == pytest.approx(math.pi / 2)
+    assert sixdof.bearing_turn((1.0, 1.0), (1.0, 2.0), (2.0, 1.0)) == pytest.approx(-math.pi / 2)
+    assert sixdof.bearing_turn((0.0, 0.0), (-1.0, 0.01), (-1.0, -0.01)) == pytest.approx(2 * math.atan(0.01))     # across the -x axis
+    assert sixdof.bearing_turn((0.0, 0.0), (0.3, 0.4), (0.6, 0.8)) == pytest.approx(0.0, abs=1e-15)
+
+
 @SIM
-def test_at_no_tilt_the_tilted_hand_path_is_todays():
+def test_the_transport_turn_is_the_pad_centres_bearing_change_from_the_arm_base():
+    env, p = _sugar_box()
+    p6 = sixdof.from_graspgen(_at(p, 40.0), s=p.s, width=p.width)
+    base = np.asarray(sixdof._armlib(env.sim.arm).BASE_POS[:2])
+    goal, tcp = np.asarray(env._dest("bin")["xy"]), np.asarray(p6.tcp)[:2]
+    b = [math.atan2(v[1] - base[1], v[0] - base[0]) for v in (tcp, goal)]
+    assert sixdof.turn_deg(env, p6, "bin") == pytest.approx(math.degrees(math.remainder(b[1] - b[0], 2 * math.pi)), abs=1e-9)
+    assert abs(sixdof.turn_deg(env, p6, "bin")) > 30.0
+
+
+@SIM
+def test_at_no_tilt_the_tilted_hand_path_is_todays_but_for_the_transport_turn():
     env, p = _sugar_box()
     p6 = sixdof.from_graspgen(_at(p), s=p.s, width=p.width)
     a = sixdof.hand_path6(env, p6, 0.15, 0.5, "bin")
     b = env.hand_path(sixdof.as_vertical(p6), 0.15, 0.5, "bin")
+    turn = math.radians(sixdof.turn_deg(env, p6, "bin"))
     assert [x[0] for x in a] == [x[0] for x in b]
-    assert all(np.allclose(x[1], y[1], rtol=0.0, atol=1e-12) and np.allclose(x[2], _yaw_frame(y[2]), atol=1e-12) for x, y in zip(a, b))
+    assert all(np.allclose(x[1], y[1], rtol=0.0, atol=1e-12) for x, y in zip(a, b))
+    k0 = [x[0] for x in a].index("transport")
+    k1 = len(a) - [x[0] for x in a][::-1].index("transport")
+    start, goal = b[k0 - 1][1][:2], b[k1 - 1][1][:2]
+    assert all(np.allclose(x[2], _yaw_frame(y[2]), atol=1e-12) for x, y in zip(a[:k0], b[:k0]))
+    fr = [float(np.linalg.norm(y[1][:2] - start) / np.linalg.norm(goal - start)) for y in b[k0:k1]]
+    assert all(np.allclose(x[2], _yaw_frame(y[2] + turn * f), atol=1e-9) for x, y, f in zip(a[k0:k1], b[k0:k1], fr))
+    assert all(np.allclose(x[2], _yaw_frame(y[2] + turn), atol=1e-12) for x, y in zip(a[k1:], b[k1:]))
 
 
 @SIM
@@ -225,16 +251,21 @@ def test_a_tilted_hand_path_approaches_along_the_approach_lifts_straight_up_and_
     for ph in ("wait", "approach", "close", "lift", "hold", "release", "retreat"):
         assert len(by[ph]) == sum(x[0] == ph for x in flat) > 0
     assert [x[0] for x in path] == sorted((x[0] for x in path), key=list(by).index)
-    assert all(np.array_equal(x[2], Rh) for x in path)
+    k0 = [x[0] for x in path].index("transport")
+    assert all(np.array_equal(x[2], Rh) for x in path[:k0])
+    ez = np.array([0.0, 0.0, 1.0])
+    assert all(abs(x[2][:, 2] @ ez - Rh[:, 2] @ ez) < 1e-12 and abs(x[2][:, 0] @ ez - Rh[:, 0] @ ez) < 1e-12 for x in path)  # the tilt kept
+    Rt = _yaw_frame(math.radians(sixdof.turn_deg(env, p6, "bin")))
+    assert all(np.allclose(x[2], Rt @ Rh, atol=1e-12) for x in by["lower"] + by["release"] + by["retreat"])
     assert np.allclose(by["wait"][0][1], hp - adapter.APPROACH_M * a)
     s = [float((x[1] - by["wait"][0][1]) @ a) for x in by["approach"]]
     assert all(np.allclose(x[1], by["wait"][0][1] + si * a) for x, si in zip(by["approach"], s)) and s == sorted(s)
     assert np.array_equal(by["approach"][-1][1], hp) and all(np.array_equal(x[1], hp) for x in by["close"])
     assert all(np.allclose(x[1][:2], hp[:2]) for x in by["lift"]) and by["lift"][-1][1][2] == pytest.approx(hp[2] + adapter.LIFT_H)
-    goal = np.asarray(env._dest("bin")["xy"]) + (hp - np.asarray(p6.tcp))[:2]
-    assert np.allclose(by["transport"][-1][1][:2], goal)
+    goal = np.asarray(env._dest("bin")["xy"]) + (Rt @ (hp - np.asarray(p6.tcp)))[:2]       # the pad centre ends over the destination
+    assert np.allclose(by["transport"][-1][1][:2], goal) and np.allclose(by["transport"][-1][2], Rt @ Rh)
     rel = by["release"][0][1]
-    assert np.allclose(by["retreat"][-1][1], rel - adapter.RETREAT_M * a)
+    assert np.allclose(by["retreat"][-1][1], rel - adapter.RETREAT_M * (Rt @ a))
 
 
 # ------------------------------------------------------------------ the rotation IK, the candidates and the path check
@@ -319,15 +350,13 @@ def test_the_choice_is_the_first_candidate_whose_path_passes_on_its_own_twin(mon
 
 
 @SIM
-@pytest.mark.xfail(strict=True, reason="the transport with the rotation kept has no IK solution above the bin (0 of 200 seeds at 20 and 40 "
-                   "degrees, both twins); design question sent 2026-11-09")
 def test_a_tilted_pinch_gets_the_first_candidate_whose_path_passes():
     env, p = _sugar_box()
     p6 = sixdof.from_graspgen(_at(p, 40.0), s=p.s, width=p.width)
-    ch = sixdof.choose(env, p6, "box:0:g1", "bin")
+    ch = sixdof.choose(env, p6, "box:0:g1", "box")
     assert ch["goal"] and ch["candidate"] is not None and ch["candidate"]["index"] == len(ch["failed"])
-    assert sixdof.reach6(env, sixdof.twin(p6) if ch["candidate"]["twin"] else p6, ch["candidate"]["q"], "bin") is None
-    again = sixdof.choose(env, p6, "box:0:g1", "bin")
+    assert sixdof.reach6(env, sixdof.twin(p6) if ch["candidate"]["twin"] else p6, ch["candidate"]["q"], "box") is None
+    again = sixdof.choose(env, p6, "box:0:g1", "box")
     assert again["candidate"]["index"] == ch["candidate"]["index"] and np.array_equal(again["candidate"]["q"], ch["candidate"]["q"])
 
 
