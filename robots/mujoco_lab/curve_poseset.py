@@ -141,9 +141,13 @@ def _round9(x: Any) -> Any:
     return x
 
 
+SENSOR_FIELDS = ("fz_joint",)              # trace readings with sensor noise (the torque stream, set by the reset seed)
+
+
 def trace_sha(trace: Any) -> str:
-    """A hash of every field of every trace step, floats to 9 digits (the final state's hash rounds qpos the same way)."""
-    return _sha_of(_round9(list(trace)))
+    """A hash of every physical field of every trace step (SENSOR_FIELDS left out), floats to 9 digits (the final
+    state's hash rounds qpos the same way)."""
+    return _sha_of(_round9([{k: v for k, v in t.items() if k not in SENSOR_FIELDS} for t in trace]))
 
 
 def simulate_rows(env: Any, reset: Any, rows: list[dict[str, Any]], base: dict[str, Any], fingerprint: Any,

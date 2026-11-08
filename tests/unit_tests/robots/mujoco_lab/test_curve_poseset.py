@@ -492,3 +492,10 @@ def test_the_smoke_markdown_states_both_gates_and_the_projection():
     md = ps.smoke_markdown(sm)
     assert "2-seed gate: 1 cases, 2 rows replayed, 0 mismatches" in md and "Stage 2 gate: 1 rows compared, 0 mismatches" in md
     assert "0.01 CPU-h" in md and "| o 1 | lying |" in md and "across_0.5 tipped" in md
+
+
+def test_the_trace_hash_leaves_out_the_joint_torque_reading():
+    """fz_joint is the flange wrench from the measured joint torques: it carries the torque sensor's noise stream, which
+    the reset seed sets (a smoke on 5 validation cases: only fz_joint differed between the two seeds)."""
+    a = [{"phase": "lift", "z": 0.1, "fz": 1.0, "fz_joint": 1.3218}]
+    assert ps.trace_sha(a) == ps.trace_sha([dict(a[0], fz_joint=1.3030)]) != ps.trace_sha([dict(a[0], fz=1.1)])
