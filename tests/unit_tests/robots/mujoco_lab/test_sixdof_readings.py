@@ -303,3 +303,35 @@ def test_the_markdown_puts_each_pass_in_its_column_with_the_audits_line_beside_t
     assert "| **hammers** | 1 | 0 → 1 → 1 | 0 → 0 → 0 |" in md
     assert "| contact only | 1 | 0 → 1 | 0 → 0 | not_lifted → placed_stable 1 |" in md
     assert f"| GraspGen (the design's rule) − 10-pinch, success | {c1} | {c2} | {c2} |" in md
+
+
+# ------------------------------------------------------------------ the checks before any reading
+
+def test_the_units_must_have_replayed_exactly_the_record_files_the_readings_correct():
+    want = {"/r/a/records_test.jsonl": "h1", "/r/b/records_validation.jsonl": "h2", "/r/b/records_test.jsonl": sr.EMPTY_SHA}
+    ok = {"u0": {"/r/a/records_test.jsonl": "h1", "/r/a/records_validation.jsonl": sr.EMPTY_SHA}, "u1": {"/r/b/records_validation.jsonl": "h2"}}
+    assert sr.replayed_files_errors(ok, want) == []
+    other = {"u0": {"/r/a/records_test.jsonl": "h1", "/r/c/records_test.jsonl": "h9"}, "u1": {"/r/b/records_validation.jsonl": "h2"}}
+    assert sr.replayed_files_errors(other, want) == ["u0: it replayed /r/c/records_test.jsonl, not a file these readings correct"]
+    stale = {"u0": {"/r/a/records_test.jsonl": "h0"}, "u1": {"/r/b/records_validation.jsonl": "h2"}}
+    assert sr.replayed_files_errors(stale, want) == ["u0: it replayed /r/a/records_test.jsonl at another sha256"]
+    assert sr.replayed_files_errors({"u1": ok["u1"]}, want) == ["no unit replayed /r/a/records_test.jsonl"]
+
+
+def test_the_gate_also_compares_each_arms_rates():
+    from robots.mujoco_lab.curve_oracle import paired_outcomes
+
+    pairs = [("a", _ep(True), _ep(True)), ("b", _ep(False), _ep(False))]
+    b = paired_outcomes(pairs)
+    shifted = paired_outcomes([("a", _ep(False), _ep(False)), ("b", _ep(False), _ep(False))])
+    assert all(shifted[k] == b[k] for k in ("cases", "success", "irr", "give_up")) and shifted["rate_a"] != b["rate_a"]
+    classes = {c: 0 for c in cp.HAMMER_CLASSES}
+    pilot = {"test": {"gg_vs_c10": b, "ggb_vs_c10": b}, "hammer_classes": {}, "hammer_c10_classes": classes}
+    pub = {"poseset": {"views": {v: b for v in sr.VIEWS}, "hammer_classes": classes}, "pilot": pilot}
+    psum = {"readings": dict({v: {"1p_pose_term": b} for v in ("all", "upright", "lying")}, **{"4_hammer": {"classes": classes}})}
+    gsum = {"readings": {"2_test": {"gg_vs_c10": b, "ggb_vs_c10": b}, "3_hammer": {"classes": {}, "c10_classes": classes}}}
+    assert not any(sr.gate(psum, gsum, pub).values())
+    psum["readings"]["upright"]["1p_pose_term"] = shifted
+    gsum["readings"]["2_test"]["ggb_vs_c10"] = shifted
+    g = sr.gate(psum, gsum, pub)
+    assert g["poseset_upright"] and g["pilot_ggb_vs_c10"] and not g["poseset_all"] and not g["pilot_gg_vs_c10"]

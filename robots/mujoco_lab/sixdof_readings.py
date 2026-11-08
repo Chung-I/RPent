@@ -23,6 +23,7 @@ at the hold, with its changed rows by cause. Readings of existing replay rows, n
 from __future__ import annotations
 
 import glob
+import hashlib
 import json
 import os
 from collections import Counter
@@ -35,6 +36,7 @@ from robots.mujoco_lab import curve_poseset as cp
 from robots.mujoco_lab import curve_sixdof as cs
 
 PLACED = "placed_stable"
+EMPTY_SHA = hashlib.sha256(b"").hexdigest()      # an empty records file (a run dir's other side)
 
 
 def correct_rows(rows: list[dict[str, Any]], reps: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -278,18 +280,37 @@ def pilot_reading(vs: list[dict[str, Any]], n_dropped: dict[str, int]) -> dict[s
 
 def gate(psum: dict[str, Any], gsum: dict[str, Any], pub: dict[str, Any]) -> dict[str, list[str]]:
     """The published numbers against those recomputed from the stored records: the pose set's 1′ (all, upright, lying)
-    and hammer classes, the pilot's two GraspGen − 10-pinch differences and hammer classes; each entry lists what is
-    not equal."""
+    and hammer classes, the pilot's two GraspGen − 10-pinch differences and hammer classes, each paired difference with
+    both arms' rates; each entry lists what is not equal."""
     from robots.mujoco_lab.palm_audit import differs
 
+    def diff(got: dict[str, Any], want: dict[str, Any]) -> list[str]:
+        return differs(got, want, THREE) + [f"{k} {got[k]} vs {want[k]}" for k in ("rate_a", "rate_b") if got[k] != want[k]]
+
     pr, gr = psum["readings"], gsum["readings"]
-    g = {f"poseset_{k}": differs(pub["poseset"]["views"][k], pr[k]["1p_pose_term"], THREE) for k in ("all", "upright", "lying")}
+    g = {f"poseset_{k}": diff(pub["poseset"]["views"][k], pr[k]["1p_pose_term"]) for k in ("all", "upright", "lying")}
     g["poseset_hammer_classes"] = [] if pub["poseset"]["hammer_classes"] == pr["4_hammer"]["classes"] else ["classes"]
     for k in ("gg_vs_c10", "ggb_vs_c10"):
-        g[f"pilot_{k}"] = differs(pub["pilot"]["test"][k], gr["2_test"][k], THREE)
+        g[f"pilot_{k}"] = diff(pub["pilot"]["test"][k], gr["2_test"][k])
     h = pub["pilot"]
     g["pilot_hammer_classes"] = [] if (h["hammer_classes"], h["hammer_c10_classes"]) == (gr["3_hammer"]["classes"], gr["3_hammer"]["c10_classes"]) else ["classes"]
     return g
+
+
+def replayed_files_errors(units: dict[str, dict[str, str]], want: dict[str, str]) -> list[str]:
+    """The record files the units replayed (unit → {path: sha256}, their run_config's) against the files the readings
+    correct (path → sha256): a replayed file that is not one of them (an empty file aside) or that had another sha256,
+    and a non-empty file no unit replayed."""
+    bad, seen = [], set()
+    for u, files in units.items():
+        for p, h in files.items():
+            if p in want:
+                seen.add(p)
+                if h != want[p]:
+                    bad.append(f"{u}: it replayed {p} at another sha256")
+            elif h != EMPTY_SHA:
+                bad.append(f"{u}: it replayed {p}, not a file these readings correct")
+    return bad + [f"no unit replayed {p}" for p in sorted(set(want) - seen) if want[p] != EMPTY_SHA]
 
 
 def _ref_path(ref: str) -> str:
@@ -331,9 +352,11 @@ def run(a: Any) -> dict[str, Any]:
     oprov = json.load(open(refs["oracle_summary"]))["provenance"]["oracle_records_sha256"]
     pdirs, pvdirs, gdirs = pp["runs"].split(","), gp["poseset_validation"].split(","), gp["runs"].split(",")
     s2dirs, odirs, ovdirs = gp["stage2"].split(","), gp["oracle"].split(","), gp["oracle_validation"].split(",")
-    want = dict(gp["records_sha256"])                                           # the pilot's records, both sides
-    want.update({records_path(d, "test"): pp["records_sha256"][d] for d in pdirs})
-    want.update({records_path(d, "validation"): gp["validation_records_sha256"][d] for d in pvdirs + ovdirs})
+    corrected = dict(gp["records_sha256"])                                      # the pilot's records, both sides
+    corrected.update({records_path(d, "test"): pp["records_sha256"][d] for d in pdirs})
+    corrected.update({records_path(d, "validation"): gp["validation_records_sha256"][d] for d in pvdirs})
+    want = dict(corrected)
+    want.update({records_path(d, "validation"): gp["validation_records_sha256"][d] for d in ovdirs})
     want.update({records_path(d, "test"): oprov[d] for d in odirs})
     want.update({records_path(d, side): s2prov[f"{d} {side}"] for d in s2dirs for side in SIDES})
     bad = sorted(p for p, h in want.items() if _sha(p) != h)
@@ -356,10 +379,9 @@ def run(a: Any) -> dict[str, Any]:
         if extra:
             raise SystemExit(f"the {name} pass replayed {len(extra)} cases no record holds (the first {extra[0]})")
         units = sorted(glob.glob(os.path.join(q, "unit_*")))
-        for u in units:
-            for path, h in cs._unit_config(u)["records_sha256"].items():
-                if _sha(path) != h:
-                    raise SystemExit(f"{u}: it replayed {path} at another sha256")
+        bad = replayed_files_errors({u: cs._unit_config(u)["records_sha256"] for u in units}, corrected)
+        if bad:
+            raise SystemExit(f"the {name} pass: {len(bad)} replayed files are not the records corrected here ({bad[0]})")
         revs[name] = sorted({cs._unit_config(u)["code_revision"] for u in units})
 
     def readings_of(pt: list[dict[str, Any]], pv: list[dict[str, Any]], g: list[dict[str, Any]]) -> dict[str, Any]:
