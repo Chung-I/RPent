@@ -820,7 +820,8 @@ def oracle_figure(rep: dict[str, Any], path: str) -> None:
     ax.annotate("R4", (100 * r4["irr"], 100 * r4["success"]), xytext=(5, -9), textcoords="offset points", fontsize=8, color="#52514e")
     ax.scatter([100 * o["irr"]], [100 * o["success"]], marker="D", s=60, color="#1f1e1c", edgecolors="white", linewidths=1, zorder=6,
                label="oracle: R0 at r 2, belief at the true setting")
-    ax.annotate("oracle", (100 * o["irr"], 100 * o["success"]), xytext=(6, 4), textcoords="offset points", fontsize=8, color="#1f1e1c")
+    ax.annotate("oracle", (100 * o["irr"], 100 * o["success"]), xytext=(-7, 3), textcoords="offset points", ha="right", fontsize=8,
+                color="#1f1e1c")                                     # left of the diamond: the curves pass on its right
     ax.set_xlim(left=0.0)
     _end_labels(ax, ends)
     ax.set_xlabel("irreversible damage (% of episodes)")
@@ -833,6 +834,16 @@ def oracle_figure(rep: dict[str, Any], path: str) -> None:
     fig.tight_layout()
     fig.savefig(path, dpi=200)
     plt.close(fig)
+
+
+def figure(a: argparse.Namespace) -> str:
+    """The figure again from a finished summary's oracle_summary.json (its figure data only; no records file is opened)."""
+    if os.path.exists(a.out):
+        raise SystemExit(f"{a.out} exists")
+    os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True)
+    oracle_figure(json.load(open(a.summary)), a.out)
+    print(f"wrote {a.out} from {a.summary} (sha256 {_sha(a.summary)})", flush=True)
+    return a.out
 
 
 def main(argv: list[str] | None = None) -> Any:
@@ -857,8 +868,11 @@ def main(argv: list[str] | None = None) -> Any:
     m.add_argument("--stage2-summary", required=True, help="Stage 2's stage2_summary.json")
     m.add_argument("--locked", required=True, help="Stage 2's locked.json")
     m.add_argument("--out", required=True)
+    g = sub.add_parser("figure", help="the figure again from a finished summary's json (reads no records)")
+    g.add_argument("--summary", required=True, help="oracle_summary.json")
+    g.add_argument("--out", required=True, help="the png to write")
     a = p.parse_args(argv)
-    return {"run": run, "smoke": smoke, "summary": summary}[a.cmd](a)
+    return {"run": run, "smoke": smoke, "summary": summary, "figure": figure}[a.cmd](a)
 
 
 if __name__ == "__main__":

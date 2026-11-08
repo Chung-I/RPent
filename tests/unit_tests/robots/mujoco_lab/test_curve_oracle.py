@@ -678,6 +678,22 @@ def test_summary_end_to_end_on_synthetic_runs(tmp_path, monkeypatch):
         _summary(tmp_path, tmp_path / "sum")
 
 
+def test_the_figure_command_redraws_from_the_summary_json_and_reads_no_record(tmp_path, monkeypatch):
+    _world(tmp_path)
+    _run_oracle(tmp_path, monkeypatch, tmp_path / "o1")
+    _summary(tmp_path, tmp_path / "sum")
+
+    def no_records(*a, **k):
+        raise AssertionError("the figure command opened a records file")
+
+    monkeypatch.setattr(co, "records_path", no_records)
+    out = tmp_path / "fig" / "oracle_points.png"
+    co.main(["figure", "--summary", str(tmp_path / "sum" / "oracle_summary.json"), "--out", str(out)])
+    assert out.exists() and out.stat().st_size > 10000
+    with pytest.raises(SystemExit, match="exists"):
+        co.main(["figure", "--summary", str(tmp_path / "sum" / "oracle_summary.json"), "--out", str(out)])
+
+
 def test_summary_refuses_unfinished_runs_and_stops_on_a_determinism_mismatch(tmp_path, monkeypatch):
     _world(tmp_path)
     _run_oracle(tmp_path, monkeypatch, tmp_path / "o1")
