@@ -475,6 +475,17 @@ def test_a_palm_inside_the_object_fails_the_clearance_against_the_object():
 
 
 @SIM
+def test_the_clearance_of_a_pinch_is_the_clearance_on_its_tilted_path_with_each_pairs_phases():
+    env, p = _sugar_box()
+    p6 = sixdof.from_graspgen(_at(p), s=p.s, width=p.width)
+    c = sixdof.clearance(env, p6, 0.05, "table_centre")
+    assert c is not None and c == sixdof.clearance_on_path(env, sixdof.hand_path6(env, p6, 0.1, 0.5, "table_centre"), 0.05, "table_centre")
+    for b in c["by_pair"].values():
+        assert b["phase"] in b["phases"] and sum(x["steps"] for x in b["phases"].values()) == b["steps"]
+        assert max(x["depth"] for x in b["phases"].values()) == b["depth"] > 0.0
+
+
+@SIM
 def test_a_pinch_near_the_top_set_down_on_the_table_is_clear():
     env, _ = _sugar_box()
     p = _pinch(env, 0.9)

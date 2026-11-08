@@ -373,8 +373,15 @@ def clearance(env: Any, p: Grasp6, w: float, destination: str, v_lift: float = 0
     the arm's joints): the palm and wrist against the object's hulls at its rest pose from the pregrasp to the close
     (the finger boxes against the object are the width rule's), every body against the table, the fixtures and the
     destination at every step; the fingers open in OPEN_PHASES, closed on ``w`` (finger_q) from the close to the lower.
-    A pair fails when mj_geomDistance is below 0. None when clear, else {"pairs": the failing body/obstacle pairs,
-    "first": the earliest failure, "by_pair": {pair: its first phase and step, its steps and its deepest overlap}}."""
+    A pair fails when mj_geomDistance is below 0. None when clear, else clearance_on_path's result."""
+    return clearance_on_path(env, hand_path6(env, p, v_lift, v_transport, destination, release_height, a_transport), w, destination)
+
+
+def clearance_on_path(env: Any, path: list[tuple[str, Any, Any]], w: float, destination: str) -> dict[str, Any] | None:
+    """clearance's check along a given hand path [(phase, hand position, hand rotation)] (hand_path6's, or today's
+    MuJoCoLabEnv.hand_path with each yaw as a rotation about the vertical). None when clear, else {"pairs": the failing
+    body/obstacle pairs, "first": the earliest failure, "by_pair": {pair: its first phase and step, its steps, its deepest
+    overlap and its geoms, and per phase its steps and deepest overlap}}."""
     import mujoco
 
     sim, sc = env.sim, env.s["scene"]
@@ -383,7 +390,6 @@ def clearance(env: Any, p: Grasp6, w: float, destination: str, v_lift: float = 0
     kind_of = {o: k for k, os_ in obstacle_sets(sim, destination).items() for o in os_}
     hand = list(body_of)
     loc = {"open": local_poses(sim, hand, 0.0), "closed": local_poses(sim, hand, finger_q(sc, w))}
-    path = hand_path6(env, p, v_lift, v_transport, destination, release_height, a_transport)
     kd.qpos[:] = sim.d.qpos                     # the obstacles where they are now (the object at rest)
     mujoco.mj_kinematics(m, kd)
     obs = np.array(sorted(kind_of), dtype=int)
@@ -405,9 +411,13 @@ def clearance(env: Any, p: Grasp6, w: float, destination: str, v_lift: float = 0
                 if dist < 0.0:
                     pair = f"{body_of[g]}/{kind}"
                     b = by.setdefault(pair, {"phase": ph, "step": k, "steps": 0, "depth": 0.0, "geoms": [m.geom(g).name or body_of[g],
-                                                                                                         m.geom(int(o)).name]})
+                                                                                                         m.geom(int(o)).name],
+                                             "phases": {}})
                     b["steps"] += 1
                     b["depth"] = max(b["depth"], -dist)
+                    q = b["phases"].setdefault(ph, {"steps": 0, "depth": 0.0})
+                    q["steps"] += 1
+                    q["depth"] = max(q["depth"], -dist)
     if not by:
         return None
     first = min(by, key=lambda pr: by[pr]["step"])
