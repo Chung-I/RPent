@@ -50,9 +50,9 @@ import numpy as np
 from robots.mujoco_lab import evpi_props as ev
 from robots.mujoco_lab.curve import (A_MAIN, BOOT_DRAWS, BOOT_SEED, EPS, GIVE_UP_ROW, R_GRID, RULE_COLOURS, RULE_NAMES, SIDES,
                                      STAGE1_CARE, LabCase, _curves, _end_labels, _err, _kept, _pc, _peak_rss_mb, _row_of, _sha,
-                                     _stage2_cases, counted, decide, dkey, episode, load_stage1, load_stage2, no_continuation,
-                                     predicted_point, records_path, simulate_case, smoke_summary, stage1_case, stage2_record,
-                                     stage2_skip)
+                                     _stage2_cases, add_executor_args, counted, decide, dkey, episode, executor_flags, load_stage1,
+                                     load_stage2, no_continuation, predicted_point, records_path, run_executor, simulate_case,
+                                     smoke_summary, stage1_case, stage2_record, stage2_skip)
 from robots.mujoco_lab.evpi_props import SharedMenus
 from robots.mujoco_lab.evpi_sim import seeds_of
 from robots.mujoco_lab.identify_fit import require_bundle_generator
@@ -191,6 +191,7 @@ def oracle_object(job: tuple[str, list[dict[str, Any]], dict[str, Any]]) -> dict
     probes, prims.probe_models = getattr(prims, "probe_models", None), {}
     prims.force_noise = cal.job_force_noise(None, prims.manifest)
     prims.env.force_noise = prims.force_noise
+    executor_flags(prims.env, s)
     world = fragility_world(prims.manifest)
     out: dict[str, Any] = {"records": [], "stop": None}
     try:
@@ -229,6 +230,10 @@ def run(a: argparse.Namespace) -> str:
     generator = require_bundle_generator(cfg1["bundle"])
     if generator != "v11":
         raise SystemExit(f"the bundle's generator is {generator}: evpi_props.truth_particle is built for v11")
+    if a.model_lock:
+        from robots.mujoco_lab import model_lock
+
+        model_lock.check(cfg1["bundle"], a.model_lock)
     recs = _stage2_cases(a, recs1)
     by: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for r in recs:
@@ -238,11 +243,12 @@ def run(a: argparse.Namespace) -> str:
               "stage1_records_sha256": {d: _sha(os.path.join(d, "records.jsonl")) for d in dirs},
               "split_sha256": cfg1["split_sha256"], "locked_sha256": _sha(a.locked), "knob": knob, "key": dkey("R0", A_MAIN, knob),
               "rules": RULES, "n_seeds": 1, "cases": [(r["object"], int(r["idx"])) for r in recs], "a_main": A_MAIN,
-              "stage1_care": STAGE1_CARE, "r_grid": R_GRID}
+              "stage1_care": STAGE1_CARE, "r_grid": R_GRID, **run_executor(a)}
     with open(os.path.join(a.out, "run_config.json"), "w") as f:
         json.dump(config, f, indent=1)
     jobs = [(o, items, {"bundle": os.path.join(cfg1["bundle"], "folds", f"fold_{items[0]['fold']}"), "seed": cfg1["seed"],
-                        "knob": knob}) for o, items in by.items()]
+                        "knob": knob, "replan_hold": a.replan_hold, "plan_without_hand_boxes": a.plan_without_hand_boxes})
+            for o, items in by.items()]
     t0, stop = time.time(), None
     outs = {side: open(records_path(a.out, side), "w") for side in SIDES}
     try:
@@ -628,7 +634,8 @@ def summary(a: argparse.Namespace) -> dict[str, Any]:
     k0, k4 = lk["R0"]["key"], lk["R4"]["key"]
     dirs = a.runs.split(",")
     cfgs = [_finished(d) for d in dirs]
-    for k in ("knob", "key", "bundle", "seed", "locked_sha256", "stage1_records_sha256", "code_revision"):
+    for k in ("knob", "key", "bundle", "seed", "locked_sha256", "stage1_records_sha256", "code_revision", "replan_hold",
+              "plan_without_hand_boxes", "sim_dir"):
         if len({json.dumps(c.get(k), sort_keys=True) for c in cfgs}) > 1:
             raise SystemExit(f"the oracle runs differ in {k}")
     cfg = cfgs[0]
@@ -858,6 +865,7 @@ def main(argv: list[str] | None = None) -> Any:
     r.add_argument("--shard", type=int, default=0)
     r.add_argument("--shards", type=int, default=1)
     r.add_argument("--workers", type=int, default=1)
+    add_executor_args(r)
     s = sub.add_parser("smoke", help="the smoke report (validation runs only) and the full run's projection")
     s.add_argument("--runs", required=True, help="comma-separated smoke run dirs")
     s.add_argument("--stage2", required=True, help="comma-separated Stage 2 run dirs")

@@ -970,6 +970,8 @@ def simulate_case(lab: Any, rec1: dict[str, Any], dec: dict[str, str], rules: tu
             except Exception as exc:  # noqa: BLE001  this simulation's error (design 5.5: at seed 0 it drops the case)
                 d1, at_rest = {"error": _err(exc)}, True
             sim.update(label=d1.get("outcome"), artifact=bool(d1.get("artifact")) or not at_rest, error=d1.get("error"))
+            if "replan" in d1:
+                sim["replan"] = d1["replan"]
             if sim["error"] is None and sim["label"] in RECOVERABLE and not sim["artifact"]:
                 try:
                     m2 = lab.second_menu(store, d1)
@@ -995,6 +997,8 @@ def simulate_case(lab: Any, rec1: dict[str, Any], dec: dict[str, str], rules: tu
                     except Exception as exc:  # noqa: BLE001
                         d2 = {"error": _err(exc)}
                     sim["second"][row2] = {"label": d2.get("outcome"), "artifact": bool(d2.get("artifact")), "error": d2.get("error")}
+                    if "replan" in d2:
+                        sim["second"][row2]["replan"] = d2["replan"]
             sim["seconds"] = round(time.time() - t0, 2)
             sims.append(sim)
     return {"sims": sims, "stop": None}
@@ -1196,7 +1200,8 @@ def second_decision_mismatches(recs: list[dict[str, Any]], rules: tuple[str, ...
 
 
 
-STAGE2_CONFIG_KEYS = ("bundle", "seed", "rules", "n_seeds", "stage1_records_sha256", "retry_sha256", "split_sha256")
+STAGE2_CONFIG_KEYS = ("bundle", "seed", "rules", "n_seeds", "stage1_records_sha256", "retry_sha256", "split_sha256",
+                      "replan_hold", "plan_without_hand_boxes", "sim_dir")
 
 
 SIDES = ("validation", "test")
@@ -1514,17 +1519,35 @@ class LabCase:
         return b0
 
     def attempt(self, store: Any, row: str) -> dict[str, Any]:
+        """One row through the pick_and_place tool; with the executor's re-plan at the hold on, the payload also holds the
+        rollout's re-plan reading ("replan", design 2026-11-09-stage2-contacts-rerun)."""
         from rpent.skills.pick_place.tools import pick_and_place
 
+        env, readings = self.prims.env, []
+        plain, own = env.execute, "execute" in vars(env)
+
+        def execute(*args: Any, **kw: Any) -> Any:
+            r = plain(*args, **kw)
+            readings.append(getattr(r, "replan", None))
+            return r
+
+        env.execute = execute
         try:
             d = pick_and_place(object="object", destination=self.destination, care=STAGE1_CARE, primitives=self.prims, store=store,
                                option_id=row).data
         except Exception as exc:  # noqa: BLE001  a simulator fault ends this simulation as an error
             return {"error": f"{type(exc).__name__}: {str(exc)[:200]}"}
+        finally:
+            if own:
+                env.execute = plain
+            else:
+                del env.execute
         if "outcome" not in d:
             return {"error": str(d.get("error") or d.get("reason"))}
         if d.get("restored") is not None:
             return {"error": "the lab restored the object (a recovery mode is on)"}
+        if readings and readings[-1] is not None:
+            d["replan"] = readings[-1]
         return d
 
     def second_menu(self, store: Any, d: dict[str, Any]) -> dict[str, Any]:
@@ -1550,6 +1573,13 @@ class LabCase:
                 "guard_flag": bool((a2.get("guard") or {}).get("flag"))}
 
 
+def executor_flags(env: Any, s: dict[str, Any]) -> None:
+    """The executor of a job ``s`` (design 2026-11-09-stage2-contacts-rerun): the re-plan at the hold and the planner
+    without the hand boxes, each off when the job does not name it (a published run)."""
+    env.replan_hold = bool(s.get("replan_hold", False))
+    env.plan_without_hand_boxes = bool(s.get("plan_without_hand_boxes", False))
+
+
 def stage2_object(job: tuple[str, list[tuple[dict[str, Any], dict[str, str]]], dict[str, Any]]) -> dict[str, Any]:
     """One object's Stage 2 cases on its fold's bundle (stage1_object's sensor and world, no probe models): per case its
     record (stage2_record). A gate that fails ends the object with ``stop`` (the run stops)."""
@@ -1564,6 +1594,7 @@ def stage2_object(job: tuple[str, list[tuple[dict[str, Any], dict[str, str]]], d
     probes, prims.probe_models = getattr(prims, "probe_models", None), {}
     prims.force_noise = cal.job_force_noise(None, prims.manifest)
     prims.env.force_noise = prims.force_noise
+    executor_flags(prims.env, s)
     world = fragility_world(prims.manifest)
     rules, n_seeds = tuple(s["rules"]), int(s["n_seeds"])
     out: dict[str, Any] = {"records": [], "stop": None}
@@ -1607,6 +1638,19 @@ def _stage2_cases(a: argparse.Namespace, recs1: list[dict[str, Any]]) -> list[di
     return sorted(recs, key=lambda r: (r["object"], int(r["idx"])))
 
 
+def run_executor(a: argparse.Namespace) -> dict[str, Any]:
+    """The run config's executor lines: the sim dir and the model lock's sha256 (the flags come with vars(a))."""
+    return {"sim_dir": os.environ.get("RPENT_MUJOCO_SIM_DIR"), "model_lock_sha256": _sha(a.model_lock) if a.model_lock else None}
+
+
+def add_executor_args(p: argparse.ArgumentParser) -> None:
+    """The executor of Stage 2c and oracle-c (design 2026-11-09-stage2-contacts-rerun); a published run passes none."""
+    p.add_argument("--replan-hold", action="store_true", help="the executor's re-plan at the hold on (amendment 8)")
+    p.add_argument("--plan-without-hand-boxes", action="store_true",
+                   help="the reach and free-move checks test the published collision set (ruling A)")
+    p.add_argument("--model-lock", default=None, help="a model_lock.py lock: the bundle must hold its files before the first case")
+
+
 def stage2(a: argparse.Namespace) -> str:
     """The Stage 2 run (design 5.5): records_validation.jsonl and records_test.jsonl (one stage2_record per case, by
     object as each ends), run_config.json and run_metrics.json (times, counts and errors only; wandb when on). A gate that
@@ -1626,6 +1670,10 @@ def stage2(a: argparse.Namespace) -> str:
     dirs = a.stage1.split(",")
     recs1, cfg1 = load_stage1(dirs)
     generator = require_bundle_generator(cfg1["bundle"])
+    if a.model_lock:
+        from robots.mujoco_lab import model_lock
+
+        model_lock.check(cfg1["bundle"], a.model_lock)
     c = retry_continuation(json.load(gzip.open(a.retry))["rows"])
     V = lambda care, A: continuation_values(c, care, A)  # noqa: E731
     recs = _stage2_cases(a, recs1)
@@ -1637,11 +1685,12 @@ def stage2(a: argparse.Namespace) -> str:
               "stage1_records_sha256": {d: _sha(os.path.join(d, "records.jsonl")) for d in dirs},
               "split_sha256": cfg1["split_sha256"], "retry_sha256": _sha(a.retry), "retry_continuation": c, "rules": rules,
               "n_seeds": a.seeds, "cases": [(r["object"], int(r["idx"])) for r in recs], "a_main": A_MAIN, "stage1_care": STAGE1_CARE,
-              "r_grid": R_GRID, "delta_grid": DELTA_GRID, "quantile": QUANTILE}
+              "r_grid": R_GRID, "delta_grid": DELTA_GRID, "quantile": QUANTILE, **run_executor(a)}
     with open(os.path.join(a.out, "run_config.json"), "w") as f:
         json.dump(config, f, indent=1)
     jobs = [(o, items, {"bundle": os.path.join(cfg1["bundle"], "folds", f"fold_{items[0][0]['fold']}"), "seed": cfg1["seed"],
-                        "rules": rules, "n_seeds": a.seeds}) for o, items in by.items()]
+                        "rules": rules, "n_seeds": a.seeds, "replan_hold": a.replan_hold,
+                        "plan_without_hand_boxes": a.plan_without_hand_boxes}) for o, items in by.items()]
     t0, stop = time.time(), None
     outs = {side: open(records_path(a.out, side), "w") for side in SIDES}
     try:
@@ -1747,6 +1796,7 @@ def main(argv: list[str] | None = None) -> Any:
     s2.add_argument("--shard", type=int, default=0)
     s2.add_argument("--shards", type=int, default=1)
     s2.add_argument("--workers", type=int, default=1)
+    add_executor_args(s2)
     sk = sub.add_parser("stage2-smoke", help="the smoke test's times, counts and the full run's projection")
     sk.add_argument("--runs", required=True, help="comma-separated smoke run dirs")
     sk.add_argument("--out", required=True)
