@@ -447,6 +447,13 @@ def _raised(r: dict[str, Any]) -> bool:
     return float((r.get("replan") or {}).get("raise_mm") or 0.0) > 0.0
 
 
+def row_cause(r: dict[str, Any]) -> str | None:
+    """What may have changed a replayed row (CAUSES): its first box contact (BoxContacts), a raise of the carry, both;
+    None without either."""
+    c, up = (r.get("box_contacts") or {}).get("first") is not None, _raised(r)
+    return "both" if c and up else "contact only" if c else "raise only" if up else None
+
+
 def g1p_report(units: list[str], flagged: set[tuple[Any, ...]], expected: dict[str, int],
                first_pass: list[str] | None = None) -> dict[str, Any]:
     """Revised gate G1′ (design amendment 8, ruling (b): a row changes only if a palm, wrist or finger box touches
@@ -491,12 +498,8 @@ def g1p_report(units: list[str], flagged: set[tuple[Any, ...]], expected: dict[s
                     default=None) for _, r in part]
         return {"rows": len(part), "contact": sum(x is not None for x in deep), "contact_over_1mm": sum(x is not None and x > 1.0 for x in deep)}
 
-    def cause(r: dict[str, Any]) -> str | None:
-        c, up = first(r) is not None, _raised(r)
-        return "both" if c and up else "contact only" if c else "raise only" if up else None
-
     changed = [(c, r) for c, r in rows if not r["same"]]
-    bare = [(c, r) for c, r in changed if "box_contacts" in r and cause(r) is None]
+    bare = [(c, r) for c, r in changed if "box_contacts" in r and row_cause(r) is None]
     unf = [(c, r) for c, r in rows if key(c, r) not in flagged]
     fl = [(c, r) for c, r in rows if key(c, r) in flagged]
     cu, cf = [(c, r) for c, r in unf if not r["same"]], [(c, r) for c, r in fl if not r["same"]]
@@ -505,8 +508,8 @@ def g1p_report(units: list[str], flagged: set[tuple[Any, ...]], expected: dict[s
         trans[c["object"]][f"{r.get('stored_label')} → {r.get('label')}"] += 1
     by_cause: dict[str, Counter] = defaultdict(Counter)
     for c, r in changed:
-        if cause(r):
-            by_cause[cause(r)][f"{r.get('stored_label')} → {r.get('label')}"] += 1
+        if row_cause(r):
+            by_cause[row_cause(r)][f"{r.get('stored_label')} → {r.get('label')}"] += 1
     rep.update(rows_not_recorded=sum("box_contacts" not in r for _, r in rows),
                gate={"changed": len(changed), "changed_with_contact": sum(first(r) is not None for _, r in changed),
                      "by_cause": {k: sum(by_cause[k].values()) for k in CAUSES},
