@@ -18,6 +18,7 @@ it uses in curve, R0 at the locked knob, the smoke report and the pre-registered
 import copy
 import json
 import os
+import subprocess
 from collections import Counter
 from types import SimpleNamespace
 
@@ -373,33 +374,48 @@ def test_paired_outcomes_resample_objects_exactly_as_the_stage2_bootstrap():
 
 
 @pytest.mark.parametrize("d,lo,hi,want", [
-    (0.05, 0.01, 0.09, "the belief is a limit"),
-    (0.01, -0.01, 0.03, "the belief is not what limits success"),          # the interval includes 0
-    (0.03, -0.01, 0.07, "the belief is not what limits success"),          # includes 0, though the point gap is above 2
-    (-0.03, -0.05, -0.01, "the belief is not what limits success"),        # sits below +2 points
-    (0.01, 0.002, 0.019, "the belief is not what limits success"),         # above 0, below +2 points
-    (0.015, 0.005, 0.03, "no reading by the stated rule"),                 # above 0, not shown to exceed 2 points
+    (0.05, 0.01, 0.09, "the belief is a limit"),                           # (i) g above +2, the interval above 0
     (0.025, 0.005, 0.05, "the belief is a limit"),
+    (0.01, 0.002, 0.019, "the belief is not what limits success"),         # (ii) the interval below +2
+    (0.01, -0.01, 0.019, "the belief is not what limits success"),         # (ii) though the interval includes 0
+    (-0.005, -0.012, 0.0, "the belief is not what limits success"),        # (ii) hi 0 is not below 0
+    (-0.03, -0.05, -0.01, "oracle below R0"),                              # (iii) before (ii)
+    (0.015, 0.002, 0.029, "undecided at n = 481"),                         # (iv) the design's +1.5 [+0.2, +2.9]
+    (0.04, -0.005, 0.085, "undecided at n = 481"),                         # (iv) the design's +4 [-0.5, +8.5]
+    (0.01, -0.01, 0.03, "undecided at n = 481"),                           # (iv) straddles +2, g at most +2
+    (0.02, 0.001, 0.04, "undecided at n = 481"),                           # (iv) g of exactly +2 is not above it
+    (0.03, 0.0, 0.06, "undecided at n = 481"),                             # (iv) lo of exactly 0 is not above it
 ])
-def test_the_reading_rule_is_the_designs(d, lo, hi, want):
-    assert co.oracle_reading({"success": {"diff": d, "lo": lo, "hi": hi}}) == want
+def test_the_reading_rule_is_the_designs_section_3_1(d, lo, hi, want):
+    assert co.oracle_reading({"success": {"diff": d, "lo": lo, "hi": hi}, "cases": 481}) == want
+
+
+def test_an_undecided_reading_names_its_views_case_count():
+    assert co.oracle_reading({"success": {"diff": 0.04, "lo": -0.005, "hi": 0.085}, "cases": 12}) == "undecided at n = 12"
 
 
 def test_the_first_decision_groups_partition_the_cases():
     cases = [
         {"oracle": _ep(["commit_std"], ["placed_stable"]), "r0": _ep(give_up=True), "same": False},
         {"oracle": _ep(["firm_grip"], ["crushed"]), "r0": _ep(["commit_std"], ["placed_stable"]), "same": False},
-        {"oracle": _ep(["commit_std"], ["tipped", "placed_stable"]), "r0": _ep(["commit_std"], ["placed_stable"]), "same": True},
+        {"oracle": _ep(["commit_std"], ["tipped", "placed_stable"]), "r0": _ep(["commit_std"], ["placed_stable"]), "same": True,
+         "same_id": True},
+        {"oracle": _ep(["regrasp_com"], ["placed_stable"]), "r0": _ep(["commit_std"], ["placed_stable"]), "same": True,
+         "same_id": False},
         {"oracle": _ep(give_up=True), "r0": _ep(["commit_std"], ["tipped"]), "same": False},
         {"oracle": _ep(give_up=True), "r0": _ep(give_up=True), "same": False},
         {"oracle": _ep(["commit_std"], ["missed"]), "r0": _ep(give_up=True), "same": False},
     ]
     g = co.first_decision_groups(cases)
-    assert {k: v["n"] for k, v in g.items()} == {"R0 gave up, the oracle grasped": 2, "both grasped, different rows": 1,
-                                                 "both grasped, the same row": 1, "the oracle gave up, R0 grasped": 1, "both gave up": 1}
-    first = g["R0 gave up, the oracle grasped"]
+    assert list(g) == ["R0 gave up and the oracle grasped", "both grasped, same action", "both grasped, different action",
+                       "the oracle gave up and R0 grasped", "both gave up"]
+    assert {k: v["n"] for k, v in g.items()} == {"R0 gave up and the oracle grasped": 2, "both grasped, different action": 1,
+                                                 "both grasped, same action": 2, "the oracle gave up and R0 grasped": 1,
+                                                 "both gave up": 1}
+    assert g["both grasped, same action"]["equal_action_different_id"] == 1
+    first = g["R0 gave up and the oracle grasped"]
     assert first["oracle_first_labels"] == {"placed_stable": 1, "missed": 1} and first["oracle"]["n_success"] == 1
-    diff = g["both grasped, different rows"]
+    diff = g["both grasped, different action"]
     assert diff["oracle"]["n_irr"] == 1 and diff["r0"]["n_success"] == 1 and diff["oracle"]["irr"] == 1.0
     assert sum(v["n"] for v in g.values()) == len(cases)
 
@@ -411,14 +427,37 @@ def _key(rid, **kw):
 
 
 def test_the_row_change_compares_the_two_actions():
-    assert co.row_change(_key("commit_std"), _key("commit_std")) == "same row"
-    assert co.row_change(_key("regrasp_com"), _key("commit_std")) == "same row"           # regrasp_com at the standard pinch
+    assert co.row_change(_key("commit_std"), _key("commit_std")) == "same action"
+    assert co.row_change(_key("regrasp_com"), _key("commit_std")) == "same action"        # regrasp_com at the standard pinch
     assert co.row_change(_key("slow_lift", v_lift=0.05, v_transport=0.2), _key("commit_std")) == "force or speed change"
     assert co.row_change(_key("firm_grip", force=40.0), _key("light_grip", force=10.0)) == "force or speed change"
     assert co.row_change(_key("gentle_carry", a_transport=0.5), _key("commit_std")) == "force or speed change"
-    assert co.row_change(_key("regrasp_com", s=0.7), _key("firm_grip", force=40.0)) == "pose change"
+    assert co.row_change(_key("regrasp_com", s=0.7), _key("firm_grip", force=40.0)) == "pose change"   # pose and force
+    assert co.row_change(_key("regrasp_com", s=0.7, force=40.0), _key("commit_std")) == "pose change"
     assert co.row_change(_key("drop_release", release_height=0.1), _key("commit_std")) == "other change"
     assert co.row_change(None, _key("commit_std")) == "the oracle gives up"
+
+
+def test_the_views_mark_an_equal_action_pair_with_different_row_ids():
+    rows1 = [_row("commit_std", 0.5, action=_key("commit_std")), _row("regrasp_com", 0.5, action=_key("regrasp_com"))]
+    s1 = _s1rec("toy", 3, rows=rows1)
+    s2 = _s2("toy", 3, {K: "commit_std", K4: "commit_std"}, [_sim("commit_std", "placed_stable")])
+    o = dict(_s2("toy", 3, {K: "regrasp_com"}, [_sim("regrasp_com", "placed_stable")]), rows=rows1, oracle=True)
+    v = co._views([{"oracle": o, "stage2": s2, "stage1": s1}], K, K4)[0]
+    assert (v["change"], v["same"], v["same_id"], v["group"]) == ("same action", True, False, "c")
+    o2 = dict(o, decisions={K: "commit_std"}, sims=[_sim("commit_std", "placed_stable")])
+    v2 = co._views([{"oracle": o2, "stage2": s2, "stage1": s1}], K, K4)[0]
+    assert (v2["same"], v2["same_id"]) == (True, True)
+    g = co.first_decision_groups([v, v2, v])
+    assert g["both grasped, same action"]["n"] == 3 and g["both grasped, same action"]["equal_action_different_id"] == 2
+
+
+def test_the_paired_set_drops_a_case_either_arm_drops_and_counts_them():
+    j = [{"oracle": {"dropped": o}, "stage2": {"dropped": s}} for s, o in ((False, False), (True, False), (False, True),
+                                                                          (True, True), (False, False))]
+    paired, n = co.paired_set(j)
+    assert paired == [j[0], j[4]]
+    assert n == {"dropped": 3, "stage2_only": 1, "oracle_only": 1, "both": 1}
 
 
 def test_the_menu_limit_groups_come_from_stage2s_r0_and_r4_decisions():
@@ -614,11 +653,18 @@ def test_summary_end_to_end_on_synthetic_runs(tmp_path, monkeypatch):
     assert nt["cases"] == 12 and nt["success"]["diff"] == pytest.approx(6 / 12) and nt["irr"]["diff"] == 0.0
     r2 = rep["readings"]["2_oracle_vs_r4"]["all"]
     assert (r2["success"]["diff"], r2["irr"]["diff"], r2["give_up"]["diff"]) == (0.0, 0.0, 0.0)
-    assert rep["readings"]["3_reading"] in ("the belief is a limit", "the belief is not what limits success", "no reading by the stated rule")
+    assert rep["readings"]["3_reading"] == co.oracle_reading(r1)
+    assert rep["readings"]["3_reading_no_thin"] == co.oracle_reading(nt)
+    assert rep["counts"]["paired_dropped"] == {"dropped": 0, "stage2_only": 0, "oracle_only": 0, "both": 0}
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(co.__file__))))
+    head = subprocess.run(["git", "-C", root, "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+    assert rep["provenance"]["summary_code_revision"] == head and isinstance(rep["provenance"]["summary_dirty"], bool)
     g4 = rep["readings"]["4_groups"]["all"]
-    assert {k: v["n"] for k, v in g4.items()} == {"R0 gave up, the oracle grasped": 2, "both grasped, different rows": 12,
-                                                  "both grasped, the same row": 0, "the oracle gave up, R0 grasped": 0, "both gave up": 2}
-    assert g4["R0 gave up, the oracle grasped"]["oracle_first_labels"] == {"placed_stable": 2}
+    assert {k: v["n"] for k, v in g4.items()} == {"R0 gave up and the oracle grasped": 2, "both grasped, different action": 12,
+                                                  "both grasped, same action": 0, "the oracle gave up and R0 grasped": 0,
+                                                  "both gave up": 2}
+    assert g4["both grasped, same action"]["equal_action_different_id"] == 0
+    assert g4["R0 gave up and the oracle grasped"]["oracle_first_labels"] == {"placed_stable": 2}
     assert rep["readings"]["5_calibration"]["all"]["attempts"] == 14
     assert rep["readings"]["6_determinism"]["mismatches"] == [] and rep["readings"]["6_determinism"]["compared"] == 14
     g8 = rep["readings"]["8_menu_limit"]

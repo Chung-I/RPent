@@ -62,8 +62,10 @@ DESIGN_KNOB = 2.0                 # design 2: R0's knob is Stage 2's locked valu
 RULES = ("R0",)
 NO_CLASS = {"class": "none", "law": None, "fillable": False}       # stage1_case's entry without a fragility world
 FORCE_SPEED = ("force", "v_lift", "v_transport", "a_transport")     # the action fields of a force or speed change
-GROUPS = ("R0 gave up, the oracle grasped", "both grasped, different rows", "both grasped, the same row",
-          "the oracle gave up, R0 grasped", "both gave up")
+GROUPS = ("R0 gave up and the oracle grasped", "both grasped, same action", "both grasped, different action",
+          "the oracle gave up and R0 grasped", "both gave up")          # design 3.1, reading 4
+READING_LIMIT, READING_NOT, READING_BELOW = ("the belief is a limit", "the belief is not what limits success",
+                                             "oracle below R0")                            # design 3.1, reading 3
 MENU_GROUPS = {"a": "no rows (every rule gives up)", "b": "R0 gives up with rows", "c": "R0 grasps"}
 
 
@@ -318,28 +320,33 @@ def paired_outcomes(pairs: list[tuple[str, dict[str, Any], dict[str, Any]]], dra
 
 
 def oracle_reading(b: dict[str, Any], eps: float = EPS) -> str:
-    """Design reading 3 on the success difference oracle - R0. Within eps (the interval includes 0 or sits below +eps):
-    the belief is not what limits success. Above eps with the interval above 0: the belief is a limit. Else (the interval
-    above 0, its upper end at eps or more, the difference at eps or less): no reading by the stated rule."""
+    """Design reading 3 as amended in its section 3.1, on g = oracle - R0 success with its interval [lo, hi]: (iii) hi < 0,
+    "oracle below R0" (a model-term flag, not asserted as (ii)); (i) g > eps and lo > 0, the belief is a limit; (ii)
+    hi < eps, the belief is not what limits success; (iv) every other case, undecided at the view's case count."""
     s = b["success"]
-    if s["lo"] <= 0.0 <= s["hi"] or s["hi"] < eps:
-        return "the belief is not what limits success"
+    if s["hi"] < 0.0:
+        return READING_BELOW
     if s["diff"] > eps and s["lo"] > 0.0:
-        return "the belief is a limit"
-    return "no reading by the stated rule"
+        return READING_LIMIT
+    if s["hi"] < eps:
+        return READING_NOT
+    return f"undecided at n = {b['cases']}"
 
 
 def first_decision_groups(cases: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
-    """Design reading 4: the cases ({"oracle", "r0": episode, "same": the same first action}) by their first decisions,
-    with each arm's rates and the oracle's first labels."""
+    """Design reading 4 (section 3.1): the cases ({"oracle", "r0": episode, "same": the same first action, "same_id": the
+    same first row id}) by their first decisions, with each arm's rates and the oracle's first labels; the same-action
+    group also counts its pairs with equal actions but different row ids."""
     by: dict[str, list[dict[str, Any]]] = {g: [] for g in GROUPS}
     for c in cases:
         go, g0 = c["oracle"]["attempts"] > 0, c["r0"]["attempts"] > 0
-        g = (GROUPS[2] if c["same"] else GROUPS[1]) if go and g0 else (GROUPS[0] if go else GROUPS[3] if g0 else GROUPS[4])
+        g = (GROUPS[1] if c["same"] else GROUPS[2]) if go and g0 else (GROUPS[0] if go else GROUPS[3] if g0 else GROUPS[4])
         by[g].append(c)
-    return {g: {"n": len(v), "oracle": _rates([c["oracle"] for c in v]), "r0": _rates([c["r0"] for c in v]),
-                "oracle_first_labels": dict(Counter(c["oracle"]["labels"][0] for c in v if c["oracle"]["labels"]))}
-            for g, v in by.items()}
+    out = {g: {"n": len(v), "oracle": _rates([c["oracle"] for c in v]), "r0": _rates([c["r0"] for c in v]),
+               "oracle_first_labels": dict(Counter(c["oracle"]["labels"][0] for c in v if c["oracle"]["labels"]))}
+           for g, v in by.items()}
+    out[GROUPS[1]]["equal_action_different_id"] = sum(not c.get("same_id", True) for c in by[GROUPS[1]])
+    return out
 
 
 def _action(key: str) -> dict[str, Any]:
@@ -347,14 +354,14 @@ def _action(key: str) -> dict[str, Any]:
 
 
 def row_change(ko: str | None, kr: str) -> str:
-    """Design reading 8 (c): the oracle's first action key against R0's. Same row (the same action), pose change (another
-    pinch s), force or speed change (FORCE_SPEED), other change (the destination or the release height), or the oracle
-    gives up (ko None)."""
+    """Design reading 8 (c), tested in section 3.1's order: the oracle gives up (ko None), same action (the row id is
+    ignored), pose change (another pinch s, with or without a force change), force or speed change (FORCE_SPEED), other
+    change (the destination or the release height)."""
     if ko is None:
         return "the oracle gives up"
     a, b = _action(ko), _action(kr)
     if a == b:
-        return "same row"
+        return "same action"
     if a.get("s") != b.get("s"):
         return "pose change"
     if any(a.get(k) != b.get(k) for k in FORCE_SPEED):
@@ -472,8 +479,18 @@ def _views(joined: list[dict[str, Any]], k0: str, k4: str) -> list[dict[str, Any
         change = None if f0 == GIVE_UP_ROW else row_change(ko, _akey(s1["rows"], f0))
         out.append({"object": o["object"], "thin": bool(s2["thin"]), "group": menu_group(s2["decisions"], k0, k4),
                     "oracle": episode(o["decisions"], o["sims"], k0), "r0": episode(s2["decisions"], s2["sims"], k0),
-                    "r4": episode(s2["decisions"], s2["sims"], k4), "change": change, "same": change == "same row", "rec": o})
+                    "r4": episode(s2["decisions"], s2["sims"], k4), "change": change, "same": change == "same action",
+                    "same_id": fo == f0, "rec": o})
     return out
+
+
+def paired_set(joined: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[str, int]]:
+    """Design section 3.1: the joined cases that neither arm drops, and the number dropped (Stage 2 only, the oracle only,
+    both)."""
+    s, o = [bool(j["stage2"]["dropped"]) for j in joined], [bool(j["oracle"]["dropped"]) for j in joined]
+    return ([j for j, a, b in zip(joined, s, o) if not a and not b],
+            {"dropped": sum(a or b for a, b in zip(s, o)), "stage2_only": sum(a and not b for a, b in zip(s, o)),
+             "oracle_only": sum(b and not a for a, b in zip(s, o)), "both": sum(a and b for a, b in zip(s, o))})
 
 
 def _calibration(recs: list[dict[str, Any]], key: str) -> dict[str, Any]:
@@ -643,8 +660,12 @@ def summary(a: argparse.Namespace) -> dict[str, Any]:
         raise SystemExit(f"{len(missing)} Stage 2 test cases are missing from the oracle runs, {len(extra)} are not Stage 2's")
     joined = [{"oracle": byo[k], "stage2": r, "stage1": by1[k]} for r in s2 for k in [(r["object"], int(r["idx"]))]]
     det = determinism(joined, k0, k4)
+    from robots.mujoco_lab.estimation_check import _revision
+
+    me = _revision()
     prov = {"runs": a.runs, "oracle_records_sha256": {d: _sha(records_path(d, "test")) for d in dirs},
-            "code_revision": cfg["code_revision"], "stage2": a.stage2, "stage2_summary": f"{a.stage2_summary} (sha256 {_sha(a.stage2_summary)})",
+            "code_revision": cfg["code_revision"], "summary_code_revision": me["code_revision"], "summary_dirty": me["dirty"],
+            "stage2": a.stage2, "stage2_summary": f"{a.stage2_summary} (sha256 {_sha(a.stage2_summary)})",
             "locked": f"{a.locked} (sha256 {_sha(a.locked)})", "stage1": sorted(cfg["stage1_records_sha256"]),
             "bootstrap": f"{BOOT_DRAWS} object draws, seed {BOOT_SEED}, 95 % percentile interval", "eps": EPS, "keys": [k0, k4]}
     if det["mismatches"]:
@@ -652,7 +673,7 @@ def summary(a: argparse.Namespace) -> dict[str, Any]:
             json.dump({"determinism": det, "provenance": prov}, f, indent=1)
         print(f"STOP: {len(det['mismatches'])} determinism mismatches (reading 6); wrote {spath}", flush=True)
         raise SystemExit(3)
-    paired = [j for j in joined if not j["stage2"]["dropped"] and not j["oracle"]["dropped"]]
+    paired, n_dropped = paired_set(joined)
     views = _views(paired, k0, k4)
     nt = [v for v in views if not v["thin"]]
     ba, bn = _block(views, k0), _block(nt, k0)
@@ -660,7 +681,8 @@ def summary(a: argparse.Namespace) -> dict[str, Any]:
               "oracle_dropped": sum(bool(j["oracle"]["dropped"]) for j in joined),
               "oracle_only_dropped": sum(bool(j["oracle"]["dropped"]) and not j["stage2"]["dropped"] for j in joined),
               "oracle_skips": dict(Counter(j["oracle"]["skipped"] for j in joined if j["oracle"]["skipped"])),
-              "paired": len(views), "objects": len({v["object"] for v in views}), "thin_cases": len(views) - len(nt),
+              "paired": len(views), "paired_dropped": n_dropped, "objects": len({v["object"] for v in views}),
+              "thin_cases": len(views) - len(nt),
               "groups": dict(Counter(v["group"] for v in views))}
     readings = {"1_oracle_vs_r0": {"all": ba["oracle_vs_r0"], "no_thin": bn["oracle_vs_r0"]},
                 "2_oracle_vs_r4": {"all": ba["oracle_vs_r4"], "no_thin": bn["oracle_vs_r4"]},
@@ -704,6 +726,9 @@ def summary_markdown(rep: dict[str, Any]) -> str:
           f"- Stage 2 test cases {c['stage2_test_cases']}: Stage 2 dropped {c['stage2_dropped']}, the oracle dropped "
           f"{c['oracle_dropped']} ({c['oracle_only_dropped']} of them kept by Stage 2; skips {c['oracle_skips']}).",
           f"- Paired cases {c['paired']} on {c['objects']} objects ({c['thin_cases']} on thin plastic); groups {c['groups']}.",
+          f"- Dropped from the paired set (design 3.1: a case that either arm drops): {c['paired_dropped']['dropped']} "
+          f"(Stage 2 only {c['paired_dropped']['stage2_only']}, the oracle only {c['paired_dropped']['oracle_only']}, "
+          f"both {c['paired_dropped']['both']}).",
           f"- Determinism (reading 6): {R['6_determinism']['compared']} cases compared, 0 mismatches, "
           f"{R['6_determinism']['missing']} without a simulation.",
           f"- The simulator's truth against the particle ({tg['records']} cases): mass gap {_gap(tg['mass_rel'], 100.0, 4)} % of the "
@@ -717,8 +742,14 @@ def summary_markdown(rep: dict[str, Any]) -> str:
     b0, b4 = R["1_oracle_vs_r0"]["all"], R["2_oracle_vs_r4"]["all"]
     L += ["", "| arm (paired cases) | success % | irreversible % | give-up % |", "|---|---|---|---|",
           f"| oracle | {_rate_cells(b0['rate_a'])} |", f"| R0 at r 2 | {_rate_cells(b0['rate_b'])} |", f"| R4 | {_rate_cells(b4['rate_b'])} |",
-          "", f"## 3. The reading rule: {R['3_reading']} (without thin plastic: {R['3_reading_no_thin']})", "",
+          "", f"## 3. The reading rule (design 3.1): {R['3_reading']} (without thin plastic: {R['3_reading_no_thin']})", ""]
+    if READING_BELOW in (R["3_reading"], R["3_reading_no_thin"]):
+        L += ["(\"oracle below R0\" is a model-term flag: the model at the truth, or the simulator's truth, disagrees with the "
+              "rule's expectation. The clause \"not what limits\" is not asserted for it.)", ""]
+    L += [
           "## 4. The first decisions, oracle against R0 (paired cases)", "",
+          f"Same action: the same force, speeds, destination, release height and pinch (the row id is ignored). Pairs with "
+          f"equal actions but different row ids: {R['4_groups']['all'][GROUPS[1]]['equal_action_different_id']}.", "",
           "| group | cases | oracle success % | oracle irreversible % | R0 success % | R0 irreversible % | the oracle's first labels |",
           "|---|---|---|---|---|---|---|"]
     for g, v in R["4_groups"]["all"].items():
