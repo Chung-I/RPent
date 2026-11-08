@@ -193,7 +193,7 @@ _CODE = re.compile(r"^code (\S+).*, dirty files (\d+)$")
 _SIM = re.compile(r"^sim (\S+), last commit ([0-9a-f]{40}), dirty files (\d+)$")
 _SHA = re.compile(r"sha256 ([0-9a-f]{64})")
 STAGE2_SAME = ("bundle", "seed", "stage1_records_sha256", "retry_sha256", "split_sha256", "n_seeds", "a_main", "r_grid", "delta_grid",
-               "quantile", "stage1_care")
+               "quantile", "stage1_care", "sides")
 ORACLE_SAME = ("bundle", "seed", "stage1_records_sha256", "split_sha256", "knob", "key", "locked_sha256", "n_seeds", "a_main", "r_grid",
                "stage1_care")
 R1_R6 = ("R1", "R2", "R3", "R5", "R6")
@@ -222,7 +222,7 @@ def _cfg(d: str) -> dict[str, Any]:
 
 def _new_runs(dirs: list[str], a: argparse.Namespace, sl: dict[str, Any] | None) -> list[dict[str, Any]]:
     """The new runs' configs, each run checked: EXIT 0, both executor flags on, the model lock and the skip list of the
-    summary, clean code, and the sim of --sim-commit, clean."""
+    summary, clean code, and the sim of --sim-commit, clean, the one the run's config names."""
     want = _sha(a.model_lock)
     out = []
     for d in dirs:
@@ -242,6 +242,8 @@ def _new_runs(dirs: list[str], a: argparse.Namespace, sl: dict[str, Any] | None)
             raise SystemExit(f"{d}: the sim commit {pv['sim_commit']} is not --sim-commit {a.sim_commit}")
         if pv["sim_dirty"]:
             raise SystemExit(f"{d}: the sim had {pv['sim_dirty']} dirty files")
+        if os.path.realpath(str(c.get("sim_dir"))) != os.path.realpath(pv["sim"]):
+            raise SystemExit(f"{d}: the run's sim_dir {c.get('sim_dir')} is not the sim of its provenance, {pv['sim']}")
         out.append(dict(c, _sim=pv["sim"]))
     return out
 
@@ -255,10 +257,15 @@ def _same(name: str, cfgs: list[dict[str, Any]], keys: tuple[str, ...], ref: dic
 
 
 def _split_sides(dirs: list[str]) -> dict[str, list[str]]:
-    """The oracle runs by the side their config names (--sides)."""
+    """The oracle runs by the side their config names (--sides). Refuses a run with records of another side (a run given
+    --cases writes each record to its own side's file); only the files' sizes are read."""
     out: dict[str, list[str]] = {side: [] for side in SIDES}
     for d in dirs:
-        for side in _cfg(d)["sides"].split(","):
+        sides = _cfg(d)["sides"].split(",")
+        other = [s for s in SIDES if s not in sides and os.path.exists(records_path(d, s)) and os.path.getsize(records_path(d, s))]
+        if other:
+            raise SystemExit(f"{d}: the run's config names the side {','.join(sides)}, but it holds {other[0]} records")
+        for side in sides:
             out[side].append(d)
     return out
 
@@ -282,20 +289,32 @@ def _gates(a: argparse.Namespace, sl: dict[str, Any] | None) -> dict[str, Any]:
     bad = {k: sm.get(k) for k in ("first_changed", "second_changed", "second_presence_changed", "errors") if sm.get(k) != 0}
     if bad or sm.get("stops"):
         raise SystemExit(f"the Stage 2c smoke failed its gate: {bad or sm['stops']}")
+    if not sm.get("first_pairs") or not sm.get("second_triples"):
+        raise SystemExit("the Stage 2c smoke compared no first or no second attempts across its two seeds")
     so = json.load(open(a.smoke_oracle))
-    if so["determinism"]["mismatches"] or so.get("errors") or so.get("stops"):
-        raise SystemExit(f"the oracle-c smoke failed its gate: {so['determinism']['mismatches'] or so.get('errors') or so.get('stops')}")
+    det = so["determinism"]
+    if not det.get("compared") or det.get("missing") or det["mismatches"] or so.get("errors") or so.get("stops"):
+        raise SystemExit(f"the oracle-c smoke failed its gate: {det}, errors {so.get('errors')}, stops {so.get('stops')}")
+    arms = {"stage2": set(a.published.split(",")), "oracle": set(a.published_oracle.split(","))}
     gp = []
     for p in a.gate_published.split(","):
         g = json.load(open(p))
         if g.get("pass") is not True:
             raise SystemExit(f"{p}: the gate on the published records did not pass")
-        gp.append({"file": p, "pass": True, "compared": g["compared"], "equal": g["equal"], "code_revisions": _code_revisions(g["runs"])})
+        arm = next((k for k, v in arms.items() if set(str(g.get("published")).split(",")) <= v), None)
+        if arm is None:
+            raise SystemExit(f"{p}: the gate's published records are not the published Stage 2 or oracle runs")
+        gp.append({"file": p, "arm": arm, "pass": True, "compared": g["compared"], "equal": g["equal"],
+                   "code_revisions": _code_revisions(g["runs"])})
+    if {x["arm"] for x in gp} != set(arms):
+        raise SystemExit(f"the gates on the published records cover {sorted({x['arm'] for x in gp})}: both arms are needed")
     gc = {}
-    for name, p, runs in (("stage2c", a.gate_cases_stage2c, a.runs), ("oracle_c", a.gate_cases_oracle, a.oracle_runs)):
+    for name, p, runs, pub in (("stage2c", a.gate_cases_stage2c, a.runs, a.published),
+                               ("oracle_c", a.gate_cases_oracle, a.oracle_runs, a.published_oracle)):
         g = json.load(open(p))
-        if g.get("pass") is not True or g.get("runs") != runs or json.dumps(g.get("skip_list"), sort_keys=True) != json.dumps(sl, sort_keys=True):
-            raise SystemExit(f"{p}: the case-list gate did not pass on these runs with this skip list")
+        if (g.get("pass") is not True or g.get("runs") != runs or set(str(g.get("published")).split(",")) != set(pub.split(","))
+                or json.dumps(g.get("skip_list"), sort_keys=True) != json.dumps(sl, sort_keys=True)):
+            raise SystemExit(f"{p}: the case-list gate did not pass on these runs against these published runs with this skip list")
         gc[name] = {k: g[k] for k in ("cases", "published_cases", "skipped", "pass")}
     bundles = {_cfg(d)["bundle"] for d in a.runs.split(",") + a.oracle_runs.split(",")}
     for b in sorted(bundles):
@@ -322,10 +341,13 @@ def _published(a: argparse.Namespace) -> dict[str, Any]:
             raise SystemExit(f"{a.locked} is not the lock file the {name} read")
     au = json.load(open(a.audit))
     p1, o1 = au["published"]["stage2_r0_r4"], au["published"]["oracle_r0"]
-    if any(p1[k] != ps["q1"]["boot"][k] for k in ("success", "irr")) or any(
-            o1[k] != po["readings"]["1_oracle_vs_r0"]["all"][k] for k in ("success", "irr", "give_up")):
+    if p1 != ps["q1"]["boot"] or o1 != po["readings"]["1_oracle_vs_r0"]["all"]:
         raise SystemExit("the audit's published numbers are not the published summaries'")
-    return {"stage2": ps, "oracle": po, "audit": au["readings"]["3"][a.audit_level]}
+    lv = au["readings"]["3"][a.audit_level]
+    if ([lv["stage2_r0_r4"].get(k) for k in ("a", "b", "draws", "seed")] != [p1[k] for k in ("a", "b", "draws", "seed")]
+            or [lv["oracle_r0"].get(k) for k in ("draws", "seed")] != [o1[k] for k in ("draws", "seed")]):
+        raise SystemExit(f"the audit's {a.audit_level} lines are not at the published keys and bootstrap")
+    return {"stage2": ps, "oracle": po, "audit": lv}
 
 
 def _q1_line(recs: list[dict[str, Any]], k0: str, k4: str) -> dict[str, Any]:
@@ -383,7 +405,9 @@ def summary(a: argparse.Namespace) -> dict[str, Any]:
     _same("Stage 2c and oracle-c", new_s2 + new_o, ("code_revision", "sim_dir", "_sim", "bundle", "seed", "stage1_records_sha256",
                                                     "split_sha256"))
     _same("Stage 2c", new_s2, STAGE2_SAME, _cfg(a.published.split(",")[0]))
+    _same("Stage 2c", new_s2, ("rules",))
     _same("oracle-c", new_o, ORACLE_SAME, _cfg(a.published_oracle.split(",")[0]))
+    oside, posides = _split_sides(oruns), _split_sides(a.published_oracle.split(","))
     pub = _published(a)
     locked = json.load(open(a.locked))["lock"]
 
@@ -430,7 +454,6 @@ def summary(a: argparse.Namespace) -> dict[str, Any]:
     stage2_figure(s2rep, os.path.join(a.out, "stage2c", "stage2_curves.png"))
 
     # reading 2: the oracle summary on oracle-c against Stage 2c
-    oside = _split_sides(oruns)
     oc = co.summary(argparse.Namespace(out=os.path.join(a.out, "oracle_c"), runs=",".join(oside["test"]), locked=a.locked,
                                        stage2=a.runs, stage2_summary=s2path))
     po = pub["oracle"]
@@ -448,7 +471,6 @@ def summary(a: argparse.Namespace) -> dict[str, Any]:
           "model_curves_equal": oc["readings"]["7_model_curves"] == po["readings"]["7_model_curves"]}
 
     # reading 3: the case-level change per arm and side
-    posides = _split_sides(a.published_oracle.split(","))
     r3 = {"stage2c": {"validation": case_change(val_p, val_c, list(key.values())), "test": case_change(test_p, test_c, list(key.values()))},
           "oracle_c": {side: case_change(_side_records(posides[side], side), _side_records(oside[side], side), [k0]) for side in SIDES}}
 

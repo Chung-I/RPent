@@ -74,6 +74,7 @@ from tests.unit_tests.robots.mujoco_lab import test_curve as tc  # noqa: E402
 
 MEGA = "hot3d__megaphone"
 SIM_COMMIT = "e" * 40
+NEW = ("new_0", "new_1")                                     # the Stage 2c shards
 ROWS_A = [dict(tc._row("commit_std", 0.6, irr=0.0), cvar=tc._cv(0.1)), dict(tc._row("firm_grip", 0.95, irr=0.03), cvar=tc._cv(0.1))]
 ROWS_B = [dict(tc._row("commit_std", 0.9, irr=0.001), cvar=tc._cv(0.1))]
 # the corrected physics of the synthetic world (R0's lock is r 0.02: commit_std on both menus; R4 grasps firm_grip on
@@ -145,10 +146,15 @@ def _write_json(path, x):
     json.dump(x, open(path, "w"))
 
 
+def _new(T):
+    return [T / d for d in NEW]
+
+
 def _world(T, monkeypatch, over=OVER, rules=None):
     """Stage 1 (validation ycb__v0 to v3 and the two megaphone cases, test hope__t0 to t3 with t0 thin plastic), the
     published Stage 2 (lock and summary) and oracle runs (test and validation, summary), the new runs on the corrected
-    labels ``over`` with the flags, the model lock and the skip list of the megaphone cases, and the gate files."""
+    labels ``over`` with the flags (Stage 2c in the shards NEW, with the ``rules`` of each when a tuple), the model lock
+    and the skip list of the megaphone cases, and the gate files."""
     monkeypatch.setenv("WANDB_MODE", "disabled")
     monkeypatch.setattr(identify_fit, "require_bundle_generator", lambda b: "v11")
     monkeypatch.setattr(co, "require_bundle_generator", lambda b: "v11")
@@ -180,24 +186,26 @@ def _world(T, monkeypatch, over=OVER, rules=None):
     flags = ["--replan-hold", "--plan-without-hand-boxes", "--model-lock", str(T / "model_lock.json"), "--skip-list",
              str(T / "skip_list.json")]
     monkeypatch.setattr(cv, "stage2_object", _stage2_fake(over))
-    cv.main(["stage2", *base, "--retry", str(T / "retry.json.gz"), "--out", str(T / "new"), *flags]
-            + (["--rules", rules] if rules else []))
+    for k, (d, r) in enumerate(zip(NEW, rules if isinstance(rules, tuple) else (rules,) * len(NEW))):
+        cv.main(["stage2", *base, "--retry", str(T / "retry.json.gz"), "--shard", str(k), "--shards", str(len(NEW)),
+                 "--out", str(T / d), *flags] + (["--rules", r] if r else []))
     monkeypatch.setattr(co, "oracle_object", _oracle_fake(over))
     for side in ("test", "validation"):
         co.main(["run", *base, "--locked", locked, "--sides", side, "--out", str(T / f"new_o_{side}"), *flags])
-    for d in ("new", "new_o_test", "new_o_validation"):
+    for d in (*NEW, "new_o_test", "new_o_validation"):
         (T / d / "run.exit").write_text("EXIT 0\n")
         (T / d / "provenance.txt").write_text(f"code c0de (detached run worktree), dirty files 0\n"
                                               f"sim /sim, last commit {SIM_COMMIT}, dirty files 0\nstart 2026-11-09 05:38:45\n")
-    _write_json(T / "smoke_s2c.json", {"first_changed": 0, "second_changed": 0, "second_presence_changed": 0, "errors": 0,
-                                       "stops": [], "wandb": "w1"})
+    _write_json(T / "smoke_s2c.json", {"first_pairs": 4, "first_changed": 0, "second_triples": 2, "second_changed": 0,
+                                       "second_presence_changed": 0, "errors": 0, "stops": [], "wandb": "w1"})
     _write_json(T / "smoke_o.json", {"determinism": {"compared": 3, "missing": 0, "mismatches": []}, "errors": 0, "stops": [],
                                      "wandb": "w2"})
-    for g in ("gp_s2", "gp_o"):
+    for g, pub in (("gp_s2", T / "pub"), ("gp_o", T / "pub_o_validation")):
         _write_json(T / g / "gate_published.json", {"pass": True, "compared": 4, "equal": 4, "differ": [], "missing": [],
-                                                    "runs": str(T / "pub")})
+                                                    "runs": str(T / "pub"), "published": str(pub)})
     sl = str(T / "skip_list.json")
-    s2c.main(["gate-cases", "--runs", str(T / "new"), "--published", str(T / "pub"), "--skip-list", sl, "--out", str(T / "gc_s2")])
+    s2c.main(["gate-cases", "--runs", ",".join(str(d) for d in _new(T)), "--published", str(T / "pub"), "--skip-list", sl,
+              "--out", str(T / "gc_s2")])
     s2c.main(["gate-cases", "--runs", f"{T / 'new_o_test'},{T / 'new_o_validation'}", "--published",
               f"{T / 'pub_o_test'},{T / 'pub_o_validation'}", "--skip-list", sl, "--out", str(T / "gc_o")])
     pub_q1 = json.load(open(T / "pub_sum" / "stage2_summary.json"))["q1"]["boot"]
@@ -210,7 +218,7 @@ def _world(T, monkeypatch, over=OVER, rules=None):
 
 
 def _args(T, out="sum", **kw):
-    d = {"runs": str(T / "new"), "oracle-runs": f"{T / 'new_o_test'},{T / 'new_o_validation'}", "published": str(T / "pub"),
+    d = {"runs": ",".join(str(d) for d in _new(T)), "oracle-runs": f"{T / 'new_o_test'},{T / 'new_o_validation'}", "published": str(T / "pub"),
          "published-summary": str(T / "pub_sum" / "stage2_summary.json"),
          "published-oracle": f"{T / 'pub_o_test'},{T / 'pub_o_validation'}",
          "published-oracle-summary": str(T / "pub_o_sum" / "oracle_summary.json"), "locked": str(T / "lock" / "locked.json"),
@@ -233,7 +241,7 @@ def test_summary_reading_1_puts_the_published_the_audit_and_the_corrected_r0_min
     rep = s2c.main(_args(T))
     lk = json.load(open(locked))["lock"]
     k0, k4 = lk["R0"]["key"], lk["R4"]["key"]
-    test_c, test_p = _recs([T / "new"], "test"), _recs([T / "pub"], "test")
+    test_c, test_p = _recs(_new(T), "test"), _recs([T / "pub"], "test")
     r1 = rep["readings"]["1"]
     assert r1["keys"] == [k0, k4]
     assert r1["corrected"]["boot"] == cv.paired_bootstrap(test_c, k0, k4)
@@ -268,12 +276,12 @@ def test_summary_repeats_the_published_stage2_readings_at_the_published_lock_on_
     lk = json.load(open(locked))["lock"]
     key = {r: v["key"] for r, v in lk.items() if isinstance(v, dict)}
     rep = json.load(open(T / "sum" / "stage2c" / "stage2_summary.json"))
-    test_c, val_c = _recs([T / "new"], "test"), _recs([T / "new"], "validation")
+    test_c, val_c = _recs(_new(T), "test"), _recs(_new(T), "validation")
     assert rep == dict(rep, **cv.stage2_readings(val_c, test_c, tuple(cv.RULES), key))
     assert {r: rep["lock"][r]["knob"] for r in cv.RULES} == {r: lk[r]["knob"] for r in cv.RULES}
     assert rep["lock"]["R0"]["point"] == cv.rule_point(val_c, key["R0"])
-    assert rep["provenance"]["records_sha256"] == {f"{T / 'new'} {side}": cv._sha(cv.records_path(str(T / "new"), side))
-                                                   for side in cv.SIDES}
+    assert rep["provenance"]["records_sha256"] == {f"{d} {side}": cv._sha(cv.records_path(str(d), side))
+                                                   for d in _new(T) for side in cv.SIDES}
     assert rep["checks"]["skip_list_cases"] == 2 and rep["checks"]["missing_cases"] == 0
     for f in ("stage2_summary.md", "stage2_curves.png"):
         assert os.path.exists(T / "sum" / "stage2c" / f)
@@ -306,7 +314,7 @@ def test_summary_reading_3_counts_the_case_level_change_per_arm_and_side(tmp_pat
     keys = [lk[r]["key"] for r in cv.RULES]
     r3 = rep["readings"]["3"]
     for side in cv.SIDES:
-        assert r3["stage2c"][side] == s2c.case_change(_recs([T / "pub"], side), _recs([T / "new"], side), keys)
+        assert r3["stage2c"][side] == s2c.case_change(_recs([T / "pub"], side), _recs(_new(T), side), keys)
         k0 = [lk["R0"]["key"]]
         assert r3["oracle_c"][side] == s2c.case_change(_recs([T / f"pub_o_{side}"], side), _recs([T / f"new_o_{side}"], side), k0)
     k4 = r3["stage2c"]["test"][lk["R4"]["key"]]
@@ -328,15 +336,17 @@ def test_summary_reading_4_sets_the_stage2c_calibration_beside_the_published(tmp
 def test_summary_reading_5_and_the_provenance_list_the_gates_and_every_run(tmp_path, monkeypatch):
     T = tmp_path
     _world(T, monkeypatch)
+    seen = _spy_records(T, monkeypatch)
     rep = s2c.main(_args(T))
+    assert {os.path.dirname(p) for p in seen} == {str(T / d) for d in (*NEW, "new_o_test", "new_o_validation")}
     g = rep["readings"]["5"]
     assert g["smoke_stage2c"]["first_changed"] == 0 and g["smoke_oracle"]["determinism"]["mismatches"] == []
-    assert [x["pass"] for x in g["gate_published"]] == [True, True]
+    assert [(x["pass"], x["arm"]) for x in g["gate_published"]] == [(True, "stage2"), (True, "oracle")]
     assert g["gate_cases"]["stage2c"]["skipped"] == [[MEGA, 0], [MEGA, 1]] and g["gate_cases"]["oracle_c"]["pass"] is True
     assert g["model_lock_sha256"] == cv._sha(str(T / "model_lock.json"))
     assert rep["r1_r6_ran"] is True and rep["sim_commit"] == SIM_COMMIT
     assert set(rep["cpu_hours"]) == {"stage2c", "oracle_c", "published_stage2", "published_oracle"}
-    assert rep["provenance"]["code_revision"] == "c0de" and len(rep["provenance"]["wandb"]["stage2c"]) == 1
+    assert rep["provenance"]["code_revision"] == "c0de" and len(rep["provenance"]["wandb"]["stage2c"]) == len(NEW)
     assert os.path.exists(T / "sum" / "summary.json") and os.path.exists(T / "sum" / "summary.md")
 
 
@@ -344,14 +354,14 @@ def test_summary_re_locks_on_the_new_validation_records_as_an_exploratory_line(t
     T = tmp_path
     locked = _world(T, monkeypatch)
     rep = s2c.main(_args(T))
-    val_c = _recs([T / "new"], "validation")
+    val_c = _recs(_new(T), "validation")
     re = cv.lock(val_c, tuple(cv.RULES))
     x = rep["exploratory"]["relock"]
     assert x["knobs"] == {r: re[r]["knob"] for r in cv.RULES}
     pub = json.load(open(locked))["lock"]
     assert x["differs"] == sorted(r for r in cv.RULES if re[r]["knob"] != pub[r]["knob"]) and "R0" in x["differs"]
     if "R0" in x["differs"] or "R4" in x["differs"]:
-        assert x["q1"]["boot"] == cv.paired_bootstrap(_recs([T / "new"], "test"), re["R0"]["key"], re["R4"]["key"])
+        assert x["q1"]["boot"] == cv.paired_bootstrap(_recs(_new(T), "test"), re["R0"]["key"], re["R4"]["key"])
     else:
         assert x["q1"] is None
 
@@ -367,29 +377,46 @@ def test_summary_on_runs_of_r0_and_r4_only_says_r1_to_r6_did_not_run(tmp_path, m
     assert set(rep["readings"]["4"]["stage2c"]) == {"R0", "R4"}
 
 
+def _spy_records(T, monkeypatch):
+    """The paths of the new runs' records files that are opened from now on (builtins.open)."""
+    import builtins
+
+    real, seen, new = builtins.open, [], {str(T / d) for d in (*NEW, "new_o_test", "new_o_validation")}
+
+    def spy(path, *args, **kw):
+        if os.path.basename(str(path)).startswith("records_") and os.path.dirname(str(path)) in new:
+            seen.append(str(path))
+        return real(path, *args, **kw)
+
+    monkeypatch.setattr(builtins, "open", spy)
+    return seen
+
+
 def _break(T, what):
-    """One input of the summary made wrong."""
+    """One input of the summary made wrong; returns the summary's arguments that change with it."""
     def edit(path, f):
         x = json.load(open(path))
         f(x)
         json.dump(x, open(path, "w"))
 
+    n0, n1 = T / NEW[0], T / NEW[1]
+
     if what == "exit":
-        (T / "new" / "run.exit").write_text("EXIT 1\n")
+        (n0 / "run.exit").write_text("EXIT 1\n")
     elif what == "flag":
-        edit(T / "new" / "run_config.json", lambda c: c.update(replan_hold=False))
+        edit(n1 / "run_config.json", lambda c: c.update(replan_hold=False))
     elif what == "oracle_flag":
         edit(T / "new_o_validation" / "run_config.json", lambda c: c.update(plan_without_hand_boxes=False))
     elif what == "model_lock":
         edit(T / "new_o_test" / "run_config.json", lambda c: c.update(model_lock_sha256="0" * 64))
     elif what == "sim":
-        (T / "new" / "provenance.txt").write_text(f"code c0de, dirty files 0\nsim /sim, last commit {'f' * 40}, dirty files 0\n")
+        (n0 / "provenance.txt").write_text(f"code c0de, dirty files 0\nsim /sim, last commit {'f' * 40}, dirty files 0\n")
     elif what == "sim_dirty":
         (T / "new_o_test" / "provenance.txt").write_text(f"code c0de, dirty files 0\nsim /sim, last commit {SIM_COMMIT}, dirty files 2\n")
     elif what == "dirty":
-        edit(T / "new" / "run_config.json", lambda c: c.update(dirty=True))
+        edit(n1 / "run_config.json", lambda c: c.update(dirty=True))
     elif what == "seed":
-        edit(T / "new" / "run_config.json", lambda c: c.update(seed=12))
+        edit(n0 / "run_config.json", lambda c: c.update(seed=12))
     elif what == "smoke":
         edit(T / "smoke_s2c.json", lambda c: c.update(first_changed=1))
     elif what == "smoke_oracle":
@@ -409,6 +436,30 @@ def _break(T, what):
         json.dump(x, open(T / "lock" / "locked.json", "w"), indent=2)                 # the same lock, another file
     elif what == "audit":
         edit(T / "audit.json", lambda c: c["published"]["stage2_r0_r4"]["irr"].update(diff=0.5))
+    elif what == "audit_cases":
+        edit(T / "audit.json", lambda c: c["published"]["stage2_r0_r4"].update(cases=999))
+    elif what == "audit_oracle_rates":
+        edit(T / "audit.json", lambda c: c["published"]["oracle_r0"]["rate_a"].update(n=999))
+    elif what == "audit_keys":
+        edit(T / "audit.json", lambda c: c["readings"]["3"]["gt1"]["stage2_r0_r4"].update(a="R1|10|2"))
+    elif what == "sim_dir":                                                     # every run agrees, none with its sim
+        for d in (n0, n1, T / "new_o_test", T / "new_o_validation"):
+            edit(d / "run_config.json", lambda c: c.update(sim_dir="/old_sim"))
+    elif what == "gate_published_arm":
+        return {"gate-published": str(T / "gp_s2" / "gate_published.json")}
+    elif what == "gate_published_other":
+        edit(T / "gp_o" / "gate_published.json", lambda c: c.update(published=str(T / "elsewhere")))
+    elif what == "smoke_one_seed":
+        edit(T / "smoke_s2c.json", lambda c: c.update(first_pairs=0, second_triples=0))
+    elif what == "smoke_oracle_missing":
+        edit(T / "smoke_o.json", lambda c: c["determinism"].update(compared=0, missing=3))
+    elif what == "rules":
+        edit(n1 / "run_config.json", lambda c: c.update(rules=["R0", "R4"]))
+    elif what == "gate_cases_published":
+        edit(T / "gc_o" / "gate_cases.json", lambda c: c.update(published=str(T / "pub_o_test")))
+    elif what == "oracle_sides":
+        edit(T / "new_o_validation" / "run_config.json", lambda c: c.update(sides="test"))
+    return {}
 
 
 @pytest.mark.parametrize("what, match", [("exit", "EXIT 0"), ("flag", "replan_hold"), ("oracle_flag", "plan_without_hand_boxes"),
@@ -416,14 +467,19 @@ def _break(T, what):
                                          ("dirty", "dirty"), ("seed", "seed"), ("smoke", "smoke"), ("smoke_oracle", "smoke"),
                                          ("gate_published", "gate"), ("gate_cases", "gate"),
                                          ("published_records", "published"), ("published_oracle_records", "published oracle"),
-                                         ("locked", "lock"), ("audit", "audit")])
-def test_summary_refuses_a_failed_gate_or_an_input_that_changed(tmp_path, monkeypatch, what, match):
+                                         ("locked", "lock"), ("audit", "audit"), ("audit_cases", "audit"),
+                                         ("audit_oracle_rates", "audit"), ("audit_keys", "audit"), ("sim_dir", "sim_dir"),
+                                         ("gate_published_arm", "gate"), ("gate_published_other", "gate"),
+                                         ("smoke_one_seed", "smoke"), ("smoke_oracle_missing", "smoke"), ("rules", "rules"),
+                                         ("gate_cases_published", "gate"), ("oracle_sides", "side")])
+def test_summary_refuses_a_failed_gate_or_an_input_that_changed_before_it_opens_a_new_record(tmp_path, monkeypatch, what, match):
     T = tmp_path
     _world(T, monkeypatch)
-    _break(T, what)
+    kw = _break(T, what)
+    seen = _spy_records(T, monkeypatch)
     with pytest.raises(SystemExit, match=match):
-        s2c.main(_args(T))
-    assert not os.path.exists(T / "sum" / "summary.json")
+        s2c.main(_args(T, **kw))
+    assert seen == [] and not os.path.exists(T / "sum" / "summary.json")
 
 
 def test_summary_refuses_a_skip_list_that_is_not_the_runs(tmp_path, monkeypatch):
