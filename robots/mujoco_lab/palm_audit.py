@@ -394,6 +394,388 @@ def run(a: argparse.Namespace) -> str:
     return a.out
 
 
+# ---------------------------------------------------------------- the summary
+
+SIDES_OF = (("stage2", "test"), ("oracle", "test"), ("poseset", "test"), ("poseset", "validation"), ("pilot", "test"), ("pilot", "validation"))
+
+
+def row_key(source: str, side: str, obj: str, idx: int, row: dict[str, Any]) -> tuple[Any, ...]:
+    """An audited row's key: (source, side, object, idx, its first row, attempt, row) for Stage 2 and the oracle arm, and
+    (source, side, object, idx, row id) for the pose set and the pilot."""
+    if source in ("stage2", "oracle"):
+        return (source, side, obj, int(idx), row["first"], int(row["attempt"]), row["row"])
+    return (source, side, obj, int(idx), row["id"])
+
+
+def index_rows(audit: list[dict[str, Any]]) -> dict[tuple[Any, ...], dict[str, Any]]:
+    """Every audited row by row_key; a row audited twice raises."""
+    out: dict[tuple[Any, ...], dict[str, Any]] = {}
+    for r in audit:
+        for x in r["rows"]:
+            k = row_key(r["source"], r["side"], r["object"], r["idx"], x)
+            if k in out:
+                raise ValueError(f"{k} is audited twice")
+            out[k] = x
+    return out
+
+
+def status(x: dict[str, Any] | None, level: str = PRIMARY) -> str:
+    """A row's audit at one FLAG_MM threshold: "flagged", "clear", or "not audited" (no audit line, an error, or a second
+    row whose replay did not pass)."""
+    if x is None or x.get("error") or "flags" not in x:
+        return "not audited"
+    return "flagged" if x["flags"][level] else "clear"
+
+
+def worst(states: list[str]) -> str:
+    """flagged if any row is, else not audited if any row is, else clear (also for no row)."""
+    return "flagged" if "flagged" in states else ("not audited" if "not audited" in states else "clear")
+
+
+def episode_status(idx: dict[tuple[Any, ...], dict[str, Any]], source: str, side: str, rec: dict[str, Any], key: str,
+                   level: str = PRIMARY) -> str:
+    """worst over the rows one rule's episode executed (episode_rows); a give-up executes none and is clear."""
+    return worst([status(idx.get((source, side, rec["object"], int(rec["idx"]), first, att, row)), level)
+                  for att, first, row, _ in episode_rows(rec, key)])
+
+
+def label_shares(items: list[tuple[str | None, str]]) -> dict[str, dict[str, Any]]:
+    """Reading 2 over (label, status) pairs: per group (placed, irreversible, all) its rows, the rows audited, the flagged
+    rows and their share of the audited rows (None when none is audited)."""
+    from rpent.skills.pick_place.protocol import IRREVERSIBLE
+
+    groups = (("placed", lambda y: y == "placed_stable"), ("irreversible", lambda y: y in IRREVERSIBLE), ("all", lambda y: True))
+    out = {}
+    for name, test in groups:
+        st = [s for y, s in items if test(y)]
+        aud, f = sum(s != "not audited" for s in st), sum(s == "flagged" for s in st)
+        out[name] = {"rows": len(st), "audited": aud, "flagged": f, "share": f / aud if aud else None}
+    return out
+
+
+def reading1(rows: list[tuple[str, dict[str, Any]]], level: str = PRIMARY) -> dict[str, Any]:
+    """Reading 1 over (object, audit row) pairs: the rows, the rows audited, the flagged rows at each FLAG_MM threshold; at
+    ``level`` the flagged rows by body, by obstacle and by phase (a row counts under each with a pair, or a pair's phase,
+    deeper than the threshold), and per object its audited rows, its flagged rows and the median and the maximum depth
+    over them (mm; None without one)."""
+    thr = FLAG_MM[level]
+    aud = [(o, x) for o, x in rows if status(x, level) != "not audited"]
+    body: Counter = Counter()
+    kind: Counter = Counter()
+    phase: Counter = Counter()
+    per: dict[str, list[float]] = {}
+    n: Counter = Counter()
+    for o, x in aud:
+        n[o] += 1
+        per.setdefault(o, [])
+        deep = [v for v in x["pairs"].values() if v["depth_mm"] > thr]
+        body.update({v["body"] for v in deep})
+        kind.update({v["kind"] for v in deep})
+        phase.update({ph for v in deep for ph, q in v["phases"].items() if q["depth_mm"] > thr})
+        if x["flags"][level]:
+            per[o].append(float(x["depth_mm"]))
+    return {"rows": len(rows), "audited": len(aud), "flagged": {k: sum(bool(x["flags"][k]) for _, x in aud) for k in FLAG_MM},
+            "by_body": dict(body), "by_obstacle": dict(kind), "by_phase": dict(phase),
+            "by_object": {o: {"rows": n[o], "flagged": len(d), "depth_median_mm": float(np.median(d)) if d else None,
+                              "depth_max_mm": max(d) if d else None} for o, d in sorted(per.items())}}
+
+
+def differs(got: dict[str, Any], want: dict[str, Any], names: tuple[str, ...] = ("success", "irr")) -> list[str]:
+    """The gate against a published paired difference: each field (the cases; diff, lo and hi per name) that is not equal."""
+    bad = [] if got.get("cases") == want.get("cases") else [f"cases {got.get('cases')} vs {want.get('cases')}"]
+    return bad + [f"{n}.{k} {got[n][k]!r} vs {want[n][k]!r}" for n in names for k in ("diff", "lo", "hi") if got[n][k] != want[n][k]]
+
+
+def poseset_without(vs: list[dict[str, Any]], idx: dict[tuple[Any, ...], dict[str, Any]], side: str = "test",
+                    level: str = PRIMARY) -> list[dict[str, Any]]:
+    """Reading 3's pose-set views: each view with both ceilings over its rows less its simulated rows flagged at ``level``
+    (ceiling_without); a simulated row that is not audited stays and is listed (kept_unaudited)."""
+    out = []
+    for v in vs:
+        sim = [r for r in v["rows"] if "seconds" in r]
+        st = {r["id"]: status(idx.get(("poseset", side, v["object"], int(v["idx"]), r["id"])), level) for r in sim}
+        drop = [i for i, x in st.items() if x == "flagged"]
+        out.append(dict(v, c10=ceiling_without(v["rows"], set(drop), False), c3=ceiling_without(v["rows"], set(drop), True), removed=drop,
+                        kept_unaudited=[i for i, x in st.items() if x == "not audited"]))
+    return out
+
+
+def stored_labels(source: str, side: str, recs: list[dict[str, Any]]) -> dict[tuple[Any, ...], Any]:
+    """Each simulated row's stored label by row_key (the reading-4 list carries it for G1')."""
+    out: dict[tuple[Any, ...], Any] = {}
+    for r in recs:
+        o, i = r["object"], int(r["idx"])
+        if source in ("stage2", "oracle"):
+            for s in r.get("sims") or []:
+                out[(source, side, o, i, s["first"], 1, s["first"])] = s["label"]
+                for row2, y in (s.get("second") or {}).items():
+                    out[(source, side, o, i, s["first"], 2, row2)] = y["label"]
+        else:
+            for x in r.get("rows") or []:
+                if "seconds" in x:
+                    out[(source, side, o, i, x["id"])] = x.get("label")
+    return out
+
+
+def _units(q: str) -> list[str]:
+    import glob
+
+    return sorted(glob.glob(os.path.join(q, "unit_*")), key=lambda d: int(d.rsplit("_", 1)[1]))
+
+
+def load_audit(q: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """The audit units in queue dir ``q``: each ended with EXIT 0 and no stop, on one clean code revision with FLAG_MM, and
+    the source records each read are unchanged; no case twice in a (source, side); no case line holds a stop or an error."""
+    from robots.mujoco_lab.curve import _sha
+    from robots.mujoco_lab.curve_oracle import _finished
+
+    recs, cfgs = [], []
+    for d in _units(q):
+        c = _finished(d)
+        for f, h in c["records_sha256"].items():
+            if _sha(f) != h:
+                raise SystemExit(f"{f}: the records changed since the audit read them")
+        cfgs.append(c)
+        recs += [json.loads(line) for line in open(os.path.join(d, "audit_records.jsonl"))]
+    if not cfgs:
+        raise SystemExit(f"{q}: no audit unit")
+    if len({c["code_revision"] for c in cfgs}) != 1 or any(c["dirty"] for c in cfgs):
+        raise SystemExit("the audit units ran on more than one code revision, or on a dirty tree")
+    if any(c["flag_mm"] != FLAG_MM for c in cfgs):
+        raise SystemExit("an audit unit used other thresholds")
+    twice = [k for k, n in Counter((r["source"], r["side"], r["object"], int(r["idx"])) for r in recs).items() if n > 1]
+    if twice:
+        raise SystemExit(f"{len(twice)} cases audited twice, the first {twice[0]}")
+    bad = [r for r in recs if r.get("stop") or r.get("error")]
+    if bad:
+        raise SystemExit(f"{len(bad)} audited cases hold a stop or an error, the first {bad[0]['object']} {bad[0]['idx']}")
+    return recs, cfgs
+
+
+def _pairs_cell(b: dict[str, Any] | None, name: str) -> str:
+    if not b or b.get(name) is None:
+        return "–"
+    x = b[name]
+    return f"{100 * x['diff']:+.2f} [{100 * x['lo']:+.2f}, {100 * x['hi']:+.2f}]"
+
+
+def summary_markdown(rep: dict[str, Any]) -> str:
+    """audit_summary.md: the counts, the gate, and readings 1 to 4 (numbers only; the README states them)."""
+    L = ["# Palm-contact audit: summary", "", f"Primary threshold: deeper than {FLAG_MM[PRIMARY]:g} mm. Depth: MuJoCo's penetration "
+         "distance (the shortest move that separates the two geoms).", "", "## Counts", ""]
+    c = rep["counts"]
+    L += [f"- {k}: {json.dumps(v)}" for k, v in c.items()]
+    L += ["", "## Gate (the published numbers recomputed from the records)", "", "- " + ("all equal" if not any(rep["gate"].values())
+                                                                                      else json.dumps(rep["gate"])), "",
+          "## Reading 1: flagged rows per experiment", "",
+          "| experiment | rows | audited | any | > 1 mm | > 2 mm | > 5 mm | by body (> 1 mm) | by obstacle (> 1 mm) | by phase (> 1 mm) |",
+          "|---|---|---|---|---|---|---|---|---|---|"]
+    for name, r in rep["readings"]["1"].items():
+        f = r["flagged"]
+        L.append(f"| {name} | {r['rows']} | {r['audited']} | " + " | ".join(f"{f[k]} ({100 * f[k] / r['audited']:.1f} %)" if r["audited"] else "–"
+                                                                       for k in FLAG_MM)
+                 + f" | {json.dumps(r['by_body'])} | {json.dumps(r['by_obstacle'])} | {json.dumps(r['by_phase'])} |")
+    L += ["", "Objects with a row flagged at > 1 mm (rows audited, flagged, depth median and maximum in mm):", ""]
+    for name, r in rep["readings"]["1"].items():
+        objs = [(o, x) for o, x in r["by_object"].items() if x["flagged"]]
+        if objs:
+            L.append(f"- {name}: " + "; ".join(f"{o} {x['flagged']}/{x['rows']} ({x['depth_median_mm']:.1f}, {x['depth_max_mm']:.1f})"
+                                               for o, x in sorted(objs, key=lambda t: -t[1]["flagged"])))
+    L += ["", "## Reading 2: flagged share (> 1 mm) among the executed rows, per arm", "",
+          "| arm | placed rows | flagged | share | irreversible rows | flagged | share | all rows | flagged | share |", "|---|---|---|---|---|---|---|---|---|---|"]
+    for arm, r in rep["readings"]["2"][PRIMARY].items():
+        L.append(f"| {arm} | " + " | ".join(f"{r[g]['audited']} | {r[g]['flagged']} | " + ("–" if r[g]["share"] is None else f"{100 * r[g]['share']:.1f} %")
+                                           for g in ("placed", "irreversible", "all")) + " |")
+    L += ["", "## Reading 3: headline sensitivity (points, 95 % object bootstrap), beside the published numbers", "",
+          "| reading | published | " + " | ".join(f"unflagged at {k}" for k in FLAG_MM) + " |", "|---|---|" + "---|" * len(FLAG_MM)]
+    pub, r3 = rep["published"], rep["readings"]["3"]
+    three = ("success", "irr", "give_up")
+    for key, label, names in (("stage2_r0_r4", "Stage 2 R0 − R4", ("success", "irr")), ("oracle_r0", "oracle − R0", three),
+                              ("poseset_1p", "pose set 10-row − 3-row", three), ("poseset_1p_upright", "pose set 10-row − 3-row, upright", three)):
+        for n in names:
+            L.append(f"| {label}, {n} | {_pairs_cell(pub[key], n)} (n {pub[key]['cases']}) | "
+                     + " | ".join(f"{_pairs_cell(r3[k][key], n)} (n {r3[k][key]['cases'] if r3[k][key] else 0})" for k in FLAG_MM) + " |")
+    L += ["", "Cases left out of each sensitivity line (flagged, not audited) and pose-set rows removed:", ""]
+    for k in FLAG_MM:
+        L.append(f"- {k}: " + json.dumps({key: {x: r3[k][key].get(x) for x in ("excluded", "removed_rows", "changed", "undetermined", "kept_unaudited")
+                                               if r3[k][key] and x in r3[k][key]} for key in r3[k]}))
+    L += ["", "## Reading 4: the flagged list", "", f"- {rep['counts']['flagged_list_lines']} lines in flagged_rows.jsonl: every audited row "
+          "with any penetration, and every row not audited, keyed by (source, side, object, idx, id) or (…, first, attempt, row)."]
+    return "\n".join(L) + "\n"
+
+
+def summary(a: argparse.Namespace) -> dict[str, Any]:
+    """The audit's readings (design section 3) from the finished units in --queue: audit_summary.{json,md} and
+    flagged_rows.jsonl in --out (refuses an existing summary), wandb. The source records are the published summaries'
+    (Stage 2's, the oracle arm's, the pose set's; their record hashes must hold) and the audit units' for the pose set's
+    validation side and the pilot; the units must cover exactly the cases audited_cases names. Labels are read from the
+    records. First the gate: the published headline numbers recomputed from the records must be equal (else
+    audit_summary_stop.json and exit 3)."""
+    from robots.mujoco_lab import curve_oracle as co
+    from robots.mujoco_lab import curve_poseset as cp
+    from robots.mujoco_lab.curve import BOOT_DRAWS, BOOT_SEED, _sha, load_stage1, load_stage2, paired_bootstrap, records_path
+    from robots.mujoco_lab.estimation_check import _revision
+    from robots.mujoco_lab.tracking import log_run
+
+    os.makedirs(a.out, exist_ok=True)
+    jpath, spath = os.path.join(a.out, "audit_summary.json"), os.path.join(a.out, "audit_summary_stop.json")
+    if os.path.exists(jpath) or os.path.exists(spath):
+        raise SystemExit(f"{a.out}: a summary exists: pick a new --out")
+    audit, cfgs = load_audit(a.queue)
+    lk = json.load(open(a.locked))["lock"]
+    k0, k4 = lk["R0"]["key"], lk["R4"]["key"]
+    s2sum, osum, psum = (json.load(open(x)) for x in (a.stage2_summary, a.oracle_summary, a.poseset_summary))
+    if [s2sum["q1"]["boot"]["a"], s2sum["q1"]["boot"]["b"]] != [k0, k4]:
+        raise SystemExit("the Stage 2 summary compared other keys than the lock's R0 and R4")
+    for name, sm in (("Stage 2", s2sum), ("oracle", osum), ("pose-set", psum)):
+        if sm["provenance"]["locked"].split(" (sha256 ")[1].rstrip(")") != _sha(a.locked):
+            raise SystemExit(f"the {name} summary read another lock")
+    for name, sm in (("oracle", osum), ("pose-set", psum)):
+        if list(sm["provenance"]["keys"]) != [k0, k4]:
+            raise SystemExit(f"the {name} summary read other keys")
+    s2dirs, odirs, pdirs = (sm["provenance"]["runs"].split(",") for sm in (s2sum, osum, psum))
+    for d in s2dirs:
+        if _sha(records_path(d, "test")) != s2sum["provenance"]["records_sha256"].get(f"{d} test"):
+            raise SystemExit(f"{d}: the Stage 2 test records are not the ones its summary read")
+    for d in odirs:
+        if _sha(records_path(d, "test")) != osum["provenance"]["oracle_records_sha256"].get(d):
+            raise SystemExit(f"{d}: the oracle test records are not the ones its summary read")
+    for d in pdirs:
+        if _sha(records_path(d, "test")) != psum["provenance"]["records_sha256"].get(d):
+            raise SystemExit(f"{d}: the pose-set test records are not the ones its summary read")
+    runs_of: dict[tuple[str, str], set[str]] = {}
+    for c in cfgs:
+        k = (c["source"], c["side"])
+        if runs_of.setdefault(k, set(c["runs"].split(","))) != set(c["runs"].split(",")):
+            raise SystemExit(f"the {k} units read different runs")
+    if set(runs_of) != set(SIDES_OF):
+        raise SystemExit(f"the units cover {sorted(runs_of)}, not {list(SIDES_OF)}")
+    for k, dirs in ((("stage2", "test"), s2dirs), (("oracle", "test"), odirs), (("poseset", "test"), pdirs)):
+        if runs_of[k] != set(dirs):
+            raise SystemExit(f"the {k} units read other runs than the published summary")
+    if len({c["stage1"] for c in cfgs}) != 1 or any(sorted(cfgs[0]["stage1"].split(",")) != sorted(sm["provenance"]["stage1"]) for sm in (osum, psum)):
+        raise SystemExit("the units read another Stage 1 than the oracle and pose-set summaries")
+    s2, _ = load_stage2(s2dirs, ("test",))
+    recs1, _ = load_stage1(cfgs[0]["stage1"].split(","))
+    src = {("stage2", "test"): s2}
+    for k in SIDES_OF[1:]:
+        src[k] = [json.loads(line) for d in sorted(runs_of[k]) for line in open(records_path(d, k[1])) if line.strip()]
+    for k, recs in src.items():
+        want = {(r["object"], int(r["idx"])) for r in audited_cases(k[0], recs)}
+        got = {(r["object"], int(r["idx"])) for r in audit if (r["source"], r["side"]) == k}
+        if want != got:
+            raise SystemExit(f"{k}: the audit covers {len(got)} cases, the records name {len(want)} ({len(want - got)} missing)")
+    idx = index_rows(audit)
+    labels = {}
+    for k, recs in src.items():
+        labels.update(stored_labels(k[0], k[1], audited_cases(k[0], recs)))
+    key_of = lambda r: (r["object"], int(r["idx"]))  # noqa: E731
+    by1, byo, byp = ({key_of(r): r for r in x} for x in (recs1, src[("oracle", "test")], src[("poseset", "test")]))
+
+    # the gate: the published numbers from the same records
+    b_s2 = paired_bootstrap(s2, k0, k4)
+    paired_o, _ = co.paired_set([{"oracle": byo[key_of(r)], "stage2": r, "stage1": by1[key_of(r)]} for r in s2])
+    views_o = co._views(paired_o, k0, k4)
+    b_o = co.paired_outcomes([(v["object"], v["oracle"], v["r0"]) for v in views_o])
+    paired_p, _ = cp.paired_set3([{"pose": byp[key_of(r)], "stage2": r, "stage1": by1[key_of(r)], "oracle": byo[key_of(r)]} for r in s2])
+    vs = cp.views(paired_p, k0, k4)
+    b_p = co.paired_outcomes([(v["object"], v["c10"], v["c3"]) for v in vs])
+    b_pu = co.paired_outcomes([(v["object"], v["c10"], v["c3"]) for v in vs if v["upright"]])
+    three = ("success", "irr", "give_up")
+    gate = {"stage2_r0_r4": differs(b_s2, s2sum["q1"]["boot"]),
+            "oracle_r0": differs(b_o, osum["readings"]["1_oracle_vs_r0"]["all"], three),
+            "poseset_1p": differs(b_p, psum["readings"]["all"]["1p_pose_term"], three),
+            "poseset_1p_upright": differs(b_pu, psum["readings"]["upright"]["1p_pose_term"], three),
+            "poseset_ceilings": [f"{v['object']} {v['idx']}" for v in vs
+                                 if ceiling_without(v["rows"], set(), False) != v["c10"] or ceiling_without(v["rows"], set(), True) != v["c3"]]}
+    me = _revision()
+    prov = {"queue": a.queue, "units": len(cfgs), "audit_code_revision": cfgs[0]["code_revision"], "summary_code_revision": me["code_revision"],
+            "summary_dirty": me["dirty"], "runs": {f"{k[0]} {k[1]}": sorted(v) for k, v in runs_of.items()},
+            "stage2_summary": f"{a.stage2_summary} (sha256 {_sha(a.stage2_summary)})", "oracle_summary": f"{a.oracle_summary} (sha256 {_sha(a.oracle_summary)})",
+            "poseset_summary": f"{a.poseset_summary} (sha256 {_sha(a.poseset_summary)})", "locked": f"{a.locked} (sha256 {_sha(a.locked)})",
+            "keys": [k0, k4], "bootstrap": f"{BOOT_DRAWS} object draws, seed {BOOT_SEED}, 95 % percentile interval", "flag_mm": FLAG_MM, "primary": PRIMARY}
+    if any(gate.values()):
+        with open(spath, "w") as f:
+            json.dump({"gate": gate, "provenance": prov}, f, indent=1)
+        print(f"STOP: the published numbers are not reproduced; wrote {spath}", flush=True)
+        raise SystemExit(3)
+
+    # reading 1
+    r1 = {f"{k[0]} {k[1]}": reading1([(r["object"], x) for r in audit if (r["source"], r["side"]) == k for x in r["rows"]]) for k in SIDES_OF}
+    # reading 2
+    kept2 = [r for r in s2 if not r["dropped"]]
+
+    def lab_items(source: str, recs: list[dict[str, Any]], key: str, level: str) -> list[tuple[str | None, str]]:
+        return [(y, status(idx.get((source, "test", r["object"], int(r["idx"]), first, att, row)), level))
+                for r in recs for att, first, row, y in episode_rows(r, key)]
+
+    def pose_items(current_only: bool, level: str) -> list[tuple[str | None, str]]:
+        return [(x.get("label"), status(idx.get(("poseset", "test", v["object"], int(v["idx"]), x["id"])), level))
+                for v in vs for x in v["rows"] if "seconds" in x and (x["current"] or not current_only)]
+
+    r2 = {lv: {"R0": label_shares(lab_items("stage2", kept2, k0, lv)), "R4": label_shares(lab_items("stage2", kept2, k4, lv)),
+               "oracle": label_shares(lab_items("oracle", [j["oracle"] for j in paired_o], k0, lv)),
+               "c10": label_shares(pose_items(False, lv)), "c3": label_shares(pose_items(True, lv))} for lv in FLAG_MM}
+    # reading 3
+    r3: dict[str, dict[str, Any]] = {}
+    for lv in FLAG_MM:
+        st2 = [worst([episode_status(idx, "stage2", "test", r, k0, lv), episode_status(idx, "stage2", "test", r, k4, lv)]) for r in kept2]
+        sub2 = [r for r, x in zip(kept2, st2) if x == "clear"]
+        sto = [worst([episode_status(idx, "oracle", "test", j["oracle"], k0, lv), episode_status(idx, "stage2", "test", j["stage2"], k0, lv)])
+               for j in paired_o]
+        subo = [v for v, x in zip(views_o, sto) if x == "clear"]
+        vw = poseset_without(vs, idx, "test", lv)
+
+        def pose_line(sel: list[dict[str, Any]], orig: list[dict[str, Any]]) -> dict[str, Any]:
+            b = co.paired_outcomes([(v["object"], v["c10"], v["c3"]) for v in sel])
+            ch = sum(any(w[c][f] != v[c][f] for c in ("c10", "c3") for f in ("success", "irr", "give_up")) for w, v in zip(sel, orig))
+            return dict(b, removed_rows=sum(len(w["removed"]) for w in sel), changed=ch,
+                        undetermined=sum(not (w["c10"]["determined"] and w["c3"]["determined"]) for w in sel),
+                        kept_unaudited=sum(len(w["kept_unaudited"]) for w in sel))
+
+        up = [i for i, v in enumerate(vs) if v["upright"]]
+        r3[lv] = {"stage2_r0_r4": dict(paired_bootstrap(sub2, k0, k4), excluded=dict(Counter(x for x in st2 if x != "clear"))) if sub2 else None,
+                  "oracle_r0": dict(co.paired_outcomes([(v["object"], v["oracle"], v["r0"]) for v in subo]),
+                                    excluded=dict(Counter(x for x in sto if x != "clear"))),
+                  "poseset_1p": pose_line(vw, vs), "poseset_1p_upright": pose_line([vw[i] for i in up], [vs[i] for i in up])}
+    # reading 4
+    flagged = []
+    for r in audit:
+        for x in r["rows"]:
+            k = row_key(r["source"], r["side"], r["object"], r["idx"], x)
+            st = status(x, "any")
+            if st == "clear":
+                continue
+            line = dict({f: x[f] for f in ("id", "first", "attempt", "row") if f in x}, source=r["source"], side=r["side"], object=r["object"],
+                        idx=int(r["idx"]), label=labels.get(k))
+            if st == "not audited":
+                line["not_audited"] = x.get("not_audited") or x.get("error")
+            else:
+                line.update(depth_mm=x["depth_mm"], flags=x["flags"],
+                            pairs={p: {"depth_mm": v["depth_mm"], "phases": {ph: q["depth_mm"] for ph, q in v["phases"].items()}} for p, v in x["pairs"].items()})
+            flagged.append(line)
+    reps = [x for r in audit for x in r["replays"]]
+    counts = {"cases": {f"{k[0]} {k[1]}": sum((r["source"], r["side"]) == k for r in audit) for k in SIDES_OF},
+              "rows": len(idx), "replays": len(reps), "replays_passed": sum(bool(x["audited"]) for x in reps),
+              "replays_differ": sum(bool(x["differs"]) for x in reps), "replays_fresh_state_differs": sum(x["fresh_state_equal"] is False for x in reps),
+              "rows_not_audited": sum(status(x) == "not audited" for x in idx.values()), "flagged_list_lines": len(flagged),
+              "stage2_kept": len(kept2), "oracle_paired": len(views_o), "poseset_paired": len(vs), "poseset_upright": len(up)}
+    published = {"stage2_r0_r4": b_s2, "oracle_r0": b_o, "poseset_1p": b_p, "poseset_1p_upright": b_pu}
+    rep = {"counts": counts, "gate": gate, "published": published, "readings": {"1": r1, "2": r2, "3": r3}, "provenance": prov}
+    with open(os.path.join(a.out, "flagged_rows.jsonl"), "w") as f:
+        for line in flagged:
+            f.write(json.dumps(line) + "\n")
+    rep["wandb"] = log_run("palm-audit-summary", {"queue": a.queue, "out": a.out},
+                           {"counts": counts, "flagged": {k: v["flagged"] for k, v in r1.items()},
+                            "sensitivity_success": {k: (r3[PRIMARY][k] or {}).get("success") for k in r3[PRIMARY]}})
+    with open(jpath, "w") as f:
+        json.dump(rep, f, indent=1)
+    with open(os.path.join(a.out, "audit_summary.md"), "w") as f:
+        f.write(summary_markdown(rep))
+    print(f"wrote {a.out}", flush=True)
+    return rep
+
+
 def main(argv: list[str] | None = None) -> Any:
     ap = argparse.ArgumentParser(prog="palm_audit")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -405,8 +787,15 @@ def main(argv: list[str] | None = None) -> Any:
     r.add_argument("--shards", type=int, default=1)
     r.add_argument("--cases", default=None, help="object:idx,... (a smoke): only these cases")
     r.add_argument("--out", required=True)
+    m = sub.add_parser("summary")
+    m.add_argument("--queue", required=True, help="the queue dir holding the audit units (unit_k)")
+    m.add_argument("--stage2-summary", required=True)
+    m.add_argument("--oracle-summary", required=True)
+    m.add_argument("--poseset-summary", required=True)
+    m.add_argument("--locked", required=True)
+    m.add_argument("--out", required=True)
     a = ap.parse_args(argv)
-    return run(a)
+    return run(a) if a.cmd == "run" else summary(a)
 
 
 if __name__ == "__main__":

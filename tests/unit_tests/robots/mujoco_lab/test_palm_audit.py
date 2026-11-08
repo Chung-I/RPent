@@ -191,3 +191,89 @@ def test_the_audit_checks_the_finger_boxes_against_the_object_with_the_pads_on_t
     monkeypatch.setattr(sixdof, "clearance_on_path", spy)
     pa.audit_path(env, p, act)
     assert seen["fingers_on_object"] is True and seen["closed_q"] == pa.pads_on_extent(env, p)
+
+
+# ---------------------------------------------------------------- the summary
+
+def _row(depth_mm, pairs=None, **k):
+    f = pa.flags_of(None) if depth_mm == 0 else {"depth_mm": depth_mm, "flags": {n: depth_mm > v for n, v in pa.FLAG_MM.items()},
+                                                    "pairs": pairs or {}}
+    return dict(k, error=None, **f)
+
+
+def test_a_rows_key_names_its_attempt_for_the_lab_arms_and_its_id_for_the_pose_rows():
+    assert pa.row_key("stage2", "test", "o", 3, {"first": "a", "attempt": 2, "row": "b"}) == ("stage2", "test", "o", 3, "a", 2, "b")
+    assert pa.row_key("poseset", "validation", "o", 3, {"id": "along_0.1"}) == ("poseset", "validation", "o", 3, "along_0.1")
+
+
+def test_the_row_index_refuses_a_row_audited_twice():
+    rec = {"source": "pilot", "side": "test", "object": "o", "idx": 0, "rows": [_row(0, id="x"), _row(2.0, id="y")]}
+    assert set(pa.index_rows([rec])) == {("pilot", "test", "o", 0, "x"), ("pilot", "test", "o", 0, "y")}
+    with pytest.raises(ValueError):
+        pa.index_rows([rec, rec])
+
+
+def test_a_rows_status_is_clear_flagged_or_not_audited():
+    assert pa.status(_row(0)) == "clear" and pa.status(_row(0.5)) == "clear" and pa.status(_row(0.5), "any") == "flagged"
+    assert pa.status(_row(1.5)) == "flagged" and pa.status(_row(1.5), "gt2") == "clear"
+    assert pa.status(None) == pa.status({"error": "ValueError: x"}) == pa.status({"not_audited": "differs", "error": None}) == "not audited"
+    assert pa.status(dict(_row(1.5), error="ValueError: x")) == pa.status(dict(_row(0), error="ValueError: x")) == "not audited"
+
+
+def test_an_episode_is_clear_only_when_every_executed_row_is_audited_and_clear():
+    rec = {"object": "o", "idx": 0, "decisions": {"K": "a", "G": "give_up"},
+           "sims": [{"seed_k": 0, "first": "a", "label": "tipped", "menu2": {"decisions": {"K": "b"}}, "second": {"b": {"label": "placed_stable"}}}]}
+    rows = {("stage2", "test", "o", 0, "a", 1, "a"): _row(0), ("stage2", "test", "o", 0, "a", 2, "b"): _row(3.0)}
+    assert pa.episode_status(rows, "stage2", "test", rec, "K") == "flagged"
+    assert pa.episode_status(rows, "stage2", "test", rec, "K", "gt5") == "clear"
+    assert pa.episode_status(rows, "stage2", "test", rec, "G") == "clear"                  # a give-up executes nothing
+    del rows[("stage2", "test", "o", 0, "a", 2, "b")]
+    assert pa.episode_status(rows, "stage2", "test", rec, "K") == "not audited"
+    assert pa.worst(["clear", "not audited", "flagged"]) == "flagged" and pa.worst([]) == "clear"
+
+
+def test_the_flagged_shares_count_placed_and_irreversible_rows_apart():
+    got = pa.label_shares([("placed_stable", "flagged"), ("placed_stable", "clear"), ("dropped_high", "flagged"), ("tipped", "clear"),
+                           ("crushed", "not audited")])
+    assert got["placed"] == {"rows": 2, "audited": 2, "flagged": 1, "share": 0.5}
+    assert got["irreversible"] == {"rows": 2, "audited": 1, "flagged": 1, "share": 1.0}
+    assert got["all"] == {"rows": 5, "audited": 4, "flagged": 2, "share": 0.5}
+
+
+def test_reading_one_counts_a_row_under_each_body_obstacle_and_phase_deeper_than_the_threshold():
+    deep = {"palm/object": {"body": "palm", "kind": "object", "depth_mm": 6.0, "phases": {"approach": {"depth_mm": 6.0}, "close": {"depth_mm": 0.5}}},
+            "finger/table": {"body": "finger", "kind": "table", "depth_mm": 0.4, "phases": {"lower": {"depth_mm": 0.4}}}}
+    rows = [("o1", _row(6.0, deep)), ("o1", _row(0)), ("o2", _row(1.5, {"wrist/fixture": {"body": "wrist", "kind": "fixture", "depth_mm": 1.5,
+                                                                                          "phases": {"transport": {"depth_mm": 1.5}}}})),
+            ("o2", {"not_audited": "differs", "error": None})]
+    r = pa.reading1(rows)
+    assert r["rows"] == 4 and r["audited"] == 3 and r["flagged"] == {"any": 2, "gt1": 2, "gt2": 1, "gt5": 1}
+    assert r["by_body"] == {"palm": 1, "wrist": 1} and r["by_obstacle"] == {"object": 1, "fixture": 1}
+    assert r["by_phase"] == {"approach": 1, "transport": 1}
+    assert r["by_object"]["o1"] == {"rows": 2, "flagged": 1, "depth_median_mm": 6.0, "depth_max_mm": 6.0}
+    assert r["by_object"]["o2"] == {"rows": 1, "flagged": 1, "depth_median_mm": 1.5, "depth_max_mm": 1.5}
+
+
+def test_the_gate_names_every_field_that_differs_from_the_published_numbers():
+    want = {"cases": 10, "success": {"diff": -0.0125, "lo": -0.03, "hi": 0.0}, "irr": {"diff": -0.13, "lo": -0.17, "hi": -0.09}}
+    assert pa.differs(want, want) == []
+    got = {"cases": 11, "success": dict(want["success"], lo=-0.031), "irr": want["irr"]}
+    assert pa.differs(got, want) == ["cases 11 vs 10", "success.lo -0.031 vs -0.03"]
+    assert pa.differs(got, want, ("irr",)) == ["cases 11 vs 10"]
+    assert pa.differs(dict(want, irr=dict(want["irr"], hi=-0.09 + 1e-12)), want) == [f"irr.hi {-0.09 + 1e-12!r} vs -0.09"]    # exact
+
+
+def test_the_pose_views_without_their_flagged_rows_recompute_both_ceilings():
+    rows = [{"id": "across_0.5", "feasible": True, "current": True, "label": "placed_stable", "artifact": False, "error": None, "seconds": 1},
+            {"id": "along_0.3", "feasible": True, "current": False, "label": "placed_stable", "artifact": False, "error": None, "seconds": 1},
+            {"id": "along_0.9", "feasible": False, "current": False, "why": "width"}]
+    from robots.mujoco_lab.curve_poseset import ceiling
+    v = {"object": "o", "idx": 0, "rows": rows, "c10": ceiling(rows), "c3": ceiling(rows, True), "upright": True}
+    idx = {("poseset", "test", "o", 0, "across_0.5"): _row(4.0), ("poseset", "test", "o", 0, "along_0.3"): _row(0)}
+    (w,) = pa.poseset_without([v], idx)
+    assert w["c10"]["success"] and w["c10"]["rows"] == ["along_0.3"] and not w["c3"]["success"] and w["c3"]["give_up"]
+    assert w["removed"] == ["across_0.5"] and w["kept_unaudited"] == []
+    assert pa.poseset_without([v], idx, level="gt5")[0]["c3"] == v["c3"]
+    del idx[("poseset", "test", "o", 0, "along_0.3")]
+    (w,) = pa.poseset_without([v], idx)
+    assert w["kept_unaudited"] == ["along_0.3"] and w["c10"]["success"] and w["c10"]["rows"] == ["along_0.3"]    # kept, not removed
