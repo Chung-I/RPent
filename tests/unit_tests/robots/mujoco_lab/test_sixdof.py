@@ -151,3 +151,87 @@ def test_on_the_lab_a_vertical_grasp_has_todays_hand_path_and_rollout():
         ro = run()
         out.append((ro.label, trace_sha(ro.trace), np.round(np.asarray(env.sim.d.qpos, dtype=float), 9).tobytes()))
     assert out[0] == out[1]
+
+
+# ------------------------------------------------------------------ the tilted path's geometry
+
+def _yaw_frame(yaw):
+    """The lab hand's rotation at ``yaw`` (pads down): Rz(yaw)."""
+    c, s = math.cos(yaw), math.sin(yaw)
+    return np.array([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]])
+
+
+def test_the_hand_sits_0_048_m_back_along_the_approach_with_its_z_against_it():
+    p6 = sixdof.from_graspgen(_grasp((0.0, 0.0, -1.0), (math.cos(0.7), math.sin(0.7), 0.0), (0.1, 0.2, 0.9)))
+    pos, R = sixdof.hand_frame(p6)
+    assert sixdof.HAND_OFF == 0.048
+    assert np.allclose(pos, np.asarray(p6.tcp) + [0.0, 0.0, 0.048], atol=1e-15) and np.allclose(R, _yaw_frame(0.7), atol=1e-15)
+    p6 = sixdof.from_graspgen(_tilted(40.0, yaw=0.7))
+    pos, R = sixdof.hand_frame(p6)
+    a = np.array(p6.R)[:, 2]
+    assert np.allclose(pos, np.asarray(p6.tcp) - 0.048 * a) and np.allclose(R[:, 2], -a) and np.allclose(R[:, 0], np.array(p6.R)[:, 0])
+    assert np.allclose(R @ R.T, np.eye(3)) and np.linalg.det(R) == pytest.approx(1.0)
+
+
+def test_the_twin_is_the_same_pinch_turned_a_half_turn_about_the_approach():
+    p6 = sixdof.from_graspgen(_tilted(40.0, yaw=0.7), s=0.3, width=0.05)
+    t = sixdof.twin(p6)
+    R, Rt = np.array(p6.R), np.array(t.R)
+    assert t.tcp == p6.tcp and (t.s, t.width) == (0.3, 0.05) and sixdof.twin(t).R == p6.R
+    assert np.array_equal(Rt[:, 2], R[:, 2]) and np.array_equal(Rt[:, :2], -R[:, :2])
+    assert np.allclose(sixdof.hand_frame(t)[1], sixdof.hand_frame(p6)[1] @ np.diag([-1.0, -1.0, 1.0]))
+    assert np.allclose(sixdof.hand_frame(t)[0], sixdof.hand_frame(p6)[0])
+
+
+def _sugar_box():
+    from robots.mujoco_lab.adapter import MuJoCoLabEnv
+
+    env = MuJoCoLabEnv()
+    env.reset("ycb__sugar_box", seed=0)
+    return env, env.proposals((0.5,))[0]
+
+
+def _at(p, tilt_deg=0.0):
+    """A grasp whose pad centre is the lab's pad centre at the proposal ``p``, tilted about its closing axis."""
+    a = math.radians(tilt_deg)
+    ex = np.array([math.cos(p.yaw), math.sin(p.yaw), 0.0])
+    ey = np.array([-math.sin(p.yaw), math.cos(p.yaw), 0.0])
+    z = -math.cos(a) * np.array([0.0, 0.0, 1.0]) + math.sin(a) * ey
+    pad = np.asarray(p.point) + [0.0, 0.0, gg.PAD_ABOVE]
+    return _grasp(z, ex, pad - gg.DEPTH * z)
+
+
+@SIM
+def test_at_no_tilt_the_tilted_hand_path_is_todays():
+    env, p = _sugar_box()
+    p6 = sixdof.from_graspgen(_at(p), s=p.s, width=p.width)
+    a = sixdof.hand_path6(env, p6, 0.15, 0.5, "bin")
+    b = env.hand_path(sixdof.as_vertical(p6), 0.15, 0.5, "bin")
+    assert [x[0] for x in a] == [x[0] for x in b]
+    assert all(np.allclose(x[1], y[1], rtol=0.0, atol=1e-12) and np.allclose(x[2], _yaw_frame(y[2]), atol=1e-12) for x, y in zip(a, b))
+
+
+@SIM
+def test_a_tilted_hand_path_approaches_along_the_approach_lifts_straight_up_and_retreats_back_along_it():
+    from robots.mujoco_lab import adapter
+
+    env, p = _sugar_box()
+    p6 = sixdof.from_graspgen(_at(p, 40.0), s=p.s, width=p.width)
+    path = sixdof.hand_path6(env, p6, 0.15, 0.5, "bin")
+    hp, Rh = sixdof.hand_frame(p6)
+    a = np.array(p6.R)[:, 2]
+    by = {ph: [x for x in path if x[0] == ph] for ph in ("wait", "approach", "close", "lift", "hold", "transport", "lower", "release", "retreat")}
+    flat = sixdof.hand_path6(env, sixdof.from_graspgen(_at(p), s=p.s, width=p.width), 0.15, 0.5, "bin")
+    for ph in ("wait", "approach", "close", "lift", "hold", "release", "retreat"):
+        assert len(by[ph]) == sum(x[0] == ph for x in flat) > 0
+    assert [x[0] for x in path] == sorted((x[0] for x in path), key=list(by).index)
+    assert all(np.array_equal(x[2], Rh) for x in path)
+    assert np.allclose(by["wait"][0][1], hp - adapter.APPROACH_M * a)
+    s = [float((x[1] - by["wait"][0][1]) @ a) for x in by["approach"]]
+    assert all(np.allclose(x[1], by["wait"][0][1] + si * a) for x, si in zip(by["approach"], s)) and s == sorted(s)
+    assert np.array_equal(by["approach"][-1][1], hp) and all(np.array_equal(x[1], hp) for x in by["close"])
+    assert all(np.allclose(x[1][:2], hp[:2]) for x in by["lift"]) and by["lift"][-1][1][2] == pytest.approx(hp[2] + adapter.LIFT_H)
+    goal = np.asarray(env._dest("bin")["xy"]) + (hp - np.asarray(p6.tcp))[:2]
+    assert np.allclose(by["transport"][-1][1][:2], goal)
+    rel = by["release"][0][1]
+    assert np.allclose(by["retreat"][-1][1], rel - adapter.RETREAT_M * a)
