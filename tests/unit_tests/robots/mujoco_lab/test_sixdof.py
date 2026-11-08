@@ -235,3 +235,119 @@ def test_a_tilted_hand_path_approaches_along_the_approach_lifts_straight_up_and_
     assert np.allclose(by["transport"][-1][1][:2], goal)
     rel = by["release"][0][1]
     assert np.allclose(by["retreat"][-1][1], rel - adapter.RETREAT_M * a)
+
+
+# ------------------------------------------------------------------ the rotation IK, the candidates and the path check
+
+def test_the_rows_generator_is_fixed_by_its_key():
+    a, b, c = sixdof.row_rng("hammer:3:g17"), sixdof.row_rng("hammer:3:g17"), sixdof.row_rng("hammer:3:g18")
+    x = a.uniform(size=4)
+    assert np.array_equal(x, b.uniform(size=4)) and not np.array_equal(x, c.uniform(size=4))
+    assert sixdof.row_key({"object": "hammer", "idx": 3}, "g17") == "hammer:3:g17"
+
+
+@SIM
+def test_the_rotation_ik_at_a_vertical_target_is_the_arms_yaw_ik():
+    env, p = _sugar_box()
+    arm = env.sim.arm
+    A = sixdof._armlib(arm)
+    pos, R = sixdof.hand_frame(sixdof.from_graspgen(_at(p)))
+    qa, ea, ra = arm.ik(pos, p.yaw, q_init=A.Q_REST)
+    qb, eb, rb = sixdof.ik6(arm, pos, _yaw_frame(p.yaw), q_init=A.Q_REST)
+    assert np.allclose(qa, qb, atol=1e-9) and eb < 1e-4 and rb < 1e-3
+
+
+@SIM
+def test_the_rotation_ik_reaches_a_tilted_pose():
+    import mujoco
+
+    env, p = _sugar_box()
+    arm = env.sim.arm
+    pos, R = sixdof.hand_frame(sixdof.from_graspgen(_at(p, 40.0)))
+    q, ep, er = sixdof.ik6(arm, pos, R, q_init=arm.seeds(pos)[0])
+    arm.kd.qpos[arm.q0:arm.q0 + 7] = q
+    mujoco.mj_kinematics(arm.m, arm.kd)
+    assert ep < 1e-4 and er < 1e-3 and np.allclose(arm.kd.xpos[arm.hand], pos, atol=1e-4)
+    assert np.allclose(arm.kd.xmat[arm.hand].reshape(3, 3), R, atol=1e-3)
+
+
+@SIM
+def test_the_candidates_come_in_a_fixed_order_from_the_rows_key_and_are_distinct():
+    env, p = _sugar_box()
+    p6 = sixdof.from_graspgen(_at(p, 40.0))
+    a, b = sixdof.candidates(env, p6, "box:0:g1"), sixdof.candidates(env, p6, "box:0:g1")
+    assert len(a) >= 2 and [c["index"] for c in a] == list(range(len(a)))
+    assert [(c["twin"], c["seed"]) for c in a] == [(c["twin"], c["seed"]) for c in b] and all(np.array_equal(x["q"], y["q"]) for x, y in zip(a, b))
+    assert a[0]["seed"] == "current" and {c["twin"] for c in a} == {0, 1}
+    assert all(np.max(np.abs(x["q"] - y["q"])) > 1e-3 for i, x in enumerate(a) for y in a[:i])
+    order = [s for s in ("current", "aimed", "rest") + tuple(f"random{k}" for k in range(sixdof.N_RANDOM_SEEDS))]
+    assert [c["seed"] for c in a] == sorted((c["seed"] for c in a), key=order.index)
+
+
+@SIM
+def test_at_no_tilt_the_path_check_passes_where_reach_does():
+    env, p = _sugar_box()
+    assert env.reach(p, "bin") is None
+    p6 = sixdof.from_graspgen(_at(p), s=p.s, width=p.width)
+    path = env.hand_path(sixdof.as_vertical(p6), 0.1, 0.5, "bin")
+    plan = env.sim.plan_free(path[0][1], path[0][2])
+    same = abs(math.remainder(plan["yaw_rep"] - sixdof.as_vertical(p6).yaw, 2 * math.pi)) < 1e-9     # plan_free's yaw is p6's or its twin's
+    assert sixdof.reach6(env, p6 if same else sixdof.twin(p6), plan["q"], "bin") is None
+    with pytest.raises(ValueError):
+        sixdof.reach6(env, sixdof.twin(p6) if same else p6, plan["q"], "bin")          # a start configuration not at the pregrasp
+
+
+def test_the_choice_is_the_first_candidate_whose_path_passes_on_its_own_twin(monkeypatch):
+    p6 = sixdof.from_graspgen(_tilted(40.0))
+    cands = [{"index": k, "twin": k % 2, "seed": s, "q": np.full(7, float(k))} for k, s in enumerate(("current", "current", "aimed"))]
+    seen = []
+
+    def fake_reach6(env, p, q, destination, *args):
+        seen.append((p.R, float(q[0])))
+        return None if q[0] == 2.0 else {"reason": "ik", "phase": "transport", "step": 7}
+
+    monkeypatch.setattr(sixdof, "candidates", lambda env, p, key: cands)
+    monkeypatch.setattr(sixdof, "reach6", fake_reach6)
+    ch = sixdof.choose(None, p6, "k", "bin")
+    assert ch["goal"] and ch["candidate"] is cands[2]
+    assert ch["failed"] == [{"index": 0, "reason": "ik", "phase": "transport", "step": 7}, {"index": 1, "reason": "ik", "phase": "transport", "step": 7}]
+    assert seen == [(p6.R, 0.0), (sixdof.twin(p6).R, 1.0), (p6.R, 2.0)]
+    monkeypatch.setattr(sixdof, "reach6", lambda *a: {"reason": "collision"})
+    assert sixdof.choose(None, p6, "k", "bin") == {"goal": True, "candidate": None, "failed": [{"index": k, "reason": "collision"} for k in range(3)]}
+    monkeypatch.setattr(sixdof, "candidates", lambda env, p, key: [])
+    assert sixdof.choose(None, p6, "k", "bin") == {"goal": False, "candidate": None, "failed": []}
+
+
+@SIM
+@pytest.mark.xfail(strict=True, reason="the transport with the rotation kept has no IK solution above the bin (0 of 200 seeds at 20 and 40 "
+                   "degrees, both twins); design question sent 2026-11-09")
+def test_a_tilted_pinch_gets_the_first_candidate_whose_path_passes():
+    env, p = _sugar_box()
+    p6 = sixdof.from_graspgen(_at(p, 40.0), s=p.s, width=p.width)
+    ch = sixdof.choose(env, p6, "box:0:g1", "bin")
+    assert ch["goal"] and ch["candidate"] is not None and ch["candidate"]["index"] == len(ch["failed"])
+    assert sixdof.reach6(env, sixdof.twin(p6) if ch["candidate"]["twin"] else p6, ch["candidate"]["q"], "bin") is None
+    again = sixdof.choose(env, p6, "box:0:g1", "bin")
+    assert again["candidate"]["index"] == ch["candidate"]["index"] and np.array_equal(again["candidate"]["q"], ch["candidate"]["q"])
+
+
+@SIM
+def test_a_pinch_in_the_table_fails_the_path_check_and_one_out_of_reach_has_no_goal():
+    env, p = _sugar_box()
+    low = Proposal(s=p.s, point=[p.point[0], p.point[1], 0.75 - 0.02], yaw=p.yaw, width=p.width)
+    ch = sixdof.choose(env, sixdof.from_graspgen(_at(low, 40.0)), "box:0:g2", "bin")
+    assert ch["goal"] and ch["candidate"] is None and ch["failed"] and all(f["reason"] in ("collision", "ik") for f in ch["failed"])
+    far = Proposal(s=p.s, point=[2.5, 0.0, 0.9], yaw=p.yaw, width=p.width)
+    ch = sixdof.choose(env, sixdof.from_graspgen(_at(far, 40.0)), "box:0:g3", "bin")
+    assert not ch["goal"] and ch["candidate"] is None and ch["failed"] == []
+
+
+@SIM
+def test_the_rotation_error_counts_a_half_turn_as_a_half_turn():
+    env, p = _sugar_box()
+    arm = env.sim.arm
+    pos, R = sixdof.hand_frame(sixdof.from_graspgen(_at(p, 40.0)))
+    q, ep, er = sixdof.ik6(arm, pos, R, q_init=arm.seeds(pos)[0])
+    for flip in (np.diag([-1.0, -1.0, 1.0]), np.diag([1.0, -1.0, -1.0])):
+        assert abs(sixdof.pose_error(arm, q, pos, R @ flip)[1] - math.pi) < 1e-3
+    assert sixdof.pose_error(arm, q, pos, R) == pytest.approx((ep, er), abs=1e-12)

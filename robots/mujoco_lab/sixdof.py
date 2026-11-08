@@ -23,20 +23,26 @@ never reaches today's executor.
 
 from __future__ import annotations
 
+import hashlib
 import math
+import sys
 from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
 
-from robots.mujoco_lab.adapter import (A_TRANSPORT, APPROACH_M, CLOSE_S, HOLD_S, LIFT_H, RELEASE_S, RETREAT_M, V_DOWN, V_LOWER,
-                                       Proposal, ramp_profile, transport_profile)
+from robots.mujoco_lab.adapter import (A_TRANSPORT, APPROACH_M, CLOSE_S, HOLD_S, LIFT_H, REACH_CHECK_EVERY, REACH_TOL_M, REACH_TOL_RAD,
+                                       RELEASE_S, RETREAT_M, V_DOWN, V_LOWER, Proposal, ramp_profile, transport_profile)
 from robots.mujoco_lab.curve_graspgen import DEPTH, PAD_ABOVE, VERTICAL_DEG
 
 BIN_EDGES = (VERTICAL_DEG, 45.0, 60.0, 75.0, 105.0)     # each bin (lo, hi], the first from 0; past the last: from below
 BINS = ("≤ 30°", "30–45°", "45–60°", "60–75°", "75–105°")
 LEVEL_A_DEG = 45.0                                       # level A runs the rows up to this angle
 HAND_OFF = 0.048          # the hand origin sits this far behind the pad centre (the sim's PAD_DROP less PAD_HALF[2])
+N_RANDOM_SEEDS = 4        # the configuration candidates' IK seeds past the arm's own three (design amendment 2)
+SEEDS = ("current", "aimed", "rest") + tuple(f"random{k}" for k in range(N_RANDOM_SEEDS))
+GOAL_TOL_M, GOAL_TOL_RAD = 1e-4, 1e-3     # a candidate is an IK solution at the pregrasp within these (Sim.plan_free's)
+DISTINCT_RAD = 1e-3       # a candidate within this of an earlier one (every joint) is the same configuration
 
 
 @dataclass
@@ -96,6 +102,12 @@ def twin(p: Grasp6) -> Grasp6:
     return Grasp6(s=p.s, tcp=list(p.tcp), R=[[-r[0], -r[1], r[2]] for r in p.R], width=p.width)
 
 
+def pregrasp(p: Grasp6) -> tuple[np.ndarray, np.ndarray]:
+    """The hand's pose at the pregrasp: APPROACH_M back along the approach from the pinch, the pinch's rotation."""
+    hp, Rh = hand_frame(p)
+    return hp - APPROACH_M * np.asarray(p.R, dtype=float)[:, 2], Rh
+
+
 def hand_path6(env: Any, p: Grasp6, v_lift: float, v_transport: float, destination: str, release_height: float | None = None,
                a_transport: float = A_TRANSPORT) -> list[tuple[str, np.ndarray, np.ndarray]]:
     """The hand pose per control step of the tilted path from the pregrasp on, as MuJoCoLabEnv.hand_path: the 0.3 s
@@ -108,8 +120,7 @@ def hand_path6(env: Any, p: Grasp6, v_lift: float, v_transport: float, destinati
     hz = sc.CTRL_HZ
     hp, Rh = hand_frame(p)
     a = np.asarray(p.R, dtype=float)[:, 2]
-    pre = hp - APPROACH_M * a
-    out = [("wait", pre, Rh)] * int(0.3 * hz)
+    out = [("wait", pregrasp(p)[0], Rh)] * int(0.3 * hz)
     for f in gr.approach_profile(APPROACH_M, V_DOWN, hz):
         out.append(("approach", hp - APPROACH_M * (1.0 - f) * a, Rh))       # ends at the grasp pose exactly (grasp.descent_zs)
     out += [("close", hp, Rh)] * int(CLOSE_S * hz)
@@ -131,6 +142,141 @@ def hand_path6(env: Any, p: Grasp6, v_lift: float, v_transport: float, destinati
     for frac in ramp_profile(RETREAT_M, V_LOWER, hz):
         out.append(("retreat", rel - RETREAT_M * frac * a, Rh))
     return out
+
+
+# ------------------------------------------------------------------ the rotation IK, the candidates and the path check
+
+def _armlib(arm: Any) -> Any:
+    """The sim's arm module (its IK constants, Q_REST, the joint limits)."""
+    return sys.modules[type(arm).__module__]
+
+
+def _fk(arm: Any, q: Any) -> tuple[np.ndarray, np.ndarray]:
+    """The hand's pose at arm joints ``q`` on the arm's kinematics scratch (the rest of the scene as it is now)."""
+    import mujoco
+
+    kd = arm.kd
+    kd.qpos[:] = arm.d.qpos
+    kd.qpos[arm.q0:arm.q0 + len(q)] = q
+    mujoco.mj_kinematics(arm.m, kd)
+    return kd.xpos[arm.hand].copy(), kd.xmat[arm.hand].reshape(3, 3).copy()
+
+
+def pose_error(arm: Any, q: Any, pos: Any, R: Any) -> tuple[float, float]:
+    """The hand's position error (m) and rotation angle (rad, 0 to pi) from (pos, R) at arm joints ``q``."""
+    p, Rc = _fk(arm, np.asarray(q, dtype=float))
+    M = Rc.T @ np.asarray(R, dtype=float)
+    s = 0.5 * float(np.linalg.norm([M[2, 1] - M[1, 2], M[0, 2] - M[2, 0], M[1, 0] - M[0, 1]]))
+    return float(np.linalg.norm(np.asarray(pos, dtype=float) - p)), float(math.atan2(s, 0.5 * (float(np.trace(M)) - 1.0)))
+
+
+def ik6(arm: Any, pos: Any, R: Any, q_init: Any = None) -> tuple[np.ndarray, float, float]:
+    """The sim's Arm.ik with a rotation target: arm joints that put the hand origin at ``pos`` with rotation ``R``. The
+    same damped least squares on the kinematics scratch, from ``q_init`` (default Q_REST), with the null-space pull to
+    Q_REST and the joints LIMIT_MARGIN inside their ranges; at R = Rz(yaw) the joints are Arm.ik(pos, yaw)'s. Returns
+    (q, position error m, rotation angle rad) of the returned q: Arm.ik's rotation error is |sin| of the angle, zero at
+    a half turn, so the angle is measured again (pose_error)."""
+    import mujoco
+
+    A = _armlib(arm)
+    m, kd, n = arm.m, arm.kd, A.N_ARM
+    kd.qpos[:] = arm.d.qpos
+    q = (A.Q_REST if q_init is None else np.asarray(q_init, float)).copy()
+    target_R = np.asarray(R, dtype=float)
+    jp, jr = np.zeros((3, m.nv)), np.zeros((3, m.nv))
+    lo, hi = A.Q_LO + A.LIMIT_MARGIN, A.Q_HI - A.LIMIT_MARGIN
+    for _ in range(A.IK_ITERS):
+        kd.qpos[arm.q0:arm.q0 + n] = q
+        mujoco.mj_kinematics(m, kd)
+        p, Rc = kd.xpos[arm.hand], kd.xmat[arm.hand].reshape(3, 3)
+        e_p = np.asarray(pos, float) - p
+        e_r = 0.5 * (np.cross(Rc[:, 0], target_R[:, 0]) + np.cross(Rc[:, 1], target_R[:, 1]) + np.cross(Rc[:, 2], target_R[:, 2]))
+        if float(np.linalg.norm(e_p)) < A.IK_TOL_M and float(np.linalg.norm(e_r)) < A.IK_TOL_RAD:
+            break
+        mujoco.mj_comPos(m, kd)
+        mujoco.mj_jacBody(m, kd, jp, jr, arm.hand)
+        J = np.vstack([jp[:, arm.v0:arm.v0 + n], jr[:, arm.v0:arm.v0 + n]])
+        e = np.concatenate([e_p, e_r])
+        JJt = J @ J.T + A.IK_DAMP ** 2 * np.eye(6)
+        dq = J.T @ np.linalg.solve(JJt, e)
+        if A.NULL_GAIN > 0:
+            Jp = J.T @ np.linalg.solve(JJt, J)
+            dq += (np.eye(n) - Jp) @ (A.NULL_GAIN * (A.Q_REST - q))
+        q = np.clip(q + dq, lo, hi)
+    return (q, *pose_error(arm, q, pos, target_R))
+
+
+def row_key(case: dict[str, Any], row_id: str) -> str:
+    """The (case, row) key the candidates' random seeds derive from: object:idx:row."""
+    return f"{case['object']}:{int(case['idx'])}:{row_id}"
+
+
+def row_rng(key: str) -> np.random.Generator:
+    """The row's own generator: seeded from the sha256 of its key."""
+    return np.random.default_rng(int.from_bytes(hashlib.sha256(key.encode()).digest()[:8], "little"))
+
+
+def candidates(env: Any, p: Grasp6, key: str) -> list[dict[str, Any]]:
+    """The arm configurations at the pinch's pregrasp, in the fixed order of design amendment 2: per IK seed in SEEDS
+    (the arm's current joint target, Q_REST turned toward the pregrasp, Q_REST, then N_RANDOM_SEEDS uniform draws
+    within the joint ranges from the row's generator) the pinch, then its twin; an IK solution within GOAL_TOL and
+    DISTINCT_RAD from every earlier one is a candidate: [{"index", "twin", "seed", "q"}]."""
+    arm = env.sim.arm
+    A = _armlib(arm)
+    rng = row_rng(key)
+    lo, hi = A.Q_LO + A.LIMIT_MARGIN, A.Q_HI - A.LIMIT_MARGIN
+    seeds = list(arm.seeds(pregrasp(p)[0], q_init=arm.desired())) + [rng.uniform(lo, hi) for _ in range(N_RANDOM_SEEDS)]
+    out: list[dict[str, Any]] = []
+    for name, q0 in zip(SEEDS, seeds, strict=True):
+        for t, pt in enumerate((p, twin(p))):
+            q, ep, er = ik6(arm, *pregrasp(pt), q_init=q0)
+            if ep < GOAL_TOL_M and er < GOAL_TOL_RAD and all(float(np.max(np.abs(q - c["q"]))) > DISTINCT_RAD for c in out):
+                out.append({"index": len(out), "twin": t, "seed": name, "q": q})
+    return out
+
+
+def reach6(env: Any, p: Grasp6, q: Any, destination: str, v_lift: float = 0.1, v_transport: float = 0.5,
+           release_height: float | None = None, a_transport: float = A_TRANSPORT) -> dict[str, Any] | None:
+    """MuJoCoLabEnv.reach's path check on the tilted path from arm joints ``q`` at the pregrasp (no free move: cuRobo
+    plans it): every control step of hand_path6 by ik6 warm-started at the previous step ("ik" past REACH_TOL_M or
+    REACH_TOL_RAD), and the arm and pads against the scene every REACH_CHECK_EVERY steps and at each phase change, the
+    pads free to touch the object and the object left out from the lift on ("collision"). None if the path passes.
+    ValueError if ``q`` does not put the hand at the pregrasp (the other twin's configuration, say)."""
+    sim = env.sim
+    arm = sim.arm
+    path = hand_path6(env, p, v_lift, v_transport, destination, release_height, a_transport)
+    q = np.asarray(q, dtype=float)
+    ep, er = pose_error(arm, q, path[0][1], path[0][2])
+    if ep > REACH_TOL_M or er > REACH_TOL_RAD:
+        raise ValueError(f"the start configuration puts the hand {ep:.2e} m and {er:.2e} rad from the pregrasp")
+    hulls, pads = set(sim.hull_ids), {sim.pad_l, sim.pad_r}
+    prev, lifted_ = None, False
+    for k, (ph, pos, Rh) in enumerate(path):
+        q, ep, er = ik6(arm, pos, Rh, q_init=q)
+        if ep > REACH_TOL_M or er > REACH_TOL_RAD:
+            return {"reason": "ik", "phase": ph, "step": k, "ik_error": [float(ep), float(er)]}
+        lifted_ = lifted_ or ph == "lift"
+        if k % REACH_CHECK_EVERY == 0 or ph != prev or k == len(path) - 1:
+            hits = [h for h in arm.collisions(q, ignore=hulls if lifted_ else ()) if not (h[0] in pads and h[1] in hulls)]
+            if hits:
+                r_, o_, dist = hits[0]
+                return {"reason": "collision", "phase": ph, "step": k, "hit": [sim.m.geom(r_).name, sim.m.geom(o_).name, float(dist)]}
+        prev = ph
+    return None
+
+
+def choose(env: Any, p: Grasp6, key: str, destination: str, v_lift: float = 0.1, v_transport: float = 0.5,
+           release_height: float | None = None, a_transport: float = A_TRANSPORT) -> dict[str, Any]:
+    """The configuration choice of design amendment 2: the first candidate whose whole path passes reach6. Returns
+    {"goal": any candidate, "candidate": the chosen one or None, "failed": [{"index", reach6's failure}] before it}."""
+    cands = candidates(env, p, key)
+    failed: list[dict[str, Any]] = []
+    for c in cands:
+        r = reach6(env, twin(p) if c["twin"] else p, c["q"], destination, v_lift, v_transport, release_height, a_transport)
+        if r is None:
+            return {"goal": True, "candidate": c, "failed": failed}
+        failed.append({"index": c["index"], **r})
+    return {"goal": bool(cands), "candidate": None, "failed": failed}
 
 
 def _today(p: Proposal | Grasp6) -> Proposal:
