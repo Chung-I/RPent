@@ -144,6 +144,17 @@ def test_a_pilot_row_whose_record_differs_is_a_mismatch(lab):
     assert not g1["same"] and list(g1["diffs"]) == ["trace_sha"] and out["rows"][2]["same"]
 
 
+def test_a_replayed_row_keeps_its_stored_label_its_new_label_and_its_error(lab):
+    rec, entry = _pilot(lab)
+    rec["rows"][1]["label"] = "tipped"                               # the record's; the replay places it
+    rec["rows"][1]["error"] = "stale"
+    out = cs.g1_case(SimpleNamespace(env=lab), _rec1(), 3, None, rec, "pilot", entry)
+    g1 = out["rows"][1]
+    assert (g1["stored_label"], g1["label"], g1["error"]) == ("tipped", "placed_stable", None)
+    assert g1["diffs"]["label"] == ["tipped", "placed_stable"] and not g1["same"]
+    assert all(r["stored_label"] == r["label"] for r in out["rows"] if r["id"] != "g1")
+
+
 def test_a_pilot_case_stops_on_a_base_a_fingerprint_or_hulls_that_are_not_the_records(lab):
     rec, entry = _pilot(lab)
     bad = copy.deepcopy(rec)
@@ -240,3 +251,106 @@ def test_the_report_command_writes_the_summary_and_exits_3_when_g1_fails(tmp_pat
     with pytest.raises(SystemExit) as e:
         cs.main(["g1-report", "--queue", str(q), "--out", str(tmp_path / "s2")])
     assert e.value.code == 3 and "Result: FAILED." in (tmp_path / "s2" / "g1_summary.md").read_text()
+
+
+# ------------------------------------------------------------------ gate G1′ (amendment 8: contacts on)
+
+def test_a_g1_prime_unit_fails_only_on_a_stop_an_error_or_a_geometry_check_while_rows_may_differ():
+    m = {"rows": 3, "mismatches": 2, "stops": 0, "case_errors": 0, "mapping_failures": 0, "hand_path_failures": 0, "passed": False}
+    assert cs.g1_unit_ok(m, allow_diffs=True) and not cs.g1_unit_ok(m, allow_diffs=False)
+    assert cs.g1_unit_ok(dict(m, mismatches=0, passed=True), allow_diffs=False)
+    for k in ("stops", "case_errors", "mapping_failures", "hand_path_failures"):
+        assert not cs.g1_unit_ok(dict(m, **{k: 1}), allow_diffs=True)
+    assert not cs.g1_unit_ok(dict(m, rows=0), allow_diffs=True)
+
+
+def _row(i, stored="placed_stable", label="placed_stable", diffs=None, error=None, mapping=None):
+    return {"id": i, "same": not diffs and mapping is not False, "diffs": diffs or {}, "mapping": mapping, "hand_path": None,
+            "seconds": 1.0, "stored_label": stored, "label": label, "error": error}
+
+
+def _g1p_units(tmp_path):
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    a = {"source": "poseset", "side": "test", "object": "box", "idx": 0, "stop": None, "error": None, "seconds": 4.0,
+         "rows": [_row("across_0.1"), _row("across_0.5", label="not_lifted", diffs={"label": ["placed_stable", "not_lifted"]}),
+                  _row("across_0.7")]}
+    b = {"source": "pilot", "side": "validation", "object": "mug", "idx": 2, "stop": None, "error": None, "seconds": 2.0,
+         "rows": [_row("g0", label=None, error="Unreachable: free move: palm - fx_shelf_0",
+                       diffs={"label": ["tipped", None], "error": [None, "Unreachable: free move: palm - fx_shelf_0"]}, stored="tipped")]}
+    return [_unit(tmp_path, 0, [a], 3), _unit(tmp_path, 1, [b], 1)]
+
+
+def test_g1_prime_sorts_the_rows_by_the_audits_list_and_names_every_changed_row_the_list_lacks(tmp_path):
+    flagged = {("poseset", "test", "box", 0, "across_0.5"), ("poseset", "test", "box", 0, "across_0.7"), ("poseset", "test", "box", 0, "along_0.9")}
+    rep = cs.g1p_report(_g1p_units(tmp_path), flagged, {"pilot": 1, "poseset": 3})
+    assert rep["unflagged"] == {"rows": 2, "identical": 1, "changed": 1} and rep["flagged"] == {"rows": 2, "changed": 1, "identical": 1}
+    assert rep["flagged_by_transition"] == {"placed_stable → not_lifted": 1} and rep["flagged_by_object"] == {"box": 1}
+    assert rep["changed_not_in_list"] == [{"source": "pilot", "side": "validation", "object": "mug", "idx": 2, "id": "g0",
+                                           "fields": ["error", "label"], "stored_label": "tipped", "label": None,
+                                           "error": "Unreachable: free move: palm - fx_shelf_0"}]
+    assert rep["flagged_not_replayed"] == [["poseset", "test", "box", 0, "along_0.9"]] and rep["passed"] is False
+    flagged.add(("pilot", "validation", "mug", 2, "g0"))
+    rep = cs.g1p_report(_g1p_units(tmp_path / "x"), flagged, {"pilot": 1, "poseset": 3})
+    assert rep["passed"] is True and rep["unflagged"] == {"rows": 1, "identical": 1, "changed": 0}
+    assert rep["flagged_by_transition"] == {"placed_stable → not_lifted": 1, "tipped → None": 1}
+    assert not cs.g1p_report(_g1p_units(tmp_path / "y"), flagged, {"pilot": 2, "poseset": 3})["passed"]      # a row was not replayed
+
+
+def test_the_g1_command_exits_0_on_differing_rows_with_allow_diffs_and_3_without(tmp_path, monkeypatch):
+    import robots.mujoco_lab.curve as cv
+
+    monkeypatch.setenv("WANDB_MODE", "disabled")
+    run = tmp_path / "run"
+    run.mkdir()
+    (run / "run_metrics.json").write_text("{}")
+    (run / "run_config.json").write_text(json.dumps({"stage1": "s1", "seed": 0, "bundle": str(tmp_path / "b")}))
+    (run / "records_test.jsonl").write_text(json.dumps({"object": "box", "idx": 0, "rows": [{"id": "a", "seconds": 1.0}]}) + "\n")
+    monkeypatch.setattr(cv, "load_stage1", lambda dirs: ([{"object": "box", "idx": 0, "fold": 0}], {}))
+    case = {"source": "poseset", "side": "test", "object": "box", "idx": 0, "stop": None, "error": None, "seconds": 2.0,
+            "rows": [_row("a", label="not_lifted", diffs={"label": ["placed_stable", "not_lifted"]})]}
+    monkeypatch.setattr(cs, "g1_object", lambda job: iter([case]))
+    args = ["g1", "--source", "poseset", "--runs", str(run), "--sides", "test"]
+    assert cs.main(args + ["--allow-diffs", "--out", str(tmp_path / "o1")]) == str(tmp_path / "o1")
+    with pytest.raises(SystemExit) as e:
+        cs.main(args + ["--out", str(tmp_path / "o2")])
+    assert e.value.code == 3
+
+
+def test_g1_prime_fails_on_a_stop_a_unit_without_exit_0_or_a_geometry_check_even_when_the_list_holds_every_changed_row(tmp_path):
+    flagged = {("poseset", "test", "box", 0, "across_0.5"), ("pilot", "validation", "mug", 2, "g0")}
+    units = _g1p_units(tmp_path / "a")
+    assert cs.g1p_report(units, flagged, {"pilot": 1, "poseset": 3})["passed"]
+    stop = {"source": "poseset", "side": "test", "object": "can", "idx": 1, "stop": "g1: the hulls after the reset differ from the record's",
+            "error": None, "seconds": 1.0, "rows": []}
+    rep = cs.g1p_report(units + [_unit(tmp_path / "a", 2, [stop], 0)], flagged, {"pilot": 1, "poseset": 3})
+    assert not rep["passed"] and rep["stops"] == 1 and rep["missing_rows"] == {"pilot": 0, "poseset": 0}
+    units = _g1p_units(tmp_path / "b")
+    (tmp_path / "b" / "unit_1" / "run.exit").write_text("EXIT 1\n")
+    rep = cs.g1p_report(units, flagged, {"pilot": 1, "poseset": 3})
+    assert not rep["passed"] and rep["units_not_exit_0"] == [units[1]]
+    geo = {"source": "pilot", "side": "test", "object": "can", "idx": 4, "stop": None, "error": None, "seconds": 1.0,
+           "rows": [_row("g3", mapping=False)]}
+    rep = cs.g1p_report(_g1p_units(tmp_path / "c") + [_unit(tmp_path / "c", 2, [geo], 1)], flagged, {"pilot": 2, "poseset": 3})
+    assert not rep["passed"] and rep["mapping_failures"] == 1
+    assert [x["fields"] for x in rep["changed_not_in_list"]] == [["mapping"]]
+
+
+def test_the_g1_prime_report_command_reads_the_audits_list_and_exits_3_when_an_unflagged_row_changed(tmp_path, monkeypatch):
+    monkeypatch.setenv("WANDB_MODE", "disabled")
+    monkeypatch.setattr(cs, "G1_EXPECTED", {"pilot": 1, "poseset": 3})
+    q = tmp_path / "q"
+    q.mkdir()
+    _g1p_units(q)
+    lst = tmp_path / "flagged_rows.jsonl"
+    lines = [{"source": "poseset", "side": "test", "object": "box", "idx": 0, "id": i, "label": "placed_stable", "depth_mm": 3.0}
+             for i in ("across_0.5", "across_0.7")]
+    lines.append({"source": "stage2", "side": "test", "object": "box", "idx": 0, "first": "a", "attempt": 1, "row": "a", "depth_mm": 2.0})
+    lst.write_text("".join(json.dumps(x) + "\n" for x in lines))
+    with pytest.raises(SystemExit) as e:
+        cs.main(["g1p-report", "--queue", str(q), "--flagged", str(lst), "--out", str(tmp_path / "s")])
+    md = (tmp_path / "s" / "g1p_summary.md").read_text()
+    assert e.value.code == 3 and "Result: FAILED." in md and "mug" in md and "free move" in md
+    lst.write_text(lst.read_text() + json.dumps({"source": "pilot", "side": "validation", "object": "mug", "idx": 2, "id": "g0"}) + "\n")
+    rep = cs.main(["g1p-report", "--queue", str(q), "--flagged", str(lst), "--out", str(tmp_path / "s2")])
+    assert rep["passed"] and "Result: PASSED." in (tmp_path / "s2" / "g1p_summary.md").read_text()
+    assert json.loads((tmp_path / "s2" / "g1p_summary.json").read_text())["unflagged"]["identical"] == 1

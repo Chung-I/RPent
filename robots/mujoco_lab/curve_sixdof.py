@@ -138,7 +138,8 @@ def _g1_row(env: Any, reset: Any, r: dict[str, Any], source: str, entry: dict[st
     if stop:
         return None, stop
     diffs = same_fields(r, new)
-    res.update(diffs=diffs, seconds=new["seconds"], same=not diffs and res["mapping"] is not False and res["hand_path"] is not False)
+    res.update(diffs=diffs, seconds=new["seconds"], same=not diffs and res["mapping"] is not False and res["hand_path"] is not False,
+               stored_label=r.get("label"), label=new.get("label"), error=new.get("error"))
     return res, None
 
 
@@ -250,11 +251,16 @@ def g1_metrics(done: list[dict[str, Any]]) -> dict[str, Any]:
 G1_EXPECTED = {"pilot": 1756, "poseset": 2344 + 2465}   # the stored simulated rows: the pilot's; the pose set's test and validation
 
 
-def g1_report(units: list[str], expected: dict[str, int]) -> dict[str, Any]:
-    """G1 over its units (g1 run dirs): g1_metrics over every case of every unit, the rows replayed against the rows each
-    source holds (``expected``), the units whose run did not end with EXIT 0, the rows that differ (their fields, no
-    value) and the stopped cases. Passes when every unit ended with EXIT 0, every expected row was replayed and matched,
-    and no case stopped or raised."""
+def g1_unit_ok(m: dict[str, Any], allow_diffs: bool) -> bool:
+    """A g1 unit's exit from its metrics: G1's pass; with ``allow_diffs`` (gate G1′, contacts on, where the audit's
+    flagged rows may change) rows replayed with no stop, no case error and no mapping or hand-path failure."""
+    if not allow_diffs:
+        return bool(m["passed"])
+    return m["rows"] > 0 and not any(m[k] for k in ("stops", "case_errors", "mapping_failures", "hand_path_failures"))
+
+
+def _load_units(units: list[str]) -> tuple[list[dict[str, Any]], list[str], set[str]]:
+    """The cases of the units (g1 run dirs), the units whose run did not end with EXIT 0, and their code revisions."""
     done: list[dict[str, Any]] = []
     bad_exit, revs = [], set()
     for u in units:
@@ -266,16 +272,104 @@ def g1_report(units: list[str], expected: dict[str, int]) -> dict[str, Any]:
             done += [json.loads(line) for line in open(rp)]
         if os.path.exists(cp_):
             revs.add(json.load(open(cp_)).get("code_revision"))
+    return done, bad_exit, revs
+
+
+def _changed_fields(r: dict[str, Any]) -> list[str]:
+    """A replayed row's differing fields, then its failed geometry checks."""
+    return sorted(r.get("diffs") or {}) + [k for k in ("mapping", "hand_path") if r[k] is False]
+
+
+def g1_report(units: list[str], expected: dict[str, int]) -> dict[str, Any]:
+    """G1 over its units (g1 run dirs): g1_metrics over every case of every unit, the rows replayed against the rows each
+    source holds (``expected``), the units whose run did not end with EXIT 0, the rows that differ (their fields, no
+    value) and the stopped cases. Passes when every unit ended with EXIT 0, every expected row was replayed and matched,
+    and no case stopped or raised."""
+    done, bad_exit, revs = _load_units(units)
     m = g1_metrics(done)
     got = Counter(c["source"] for c in done for _ in c["rows"])
     m.update(units=len(units), units_not_exit_0=bad_exit, of_rows=dict(expected),
              missing_rows={s: int(expected[s]) - got.get(s, 0) for s in expected}, code_revisions=sorted(r for r in revs if r),
              mismatched_rows=[{"source": c["source"], "side": c["side"], "object": c["object"], "idx": c["idx"], "id": r["id"],
-                               "fields": sorted(r.get("diffs") or {}) + [k for k in ("mapping", "hand_path") if r[k] is False]}
+                               "fields": _changed_fields(r)}
                               for c in done for r in c["rows"] if not r["same"]],
              stopped_cases=[{k: c[k] for k in ("source", "side", "object", "idx", "stop")} for c in done if c["stop"]])
     m["passed"] = bool(m["passed"] and not bad_exit and all(v == 0 for v in m["missing_rows"].values()))
     return m
+
+
+def g1p_report(units: list[str], flagged: set[tuple[Any, ...]], expected: dict[str, int]) -> dict[str, Any]:
+    """Gate G1′ (design amendment 8: the palm, wrist and finger boxes collide) over its units: g1_report's counts, then
+    every replayed row sorted by the palm-contact audit's list (``flagged``: (source, side, object, idx, id) of each row
+    with any penetration): the unflagged rows identical and changed, the flagged rows changed by label transition
+    (stored → new) and by object, every changed row that the list lacks (its fields, labels and error: the free move to
+    the pregrasp is outside the audit), and the list's rows that no unit replayed. Passes when every unit ended with
+    EXIT 0, every expected row was replayed, no case stopped or raised, no mapping or hand-path check failed, and every
+    unflagged row is identical."""
+    rep = g1_report(units, expected)
+    done, _, _ = _load_units(units)
+    rows = [(c, r) for c in done for r in c["rows"]]
+
+    def key(c: dict[str, Any], r: dict[str, Any]) -> tuple[Any, ...]:
+        return (c["source"], c["side"], c["object"], int(c["idx"]), r["id"])
+
+    unf = [(c, r) for c, r in rows if key(c, r) not in flagged]
+    fl = [(c, r) for c, r in rows if key(c, r) in flagged]
+    cu, cf = [(c, r) for c, r in unf if not r["same"]], [(c, r) for c, r in fl if not r["same"]]
+    rep.update(unflagged={"rows": len(unf), "identical": len(unf) - len(cu), "changed": len(cu)},
+               flagged={"rows": len(fl), "changed": len(cf), "identical": len(fl) - len(cf)},
+               flagged_by_transition=dict(Counter(f"{r.get('stored_label')} → {r.get('label')}" for _, r in cf)),
+               flagged_by_object=dict(Counter(c["object"] for c, _ in cf)),
+               changed_not_in_list=[{"source": c["source"], "side": c["side"], "object": c["object"], "idx": int(c["idx"]), "id": r["id"],
+                                     "fields": _changed_fields(r), "stored_label": r.get("stored_label"), "label": r.get("label"),
+                                     "error": r.get("error")} for c, r in cu],
+               flagged_not_replayed=[list(k) for k in sorted(flagged - {key(c, r) for c, r in rows}, key=repr)])
+    rep["passed"] = bool(not rep["units_not_exit_0"] and all(v == 0 for v in rep["missing_rows"].values()) and rep["rows"] > 0
+                         and not any(rep[k] for k in ("stops", "case_errors", "mapping_failures", "hand_path_failures")) and not cu)
+    return rep
+
+
+def g1p_report_cmd(a: argparse.Namespace) -> dict[str, Any]:
+    """The g1p-report command: g1p_report over --units or every unit_* dir of --queue, with the audit's list --flagged
+    (flagged_rows.jsonl; its pilot and pose-set lines); g1p_summary.json and g1p_summary.md in --out, wandb. Exit 3 when
+    G1′ fails."""
+    import glob
+
+    from robots.mujoco_lab.curve import _sha
+    from robots.mujoco_lab.tracking import log_run
+
+    units = a.units.split(",") if a.units else sorted(glob.glob(os.path.join(a.queue, "unit_*")), key=lambda d: int(d.rsplit("_", 1)[1]))
+    lines = [json.loads(line) for line in open(a.flagged) if line.strip()]
+    flagged = {(x["source"], x["side"], x["object"], int(x["idx"]), x["id"]) for x in lines if x["source"] in SOURCES}
+    rep = g1p_report(units, flagged, G1_EXPECTED)
+    rep["flagged_list"] = f"{a.flagged} (sha256 {_sha(a.flagged)}), {len(flagged)} pilot and pose-set rows"
+    os.makedirs(a.out, exist_ok=True)
+    with open(os.path.join(a.out, "g1p_summary.json"), "w") as f:
+        json.dump(rep, f, indent=1)
+    u, fl = rep["unflagged"], rep["flagged"]
+    md = ["# Gate G1′ (amendment 8: the palm, wrist and finger boxes collide)", "", f"Result: {'PASSED' if rep['passed'] else 'FAILED'}.", "",
+          f"- Unflagged rows identical: {u['identical']} of {u['rows']} (changed {u['changed']}).",
+          f"- Flagged rows changed: {fl['changed']} of {fl['rows']} (identical {fl['identical']}).",
+          f"- Rows replayed {rep['rows']} of {sum(rep['of_rows'].values())}; stopped cases {rep['stops']}; case errors {rep['case_errors']};"
+          f" mapping failures {rep['mapping_failures']}; hand-path failures {rep['hand_path_failures']}; units not ending with EXIT 0:"
+          f" {len(rep['units_not_exit_0'])} of {rep['units']}.",
+          f"- The audit's list: {rep['flagged_list']}; rows of it not replayed: {len(rep['flagged_not_replayed'])}.",
+          f"- Code: {', '.join(rep['code_revisions'])}.", "", "## Flagged rows that changed, by label transition (stored → with contacts)", "",
+          "| transition | rows |", "|---|---|"]
+    md += [f"| {t} | {n} |" for t, n in sorted(rep["flagged_by_transition"].items(), key=lambda x: -x[1])]
+    md += ["", "## Flagged rows that changed, by object", "", "| object | rows |", "|---|---|"]
+    md += [f"| {o} | {n} |" for o, n in sorted(rep["flagged_by_object"].items(), key=lambda x: -x[1])]
+    md += ["", f"## Changed rows that the list does not hold: {len(rep['changed_not_in_list'])}", ""]
+    md += [f"- {x['source']} {x['side']} {x['object']} {x['idx']} {x['id']}: fields {', '.join(x['fields'])}; {x['stored_label']} → {x['label']}"
+           + (f"; error {x['error']}" if x["error"] else "") for x in rep["changed_not_in_list"]]
+    with open(os.path.join(a.out, "g1p_summary.md"), "w") as f:
+        f.write("\n".join(md) + "\n")
+    rep["wandb"] = log_run("sixdof-g1p-report", {"units": units, "expected": G1_EXPECTED, "flagged": a.flagged},
+                           {k: rep[k] for k in ("passed", "rows", "unflagged", "flagged", "stops", "case_errors")})
+    print("\n".join(md), flush=True)
+    if not rep["passed"]:
+        raise SystemExit(3)
+    return rep
 
 
 def g1_report_cmd(a: argparse.Namespace) -> dict[str, Any]:
@@ -312,8 +406,8 @@ def g1_report_cmd(a: argparse.Namespace) -> dict[str, Any]:
 def g1(a: argparse.Namespace) -> str:
     """The G1 command: the stored records of --runs (one source's finished runs; the same Stage 1, seed, bundle and, for
     the pilot, grasps), their cases of --objects and --sides by object in the records' order, each replayed (g1_object);
-    g1_records.jsonl (one line per case), run_config.json and g1_metrics.json (counts only; wandb). Exit 3 when G1 fails.
-    Returns --out."""
+    g1_records.jsonl (one line per case), run_config.json and g1_metrics.json (counts only; wandb). Exit 3 when G1 fails;
+    with --allow-diffs (gate G1′), when a case stopped or raised or a geometry check failed. Returns --out."""
     from robots.mujoco_lab.curve import SIDES, _peak_rss_mb, _sha, load_stage1, records_path
     from robots.mujoco_lab.estimation_check import _revision
     from robots.mujoco_lab.tracking import log_run
@@ -360,7 +454,7 @@ def g1(a: argparse.Namespace) -> str:
     with open(os.path.join(a.out, "g1_metrics.json"), "w") as f:
         json.dump(metrics, f, indent=1)
     print(f"done: {json.dumps(metrics)}", flush=True)
-    if not metrics["passed"]:
+    if not g1_unit_ok(metrics, a.allow_diffs):
         raise SystemExit(3)
     return a.out
 
@@ -373,13 +467,19 @@ def main(argv: list[str] | None = None) -> Any:
     g.add_argument("--runs", required=True, help="comma-separated finished run dirs of that source")
     g.add_argument("--objects", default=None, help="comma-separated objects (default: all)")
     g.add_argument("--sides", default="validation,test")
+    g.add_argument("--allow-diffs", action="store_true", help="gate G1′: rows may differ (the exit counts stops, errors and geometry checks)")
     g.add_argument("--out", required=True)
     r = sub.add_parser("g1-report", help="G1 over its units: the summary (counts and field names only)")
     r.add_argument("--units", default=None, help="comma-separated g1 run dirs")
     r.add_argument("--queue", default=None, help="a queue dir: every unit_* dir in it")
     r.add_argument("--out", required=True)
+    p = sub.add_parser("g1p-report", help="gate G1′ over its units, with the palm-contact audit's list")
+    p.add_argument("--units", default=None, help="comma-separated g1 run dirs")
+    p.add_argument("--queue", default=None, help="a queue dir: every unit_* dir in it")
+    p.add_argument("--flagged", required=True, help="the audit's flagged_rows.jsonl")
+    p.add_argument("--out", required=True)
     a = ap.parse_args(argv)
-    return {"g1": g1, "g1-report": g1_report_cmd}[a.cmd](a)
+    return {"g1": g1, "g1-report": g1_report_cmd, "g1p-report": g1p_report_cmd}[a.cmd](a)
 
 
 if __name__ == "__main__":
