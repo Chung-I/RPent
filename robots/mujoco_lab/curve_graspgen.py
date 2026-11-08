@@ -278,7 +278,7 @@ def hulls_sha(env: Any) -> str:
 
 
 def _simulated(r: dict[str, Any]) -> bool:
-    return bool(r.get("kept") or r.get("kept_b") or r.get("gate"))
+    return bool(r.get("kept") or r.get("kept_b") or (r.get("gate") and r.get("feasible")))
 
 
 def simulate_rows(env: Any, reset: Any, rows: list[dict[str, Any]], base: dict[str, Any], fingerprint: Any, want: str,
@@ -367,10 +367,18 @@ def _tags(env: Any, rows: list[dict[str, Any]]) -> tuple[float, float]:
     return z0, z1
 
 
-def _gate_row(env: Any) -> dict[str, Any]:
+def _gate_row(env: Any, destination: str) -> dict[str, Any]:
+    """The pose set's across pinch at 0.5 as a row of this module, feasible by the pose set's rule for a current row (the
+    width rule and reach()): only then did the pose set simulate it."""
+    from rpent.skills.pick_place.menu import unusable_reason
+
     q = env.proposals((GATE[1],), turn=0.0)[0]
-    return {"id": f"gate_{GATE[0]}_{GATE[1]:g}", "rank": -1, "gate": True, "kept": False, "kept_b": False, "f": float(q.s),
-            "point": [float(x) for x in q.point], "yaw": float(q.yaw), "width": float(q.width)}
+    why = unusable_reason(float(q.width), float(env.max_pinch_width))
+    if why is None:
+        r = env.reach(q, destination)
+        why = None if r is None else f"unreachable: {r.get('reason')} ({r.get('phase')})"
+    return {"id": f"gate_{GATE[0]}_{GATE[1]:g}", "rank": -1, "gate": True, "feasible": why is None, "why": why, "kept": False,
+            "kept_b": False, "f": float(q.s), "point": [float(x) for x in q.point], "yaw": float(q.yaw), "width": float(q.width)}
 
 
 def _sha_bytes(a: Any) -> str:
@@ -503,7 +511,7 @@ def graspgen_case(prims: Any, rec1: dict[str, Any], seed: int, world: Any, entry
             return dict(rec, stop=why)
         rows, counts = funnel(env, entry["grasps"], entry["conf"], destination)
         z = _tags(env, rows)
-        rows.append(_gate_row(env))
+        rows.append(_gate_row(env, destination))
         hsha = hulls_sha(env)
         rec.update(base=base, rows=rows, counts=counts, n_grasps=int(len(entry["conf"])), object_z=list(z), hull_sha=hsha,
                    frame=frame_check(hulls, entry["grasps"]))

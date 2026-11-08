@@ -611,3 +611,11 @@ def test_a_grasp_at_a_menu_pinch_maps_to_that_pinch_on_the_real_adapter():
     assert np.allclose(r["point"], p.point) and gg.yaw_gap_deg(r["yaw"], p.yaw) < 1e-9
     assert r["width"] == pytest.approx(p.width) and r["width_b"] == pytest.approx(p.width, abs=1e-6)
     assert r["reach"] == "ok" and r["feasible"] and r["feasible_b"] and c["kept"] == c["kept_b"] == 1
+
+
+def test_the_gate_row_runs_only_where_the_pose_set_could_run_its_across_pinch(lab):
+    lab.hulls = [_box(0.30, 0.12, 0.03)]                              # 12 cm across: the across pinch is wider than the opening
+    rec = gg.graspgen_case(SimpleNamespace(env=lab), _rec1(), 3, None, _entry(lab))
+    gate = rec["rows"][-1]
+    assert gate["gate"] and not gate["feasible"] and gate["why"] == "wider than the gripper opening" and "seconds" not in gate
+    assert rec["stop"] is None and all(c[0] != 0.0 for c in lab.calls)
