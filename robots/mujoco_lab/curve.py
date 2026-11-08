@@ -1408,6 +1408,27 @@ def stage2_figure(rep: dict[str, Any], path: str) -> None:
     plt.close(fig)
 
 
+def stage2_readings(val: list[dict[str, Any]], test: list[dict[str, Any]], rules: tuple[str, ...],
+                    key: dict[str, str]) -> dict[str, Any]:
+    """The test readings of design 6 at the operating points ``key`` ({rule: decision key}): Q1 (R0 against R4, all and
+    without thin plastic), Q2-Q4 (each rule against R0), the curves of both sides, the calibration and the damage by
+    object group."""
+    no_thin = [r for r in test if not r["thin"]]
+    rep: dict[str, Any] = {}
+    b, bn = paired_bootstrap(test, key["R0"], key["R4"]), paired_bootstrap(no_thin, key["R0"], key["R4"])
+    rep["q1"], rep["q1_no_thin"] = {"boot": b, "reading": q1_reading(b)}, {"boot": bn, "reading": q1_reading(bn)}
+    rep["vs_r0"] = {}
+    for rule in (r for r in ("R1", "R2", "R3", "R5", "R6") if r in rules):     # R5 and R6 beside Q2-Q4, never a main reading
+        b, bn = paired_bootstrap(test, key[rule], key["R0"]), paired_bootstrap(no_thin, key[rule], key["R0"])
+        rep["vs_r0"][rule] = {"boot": b, "reading": vs_r0_reading(b), "no_thin": {"boot": bn, "reading": vs_r0_reading(bn)}}
+    rep["curves"] = {"validation": _curves(val, rules), "test": _curves(test, rules), "test_no_thin": _curves(no_thin, rules)}
+    rep["calibration"] = {rule: calibration(test, key[rule]) for rule in rules}
+    groups = sorted({"|".join(stratum(r["object"], r)) for r in test})
+    rep["groups"] = {rule: {g: rule_point([r for r in test if "|".join(stratum(r["object"], r)) == g], key[rule]) for g in groups}
+                     for rule in rules}
+    return rep
+
+
 def stage2_summary(a: argparse.Namespace) -> dict[str, Any]:
     """The test reading (design 6) from finished Stage 2 runs and the committed lock: stage2_summary.{json,md} and
     stage2_curves.png in --out (refuses an existing json), wandb. Refuses a lock file that differs from the lock of the
@@ -1429,20 +1450,8 @@ def stage2_summary(a: argparse.Namespace) -> dict[str, Any]:
     test, _ = load_stage2(dirs, ("test",))          # opened only after the lock file is checked
     checks_test = stage2_checks(test, cfg, ("test",))
     checks = {k: checks_val[k] + checks_test[k] for k in checks_val}
-    key = {rule: lk[rule]["key"] for rule in rules}
-    no_thin = [r for r in test if not r["thin"]]
     rep: dict[str, Any] = {"rules": rules, "lock": lk, "checks": checks}
-    b, bn = paired_bootstrap(test, key["R0"], key["R4"]), paired_bootstrap(no_thin, key["R0"], key["R4"])
-    rep["q1"], rep["q1_no_thin"] = {"boot": b, "reading": q1_reading(b)}, {"boot": bn, "reading": q1_reading(bn)}
-    rep["vs_r0"] = {}
-    for rule in (r for r in ("R1", "R2", "R3", "R5", "R6") if r in rules):     # R5 and R6 beside Q2-Q4, never a main reading
-        b, bn = paired_bootstrap(test, key[rule], key["R0"]), paired_bootstrap(no_thin, key[rule], key["R0"])
-        rep["vs_r0"][rule] = {"boot": b, "reading": vs_r0_reading(b), "no_thin": {"boot": bn, "reading": vs_r0_reading(bn)}}
-    rep["curves"] = {"validation": _curves(val, rules), "test": _curves(test, rules), "test_no_thin": _curves(no_thin, rules)}
-    rep["calibration"] = {rule: calibration(test, key[rule]) for rule in rules}
-    groups = sorted({"|".join(stratum(r["object"], r)) for r in test})
-    rep["groups"] = {rule: {g: rule_point([r for r in test if "|".join(stratum(r["object"], r)) == g], key[rule]) for g in groups}
-                     for rule in rules}
+    rep.update(stage2_readings(val, test, rules, {rule: lk[rule]["key"] for rule in rules}))
     rep["provenance"] = {"runs": a.runs, "records_sha256": {f"{d} {side}": _sha(records_path(d, side)) for d in dirs for side in SIDES},
                          "code_revision": cfg["code_revision"], "stage1": cfg["stage1"],
                          "locked": f"{a.locked} (sha256 {_sha(a.locked)}, commit {a.lock_commit})",
