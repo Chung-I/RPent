@@ -417,10 +417,12 @@ def decisions(rec: dict[str, Any], V: Any) -> dict[str, str]:
     return {dkey(rule, A, k): decide(rule, rows, k, A, V) for rule, A, k in decision_keys()}
 
 
-def stage1_case(prims: Any, o: str, idx: int, s: dict[str, Any], world: Any, shared: Any) -> dict[str, Any]:
+def stage1_case(prims: Any, o: str, idx: int, s: dict[str, Any], world: Any, shared: Any, belief_fn: Any = None) -> dict[str, Any]:
     """One case's first menu at the class prior, as evpi_props.run_case builds it (the case's reset, the prior's draw on
     calibrate._stream k 1, the menu stream after it) with no probe rows, under (STAGE1_CARE, A_MAIN); the record holds
-    every same-destination commit and lower-risk row (row_record) and the menu's own decision."""
+    every same-destination commit and lower-risk row (row_record) and the menu's own decision. ``belief_fn`` (the oracle
+    arm, curve_oracle): (b0, pose, theta, com_end, hidden, entry) -> the belief the menu prices in place of the prior's
+    draw b0, after the draw (the menu stream is the same)."""
     from robots.mujoco_lab import calibrate as cal
     from robots.mujoco_lab import evpi_props as ev
     from robots.mujoco_lab.adapter import object_props
@@ -449,6 +451,8 @@ def stage1_case(prims: Any, o: str, idx: int, s: dict[str, Any], world: Any, sha
         g = cal._stream(seed, o, idx, 1)
         b0 = prims.prior(pose, n, g, **_spread_kw(prims))
         state = copy.deepcopy(g.bit_generator.state)
+        if belief_fn is not None:
+            b0 = belief_fn(b0, pose, theta, com_end, hidden, entry)
         m = ev.first_menu(prims, b0, destination, STAGE1_CARE, A_MAIN, state)
         a = m["payload"]
         rows = []
@@ -941,14 +945,17 @@ def case_dropped(sims: list[dict[str, Any]]) -> bool:
 
 
 
-def simulate_case(lab: Any, rec1: dict[str, Any], dec: dict[str, str], rules: tuple[str, ...], seeds: list[int]) -> dict[str, Any]:
+def simulate_case(lab: Any, rec1: dict[str, Any], dec: dict[str, str], rules: tuple[str, ...], seeds: list[int],
+                  second: Any = None) -> dict[str, Any]:
     """One case's simulations through ``lab`` (LabCase: fresh, attempt, second_menu). Per reset seed and per distinct first
     row of the rules (first_rows): a fresh episode (the reset and the first menu, gated against Stage 1's rows), the first
     attempt, and after a recoverable label without an artifact the second menu, every rule's second decision
     (second_decisions) and each distinct second row. The first second row runs in the same episode; each later one runs in
     a fresh episode whose replayed first attempt must give the same label and the same second menu. An exception is the
-    error of the simulation it occurs in (a second menu that raises has the error status). Returns {"sims", "stop"}: a
-    gate that fails stops the case (and the run) with its reason."""
+    error of the simulation it occurs in (a second menu that raises has the error status). ``second``: (rows, rules) ->
+    the second decisions (default second_decisions). Returns {"sims", "stop"}: a gate that fails stops the case (and the
+    run) with its reason."""
+    second = second_decisions if second is None else second
     sims: list[dict[str, Any]] = []
     for k, reset_seed in enumerate(seeds):
         for first in first_rows(dec, rules):
@@ -968,7 +975,7 @@ def simulate_case(lab: Any, rec1: dict[str, Any], dec: dict[str, str], rules: tu
                     m2 = lab.second_menu(store, d1)
                 except Exception as exc:  # noqa: BLE001
                     m2 = {"status": "error", "error": _err(exc), "rows": []}
-                m2["decisions"] = second_decisions(m2["rows"], rules)
+                m2["decisions"] = second(m2["rows"], rules)
                 sim["menu2"] = m2
                 for j, row2 in enumerate(first_rows(m2["decisions"], rules) if m2["status"] != "error" else []):
                     try:
@@ -1491,6 +1498,7 @@ class LabCase:
         g = cal._stream(self.seed, self.o, self.idx, 1)
         b0 = prims.prior(pose, n, g, **_spread_kw(prims))
         state = copy.deepcopy(g.bit_generator.state)
+        b0 = self.first_belief(b0, pose)
         store = _store(env, b0)
         prims.abstain_cost, prims.rng = A_MAIN, ev._rng_at(state)
         assess_pick(object="object", destination=self.destination, care=STAGE1_CARE, primitives=prims, store=store)
@@ -1500,6 +1508,10 @@ class LabCase:
         menu = cache[0]["menu"] if cache else {}
         ok, why = menu_matches([mean_row(x) for x in menu.values() if _same_destination(x, self.destination)], rec1["rows"])
         return (store, "", at_rest) if ok else (None, f"replay gate: {why}", at_rest)
+
+    def first_belief(self, b0: Any, pose: dict[str, Any]) -> Any:
+        """The belief the first menu prices: the prior's draw (the oracle arm's subclass takes the truth)."""
+        return b0
 
     def attempt(self, store: Any, row: str) -> dict[str, Any]:
         from rpent.skills.pick_place.tools import pick_and_place
