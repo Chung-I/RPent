@@ -247,6 +247,68 @@ def g1_metrics(done: list[dict[str, Any]]) -> dict[str, Any]:
     return m
 
 
+G1_EXPECTED = {"pilot": 1756, "poseset": 2344 + 2465}   # the stored simulated rows: the pilot's; the pose set's test and validation
+
+
+def g1_report(units: list[str], expected: dict[str, int]) -> dict[str, Any]:
+    """G1 over its units (g1 run dirs): g1_metrics over every case of every unit, the rows replayed against the rows each
+    source holds (``expected``), the units whose run did not end with EXIT 0, the rows that differ (their fields, no
+    value) and the stopped cases. Passes when every unit ended with EXIT 0, every expected row was replayed and matched,
+    and no case stopped or raised."""
+    done: list[dict[str, Any]] = []
+    bad_exit, revs = [], set()
+    for u in units:
+        ex = os.path.join(u, "run.exit")
+        if not os.path.exists(ex) or open(ex).read().strip() != "EXIT 0":
+            bad_exit.append(u)
+        rp, cp_ = os.path.join(u, "g1_records.jsonl"), os.path.join(u, "run_config.json")
+        if os.path.exists(rp):
+            done += [json.loads(line) for line in open(rp)]
+        if os.path.exists(cp_):
+            revs.add(json.load(open(cp_)).get("code_revision"))
+    m = g1_metrics(done)
+    got = Counter(c["source"] for c in done for _ in c["rows"])
+    m.update(units=len(units), units_not_exit_0=bad_exit, of_rows=dict(expected),
+             missing_rows={s: int(expected[s]) - got.get(s, 0) for s in expected}, code_revisions=sorted(r for r in revs if r),
+             mismatched_rows=[{"source": c["source"], "side": c["side"], "object": c["object"], "idx": c["idx"], "id": r["id"],
+                               "fields": sorted(r.get("diffs") or {}) + [k for k in ("mapping", "hand_path") if r[k] is False]}
+                              for c in done for r in c["rows"] if not r["same"]],
+             stopped_cases=[{k: c[k] for k in ("source", "side", "object", "idx", "stop")} for c in done if c["stop"]])
+    m["passed"] = bool(m["passed"] and not bad_exit and all(v == 0 for v in m["missing_rows"].values()))
+    return m
+
+
+def g1_report_cmd(a: argparse.Namespace) -> dict[str, Any]:
+    """The g1-report command: g1_report over --units (comma-separated) or every unit_* dir of --queue; g1_summary.json
+    and g1_summary.md in --out (counts and field names only; wandb). Exit 3 when G1 fails."""
+    import glob
+
+    from robots.mujoco_lab.tracking import log_run
+
+    units = a.units.split(",") if a.units else sorted(glob.glob(os.path.join(a.queue, "unit_*")), key=lambda d: int(d.rsplit("_", 1)[1]))
+    rep = g1_report(units, G1_EXPECTED)
+    os.makedirs(a.out, exist_ok=True)
+    with open(os.path.join(a.out, "g1_summary.json"), "w") as f:
+        json.dump(rep, f, indent=1)
+    lines = ["# Gate G1", "", f"Result: {'PASSED' if rep['passed'] else 'FAILED'}.", "",
+             "| source | side | cases | rows replayed | rows that differ |", "|---|---|---|---|---|"]
+    lines += [f"| {s} | {side} | {b['cases']} | {b['rows']} | {b['mismatches']} |" for s, v in sorted(rep["by_source"].items())
+              for side, b in sorted(v.items())]
+    lines += ["", f"Rows replayed {rep['rows']} of {sum(rep['of_rows'].values())} ({', '.join(f'{s} {n}' for s, n in rep['of_rows'].items())});"
+              f" rows that differ {rep['mismatches']} (by field {rep['by_field'] or 'none'}); mapping failures {rep['mapping_failures']};"
+              f" hand-path failures {rep['hand_path_failures']}; stopped cases {rep['stops']}; case errors {rep['case_errors']};"
+              f" units not ending with EXIT 0: {len(rep['units_not_exit_0'])} of {rep['units']}.",
+              f"Code: {', '.join(rep['code_revisions'])}. Row time {rep['row_seconds'] / 3600:.2f} CPU-h, case time"
+              f" {rep['case_seconds'] / 3600:.2f} CPU-h."]
+    with open(os.path.join(a.out, "g1_summary.md"), "w") as f:
+        f.write("\n".join(lines) + "\n")
+    rep["wandb"] = log_run("sixdof-g1-report", {"units": units, "expected": G1_EXPECTED}, rep)
+    print("\n".join(lines), flush=True)
+    if not rep["passed"]:
+        raise SystemExit(3)
+    return rep
+
+
 def g1(a: argparse.Namespace) -> str:
     """The G1 command: the stored records of --runs (one source's finished runs; the same Stage 1, seed, bundle and, for
     the pilot, grasps), their cases of --objects and --sides by object in the records' order, each replayed (g1_object);
@@ -312,8 +374,12 @@ def main(argv: list[str] | None = None) -> Any:
     g.add_argument("--objects", default=None, help="comma-separated objects (default: all)")
     g.add_argument("--sides", default="validation,test")
     g.add_argument("--out", required=True)
+    r = sub.add_parser("g1-report", help="G1 over its units: the summary (counts and field names only)")
+    r.add_argument("--units", default=None, help="comma-separated g1 run dirs")
+    r.add_argument("--queue", default=None, help="a queue dir: every unit_* dir in it")
+    r.add_argument("--out", required=True)
     a = ap.parse_args(argv)
-    return {"g1": g1}[a.cmd](a)
+    return {"g1": g1, "g1-report": g1_report_cmd}[a.cmd](a)
 
 
 if __name__ == "__main__":

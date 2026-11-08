@@ -186,3 +186,57 @@ def test_the_metrics_count_rows_mismatches_and_stops_by_source_and_hold_no_label
     assert m["by_source"]["pilot"]["test"] == {"cases": 1, "rows": 2, "mismatches": 1}
     assert "tipped" not in json.dumps(m) and "placed_stable" not in json.dumps(m)
     assert cs.g1_metrics([dict(done[0], rows=rows[:1])])["passed"] is True and cs.g1_metrics([])["passed"] is False
+
+
+# ------------------------------------------------------------------ the report over G1's units
+
+def _unit(tmp_path, k, cases, rows_of, exit_="EXIT 0"):
+    d = tmp_path / f"unit_{k}"
+    d.mkdir()
+    (d / "g1_records.jsonl").write_text("".join(json.dumps(c) + "\n" for c in cases))
+    (d / "run_config.json").write_text(json.dumps({"source": cases[0]["source"], "rows": rows_of, "code_revision": "abc"}))
+    (d / "run.exit").write_text(exit_ + "\n")
+    return str(d)
+
+
+def _case(src, side, o, idx, n, bad=0, stop=None):
+    rows = [{"id": f"g{i}", "same": i >= bad, "diffs": {} if i >= bad else {"trace_sha": ["a", "b"]}, "mapping": True,
+             "hand_path": True, "seconds": 1.0} for i in range(n)]
+    return {"source": src, "side": side, "object": o, "idx": idx, "rows": rows, "stop": stop, "error": None, "seconds": n + 1.0}
+
+
+def test_the_report_adds_the_units_and_passes_only_when_every_stored_row_matched(tmp_path):
+    units = [_unit(tmp_path, 0, [_case("pilot", "test", "a", 0, 3), _case("pilot", "test", "a", 1, 2)], 5),
+             _unit(tmp_path, 1, [_case("poseset", "validation", "b", 0, 4)], 4)]
+    rep = cs.g1_report(units, expected={"pilot": 5, "poseset": 4})
+    assert rep["passed"] and rep["rows"] == 9 and rep["mismatches"] == 0 and rep["units"] == 2
+    assert rep["of_rows"] == {"pilot": 5, "poseset": 4} and rep["missing_rows"] == {"pilot": 0, "poseset": 0}
+    assert rep["code_revisions"] == ["abc"]
+    rep = cs.g1_report(units, expected={"pilot": 6, "poseset": 4})
+    assert not rep["passed"] and rep["missing_rows"]["pilot"] == 1
+
+
+def test_the_report_fails_on_a_mismatch_a_stop_or_a_unit_that_did_not_end_with_exit_0(tmp_path):
+    a = _unit(tmp_path, 0, [_case("pilot", "test", "a", 0, 3, bad=1)], 3, exit_="EXIT 3")
+    b = _unit(tmp_path, 1, [_case("poseset", "test", "b", 0, 2, stop="g1: the hulls after the reset differ from the record's")], 2)
+    rep = cs.g1_report([a, b], expected={"pilot": 3, "poseset": 2})
+    assert not rep["passed"] and rep["mismatches"] == 1 and rep["stops"] == 1 and rep["units_not_exit_0"] == [a]
+    assert rep["mismatched_rows"] == [{"source": "pilot", "side": "test", "object": "a", "idx": 0, "id": "g0", "fields": ["trace_sha"]}]
+    assert rep["stopped_cases"] == [{"source": "poseset", "side": "test", "object": "b", "idx": 0,
+                                     "stop": "g1: the hulls after the reset differ from the record's"}]
+
+
+def test_the_report_command_writes_the_summary_and_exits_3_when_g1_fails(tmp_path, monkeypatch):
+    monkeypatch.setenv("WANDB_MODE", "disabled")
+    monkeypatch.setattr(cs, "G1_EXPECTED", {"pilot": 3, "poseset": 0})
+    q = tmp_path / "q"
+    q.mkdir()
+    _unit(q, 0, [_case("pilot", "test", "a", 0, 3)], 3)
+    rep = cs.main(["g1-report", "--queue", str(q), "--out", str(tmp_path / "s")])
+    md = (tmp_path / "s" / "g1_summary.md").read_text()
+    assert rep["passed"] and "Result: PASSED." in md and "| pilot | test | 1 | 3 | 0 |" in md
+    assert json.loads((tmp_path / "s" / "g1_summary.json").read_text())["rows"] == 3
+    _unit(q, 1, [_case("pilot", "test", "b", 0, 1, bad=1)], 1)
+    with pytest.raises(SystemExit) as e:
+        cs.main(["g1-report", "--queue", str(q), "--out", str(tmp_path / "s2")])
+    assert e.value.code == 3 and "Result: FAILED." in (tmp_path / "s2" / "g1_summary.md").read_text()
