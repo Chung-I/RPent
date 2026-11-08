@@ -365,6 +365,13 @@ def replan_at_hold(trace: list[dict[str, Any]], planned_off: float, rose: bool) 
     return rec, (d if rec["held"] and rose and d > REPLAN_BAND_M else 0.0)
 
 
+def hand_box_geoms(m: Any) -> set[int]:
+    """The gripper's palm, wrist and finger boxes: the geoms of the bodies hand, finger_l and finger_r other than the
+    pads (they collide only from the sim of design amendment 8, daily-logs ee882f9b)."""
+    return {g for g in range(m.ngeom)
+            if m.body(int(m.geom_bodyid[g])).name in ("hand", "finger_l", "finger_r") and m.geom(g).name not in ("pad_l", "pad_r")}
+
+
 class MuJoCoLabEnv:
     """One object on the table with hidden properties, the pads, and the place fixtures."""
 
@@ -377,6 +384,7 @@ class MuJoCoLabEnv:
         self.render = render
         self.damage_meter = bool(damage_meter)
         self.replan_hold = False     # the re-plan at the hold (design amendment 8, rule (f)); off is the published executor
+        self._plan_without_hand_boxes = False
         th0 = Thresholds.from_json(THRESHOLDS_V0)
         self.slosh_zeta = float(th0.slosh_zeta if slosh_zeta is None else slosh_zeta)
         self.slosh_scale = th0.slosh_scale          # the thresholds' forcing factors per profile class and fill
@@ -436,6 +444,28 @@ class MuJoCoLabEnv:
         if path not in self._classes:
             self._classes[path] = load_classes(path)
         return self._classes[path]
+
+    @property
+    def plan_without_hand_boxes(self) -> bool:
+        """The planner without the hand boxes (Stage 2c and oracle-c, the coordinator's ruling A of 2026-11-09): on, the
+        reach and free-move checks test the published collision set (the arm links and the pads), so the menus and the
+        decisions are the published ones while the physics keeps the boxes. Off (the default): the sim's own set."""
+        return self._plan_without_hand_boxes
+
+    @plan_without_hand_boxes.setter
+    def plan_without_hand_boxes(self, on: bool) -> None:
+        self._plan_without_hand_boxes = bool(on)
+        self._planner_geoms()
+
+    def _planner_geoms(self) -> None:
+        """The arm's planner set (Arm.robot_geoms, which Arm.collisions tests) for the scene now: without the hand boxes
+        when plan_without_hand_boxes is on, else the sim's own (every arm and gripper geom that collides)."""
+        arm = getattr(self.sim, "arm", None)
+        if arm is None:
+            return
+        arm._robot_geoms = None
+        if self._plan_without_hand_boxes:
+            arm._robot_geoms = set(arm.robot_geoms()) - hand_box_geoms(self.sim.m)
 
     def reset(self, object_id: str, theta: dict[str, Any] | None = None, seed: int = 0, com_end: int = +1,
               fixture: str | None = None, fill: float = 0.0, frag: dict[str, Any] | None = None) -> None:
@@ -525,6 +555,7 @@ class MuJoCoLabEnv:
         self.spill_deg = spill_angle(entry["cavity"], fill) if liq is not None else None
         self._cavity_axis = np.asarray(entry["cavity"]["axis_obj"], dtype=float) if liq is not None else None
         self.sim = sc.Sim(xml)
+        self._planner_geoms()
         self._install_meter()
         self.fixtures_in_scene = names
         self.fixture = fixture
