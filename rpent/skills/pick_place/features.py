@@ -81,7 +81,23 @@ class Geometry:
 def pinch_width(hulls: Sequence[np.ndarray], point, yaw: float, pad_half=PAD_HALF) -> float:
     """The pinch width: the extent along the closing axis of the convex hulls inside the pads' swept slab
     (|ey . (p - point)| <= pad_half[1] and |z - pad_z| <= pad_half[2], pad_z 4 mm above the point); nan when no
-    hull meets the slab. ``hulls``: each convex hull's vertices in the world frame.
+    hull meets the slab. ``hulls``: each convex hull's vertices in the world frame. It is hi - lo of pinch_extent."""
+    lo, hi = pinch_extent(hulls, point, yaw, pad_half)
+    return hi - lo
+
+
+def column_extent(hulls: Sequence[np.ndarray], point, yaw: float, pad_half=PAD_HALF, height: float = 1.0) -> tuple[float, float]:
+    """pinch_extent over the column the open pads descend through: the slab's footprint from the slab's bottom to
+    ``height`` above its top (the slab of a point raised by height / 2, with its half-height grown by height / 2)."""
+    pt = np.asarray(point, dtype=float)
+    return pinch_extent(hulls, pt + np.array([0.0, 0.0, height / 2]), yaw,
+                        (pad_half[0], pad_half[1], pad_half[2] + height / 2))
+
+
+def pinch_extent(hulls: Sequence[np.ndarray], point, yaw: float, pad_half=PAD_HALF) -> tuple[float, float]:
+    """(lo, hi): the least and the greatest coordinate along the closing axis ex, from the point, of the convex hulls
+    inside the pads' swept slab (pinch_width's slab); (nan, nan) when no hull meets the slab. A pinch is centred when
+    both ends fall between the open pads.
 
     The slab cuts each hull into a convex polytope, and a linear function is extreme at one of its vertices: a
     hull vertex inside the slab, a hull edge crossing a slab face, or one of the slab's four corner lines (they
@@ -131,7 +147,7 @@ def pinch_width(hulls: Sequence[np.ndarray], point, yaw: float, pad_half=PAD_HAL
                 if lo <= hi + tol:
                     vals.append(np.array([lo, hi]))
     allv = np.concatenate(vals) if vals else np.zeros(0)
-    return float(allv.max() - allv.min()) if allv.size else float("nan")
+    return (float(allv.min()), float(allv.max())) if allv.size else (float("nan"), float("nan"))
 
 
 def extract(geometry: Geometry, point, yaw: float, mass: float, mu: float, force: float, v_lift: float,

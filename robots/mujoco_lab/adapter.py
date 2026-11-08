@@ -906,11 +906,26 @@ class MuJoCoLabEnv:
 
         return pinch_width(self._hull_vertex_list(), point, yaw, self.s["scene"].PAD_HALF)
 
-    def proposals(self, fractions: tuple[float, ...] = (0.3, 0.5, 0.7)) -> list[Proposal]:
+    def pinch_extent(self, point: np.ndarray, yaw: float) -> tuple[float, float]:
+        """The hulls' signed extent between the pads, from the point along the closing axis (features.pinch_extent)."""
+        from rpent.skills.pick_place.features import pinch_extent
+
+        return pinch_extent(self._hull_vertex_list(), point, yaw, self.s["scene"].PAD_HALF)
+
+    def column_extent(self, point: np.ndarray, yaw: float) -> tuple[float, float]:
+        """The same over the column the open pads descend through (features.column_extent)."""
+        from rpent.skills.pick_place.features import column_extent
+
+        return column_extent(self._hull_vertex_list(), point, yaw, self.s["scene"].PAD_HALF)
+
+    def proposals(self, fractions: tuple[float, ...] = (0.3, 0.5, 0.7), turn: float = 0.0) -> list[Proposal]:
+        """Pinches at fractions of the long axis, the pads closing across it. ``turn`` (rad) is added to the hand yaw: the
+        pose set's along pinch turns it by -pi/2 (the pads close along the axis, or across the other horizontal side
+        when the axis is vertical)."""
         self._need()
         gr = self.s["grasp"]
         pts = gr.axis_points(self.sim, self.props, list(fractions))
-        yaw, _, _ = self._pinch_frame()
+        yaw = self._pinch_frame()[0] + float(turn)
         return [Proposal(s=float(f), point=[float(x) for x in pt], yaw=yaw, width=self.pinch_width(pt, yaw))
                 for f, pt in zip(fractions, pts)]
 

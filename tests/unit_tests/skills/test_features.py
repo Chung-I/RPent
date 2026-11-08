@@ -18,7 +18,8 @@ import numpy as np
 
 import pytest
 
-from rpent.skills.pick_place.features import FEATURES, PAD_HALF, Geometry, as_vector, extract, pinch_width
+from rpent.skills.pick_place.features import (FEATURES, PAD_HALF, Geometry, as_vector, column_extent, extract, pinch_extent,
+                                              pinch_width)
 
 
 def _box_geometry(w=0.04, l=0.10, h=0.03, com=(0.0, 0.0, 0.0)):
@@ -137,6 +138,12 @@ def _box_vertices(w=0.04, l=0.10, h=0.03, yaw=0.0, centre=(0.0, 0.0, 0.0)):
 
 def _lp_width(hulls, point, yaw, pad_half=PAD_HALF):
     """Reference: per hull, two linear programs for its extreme points along the closing axis in the pad's slab."""
+    lo, hi = _lp_extent(hulls, point, yaw, pad_half)
+    return hi - lo if hi >= lo else float("nan")
+
+
+def _lp_extent(hulls, point, yaw, pad_half=PAD_HALF):
+    """Reference: (lo, hi), the least and greatest coordinate along the closing axis from the point (inf, -inf: none)."""
     from scipy.optimize import linprog
     from scipy.spatial import ConvexHull
 
@@ -156,7 +163,7 @@ def _lp_width(hulls, point, yaw, pad_half=PAD_HALF):
                 break
             v = float(ex @ (r.x - pt))
             lo, hi = min(lo, v), max(hi, v)
-    return hi - lo if hi >= lo else float("nan")
+    return lo, hi
 
 
 def test_exact_width_across_a_box():
@@ -201,6 +208,54 @@ def test_exact_width_matches_a_linear_program():
         point, yaw = rng.uniform(-0.01, 0.01, size=3), float(rng.uniform(-np.pi, np.pi))
         want, got = _lp_width(hulls, point, yaw), pinch_width(hulls, point, yaw)
         assert (np.isnan(want) and np.isnan(got)) or abs(got - want) < 1e-7, (want, got)
+
+
+def test_signed_extent_of_an_off_centre_box():
+    """The pinch's two ends, signed along the closing axis from the pinch point: a box from x -0.02 to +0.06 pinched at
+    x 0 along x (an along pinch of a lying object away from its middle puts one end past the open pad)."""
+    box = _box_vertices(w=0.04, l=0.08, h=0.03, centre=(0.02, 0.0, 0.0))
+    lo, hi = pinch_extent([box], np.zeros(3), 0.0)
+    assert (lo, hi) == (pytest.approx(-0.02, abs=1e-9), pytest.approx(0.06, abs=1e-9))
+    assert pinch_width([box], np.zeros(3), 0.0) == hi - lo
+
+
+def test_signed_extent_without_a_hull_in_the_slab_is_nan():
+    lo, hi = pinch_extent([_box_vertices()], np.array([0.0, 0.0, 0.5]), 0.0)
+    assert np.isnan(lo) and np.isnan(hi)
+
+
+def test_the_width_is_the_extent_exactly_and_the_extent_matches_a_linear_program():
+    from scipy.spatial import ConvexHull
+
+    rng = np.random.default_rng(5)
+    for _ in range(40):
+        hulls = []
+        for _ in range(int(rng.integers(1, 5))):
+            P = rng.uniform(-0.03, 0.03, size=(12, 3)) + rng.uniform(-0.02, 0.02, size=3)
+            hulls.append(P[ConvexHull(P).vertices])
+        point, yaw = rng.uniform(-0.01, 0.01, size=3), float(rng.uniform(-np.pi, np.pi))
+        (lo, hi), w = pinch_extent(hulls, point, yaw), pinch_width(hulls, point, yaw)
+        wl, wh = _lp_extent(hulls, point, yaw)
+        if wh < wl:
+            assert np.isnan(lo) and np.isnan(hi) and np.isnan(w)
+            continue
+        assert w == hi - lo and abs(lo - wl) < 1e-7 and abs(hi - wh) < 1e-7, ((lo, hi), (wl, wh))
+
+
+def test_the_column_extent_reaches_above_the_pad_slab():
+    """The open pads descend through the column above their slab: a 4 cm stem under a 12 cm cap that sits above the
+    slab is 4 cm wide in the slab and 12 cm wide in the column (a pitcher's lip, a box's lid)."""
+    stem = _box_vertices(w=0.04, l=0.04, h=0.04)                          # z -0.02 to 0.02, through the slab
+    cap = _box_vertices(w=0.04, l=0.12, h=0.02, centre=(0.0, 0.0, 0.05))   # z 0.04 to 0.06, above the slab top (0.016)
+    assert pinch_extent([stem, cap], np.zeros(3), 0.0) == (pytest.approx(-0.02, abs=1e-9), pytest.approx(0.02, abs=1e-9))
+    assert column_extent([stem, cap], np.zeros(3), 0.0) == (pytest.approx(-0.06, abs=1e-9), pytest.approx(0.06, abs=1e-9))
+
+
+def test_the_column_starts_at_the_slab_bottom():
+    """What lies below the pad slab (a wide base under the pinch) is not in the column the pads descend through."""
+    base = _box_vertices(w=0.04, l=0.12, h=0.02, centre=(0.0, 0.0, -0.03))  # z -0.04 to -0.02, below the slab (-0.008)
+    stem = _box_vertices(w=0.04, l=0.04, h=0.04)
+    assert column_extent([base, stem], np.zeros(3), 0.0) == (pytest.approx(-0.02, abs=1e-9), pytest.approx(0.02, abs=1e-9))
 
 
 def test_feature_schemas_and_damage_sentinels():
