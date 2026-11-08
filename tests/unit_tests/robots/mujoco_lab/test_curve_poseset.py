@@ -169,7 +169,8 @@ def test_a_wide_box_loses_every_across_row_to_the_width_rule():
 
 def _r(rid, label=None, feasible=True, artifact=False, error=None):
     d, f = rid.split("_")
-    out = {"id": rid, "dir": d, "f": float(f), "current": d == "across" and float(f) in (0.3, 0.5, 0.7), "feasible": feasible}
+    out = {"id": rid, "dir": d, "f": float(f), "current": d == "across" and float(f) in (0.3, 0.5, 0.7), "feasible": feasible,
+           "centred": True}
     if feasible and (label or error):
         out.update(label=label, artifact=artifact, error=error)
     return out
@@ -499,3 +500,209 @@ def test_the_trace_hash_leaves_out_the_joint_torque_reading():
     the reset seed sets (a smoke on 5 validation cases: only fz_joint differed between the two seeds)."""
     a = [{"phase": "lift", "z": 0.1, "fz": 1.0, "fz_joint": 1.3218}]
     assert ps.trace_sha(a) == ps.trace_sha([dict(a[0], fz_joint=1.3030)]) != ps.trace_sha([dict(a[0], fz=1.1)])
+
+
+# ------------------------------------------------------------------ the summary's pieces (synthetic records only)
+
+K0, K4 = "R0|10|2", "R4|10|-"
+
+
+def _ep(success=False, irr=False, give_up=False, labels=(), attempts=None):
+    labels = list(labels)
+    return {"success": success, "irr": irr, "give_up": give_up, "labels": labels, "rows": [],
+            "attempts": len(labels) if attempts is None else attempts}
+
+
+def test_the_ceiling_reading_is_the_designs_two_point_rule():
+    b = lambda d, lo, hi: {"cases": 481, "success": {"diff": d, "lo": lo, "hi": hi}}  # noqa: E731
+    assert ps.ceiling_reading(b(0.05, 0.01, 0.09)) == ps.POSE_LIMIT
+    assert ps.ceiling_reading(b(0.005, 0.0, 0.019)) == ps.POSE_NOT
+    assert ps.ceiling_reading(b(-0.03, -0.05, -0.01)) == ps.POSE_BELOW
+    assert ps.ceiling_reading(b(0.015, 0.002, 0.029)) == "undecided at n = 481"
+    assert ps.ceiling_reading(b(0.04, -0.005, 0.085)) == "undecided at n = 481"
+
+
+def _case(o="a", idx=0, rows=None, oracle=None, oracle_first="commit_std", s2dec=("commit_std", "commit_std"), thin=False,
+          upright=False, com_f=0.5, dropped=(False, False, False), oracle_s=0.5):
+    """A joined case: the pose record (rows -> both ceilings), the Stage 2 record (R0 and R4 first rows, their sims),
+    the Stage 1 record and the oracle record (its first row at pinch s ``oracle_s``, its episode ``oracle``)."""
+    rows = rows if rows is not None else _rows(across_0_5="tipped")
+    c10, c3 = ps.ceiling(rows), ps.ceiling(rows, current_only=True)
+    pose = {"object": o, "idx": idx, "thin": thin, "kind": ps.KIND_OF.get(o, "other"), "hammer": "hammer" in o, "upright": upright,
+            "com_f": com_f, "rows": rows, "ceiling10": c10, "ceiling3": c3, "dropped": dropped[2], "skipped": None, "base": BASE}
+    oracle = oracle or _ep(labels=["tipped"])
+    first = "give_up" if oracle["give_up"] and not oracle["labels"] else oracle_first
+    okey = f'{oracle_first}|{json.dumps(dict(BASE, s=oracle_s), sort_keys=True)}'
+    orec = {"object": o, "idx": idx, "decisions": {K0: first}, "rows": [{"id": oracle_first, "action": okey}], "dropped": dropped[1],
+            "sims": [] if first == "give_up" else [{"seed_k": 0, "first": oracle_first, "label": oracle["labels"][0], "artifact": False,
+                                                     "menu2": {"decisions": {K0: "give_up"}}, "second": {}}]}
+    r0, r4 = s2dec
+    sims = [{"seed_k": 0, "first": f, "label": "tipped", "artifact": False, "menu2": {"decisions": {K0: "give_up", K4: "give_up"}},
+             "second": {}} for f in sorted({r0, r4} - {"give_up"})]
+    s2 = {"object": o, "idx": idx, "thin": thin, "decisions": {K0: r0, K4: r4}, "sims": sims, "dropped": dropped[0]}
+    s1 = {"object": o, "idx": idx, "rows": [{"id": "commit_std", "action": KEY}]}
+    return {"pose": pose, "stage2": s2, "stage1": s1, "oracle": orec}
+
+
+def test_the_paired_set_drops_a_case_any_arm_drops():
+    js = [_case(idx=0), _case(idx=1, dropped=(True, False, False)), _case(idx=2, dropped=(False, False, True)),
+          _case(idx=3, dropped=(False, True, True))]
+    kept, n = ps.paired_set3(js)
+    assert [j["pose"]["idx"] for j in kept] == [0]
+    assert n == {"dropped": 3, "stage2": 1, "oracle": 1, "pose": 2, "pose_only": 1}
+
+
+def test_the_views_carry_the_episodes_the_group_and_the_oracles_pinch():
+    js = [_case(o="handal__hammer_1", rows=_rows(across_0_5="tipped", along_0_5="placed_stable"), oracle_s=0.3),
+          _case(idx=1, oracle=_ep(give_up=True), s2dec=("give_up", "give_up"))]
+    v = ps.views(js, K0, K4)
+    assert v[0]["c10"]["success"] and not v[0]["c3"]["success"] and v[0]["oracle_s"] == 0.3 and v[0]["group"] == "c"
+    assert v[0]["kind"] == "hammers and tools" and v[0]["hammer"] and v[0]["r0"]["labels"] == ["tipped"]
+    assert v[1]["oracle_s"] is None and v[1]["oracle"]["give_up"] and v[1]["group"] == "a" and v[1]["r4"]["give_up"]
+
+
+def test_the_label_mix_counts_the_label_that_ends_each_episode():
+    eps = [_ep(labels=["tipped", "placed_stable"], success=True), _ep(labels=["crushed"], irr=True), _ep(give_up=True), _ep(labels=["tipped"])]
+    assert ps.label_mix(eps) == {"placed_stable": 1, "crushed": 1, "tipped": 1, "give-up": 1}
+
+
+def test_the_kind_table_has_every_kind_and_the_arms_rates():
+    v = ps.views([_case(o="ycb__sugar_box", rows=_rows(across_0_5="placed_stable")), _case(o="fruits_veggies__avocado", idx=1)], K0, K4)
+    t = ps.kind_table(v)
+    assert list(t) == list(ps.KINDS) and t["boxes"]["n"] == 1 and t["boxes"]["c10"]["success"] == 1.0
+    assert t["fruit"]["c10"]["success"] == 0.0 and t["bottles"]["n"] == 0 and t["boxes"]["objects"] == 1
+    assert set(t["boxes"]) == {"n", "objects", "c10", "c3", "oracle", "r4"}
+
+
+def test_the_hammer_line_classes_and_distances_to_the_balance_point():
+    v = ps.views([_case(o="handal__hammer_1", rows=_rows(across_0_5="tipped", across_0_3="placed_stable"), com_f=0.25),
+                  _case(o="handal__hammer_2", idx=1, rows=_rows(across_0_5="not_lifted")),
+                  _case(o="ycb__sugar_box", idx=2)], K0, K4)
+    h = ps.hammer_line(v)
+    assert h["cases"] == 2 and h["classes"] == {c: (1 if c in ("placed by a pose", "not lifted by any pose") else 0) for c in ps.HAMMER_CLASSES}
+    assert h["success_distance"] == [pytest.approx(0.05)] and h["failure_distance"] == [pytest.approx(0.25), pytest.approx(0.0)]
+    assert h["nearest_succeeds"] == {"cases": 2, "succeeds": 1}
+
+
+def test_the_no_row_line_counts_the_group_a_cases_that_gain_a_row():
+    v = ps.views([_case(rows=_rows(along_0_5="placed_stable"), oracle=_ep(give_up=True), s2dec=("give_up", "give_up")),
+                  _case(idx=1, rows=_rows(), oracle=_ep(give_up=True), s2dec=("give_up", "give_up")),
+                  _case(idx=2)], K0, K4)
+    n = ps.no_row_line(v)
+    assert n["cases"] == 2 and n["gain_a_row"] == 1 and n["by_object"] == {"a": {"cases": 2, "gain_a_row": 1}}
+    assert n["c10"]["success"] == 0.5 and n["c10_gained"]["success"] == 1.0
+
+
+def test_the_pose_change_table_over_all_cases_and_the_gain_cases():
+    v = ps.views([_case(rows=_rows(across_0_5="tipped", along_0_5="placed_stable")),
+                  _case(idx=1, rows=_rows(across_0_5="placed_stable"), oracle=_ep(success=True, labels=["placed_stable"]))], K0, K4)
+    t = ps.pose_change_table(v)
+    assert t["all"] == {"direction change only": 1, "the oracle's pose": 1} and t["gain"] == {"direction change only": 1}
+
+
+def test_the_balance_line_compares_the_nearest_row_with_chance_in_mixed_cases():
+    v = ps.views([_case(rows=_rows(across_0_5="tipped", across_0_3="placed_stable"), com_f=0.3),
+                  _case(idx=1, rows=_rows(across_0_5="tipped", across_0_3="placed_stable", across_0_7="tipped"), com_f=0.7),
+                  _case(idx=2, rows=_rows(across_0_5="placed_stable"))], K0, K4)
+    b = ps.balance_line(v)
+    assert b["mixed"] == 2 and b["nearest_succeeds"] == 1 and b["chance"] == pytest.approx((1 / 2 + 1 / 3) / 2)
+
+
+def test_the_coverage_counts_feasible_rows_by_pose():
+    recs = [{"skipped": None, "rows": _rows(across_0_5="tipped", along_0_5="tipped")}, {"skipped": None, "rows": _rows(across_0_5="tipped")},
+            {"skipped": "stage1 error", "rows": []}]
+    c = ps.coverage(recs)
+    assert c["cases"] == 2 and c["by_row"]["across_0.5"] == 2 and c["by_row"]["along_0.5"] == 1 and c["by_row"]["along_0.9"] == 0
+    assert c["rows"] == 3 and c["new_rows"] == 1 and c["expected"]["across_0.1"] == 297 and c["any_row"] == 2
+
+
+# ------------------------------------------------------------------ the summary command, end to end on synthetic records
+
+def _sha256(path):
+    import hashlib
+    return hashlib.sha256(open(path, "rb").read()).hexdigest()
+
+
+def _write(path, obj=None, lines=None):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as f:
+        if lines is not None:
+            f.write("".join(json.dumps(x) + "\n" for x in lines))
+        else:
+            json.dump(obj, f)
+
+
+def _summary_inputs(tmp_path, cases):
+    from robots.mujoco_lab.curve import STAGE1_CONFIG_KEYS, STAGE2_CONFIG_KEYS
+
+    t = str(tmp_path)
+    s1, s2, od, pd = f"{t}/stage1/shard_0", f"{t}/stage2/shard_0", f"{t}/oracle/shard_0", f"{t}/pose/shard_0"
+    _write(f"{s1}/records.jsonl", lines=[dict(c["stage1"], side="test", status="ok") for c in cases])
+    _write(f"{s1}/run_config.json", {k: 1 for k in STAGE1_CONFIG_KEYS})
+    _write(f"{s1}/run_metrics.json", {})
+    h1 = {s1: _sha256(f"{s1}/records.jsonl")}
+    _write(f"{s2}/records_test.jsonl", lines=[dict(c["stage2"], side="test", stop=None, skipped=None) for c in cases])
+    _write(f"{s2}/run_config.json", dict({k: 1 for k in STAGE2_CONFIG_KEYS}, stage1_records_sha256=h1, rules=["R4"]))
+    _write(f"{s2}/run_metrics.json", {"stop": None})
+    _write(f"{t}/stage2_summary.json", {"provenance": {"records_sha256": {f"{s2} test": _sha256(f"{s2}/records_test.jsonl")}}})
+    _write(f"{od}/records_test.jsonl", lines=[dict(c["oracle"], side="test", stop=None, skipped=None) for c in cases])
+    _write(f"{t}/oracle_summary.json", {"provenance": {"oracle_records_sha256": {od: _sha256(f"{od}/records_test.jsonl")}, "keys": [K0, K4]}})
+    _write(f"{pd}/records_test.jsonl", lines=[dict(c["pose"], side="test", stop=None, error=None) for c in cases])
+    _write(f"{pd}/run_config.json", {"bundle": "b", "seed": 1, "stage1_records_sha256": h1, "code_revision": "x", "fracs": list(FRACS),
+                                     "row_order": [list(x) for x in ps.ROW_ORDER], "replay": False, "sides": "test"})
+    _write(f"{pd}/run_metrics.json", {"stop": None})
+    open(f"{pd}/run.exit", "w").write("EXIT 0\n")
+    _write(f"{t}/locked.json", {"lock": {"R0": {"key": K0, "knob": 2.0}, "R4": {"key": K4, "knob": None}}})
+    return SimpleNamespace(runs=pd, stage2=s2, stage2_summary=f"{t}/stage2_summary.json", oracle=od,
+                           oracle_summary=f"{t}/oracle_summary.json", locked=f"{t}/locked.json", out=f"{t}/summary")
+
+
+def _three_cases():
+    return [_case(o="ycb__sugar_box", idx=0, rows=_rows(across_0_5="tipped", along_0_5="placed_stable")),
+            _case(o="handal__hammer_1", idx=1, rows=_rows(across_0_5="tipped", across_0_3="placed_stable"), com_f=0.3),
+            _case(o="fruits_veggies__avocado", idx=2, rows=_rows(), oracle=_ep(give_up=True), s2dec=("give_up", "give_up"), thin=True)]
+
+
+def test_the_summary_reads_every_input_once_and_writes_the_readings(tmp_path, monkeypatch):
+    monkeypatch.setenv("WANDB_MODE", "disabled")
+    a = _summary_inputs(tmp_path, _three_cases())
+    rep = ps.summary(a)
+    for f in ("poseset_summary.json", "poseset_summary.md", "poseset_points.png"):
+        assert os.path.exists(os.path.join(a.out, f))
+    R = rep["readings"]
+    assert rep["counts"]["paired"] == 3 and rep["counts"]["thin_cases"] == 1
+    assert R["all"]["1p_pose_term"]["success"]["diff"] == pytest.approx(1 / 3) and R["all"]["1p_pose_term"]["cases"] == 3
+    assert R["no_thin"]["1p_pose_term"]["cases"] == 2 and R["all"]["1p_reading"] == ps.ceiling_reading(R["all"]["1p_pose_term"])
+    assert R["all"]["1_vs_oracle"]["rate_b"]["success"] == 0.0 and R["all"]["selector_term"]["rate_a"]["success"] == pytest.approx(1 / 3)
+    assert R["4_hammer"]["cases"] == 1 and R["5_no_row"]["cases"] == 1 and R["6_pose_change"]["gain"] == {"direction change only": 1,
+                                                                                                         "fraction change only": 1}
+    assert rep["disclosures"]["stage2_gate"]["compared"] == 2 and rep["disclosures"]["coverage"]["cases"] == 3
+    with pytest.raises(SystemExit):
+        ps.summary(a)                                                          # an existing summary is refused
+
+
+def test_a_stage2_gate_mismatch_stops_the_summary_before_any_reading(tmp_path, monkeypatch):
+    monkeypatch.setenv("WANDB_MODE", "disabled")
+    cases = _three_cases()
+    cases[0]["stage2"]["sims"][0]["label"] = "placed_stable"                  # Stage 2 placed what the pose row tipped
+    a = _summary_inputs(tmp_path, cases)
+    with pytest.raises(SystemExit) as e:
+        ps.summary(a)
+    assert e.value.code == 3 and os.path.exists(os.path.join(a.out, "poseset_summary_stop.json"))
+    assert not os.path.exists(os.path.join(a.out, "poseset_summary.json"))
+
+
+def test_the_summary_refuses_records_the_input_summaries_did_not_read(tmp_path, monkeypatch):
+    monkeypatch.setenv("WANDB_MODE", "disabled")
+    a = _summary_inputs(tmp_path, _three_cases())
+    with open(os.path.join(a.oracle, "records_test.jsonl"), "a") as f:
+        f.write("\n")
+    with pytest.raises(SystemExit) as e:
+        ps.summary(a)
+    assert "oracle" in str(e.value)
+
+
+def test_the_selector_term_and_reading_2_carry_no_reading_rule():
+    b = ps._block(ps.views([_case()], K0, K4))
+    assert set(k for k in b if k.endswith("_reading")) == {"1p_reading", "1_reading"}
+    assert ps._block([])["1p_reading"] is None
