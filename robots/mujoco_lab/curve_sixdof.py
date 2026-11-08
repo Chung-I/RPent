@@ -419,6 +419,9 @@ def g1_report(units: list[str], expected: dict[str, int]) -> dict[str, Any]:
     return m
 
 
+TO_CLOSE = ("untraced", "approach", "close")    # the recorder's phases up to the close: the audit's scope for the object
+
+
 def g1p_report(units: list[str], flagged: set[tuple[Any, ...]], expected: dict[str, int]) -> dict[str, Any]:
     """Revised gate G1′ (design amendment 8, ruling (b): a row changes only if a palm, wrist or finger box touches
     something during the rollout) over its units: g1_report's counts, then the gate: the changed rows (a differing field
@@ -426,8 +429,9 @@ def g1p_report(units: list[str], flagged: set[tuple[Any, ...]], expected: dict[s
     fields, labels, error and whether a rollout ran). Beside the gate, not as pass conditions, the palm-contact audit's
     list (``flagged``: (source, side, object, idx, id) of each row it flagged), read as the prediction for box contacts
     before the close: the flagged rows changed and identical; the unflagged rows identical and changed, the changed ones
-    by the phase of their first box contact and by that contact (phase, box, partner); the identical rows that show a box
-    contact; the label transitions (stored → new) of the changed rows by object; the flagged rows changed by transition
+    by the phase of their first box contact and by that contact (phase, box, partner); the flagged and the unflagged
+    rows with a box contact up to the close (the untraced free move and settle, the approach, the close), and those of
+    them deeper than 1 mm (the audit's primary threshold); the identical rows that show a box contact; the label transitions (stored → new) of the changed rows by object; the flagged rows changed by transition
     and by object; every changed row that the list lacks (its fields, labels, error and first contact) and the list's
     rows that no unit replayed. Passes when every unit ended with EXIT 0, every expected row was replayed, no case
     stopped or raised, no mapping or hand-path check failed, the recorder saw every row and every changed row shows a box
@@ -448,6 +452,11 @@ def g1p_report(units: list[str], flagged: set[tuple[Any, ...]], expected: dict[s
     def phase(r: dict[str, Any]) -> str:
         return first(r)["phase"] if first(r) else ("none" if "box_contacts" in r else "not recorded")
 
+    def to_close(part: list[tuple[dict[str, Any], dict[str, Any]]]) -> dict[str, int]:
+        deep = [max((v["deepest_mm"] for k, v in (r.get("box_contacts") or {}).get("by", {}).items() if k.split("|")[0] in TO_CLOSE),
+                    default=None) for _, r in part]
+        return {"rows": len(part), "contact": sum(x is not None for x in deep), "contact_over_1mm": sum(x is not None and x > 1.0 for x in deep)}
+
     changed = [(c, r) for c, r in rows if not r["same"]]
     bare = [(c, r) for c, r in changed if "box_contacts" in r and first(r) is None]
     unf = [(c, r) for c, r in rows if key(c, r) not in flagged]
@@ -464,6 +473,7 @@ def g1p_report(units: list[str], flagged: set[tuple[Any, ...]], expected: dict[s
                flagged={"rows": len(fl), "changed": len(cf), "identical": len(fl) - len(cf)},
                unflagged={"rows": len(unf), "identical": len(unf) - len(cu), "changed": len(cu),
                           "changed_by_first_phase": dict(Counter(phase(r) for _, r in cu))},
+               list_vs_contact_to_close={"flagged": to_close(fl), "unflagged": to_close(unf)},
                unflagged_changed_by_first_contact=dict(Counter(f"{f['phase']} {f['box']}/{f['partner']}" if (f := first(r)) else phase(r)
                                                                for _, r in cu)),
                identical_with_contact=[dict(where(c, r), first_contact=first(r)) for c, r in rows if r["same"] and first(r)],
@@ -511,7 +521,7 @@ def g1p_report_cmd(a: argparse.Namespace) -> dict[str, Any]:
     os.makedirs(a.out, exist_ok=True)
     with open(os.path.join(a.out, "g1p_summary.json"), "w") as f:
         json.dump(rep, f, indent=1)
-    g, u, fl = rep["gate"], rep["unflagged"], rep["flagged"]
+    g, u, fl, tc = rep["gate"], rep["unflagged"], rep["flagged"], rep["list_vs_contact_to_close"]
     md = ["# Gate G1′, revised (amendment 8, ruling (b): a row changes only if a palm, wrist or finger box touches something)", "",
           f"Result: {'PASSED' if rep['passed'] else 'FAILED'}.", "", "## The gate", "",
           f"- Changed rows (a differing label, qpos_sha or trace_sha, or a failed geometry check): {g['changed']}. With a box contact:"
@@ -526,6 +536,10 @@ def g1p_report_cmd(a: argparse.Namespace) -> dict[str, Any]:
            f"- Flagged rows changed: {fl['changed']} of {fl['rows']} (identical {fl['identical']}).",
            f"- Unflagged rows changed: {u['changed']} of {u['rows']} (identical {u['identical']}).",
            f"- Identical rows that show a box contact: {len(rep['identical_with_contact'])}.",
+           "- The list as the prediction for box contacts up to the close (the free move, the settle, the approach, the close):"
+           f" flagged rows with one {tc['flagged']['contact']} of {tc['flagged']['rows']} (deeper than 1 mm"
+           f" {tc['flagged']['contact_over_1mm']}); unflagged rows with one {tc['unflagged']['contact']} of {tc['unflagged']['rows']}"
+           f" (deeper than 1 mm {tc['unflagged']['contact_over_1mm']}).",
            f"- The list: {rep['flagged_list']}; rows of it not replayed: {len(rep['flagged_not_replayed'])}.", "",
            "### Unflagged rows that changed, by the phase of the first box contact", "", "| phase | rows |", "|---|---|"]
     md += [f"| {k} | {n} |" for k, n in sorted(u["changed_by_first_phase"].items(), key=lambda x: -x[1])]

@@ -485,6 +485,19 @@ def test_revised_g1_prime_passes_when_every_changed_row_shows_a_box_contact_and_
     assert rep["flagged_not_replayed"] == [["poseset", "test", "box", 0, "along_0.9"]]
 
 
+def test_the_report_reads_the_list_as_the_prediction_for_box_contacts_up_to_the_close(tmp_path):
+    rep = cs.g1p_report(_g1p_units(tmp_path / "a"), FLAGGED, {"pilot": 2, "poseset": 3})
+    assert rep["list_vs_contact_to_close"] == {"flagged": {"rows": 2, "contact": 1, "contact_over_1mm": 1},
+                                               "unflagged": {"rows": 3, "contact": 0, "contact_over_1mm": 0}}
+    touch = _row("g0", diffs={"trace_sha": ["a", "b"]}, contact=_contact("close", mm=0.05))
+    touch["box_contacts"]["by"]["release|finger/object"] = {"substeps": 2, "deepest_mm": 3.0}       # deeper, after the close
+    rep = cs.g1p_report(_g1p_units(tmp_path / "b", mug_g0=touch), FLAGGED, {"pilot": 2, "poseset": 3})
+    assert rep["list_vs_contact_to_close"]["unflagged"] == {"rows": 3, "contact": 1, "contact_over_1mm": 0}
+    free = _row("g0", diffs={"trace_sha": ["a", "b"]}, contact=_contact("untraced", mm=1.5, t=None))  # the free move or settle
+    rep = cs.g1p_report(_g1p_units(tmp_path / "c", mug_g0=free), FLAGGED, {"pilot": 2, "poseset": 3})
+    assert rep["list_vs_contact_to_close"]["unflagged"] == {"rows": 3, "contact": 1, "contact_over_1mm": 1}
+
+
 def test_revised_g1_prime_fails_on_a_changed_row_without_a_box_contact_whatever_the_list_says(tmp_path):
     bare = _row("g0", stored="tipped", label=None, error="Unreachable: x", diffs={"label": ["tipped", None]})
     flagged = FLAGGED | {("pilot", "validation", "mug", 2, "g0")}
@@ -564,6 +577,7 @@ def test_the_g1_prime_report_command_writes_the_gate_and_the_audit_reading_and_e
     rep = cs.main(["g1p-report", "--queue", str(tmp_path / "q"), "--flagged", str(lst), "--out", str(tmp_path / "s")])
     md = (tmp_path / "s" / "g1p_summary.md").read_text()
     assert rep["passed"] and "Result: PASSED." in md and "| release | 1 |" in md and "| mug | placed_stable → placed_stable | 1 |" in md
+    assert "flagged rows with one 1 of 2 (deeper than 1 mm 1); unflagged rows with one 0 of 3 (deeper than 1 mm 0)" in md
     assert json.loads((tmp_path / "s" / "g1p_summary.json").read_text())["unflagged"]["changed"] == 1
     _g1p_units(tmp_path / "q2", mug_g0=_row("g0", diffs={"trace_sha": ["a", "b"]}))
     with pytest.raises(SystemExit) as e:
