@@ -619,3 +619,412 @@ def test_the_gate_row_runs_only_where_the_pose_set_could_run_its_across_pinch(la
     gate = rec["rows"][-1]
     assert gate["gate"] and not gate["feasible"] and gate["why"] == "wider than the gripper opening" and "seconds" not in gate
     assert rec["stop"] is None and all(c[0] != 0.0 for c in lab.calls)
+
+
+# ------------------------------------------------------------------ the summary's pieces (synthetic records only)
+
+K0, K4 = "R0|10|2", "R4|10|-"
+CURRENT_IDS = ("across_0.3", "across_0.5", "across_0.7")
+
+
+def _g(rid, rank, label=None, kept=True, kept_b=True, f=0.5, h=0.5, r_axis=0.0, near=None, near_current=None, artifact=False, error=None):
+    """A pilot row: tags and, when simulated, its outcome."""
+    r = {"id": rid, "rank": rank, "kept": kept, "kept_b": kept_b, "f": f, "h": h, "r_axis": r_axis, "near": near,
+         "near_current": near in CURRENT_IDS if near_current is None else near_current}
+    if label is not None or error is not None:
+        r.update(label=label, artifact=artifact, error=error, seconds=1.0)
+    return r
+
+
+def _gate(sha=("q1", "t1")):
+    return {"id": "gate_across_0.5", "rank": -1, "gate": True, "feasible": True, "kept": False, "kept_b": False, "label": "tipped",
+            "artifact": False, "error": None, "qpos_sha": sha[0], "trace_sha": sha[1], "seconds": 1.0}
+
+
+def _prows(**labels):
+    """The pose set's ten rows; ``labels`` by id (across_0_5 for across_0.5), the others not feasible."""
+    from robots.mujoco_lab import curve_poseset as ps
+
+    out = []
+    for d, f in ps.ROW_ORDER:
+        rid = ps.row_id(d, f)
+        lab = labels.get(rid.replace(".", "_"))
+        r = {"id": rid, "dir": d, "f": f, "feasible": lab is not None, "current": rid in CURRENT_IDS}
+        if lab is not None:
+            r.update(label=lab, artifact=False, error=None, qpos_sha="q1", trace_sha="t1", seconds=1.0)
+        out.append(r)
+    return out
+
+
+def _ep(success=False, irr=False, give_up=False, labels=()):
+    return {"success": success, "irr": irr, "give_up": give_up, "labels": list(labels), "rows": [], "attempts": len(labels)}
+
+
+def _sims(key, label):
+    return [] if label is None else [{"seed_k": 0, "first": "commit_std", "label": label, "artifact": False,
+                                      "menu2": {"decisions": {K0: "give_up", K4: "give_up"}}, "second": {}}]
+
+
+def _jcase(o="ycb__sugar_box", idx=0, rows=(), prows=None, side="test", oracle="tipped", r4="tipped", com_f=0.5, length=0.3,
+           dropped=(False, False, False, False), gate=("q1", "t1"), undetermined_b=False):
+    """A joined case: the pilot record ("g"), the pose-set record, the oracle record (its first attempt's label, None: it
+    gives up) and the Stage 2 record (R4's first label, None: it gives up)."""
+    from robots.mujoco_lab import curve_poseset as ps
+
+    rows = list(rows) + ([_gate(gate)] if gate is not None else [])
+    c, cb = gg.ceiling(rows, "kept"), gg.ceiling(rows, "kept_b")
+    if undetermined_b:
+        cb = dict(cb, determined=False)
+    counts = dict(zip(gg.FUNNEL + gg.FUNNEL_B, (200, 30, 30, 20, 15, 15, 12, 10, 25, 22, 22, 18, 14)))
+    frame = {"n": 30, "tol_mm": 5.0, "rows": [{"k": 0, "approach_deg": 5.0, "palm": {"opening": 0.06, "width": 0.062, "width_b": 0.061},
+                                               "tip": {"opening": float("nan"), "width": float("nan"), "width_b": float("nan")}}],
+             "palm": {"opening_found": 30, "width_found": 30, "both": 30, "within_5mm": 25, "median_abs_mm": 2.0},
+             "tip": {"opening_found": 0, "width_found": 0, "both": 0, "within_5mm": 0, "median_abs_mm": None}}
+    g = {"object": o, "idx": idx, "side": side, "thin": False, "kind": ps.KIND_OF.get(o, "other"), "hammer": "hammer" in o,
+         "upright": False, "com_f": com_f, "length": length, "rows": rows, "counts": counts, "frame": frame, "ceiling": c, "ceiling_b": cb,
+         "dropped": dropped[0] or not c["determined"], "skipped": None, "stop": None, "error": None, "seconds": 5.0}
+    prows = prows if prows is not None else _prows(across_0_5="tipped")
+    pose = {"object": o, "idx": idx, "side": side, "thin": False, "rows": prows, "ceiling10": ps.ceiling(prows),
+            "ceiling3": ps.ceiling(prows, current_only=True), "dropped": dropped[1], "skipped": None, "stop": None, "error": None}
+    orec = {"object": o, "idx": idx, "side": side, "decisions": {K0: "give_up" if oracle is None else "commit_std"}, "sims": _sims(K0, oracle),
+            "dropped": dropped[2], "stop": None, "skipped": None}
+    s2 = {"object": o, "idx": idx, "side": side, "thin": False, "decisions": {K0: "give_up", K4: "give_up" if r4 is None else "commit_std"},
+          "sims": _sims(K4, r4), "dropped": dropped[3], "stop": None, "skipped": None}
+    return {"g": g, "pose": pose, "oracle": orec, "stage2": s2}
+
+
+def test_the_angle_histogram_bins_the_approach_from_straight_down():
+    G = [_grasp(approach=(math.sin(math.radians(a)), 0.0, -math.cos(math.radians(a))), closing=(0.0, 1.0, 0.0))
+         for a in (0.0, 30.0, 45.0, 60.0, 90.0, 120.0, 150.0, 180.0)]
+    assert gg.angle_histogram(np.array(G)) == [2, 2, 2, 2]
+    assert gg.ANGLE_BINS == ("within 30° of down", "30–60°", "side (60–120°)", "from below (> 120°)")
+
+
+def test_a_rows_tag_puts_an_axis_rule_pose_first_then_the_rim_then_off_the_axis():
+    assert gg.row_tag(_g("a", 0, near="along_0.5", h=0.95, r_axis=0.05)) == "an axis-rule pose"
+    assert gg.row_tag(_g("b", 0, h=0.85, r_axis=0.05)) == "rim or top edge"
+    assert gg.row_tag(_g("c", 0, h=0.84, r_axis=0.0101)) == "off the axis"
+    assert gg.row_tag(_g("d", 0, h=0.5, r_axis=0.01)) == "on the axis at another fraction or yaw"
+    assert gg.TAGS == ("an axis-rule pose", "rim or top edge", "off the axis", "on the axis at another fraction or yaw")
+
+
+def test_the_exact_gate_compares_the_gate_row_with_the_pose_sets_across_pinch():
+    recs = [_jcase(idx=0)["g"], _jcase(idx=1, gate=("q9", "t1"))["g"], _jcase(idx=2)["g"], _jcase(idx=3, gate=None)["g"],
+            _jcase(idx=4, gate=("q1", "t9"))["g"]]
+    pose = [_jcase(idx=0)["pose"], _jcase(idx=1)["pose"], _jcase(idx=2, prows=_prows(across_0_3="tipped"))["pose"], _jcase(idx=3)["pose"],
+            _jcase(idx=4)["pose"]]
+    g = gg.exact_gate(recs, pose)
+    assert {k: g[k] for k in ("cases", "equal", "differ", "missing")} == {"cases": 4, "equal": 1, "differ": 2, "missing": 1}
+    assert g["differences"] == [{"object": "ycb__sugar_box", "idx": 1}, {"object": "ycb__sugar_box", "idx": 4}]
+
+
+def test_the_paired_set_drops_a_case_any_arm_drops_or_an_undetermined_variant():
+    js = [_jcase(idx=0), _jcase(idx=1, dropped=(True, False, False, False)), _jcase(idx=2, undetermined_b=True),
+          _jcase(idx=3, dropped=(False, True, False, False)), _jcase(idx=4, dropped=(False, False, True, False)),
+          _jcase(idx=5, dropped=(False, False, False, True))]
+    kept, n = gg.pilot_paired(js)
+    assert [j["g"]["idx"] for j in kept] == [0]
+    assert n == {"dropped": 5, "graspgen": 1, "variant": 1, "pose": 1, "oracle": 1, "stage2": 1}
+
+
+def test_the_views_carry_both_graspgen_ceilings_and_the_four_arms_without_the_gate_row():
+    j = _jcase(rows=[_g("g0", 0, "tipped"), _g("g1", 1, "placed_stable", kept=False)], prows=_prows(across_0_5="placed_stable"),
+               oracle="placed_stable", r4=None)
+    v = gg.pilot_views([j], K0, K4)[0]
+    assert not v["gg"]["success"] and v["ggb"]["success"] and v["c10"]["success"] and v["c3"]["success"]
+    assert v["oracle"]["success"] and v["r4"]["give_up"] and [r["id"] for r in v["rows"]] == ["g0", "g1"]
+    assert v["side"] == "test" and v["com_f"] == 0.5 and v["length"] == 0.3 and v["prows"][0]["id"] == "across_0.5"
+
+
+def test_the_pilot_rule_is_the_two_point_rule_with_no_verdict():
+    b = lambda d, lo, hi: {"cases": 88, "success": {"diff": d, "lo": lo, "hi": hi}}  # noqa: E731
+    assert gg.pilot_rule(b(0.05, 0.01, 0.09)) == gg.G_ABOVE
+    assert gg.pilot_rule(b(0.005, -0.01, 0.019)) == gg.G_NOT
+    assert gg.pilot_rule(b(0.04, -0.005, 0.085)) == "undecided at n = 88"
+    assert "10-pinch" in gg.G_ABOVE and "10-pinch" in gg.G_NOT
+
+
+def test_the_pilot_block_pairs_graspgen_with_the_ten_pinch_ceiling_and_counts_the_two_by_two():
+    placed, tipped = _prows(across_0_5="placed_stable"), _prows(across_0_5="tipped")
+    vs = gg.pilot_views([_jcase(o="a", idx=0, rows=[_g("g0", 0, "placed_stable")], prows=placed),
+                         _jcase(o="a", idx=1, rows=[_g("g0", 0, "placed_stable")], prows=tipped),
+                         _jcase(o="b", idx=2, rows=[_g("g0", 0, "tipped", kept=False)], prows=tipped)], K0, K4)
+    b = gg.pilot_block(vs)
+    assert b["cases"] == 3 and b["objects"] == 2 and b["gg_vs_c10"]["success"]["diff"] == pytest.approx(1 / 3)
+    assert b["rates"]["gg"]["success"] == pytest.approx(2 / 3) and b["rates"]["gg"]["give_up"] == pytest.approx(1 / 3)
+    assert b["success_2x2"] == {"both": 1, "graspgen_only": 1, "c10_only": 0, "neither": 1}
+    assert b["success_2x2_b"] == {"both": 1, "graspgen_only": 1, "c10_only": 0, "neither": 1}
+    assert b["rule"] == gg.pilot_rule(b["gg_vs_c10"]) and b["rule_b"] == gg.pilot_rule(b["ggb_vs_c10"])
+    assert set(b["rates"]) == set(gg.ARMS) and gg.pilot_block([])["rule"] is None
+
+
+def test_the_by_object_table_has_each_objects_side_count_and_arm_rates():
+    vs = gg.pilot_views([_jcase(o="a", idx=0, rows=[_g("g0", 0, "placed_stable")]), _jcase(o="b", idx=1, side="validation")], K0, K4)
+    t = gg.by_object(vs)
+    assert list(t) == ["a", "b"] and t["a"]["n"] == 1 and t["a"]["side"] == "test" and t["a"]["gg"]["success"] == 1.0
+    assert t["b"]["side"] == "validation" and t["b"]["gg"]["give_up"] == 1.0 and set(t["a"]) == {"side", "n", *gg.ARMS}
+
+
+def test_the_hammer_line_classes_each_rule_and_measures_the_placing_rows_from_the_balance_point_and_the_head():
+    h1 = _jcase(o="handal__hammer_1", idx=0, com_f=0.2, length=0.3,
+                rows=[_g("g0", 0, "placed_stable", f=0.25), _g("g1", 1, "not_lifted", kept=False, f=0.8)], prows=_prows(across_0_5="tipped"))
+    h2 = _jcase(o="handal__hammer_7", idx=1, com_f=0.9, length=0.4, rows=[_g("g0", 0, "tipped", kept=False, f=0.6)],
+                prows=_prows(across_0_5="not_lifted"))
+    box = _jcase(o="ycb__sugar_box", idx=2, rows=[_g("g0", 0, "placed_stable")])
+    h = gg.hammer_line(gg.pilot_views([h1, h2, box], K0, K4))
+    assert h["cases"] == 2 and h["objects"] == ["handal__hammer_1", "handal__hammer_7"]
+    assert h["classes"]["gg"]["placed by a row"] == 1 and h["classes"]["gg"]["no kept row"] == 1
+    assert h["classes"]["ggb"]["placed by a row"] == 1 and h["classes"]["ggb"]["lifted, never placed"] == 1
+    assert h["c10_classes"]["lifted, never placed"] == 1 and h["c10_classes"]["not lifted by any pose"] == 1
+    assert h["placed"]["balance_m"] == [pytest.approx(0.015)] and h["placed"]["head_m"] == [pytest.approx(0.075)]
+    assert sorted(h["not_placed"]["balance_m"]) == [pytest.approx(0.12), pytest.approx(0.18)]
+    assert sorted(h["not_placed"]["head_m"]) == [pytest.approx(0.16), pytest.approx(0.24)]     # hammer_7's head is at its f = 1 end
+    pc = h["per_case"][0]
+    assert pc["placed"] == [{"id": "g0", "f": 0.25, "balance_m": pytest.approx(0.015), "head_m": pytest.approx(0.075),
+                             "tag": "on the axis at another fraction or yaw", "rules": ["gg", "ggb"]}]
+    assert pc["classes"] == {"gg": "placed by a row", "ggb": "placed by a row"} and pc["c10_class"] == "lifted, never placed"
+
+
+def test_the_object_line_counts_the_bowls_rows_by_tag_and_rule_and_their_labels():
+    bowl = _jcase(o="ycb__bowl", idx=0, rows=[_g("g0", 0, "placed_stable", kept=False, h=0.9), _g("g1", 1, "tipped")], prows=_prows())
+    pitcher = _jcase(o="ycb__pitcher", idx=1, rows=[], prows=_prows())
+    x = gg.object_line(gg.pilot_views([bowl, pitcher], K0, K4))
+    on = "on the axis at another fraction or yaw"
+    b, bb = x["ycb__bowl"]["gg"], x["ycb__bowl"]["ggb"]
+    assert (b["cases"], b["cases_with_row"], b["rows"], b["clean"], b["placing"], b["cases_placed"]) == (1, 1, 1, 1, 0, 0)
+    assert b["tags"] == {on: 1} and b["labels"] == {"tipped": 1} and b["placing_tags"] == {}
+    assert bb["rows"] == 2 and bb["tags"] == {"rim or top edge": 1, on: 1} and bb["placing_tags"] == {"rim or top edge": 1}
+    assert bb["cases_placed"] == 1 and bb["labels"] == {"placed_stable": 1, "tipped": 1}
+    p = x["ycb__pitcher"]["gg"]
+    assert (p["cases"], p["cases_with_row"], p["rows"]) == (1, 0, 0) and x["ycb__pitcher"]["c10_placed"] == 0
+    assert list(x) == list(gg.ROW_OBJECTS)
+
+
+def test_the_placing_tags_count_rows_cases_and_the_gain_cases():
+    a = _jcase(o="a", idx=0, rows=[_g("g0", 0, "placed_stable", near="across_0.5"), _g("g1", 1, "placed_stable", h=0.9),
+                                   _g("g2", 2, "tipped", r_axis=0.05)], prows=_prows(along_0_5="placed_stable"))   # c10 places, c3 not
+    b = _jcase(o="b", idx=1, rows=[_g("g0", 0, "placed_stable", r_axis=0.05), _g("g1", 1, "placed_stable", r_axis=0.06, kept=False)])
+    c = _jcase(o="b", idx=2, rows=[_g("g0", 0, "tipped")], prows=_prows(across_0_5="placed_stable"))
+    t = gg.placing_tags(gg.pilot_views([a, b, c], K0, K4), "gg")
+    assert t["rows"] == {"an axis-rule pose": 1, "rim or top edge": 1, "off the axis": 1}
+    assert t["cases"] == {"an axis-rule pose": 1, "rim or top edge": 1, "off the axis": 1}
+    assert t["by_object"] == {"a": {"an axis-rule pose": 1, "rim or top edge": 1}, "b": {"off the axis": 1}}
+    assert t["gain"] == {"cases": 1, "tags": {"off the axis": 1}} and t["loss"] == {"cases": 1}
+    tb = gg.placing_tags(gg.pilot_views([a, b, c], K0, K4), "ggb")
+    assert tb["rows"]["off the axis"] == 2 and tb["cases"]["off the axis"] == 1
+
+
+def test_the_label_gate_compares_a_kept_row_at_a_current_pinch_with_the_pose_sets_label():
+    j = _jcase(rows=[_g("g0", 0, "tipped", near="across_0.5"), _g("g1", 1, "placed_stable", near="across_0.3"),
+                     _g("g2", 2, "tipped", near="along_0.5"), _g("g3", 3, "tipped", near="across_0.7"),
+                     _g("g4", 4, "tipped", near="across_0.5", kept=False, kept_b=False)],
+               prows=_prows(across_0_5="tipped", across_0_3="tipped", along_0_5="placed_stable"))
+    g = gg.label_gate(gg.pilot_views([j], K0, K4))
+    assert {k: g[k] for k in ("compared", "agree", "differ", "missing")} == {"compared": 2, "agree": 1, "differ": 1, "missing": 1}
+    assert g["differences"] == [{"object": "ycb__sugar_box", "idx": 0, "row": "g1", "pose_row": "across_0.3",
+                                 "graspgen": "placed_stable", "pose": "tipped"}]
+
+
+def test_the_funnel_table_sums_each_object_and_the_share_lost_at_the_approach_step():
+    recs = [_jcase(o="a", idx=0)["g"], _jcase(o="a", idx=1)["g"], _jcase(o="b", idx=2)["g"], dict(_jcase(o="b", idx=3)["g"], counts=None)]
+    t = gg.funnel_table(recs)
+    assert t["a"]["generated"] == 400 and t["a"]["vertical"] == 60 and t["all"]["kept_b"] == 42 and t["b"]["cases"] == 1
+    assert t["a"]["lost_at_approach"] == pytest.approx(0.85) and list(t) == ["a", "b", "all"]
+
+
+# ------------------------------------------------------------------ the summary command, end to end on synthetic records
+
+def _sha256(path):
+    import hashlib
+    return hashlib.sha256(open(path, "rb").read()).hexdigest()
+
+
+def _write(path, obj=None, lines=None):
+    import json
+    import os
+
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as f:
+        if lines is not None:
+            f.write("".join(json.dumps(x) + "\n" for x in lines))
+        else:
+            json.dump(obj, f)
+
+
+def _done(d):
+    _write(f"{d}/run_metrics.json", {"stop": None})
+    open(f"{d}/run.exit", "w").write("EXIT 0\n")
+
+
+def _pilot_inputs(tmp_path, cases):
+    """Every input of the summary for the joined ``cases``: Stage 1, Stage 2 and its summary, the oracle arm (test runs
+    with its summary, validation runs), the pose set (the same), the grasps (2 per case: straight down and from the side),
+    one pilot run, the smoke report and the lock."""
+    from robots.mujoco_lab.curve import STAGE1_CONFIG_KEYS, STAGE2_CONFIG_KEYS
+    from robots.mujoco_lab.graspgen_request import sha_arrays
+
+    t = str(tmp_path)
+    s1, s2, gr = f"{t}/stage1/shard_0", f"{t}/stage2/shard_0", f"{t}/grasps"
+    pt, pv, ot, ov, gd = f"{t}/pose/test_0", f"{t}/pose/val_0", f"{t}/oracle/test_0", f"{t}/oracle/val_0", f"{t}/pilot/unit_0"
+    _write(f"{s1}/records.jsonl", lines=[{"object": c["g"]["object"], "idx": c["g"]["idx"], "side": c["g"]["side"], "status": "ok"} for c in cases])
+    _write(f"{s1}/run_config.json", {k: 1 for k in STAGE1_CONFIG_KEYS})
+    _write(f"{s1}/run_metrics.json", {})
+    h1 = {s1: _sha256(f"{s1}/records.jsonl")}
+
+    def by(side, part):
+        return [dict(c[part], side=side) for c in cases if c["g"]["side"] == side]
+
+    for side in ("test", "validation"):
+        _write(f"{s2}/records_{side}.jsonl", lines=by(side, "stage2"))
+    _write(f"{s2}/run_config.json", dict({k: 1 for k in STAGE2_CONFIG_KEYS}, stage1_records_sha256=h1, rules=["R4"]))
+    _write(f"{s2}/run_metrics.json", {"stop": None})
+    _write(f"{t}/stage2_summary.json", {"provenance": {"records_sha256": {f"{s2} {side}": _sha256(f"{s2}/records_{side}.jsonl")
+                                                                          for side in ("test", "validation")}}})
+    cfg = {"bundle": "b", "seed": 1, "stage1_records_sha256": h1}
+    for d, side, rev in ((ot, "test", "o"), (ov, "validation", "o"), (pt, "test", "p"), (pv, "validation", "p")):
+        _write(f"{d}/records_{side}.jsonl", lines=by(side, "oracle" if rev == "o" else "pose"))
+        _write(f"{d}/run_config.json", dict(cfg, code_revision=rev))
+        _done(d)
+    _write(f"{t}/oracle_summary.json", {"provenance": {"oracle_records_sha256": {ot: _sha256(f"{ot}/records_test.jsonl")}, "keys": [K0, K4],
+                                                       "stage2": s2, "stage1": [s1]}})
+    _write(f"{t}/poseset_summary.json", {"provenance": {"runs": pt, "records_sha256": {pt: _sha256(f"{pt}/records_test.jsonl")}}})
+    lines = []
+    for c in cases:
+        G = np.array([_grasp(), _grasp(approach=(1.0, 0.0, 0.0), closing=(0.0, 1.0, 0.0))], dtype=np.float32)
+        conf = np.array([0.9, 0.5], dtype=np.float32)
+        name = f"{c['g']['object']}__{c['g']['idx']}.npz"
+        __import__("os").makedirs(gr, exist_ok=True)
+        np.savez(f"{gr}/{name}", grasps=G, conf=conf)
+        lines.append({"object": c["g"]["object"], "idx": c["g"]["idx"], "side": c["g"]["side"], "file": name, "cloud_sha256": "c",
+                      "grasps_sha256": sha_arrays(G, conf), "error": None})
+    _write(f"{gr}/index.jsonl", lines=lines)
+    for side in ("test", "validation"):
+        _write(f"{gd}/records_{side}.jsonl", lines=by(side, "g"))
+    _write(f"{gd}/run_config.json", dict(cfg, code_revision="g", grasps=gr, grasps_index_sha256=_sha256(f"{gr}/index.jsonl"), replay=False,
+                                         clouds_index_sha256="ci", depth=gg.DEPTH, vertical_deg=gg.VERTICAL_DEG, keep_rows=gg.KEEP_ROWS))
+    _done(gd)
+    _write(f"{t}/smoke_summary.json", {"replay": {"rows": 312, "mismatches": 0, "stops": 0}, "gate": {"cases": 10, "equal": 10, "differ": 0,
+                                                                                                     "missing": 0}, "wandb": "w"})
+    _write(f"{t}/locked.json", {"lock": {"R0": {"key": K0, "knob": 2.0}, "R4": {"key": K4, "knob": None}}})
+    return SimpleNamespace(runs=gd, poseset=pt, poseset_validation=pv, poseset_summary=f"{t}/poseset_summary.json", oracle=ot,
+                           oracle_validation=ov, oracle_summary=f"{t}/oracle_summary.json", stage2=s2, stage2_summary=f"{t}/stage2_summary.json",
+                           locked=f"{t}/locked.json", smoke=f"{t}/smoke_summary.json", out=f"{t}/summary")
+
+
+def _five_cases(gate=("q1", "t1")):
+    placed = _prows(across_0_5="placed_stable")
+    return [_jcase(o="handal__hammer_1", idx=0, com_f=0.2, gate=gate, prows=_prows(across_0_5="tipped", across_0_3="tipped"),
+                   rows=[_g("g0", 0, "placed_stable", f=0.25, near="across_0.3"), _g("g1", 1, "tipped", kept=False, f=0.8)]),
+            _jcase(o="ycb__bowl", idx=1, rows=[_g("g0", 0, "placed_stable", kept=False, h=0.9)], prows=_prows(), gate=None),
+            _jcase(o="ycb__pitcher", idx=2, rows=[], prows=_prows(), gate=None),
+            _jcase(o="hope__milk_carton", idx=3, rows=[_g("g0", 0, "tipped")], prows=placed, oracle="placed_stable"),
+            _jcase(o="fruits_veggies__lemon1", idx=4, side="validation", rows=[_g("g0", 0, "placed_stable")], prows=placed)]
+
+
+def test_the_summary_reads_every_input_and_writes_the_readings(tmp_path, monkeypatch):
+    import os
+
+    monkeypatch.setenv("WANDB_MODE", "disabled")
+    a = _pilot_inputs(tmp_path, _five_cases())
+    rep = gg.summary(a)
+    for f in ("graspgen_summary.json", "graspgen_summary.md", "graspgen_points.png"):
+        assert os.path.exists(os.path.join(a.out, f))
+    R, c = rep["readings"], rep["counts"]
+    assert c["cases"] == 5 and c["paired"] == {"test": 4, "validation": 1} and c["paired_dropped"]["dropped"] == 0
+    assert R["2_test"]["cases"] == 4 and R["2_test"]["objects"] == 4 and R["2_validation"]["cases"] == 1
+    assert R["2_test"]["gg_vs_c10"]["success"]["diff"] == pytest.approx(0.0) and R["2_test"]["ggb_vs_c10"]["success"]["diff"] == pytest.approx(0.25)
+    assert R["2_test_no_thin"]["cases"] == 4 and rep["disclosures"]["thin_cases"] == 0
+    assert R["1_funnel"]["all"]["generated"] == 1000 and R["1_angles"]["all"] == [5, 0, 5, 0] and R["1_angles"]["ycb__bowl"] == [1, 0, 1, 0]
+    assert R["3_hammer"]["cases"] == 1 and R["4_objects"]["ycb__bowl"]["ggb"]["cases_placed"] == 1
+    assert R["5_tags"]["ggb"]["gain"] == {"cases": 2, "tags": {"an axis-rule pose": 1, "rim or top edge": 1}}
+    assert R["5_tags"]["gg"]["loss"] == {"cases": 1} and R["5_tags_validation"]["gg"]["rows"] == {"on the axis at another fraction or yaw": 1}
+    assert list(R["2_by_object"]) == ["handal__hammer_1", "hope__milk_carton", "ycb__bowl", "ycb__pitcher", "fruits_veggies__lemon1"]
+    G = rep["gates"]
+    assert {k: G["exact"][k] for k in ("cases", "equal", "differ", "missing")} == {"cases": 3, "equal": 3, "differ": 0, "missing": 0}
+    assert (G["label"]["compared"], G["label"]["differ"]) == (1, 1) and G["smoke"]["replay"] == {"rows": 312, "mismatches": 0, "stops": 0}
+    assert rep["disclosures"]["frame"]["all"]["palm"]["n"] == 150 and rep["disclosures"]["frame"]["all"]["tip"]["opening_found"] == 0
+    with pytest.raises(SystemExit):
+        gg.summary(a)                                                          # an existing summary is refused
+
+
+def test_an_exact_gate_difference_stops_the_summary_before_any_reading(tmp_path, monkeypatch):
+    import os
+
+    monkeypatch.setenv("WANDB_MODE", "disabled")
+    a = _pilot_inputs(tmp_path, _five_cases(gate=("q9", "t1")))
+    with pytest.raises(SystemExit) as e:
+        gg.summary(a)
+    assert e.value.code == 3 and os.path.exists(os.path.join(a.out, "graspgen_summary_stop.json"))
+    assert not os.path.exists(os.path.join(a.out, "graspgen_summary.json"))
+
+
+@pytest.mark.parametrize("what", ["pose", "oracle", "Stage 2", "grasps", "Stage 1"])
+def test_the_summary_refuses_inputs_that_changed_since_they_were_read(tmp_path, monkeypatch, what):
+    monkeypatch.setenv("WANDB_MODE", "disabled")
+    a = _pilot_inputs(tmp_path, _five_cases())
+    path = {"pose": f"{a.poseset}/records_test.jsonl", "oracle": f"{a.oracle}/records_test.jsonl", "Stage 2": f"{a.stage2}/records_test.jsonl",
+            "grasps": f"{tmp_path}/grasps/index.jsonl", "Stage 1": f"{tmp_path}/stage1/shard_0/records.jsonl"}[what]
+    with open(path, "a") as f:
+        f.write("\n")
+    with pytest.raises(SystemExit) as e:
+        gg.summary(a)
+    assert what in str(e.value)
+
+
+def test_the_summary_refuses_a_pilot_run_without_exit_0_and_a_case_an_arm_lacks(tmp_path, monkeypatch):
+    monkeypatch.setenv("WANDB_MODE", "disabled")
+    a = _pilot_inputs(tmp_path / "exit", _five_cases())
+    open(f"{a.runs}/run.exit", "w").write("EXIT 1\n")
+    with pytest.raises(SystemExit) as e:
+        gg.summary(a)
+    assert "EXIT 0" in str(e.value)
+    cases = _five_cases()
+    a = _pilot_inputs(tmp_path / "lack", cases)
+    lines = open(f"{a.oracle_validation}/records_validation.jsonl").read().splitlines()
+    open(f"{a.oracle_validation}/records_validation.jsonl", "w").write("".join(x + "\n" for x in lines[:-1]))
+    with pytest.raises(SystemExit) as e:
+        gg.summary(a)
+    assert "oracle" in str(e.value) and "fruits_veggies__lemon1" in str(e.value)
+
+
+def test_the_summary_opens_the_pilot_records_once(tmp_path, monkeypatch):
+    import builtins
+    import os
+
+    monkeypatch.setenv("WANDB_MODE", "disabled")
+    a = _pilot_inputs(tmp_path, _five_cases())
+    paths = {os.path.abspath(f"{a.runs}/records_{s}.jsonl") for s in ("test", "validation")}
+    real, n = builtins.open, []
+
+    def counting(f, *x, **kw):
+        n.append(os.path.abspath(str(f)) in paths)
+        return real(f, *x, **kw)
+
+    monkeypatch.setattr(builtins, "open", counting)
+    gg.summary(a)
+    assert sum(n) == 2
+
+
+def test_the_markdown_has_a_section_per_reading_and_claims_no_verdict(tmp_path, monkeypatch):
+    import os
+
+    monkeypatch.setenv("WANDB_MODE", "disabled")
+    a = _pilot_inputs(tmp_path, _five_cases())
+    gg.summary(a)
+    md = open(os.path.join(a.out, "graspgen_summary.md")).read()
+    for sec in ("## 1.", "## 2.", "## 3.", "## 4.", "## 5.", "## 6."):
+        assert sec in md
+    assert "no verdict" in md and "thin plastic" in md and all(b in md for b in gg.ANGLE_BINS) and "lemon1" in md.split("## 2.")[1]
+
+
+def test_the_figure_is_redrawn_from_the_summary_json_alone(tmp_path, monkeypatch):
+    import os
+
+    monkeypatch.setenv("WANDB_MODE", "disabled")
+    a = _pilot_inputs(tmp_path, _five_cases())
+    gg.summary(a)
+    out = str(tmp_path / "again.png")
+    gg.figure(SimpleNamespace(summary=os.path.join(a.out, "graspgen_summary.json"), out=out))
+    assert os.path.getsize(out) > 0
+    with pytest.raises(SystemExit):
+        gg.figure(SimpleNamespace(summary=os.path.join(a.out, "graspgen_summary.json"), out=out))

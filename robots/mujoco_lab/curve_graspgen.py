@@ -532,11 +532,287 @@ def graspgen_case(prims: Any, rec1: dict[str, Any], seed: int, world: Any, entry
     return dict(rec, ceiling=c, ceiling_b=cb, dropped=not c["determined"])
 
 
-# ---------------------------------------------------------------- the commands
-
 FUNNEL = ("generated", "vertical", "mapped", "width", "centred", "reach", "distinct", "kept")
 FUNNEL_B = ("width_b", "pads_free", "reach_b", "distinct_b", "kept_b")
 
+
+# ---------------------------------------------------------------- the summary's pieces
+
+ANGLE_EDGES = (30.0, 60.0, 120.0)
+ANGLE_BINS = ("within 30° of down", "30–60°", "side (60–120°)", "from below (> 120°)")
+RIM_H, OFF_AXIS_M = 0.85, 0.01   # ruling 7's tags: a pinch at this share of the object's height or higher, this far off its axis
+TAGS = ("an axis-rule pose", "rim or top edge", "off the axis", "on the axis at another fraction or yaw")
+RULES = (("gg", "kept"), ("ggb", "kept_b"))
+ARMS = ("gg", "ggb", "c10", "c3", "oracle", "r4")
+ARM_NAMES = {"gg": "GraspGen, the design's rule", "ggb": "GraspGen, the between-pad variant", "c10": "10-pinch ceiling",
+             "c3": "3-pinch ceiling", "oracle": "oracle arm", "r4": "R4 (always grasp)"}
+HAMMER_ROW_CLASSES = ("placed by a row", "lifted, never placed", "not lifted by any row", "no clean simulation", "no kept row")
+ROW_OBJECTS = ("ycb__bowl", "ycb__pitcher")          # reading 4
+G_ABOVE = "more than 2 points above the 10-pinch ceiling"
+G_NOT = "not more than 2 points above the 10-pinch ceiling"
+
+
+def angle_histogram(grasps: Any) -> list[int]:
+    """Reading 1's histogram: the grasps by approach angle from straight down (to 9 digits), in ANGLE_BINS (each bin
+    holds its upper edge)."""
+    a = np.round(np.array([approach_deg(g) for g in np.asarray(grasps, dtype=float)]), 9)
+    e = ANGLE_EDGES
+    return [int((a <= e[0]).sum()), int(((a > e[0]) & (a <= e[1])).sum()), int(((a > e[1]) & (a <= e[2])).sum()), int((a > e[2]).sum())]
+
+
+def row_tag(r: dict[str, Any]) -> str:
+    """Reading 5's place of a row (ruling 7), in TAGS' order: within 1 cm and 10 degrees of a pose-set row, at RIM_H of
+    the object's height or higher, farther than OFF_AXIS_M from its long axis, else on the axis at another fraction or yaw."""
+    if r.get("near"):
+        return TAGS[0]
+    if round(float(r["h"]), 9) >= RIM_H:
+        return TAGS[1]
+    return TAGS[2] if round(float(r["r_axis"]), 9) > OFF_AXIS_M else TAGS[3]
+
+
+def clean_row(r: dict[str, Any]) -> bool:
+    """A simulated row of the funnel (not the gate row) without an artifact or an error."""
+    return not r.get("gate") and r.get("label") is not None and not r.get("artifact") and not r.get("error")
+
+
+def kept_rows(rows: list[dict[str, Any]], key: str) -> list[dict[str, Any]]:
+    return [r for r in rows if r.get(key) and not r.get("gate")]
+
+
+def exact_gate(recs: list[dict[str, Any]], pose: list[dict[str, Any]]) -> dict[str, Any]:
+    """The gate row against the pose set's record of the same case: its across pinch at 0.5 (GATE) must have the same
+    final state and trace hashes. Counts the cases with a simulated gate row: equal, differ (listed), missing (the pose
+    set did not simulate that row)."""
+    from robots.mujoco_lab.curve_poseset import _key, row_id
+
+    pidx = {_key(p): {x["id"]: x for x in p["rows"]} for p in pose}
+    out: dict[str, Any] = {"cases": 0, "equal": 0, "differ": 0, "missing": 0, "differences": []}
+    for r in recs:
+        g = next((x for x in r.get("rows") or [] if x.get("gate") and "seconds" in x), None)
+        if g is None:
+            continue
+        out["cases"] += 1
+        p = pidx.get(_key(r), {}).get(row_id(*GATE))
+        if p is None or "seconds" not in p:
+            out["missing"] += 1
+        elif (p.get("qpos_sha"), p.get("trace_sha")) == (g.get("qpos_sha"), g.get("trace_sha")):
+            out["equal"] += 1
+        else:
+            out["differ"] += 1
+            out["differences"].append({"object": r["object"], "idx": int(r["idx"])})
+    return out
+
+
+def pilot_paired(joined: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[str, int]]:
+    """The joined cases ({"g", "pose", "oracle", "stage2"}) that no arm drops: the pilot (a skip, an error or the design
+    rule's undetermined ceiling), the variant's undetermined ceiling, the pose set, the oracle arm, Stage 2 (the pose set's
+    ruling 2); with the numbers dropped in all and by each (a case can count for several)."""
+    names = ("graspgen", "variant", "pose", "oracle", "stage2")
+    flags = [(bool(j["g"]["dropped"]), not (j["g"].get("ceiling_b") or {}).get("determined", False), bool(j["pose"]["dropped"]),
+              bool(j["oracle"]["dropped"]), bool(j["stage2"]["dropped"])) for j in joined]
+    kept = [j for j, f in zip(joined, flags) if not any(f)]
+    return kept, dict({"dropped": sum(any(f) for f in flags)}, **{n: sum(f[k] for f in flags) for k, n in enumerate(names)})
+
+
+def pilot_views(paired: list[dict[str, Any]], k0: str, k4: str) -> list[dict[str, Any]]:
+    """Per joined case: its object, side, strata, the pilot's rows (without the gate row), the pose set's rows and the
+    six arms' episodes: both GraspGen ceilings, the 10- and the 3-pinch ceilings, the oracle arm and R4 (Stage 2)."""
+    from robots.mujoco_lab.curve import episode
+
+    out = []
+    for j in paired:
+        g, p, o, s2 = j["g"], j["pose"], j["oracle"], j["stage2"]
+        out.append({"object": g["object"], "idx": int(g["idx"]), "side": g["side"], "thin": bool(g.get("thin")), "kind": g.get("kind"),
+                    "hammer": bool(g.get("hammer")), "upright": bool(g.get("upright")), "com_f": g.get("com_f"), "length": g.get("length"),
+                    "rows": [r for r in g["rows"] if not r.get("gate")], "prows": p["rows"], "gg": g["ceiling"], "ggb": g["ceiling_b"],
+                    "c10": p["ceiling10"], "c3": p["ceiling3"], "oracle": episode(o["decisions"], o["sims"], k0),
+                    "r4": episode(s2["decisions"], s2["sims"], k4)})
+    return out
+
+
+def pilot_rule(b: dict[str, Any]) -> str:
+    """The design's 2-point rule on a paired success difference (GraspGen - the 10-pinch ceiling), reported with no
+    verdict: above when g > EPS and the interval's bottom > 0, not above when its top < EPS, else undecided."""
+    from robots.mujoco_lab.curve import EPS
+
+    x = b["success"]
+    if x["diff"] > EPS and x["lo"] > 0.0:
+        return G_ABOVE
+    if x["hi"] < EPS:
+        return G_NOT
+    return f"undecided at n = {b['cases']}"
+
+
+def pilot_block(vs: list[dict[str, Any]]) -> dict[str, Any]:
+    """Reading 2 on one view: each arm's rates, GraspGen (each rule) - the 10-pinch ceiling paired by case with the object
+    bootstrap (curve_oracle.paired_outcomes), the 2-point rule beside each, and the success 2 x 2 against the 10-pinch."""
+    from robots.mujoco_lab.curve_oracle import _rates, paired_outcomes
+
+    def two(name: str) -> dict[str, int]:
+        a = [(bool(v[name]["success"]), bool(v["c10"]["success"])) for v in vs]
+        return {"both": sum(x and y for x, y in a), "graspgen_only": sum(x and not y for x, y in a),
+                "c10_only": sum(y and not x for x, y in a), "neither": sum(not x and not y for x, y in a)}
+
+    b = paired_outcomes([(v["object"], v["gg"], v["c10"]) for v in vs])
+    bb = paired_outcomes([(v["object"], v["ggb"], v["c10"]) for v in vs])
+    return {"cases": len(vs), "objects": len({v["object"] for v in vs}), "rates": {a: _rates([v[a] for v in vs]) for a in ARMS},
+            "gg_vs_c10": b, "ggb_vs_c10": bb, "rule": pilot_rule(b) if vs else None, "rule_b": pilot_rule(bb) if vs else None,
+            "success_2x2": two("gg"), "success_2x2_b": two("ggb")}
+
+
+def by_object(vs: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Each object's side, case count and arm rates, in the views' order."""
+    from robots.mujoco_lab.curve_oracle import _rates
+
+    out = {}
+    for o in dict.fromkeys(v["object"] for v in vs):
+        x = [v for v in vs if v["object"] == o]
+        out[o] = dict({"side": x[0]["side"], "n": len(x)}, **{a: _rates([v[a] for v in x]) for a in ARMS})
+    return out
+
+
+def hammer_rows_class(rows: list[dict[str, Any]], key: str) -> str:
+    """Reading 3 for one case and rule, in HAMMER_ROW_CLASSES: a clean kept row placed it, lifted it (a label other than
+    not_lifted or missed) but none placed it, none lifted it; no kept row was clean; the rule kept no row."""
+    from robots.mujoco_lab.curve_poseset import LIFT_FAILS
+
+    k = kept_rows(rows, key)
+    if not k:
+        return HAMMER_ROW_CLASSES[4]
+    clean = [r for r in k if clean_row(r)]
+    if not clean:
+        return HAMMER_ROW_CLASSES[3]
+    if any(r["label"] == "placed_stable" for r in clean):
+        return HAMMER_ROW_CLASSES[0]
+    return HAMMER_ROW_CLASSES[1] if any(r["label"] not in LIFT_FAILS for r in clean) else HAMMER_ROW_CLASSES[2]
+
+
+def hammer_line(vs: list[dict[str, Any]]) -> dict[str, Any]:
+    """Reading 3: the hammer cases by class under each rule and under the 10-pinch ceiling (curve_poseset.hammer_class);
+    for the clean rows either rule keeps, the distance from the balance point along the axis (|f - com_f| x length) and
+    from the head end (the end nearer the balance point), apart for the rows that placed the hammer; per case its
+    classes, the placing rows (with their tag and rules) and the lifting rows."""
+    from robots.mujoco_lab.curve_poseset import HAMMER_CLASSES, LIFT_FAILS, hammer_class
+
+    hv = [v for v in vs if v["hammer"]]
+    out: dict[str, Any] = {"cases": len(hv), "objects": sorted({v["object"] for v in hv}),
+                           "classes": {name: {c: 0 for c in HAMMER_ROW_CLASSES} for name, _ in RULES},
+                           "c10_classes": {c: 0 for c in HAMMER_CLASSES}, "placed": {"balance_m": [], "head_m": []},
+                           "not_placed": {"balance_m": [], "head_m": []}, "per_case": []}
+    for v in hv:
+        L, cf = float(v["length"]), float(v["com_f"])
+        head = 0.0 if cf < 0.5 else 1.0
+        cls = {name: hammer_rows_class(v["rows"], key) for name, key in RULES}
+        for name, c in cls.items():
+            out["classes"][name][c] += 1
+        c10 = hammer_class(v["prows"])
+        out["c10_classes"][c10] += 1
+        placed, lifted = [], []
+        for r in v["rows"]:
+            rules = [name for name, key in RULES if r.get(key)]
+            if not rules or not clean_row(r):
+                continue
+            bal, hd = abs(float(r["f"]) - cf) * L, abs(float(r["f"]) - head) * L
+            side = "placed" if r["label"] == "placed_stable" else "not_placed"
+            out[side]["balance_m"].append(bal)
+            out[side]["head_m"].append(hd)
+            if r["label"] == "placed_stable":
+                placed.append({"id": r["id"], "f": r["f"], "balance_m": bal, "head_m": hd, "tag": row_tag(r), "rules": rules})
+            if r["label"] not in LIFT_FAILS:
+                lifted.append(r["id"])
+        out["per_case"].append({"object": v["object"], "idx": v["idx"], "com_f": cf, "length": L, "classes": cls, "c10_class": c10,
+                                "placed": placed, "lifted": lifted})
+    return out
+
+
+def object_line(vs: list[dict[str, Any]], objects: tuple[str, ...] = ROW_OBJECTS) -> dict[str, dict[str, Any]]:
+    """Reading 4, per object and rule: the cases, those with a kept row, the kept rows by tag, the clean ones, the placing
+    ones by tag, the cases the rule's ceiling places, and the clean rows' label mix; beside it the 10-pinch ceiling's
+    placed cases and feasible rows."""
+    from collections import Counter
+
+    out: dict[str, dict[str, Any]] = {}
+    for o in objects:
+        x = [v for v in vs if v["object"] == o]
+        out[o] = {"c10_placed": sum(bool(v["c10"]["success"]) for v in x), "c10_rows": sum(int(v["c10"].get("n_rows", 0)) for v in x)}
+        for name, key in RULES:
+            kr = [r for v in x for r in kept_rows(v["rows"], key)]
+            clean = [r for r in kr if clean_row(r)]
+            pl = [r for r in clean if r["label"] == "placed_stable"]
+            out[o][name] = {"cases": len(x), "cases_with_row": sum(bool(kept_rows(v["rows"], key)) for v in x), "rows": len(kr),
+                            "tags": dict(Counter(row_tag(r) for r in kr)), "clean": len(clean), "placing": len(pl),
+                            "placing_tags": dict(Counter(row_tag(r) for r in pl)), "cases_placed": sum(bool(v[name]["success"]) for v in x),
+                            "labels": dict(Counter(r["label"] for r in clean))}
+    return out
+
+
+def placing_tags(vs: list[dict[str, Any]], name: str) -> dict[str, Any]:
+    """Reading 5 for one rule ("gg" or "ggb"): the clean placing rows it keeps by tag, the cases with one of each tag, the
+    rows by object; the gain cases (its ceiling places, the 10-pinch ceiling does not) by the tags of their placing rows,
+    and the loss cases (the reverse)."""
+    from collections import Counter
+
+    key = dict(RULES)[name]
+    rows, cases, gain_tags = Counter(), Counter(), Counter()
+    by: dict[str, Counter] = {}
+    gain = loss = 0
+    for v in vs:
+        tags = [row_tag(r) for r in kept_rows(v["rows"], key) if clean_row(r) and r["label"] == "placed_stable"]
+        rows.update(tags)
+        cases.update(set(tags))
+        if tags:
+            by.setdefault(v["object"], Counter()).update(tags)
+        if v[name]["success"] and not v["c10"]["success"]:
+            gain += 1
+            gain_tags.update(set(tags))
+        loss += bool(v["c10"]["success"]) and not v[name]["success"]
+    return {"rows": dict(rows), "cases": dict(cases), "by_object": {o: dict(c) for o, c in by.items()},
+            "gain": {"cases": gain, "tags": dict(gain_tags)}, "loss": {"cases": loss}}
+
+
+def label_gate(vs: list[dict[str, Any]]) -> dict[str, Any]:
+    """Reading 6's tolerance label gate (ruling 6, no stop): every clean kept row within the de-dup tolerance of a current
+    pinch (near_current) against the pose set's clean row there: compared, agree, differ (listed), missing."""
+    from robots.mujoco_lab.curve_poseset import _clean
+
+    out: dict[str, Any] = {"compared": 0, "agree": 0, "differ": 0, "missing": 0, "differences": []}
+    for v in vs:
+        prow = {r["id"]: r for r in v["prows"]}
+        for r in v["rows"]:
+            if not (r.get("kept") or r.get("kept_b")) or not clean_row(r) or not r.get("near_current"):
+                continue
+            p = prow.get(r["near"])
+            if p is None or not _clean(p):
+                out["missing"] += 1
+                continue
+            out["compared"] += 1
+            if p["label"] == r["label"]:
+                out["agree"] += 1
+            else:
+                out["differ"] += 1
+                out["differences"].append({"object": v["object"], "idx": v["idx"], "row": r["id"], "pose_row": r["near"],
+                                           "graspgen": r["label"], "pose": p["label"]})
+    return out
+
+
+def funnel_table(recs: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Reading 1: the funnel's counts summed by object (the records with counts) and in all, with the share of the
+    generated grasps lost at the approach step."""
+    out: dict[str, dict[str, Any]] = {}
+    for r in recs:
+        if not r.get("counts"):
+            continue
+        x = out.setdefault(r["object"], dict({"cases": 0}, **{k: 0 for k in FUNNEL + FUNNEL_B}))
+        x["cases"] += 1
+        for k in FUNNEL + FUNNEL_B:
+            x[k] += int(r["counts"][k])
+    out["all"] = dict({"cases": sum(x["cases"] for x in out.values())}, **{k: sum(x[k] for x in out.values()) for k in FUNNEL + FUNNEL_B})
+    for x in out.values():
+        x["lost_at_approach"] = 1.0 - x["vertical"] / x["generated"] if x["generated"] else None
+    return out
+
+
+# ---------------------------------------------------------------- the commands
 
 def select_cases(recs1: list[dict[str, Any]], cases: str | None = None, objects: str | None = None, sides: str | None = None,
                  per_object: int | None = None) -> list[dict[str, Any]]:
@@ -787,8 +1063,6 @@ def smoke_report(recs: list[dict[str, Any]], pose: list[dict[str, Any]], full: d
     row errors, times, and the full run's projection (each object's mean case time times its ``full`` cases)."""
     from collections import Counter, defaultdict
 
-    from robots.mujoco_lab.curve_poseset import _key
-
     done = [r for r in recs if r.get("counts")]
     by: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for r in done:
@@ -801,20 +1075,8 @@ def smoke_report(recs: list[dict[str, Any]], pose: list[dict[str, Any]], full: d
     frame = {"all": _frame_total(done)}
     if one in by:
         frame[one] = _frame_total(by[one])
-    pidx = {_key(p): {x["id"]: x for x in p["rows"]} for p in pose}
-    gate = {"cases": 0, "equal": 0, "differ": 0, "missing": 0}
-    for r in done:
-        g = next((x for x in r["rows"] if x.get("gate") and "seconds" in x), None)
-        if g is None:
-            continue
-        gate["cases"] += 1
-        p = pidx.get(_key(r), {}).get("across_0.5")
-        if p is None or "seconds" not in p:
-            gate["missing"] += 1
-        elif (p.get("qpos_sha"), p.get("trace_sha")) == (g.get("qpos_sha"), g.get("trace_sha")):
-            gate["equal"] += 1
-        else:
-            gate["differ"] += 1
+    g = exact_gate(done, pose)
+    gate = {k: g[k] for k in ("cases", "equal", "differ", "missing")}
     rep = [r["replay"] for r in done if r.get("replay")]
     rows = [x for r in done for x in r["rows"] if "seconds" in x]
     mean = {o: float(np.mean([float(r["seconds"]) for r in rs])) for o, rs in by.items()}
@@ -898,6 +1160,301 @@ def smoke(a: Any) -> dict[str, Any]:
     return sm
 
 
+PILOT_OBJECTS = ("handal__hammer_1", "handal__hammer_7", "hope__oatmeal_raisin_cookies", "hope__milk_carton", "ycb__bowl", "ycb__pitcher",
+                 "fruits_veggies__orange1", "hot3d__ceramic_mug", "fruits_veggies__lemon1", "hot3d__mug")   # design 3.1's ten, in order
+RUN_KEYS = ("bundle", "seed", "stage1_records_sha256", "code_revision", "grasps", "grasps_index_sha256", "clouds_index_sha256", "replay",
+            "depth", "vertical_deg", "keep_rows")
+ARM_STYLE = {"gg": ("#2a78d6", "o", True), "ggb": ("#2a78d6", "o", False), "c10": ("#eb6834", "s", True), "c3": ("#eb6834", "s", False),
+             "oracle": ("#1baf7a", "D", True), "r4": ("#eda100", "*", True)}     # colour, marker, filled (validated palette slots 1-4)
+
+
+def _order(o: str) -> tuple[int, str]:
+    return (PILOT_OBJECTS.index(o), o) if o in PILOT_OBJECTS else (len(PILOT_OBJECTS), o)
+
+
+def summary(a: Any) -> dict[str, Any]:
+    """The readings (design 3 and 3.1) from finished pilot runs: graspgen_summary.{json,md} and graspgen_points.png in
+    --out (refuses an existing summary), wandb. Refuses a run without EXIT 0 or with a stop, runs that differ, inputs that
+    changed since the runs or the summaries that read them (Stage 1, the grasps, Stage 2, the oracle arm's and the pose
+    set's test records), oracle or pose-set runs on another bundle, seed or Stage 1, and a pilot case an arm lacks. The
+    pilot's records are opened once. A gate row whose final state or trace differs from the pose set's (the exact gate)
+    writes graspgen_summary_stop.json and exits 3 before any reading."""
+    import json
+    import os
+
+    from robots.mujoco_lab.curve import BOOT_DRAWS, BOOT_SEED, EPS, SIDES, _sha, load_stage2, records_path
+    from robots.mujoco_lab.curve_oracle import _finished
+    from robots.mujoco_lab.curve_poseset import _key, _load_lines, _read_once
+    from robots.mujoco_lab.estimation_check import _revision
+    from robots.mujoco_lab.tracking import log_run
+
+    os.makedirs(a.out, exist_ok=True)
+    jpath, spath = os.path.join(a.out, "graspgen_summary.json"), os.path.join(a.out, "graspgen_summary_stop.json")
+    if os.path.exists(jpath) or os.path.exists(spath):
+        raise SystemExit(f"{a.out}: a summary exists: pick a new --out")
+    lk = json.load(open(a.locked))["lock"]
+    k0, k4 = lk["R0"]["key"], lk["R4"]["key"]
+    dirs = a.runs.split(",")
+    cfgs = [_finished(d) for d in dirs]
+    for k in RUN_KEYS:
+        if len({json.dumps(c.get(k), sort_keys=True) for c in cfgs}) > 1:
+            raise SystemExit(f"the pilot runs differ in {k}")
+    cfg = cfgs[0]
+    for d, h in cfg["stage1_records_sha256"].items():
+        if _sha(os.path.join(d, "records.jsonl")) != h:
+            raise SystemExit(f"{d}: the Stage 1 records changed since the pilot runs")
+    if _sha(os.path.join(cfg["grasps"], "index.jsonl")) != cfg["grasps_index_sha256"]:
+        raise SystemExit(f"{cfg['grasps']}: the grasps index is not the one the pilot runs read")
+    s2dirs = a.stage2.split(",")
+    prov2 = json.load(open(a.stage2_summary))["provenance"]["records_sha256"]
+    for d in s2dirs:
+        for side in SIDES:
+            if _sha(records_path(d, side)) != prov2.get(f"{d} {side}"):
+                raise SystemExit(f"{d}: the Stage 2 {side} records are not the ones the Stage 2 summary read")
+    s2t, s2cfg = load_stage2(s2dirs, ("test",))
+    s2v, _ = load_stage2(s2dirs, ("validation",))
+    if s2cfg["stage1_records_sha256"] != cfg["stage1_records_sha256"]:
+        raise SystemExit("the pilot runs and Stage 2 read different Stage 1 records")
+    oprov = json.load(open(a.oracle_summary))["provenance"]
+    if list(oprov.get("keys") or []) != [k0, k4]:
+        raise SystemExit(f"the oracle summary's keys {oprov.get('keys')} are not the lock's {[k0, k4]}")
+    odirs, ovdirs = a.oracle.split(","), [d for d in (a.oracle_validation or "").split(",") if d]
+    pdirs, pvdirs = a.poseset.split(","), [d for d in (a.poseset_validation or "").split(",") if d]
+    pprov = json.load(open(a.poseset_summary))["provenance"]
+    for name, ds, read in (("oracle", odirs, oprov["oracle_records_sha256"]), ("pose-set", pdirs, pprov["records_sha256"])):
+        if set(ds) != set(read):
+            raise SystemExit(f"the {name} test runs are not the ones the {name} summary read")
+        for d in ds:
+            if _sha(records_path(d, "test")) != read[d]:
+                raise SystemExit(f"{d}: the {name} test records are not the ones the {name} summary read")
+    for d in odirs + ovdirs + pdirs + pvdirs:
+        c = _finished(d)
+        for k in ("bundle", "seed", "stage1_records_sha256"):
+            if json.dumps(c.get(k), sort_keys=True) != json.dumps(cfg.get(k), sort_keys=True):
+                raise SystemExit(f"{d}: its {k} is not the pilot runs' (an oracle or pose-set run on other cases)")
+    paths = [records_path(d, side) for d in dirs for side in SIDES]
+    grecs, gsha = _read_once(paths)                                             # the pilot's records, once
+    if any(r.get("stop") for r in grecs):
+        raise SystemExit("a pilot record holds a stop")
+    if len({_key(r) for r in grecs}) != len(grecs):
+        raise SystemExit("a case appears twice in the pilot records")
+    grecs.sort(key=lambda r: (_order(r["object"]), int(r["idx"])))
+    prec = _load_lines([records_path(d, "test") for d in pdirs] + [records_path(d, "validation") for d in pvdirs])
+    orec = _load_lines([records_path(d, "test") for d in odirs] + [records_path(d, "validation") for d in ovdirs])
+    arms = {"pose-set": {_key(r): r for r in prec}, "oracle": {_key(r): r for r in orec}, "Stage 2": {_key(r): r for r in s2t + s2v}}
+    joined = []
+    for r in grecs:
+        k = _key(r)
+        for name, by in arms.items():
+            if k not in by or by[k]["side"] != r["side"]:
+                raise SystemExit(f"{k[0]} {k[1]}: no {name} record of this case on the {r['side']} side")
+        joined.append({"g": r, "pose": arms["pose-set"][k], "oracle": arms["oracle"][k], "stage2": arms["Stage 2"][k]})
+    me = _revision()
+    prov = {"runs": a.runs, "records_sha256": gsha, "code_revision": cfg["code_revision"], "summary_code_revision": me["code_revision"],
+            "summary_dirty": me["dirty"], "grasps": cfg["grasps"], "grasps_index_sha256": cfg["grasps_index_sha256"], "stage2": a.stage2,
+            "stage2_summary": f"{a.stage2_summary} (sha256 {_sha(a.stage2_summary)})", "oracle": a.oracle, "oracle_validation": a.oracle_validation,
+            "oracle_summary": f"{a.oracle_summary} (sha256 {_sha(a.oracle_summary)})", "poseset": a.poseset,
+            "poseset_validation": a.poseset_validation, "poseset_summary": f"{a.poseset_summary} (sha256 {_sha(a.poseset_summary)})",
+            "validation_records_sha256": {d: _sha(records_path(d, "validation")) for d in ovdirs + pvdirs},
+            "locked": f"{a.locked} (sha256 {_sha(a.locked)})", "smoke": f"{a.smoke} (sha256 {_sha(a.smoke)})",
+            "stage1": sorted(cfg["stage1_records_sha256"]), "bootstrap": f"{BOOT_DRAWS} object draws, seed {BOOT_SEED}, 95 % percentile interval",
+            "eps": EPS, "keys": [k0, k4]}
+    gate = exact_gate(grecs, prec)
+    if gate["differ"]:
+        with open(spath, "w") as f:
+            json.dump({"exact_gate": gate, "provenance": prov}, f, indent=1)
+        print(f"STOP: {gate['differ']} gate rows differ from the pose set's; wrote {spath}", flush=True)
+        raise SystemExit(3)
+    paired, n_dropped = pilot_paired(joined)
+    vs = sorted(pilot_views(paired, k0, k4), key=lambda v: (v["side"] != "test", _order(v["object"]), v["idx"]))
+    vt, vv = [v for v in vs if v["side"] == "test"], [v for v in vs if v["side"] == "validation"]
+    entries = load_grasps(cfg["grasps"])
+    angles: dict[str, list[int]] = {}
+    for r in grecs:
+        e = entries.get(_key(r))
+        if e is not None and e.get("grasps") is not None:
+            angles[r["object"]] = [x + y for x, y in zip(angles.get(r["object"], [0, 0, 0, 0]), angle_histogram(e["grasps"]))]
+    angles["all"] = [sum(h[i] for h in angles.values()) for i in range(4)]
+    done = [r for r in grecs if r.get("counts")]
+    sim_rows = [x for r in done for x in r["rows"] if "seconds" in x]
+    counts = {"cases": len(grecs), "skipped": sum(bool(r.get("skipped")) for r in grecs), "pilot_dropped": sum(bool(r["dropped"]) for r in grecs),
+              "case_errors": sum(bool(r.get("error")) for r in grecs), "rows_simulated": len(sim_rows),
+              "row_errors": sum(bool(x.get("error")) for x in sim_rows), "row_artifacts": sum(bool(x.get("artifact")) for x in sim_rows),
+              "paired": {"test": len(vt), "validation": len(vv)}, "paired_dropped": n_dropped,
+              "objects": {"test": len({v["object"] for v in vt}), "validation": len({v["object"] for v in vv})}}
+    readings = {"1_funnel": funnel_table(grecs), "1_angles": angles, "2_test": pilot_block(vt),
+                "2_test_no_thin": pilot_block([v for v in vt if not v["thin"]]), "2_validation": pilot_block(vv), "2_by_object": by_object(vs),
+                "3_hammer": hammer_line(vt), "4_objects": object_line(vt), "5_tags": {name: placing_tags(vt, name) for name, _ in RULES},
+                "5_tags_validation": {name: placing_tags(vv, name) for name, _ in RULES}}
+    smoke_rep = json.load(open(a.smoke))
+    gates = {"smoke": {"replay": smoke_rep["replay"], "gate": smoke_rep.get("gate"), "wandb": smoke_rep.get("wandb")}, "exact": gate,
+             "label": label_gate(vs)}
+    one = "hope__milk_carton"
+    disclosures = {"frame": {"all": _frame_total(done), one: _frame_total([r for r in done if r["object"] == one])},
+                   "thin_cases": sum(v["thin"] for v in vs), "pad_height_m": {"lab": 2 * float(PAD_HALF[2]), "graspgen": 2 * PANDA_BOX[2]}}
+    rep = {"counts": counts, "readings": readings, "gates": gates, "disclosures": disclosures,
+           "figure": {"by_object": readings["2_by_object"], "test": readings["2_test"]["rates"], "validation": readings["2_validation"]["rates"]},
+           "provenance": prov}
+    b = readings["2_test"]
+    rep["wandb"] = log_run("curve-graspgen-summary", {"runs": a.runs, "stage2": a.stage2, "oracle": a.oracle, "poseset": a.poseset},
+                           {"counts": counts, "rule": b["rule"], "rule_b": b["rule_b"],
+                            "gg_vs_c10": {k: b["gg_vs_c10"][k] for k in ("success", "irr", "give_up")} if vt else None,
+                            "ggb_vs_c10": {k: b["ggb_vs_c10"][k] for k in ("success", "irr", "give_up")} if vt else None,
+                            "exact_gate": {k: gate[k] for k in ("cases", "equal", "differ", "missing")},
+                            "label_gate": {k: gates["label"][k] for k in ("compared", "agree", "differ", "missing")}})
+    with open(jpath, "w") as f:
+        json.dump(rep, f, indent=1)
+    with open(os.path.join(a.out, "graspgen_summary.md"), "w") as f:
+        f.write(summary_markdown(rep))
+    pilot_figure(rep, os.path.join(a.out, "graspgen_points.png"))
+    print(f"wrote {a.out}", flush=True)
+    return rep
+
+
+def _pc(x: float | None) -> str:
+    return "–" if x is None else f"{100 * x:.1f}"
+
+
+def _ci(b: dict[str, Any], k: str) -> str:
+    x = b.get(k)
+    return "–" if not x else f"{100 * x['diff']:+.2f} [{100 * x['lo']:+.2f}, {100 * x['hi']:+.2f}]"
+
+
+def _med(x: list[float]) -> str:
+    return "–" if not x else f"{100 * float(np.median(x)):.1f} cm (n = {len(x)})"
+
+
+def _md_block(name: str, b: dict[str, Any]) -> list[str]:
+    L = [f"**{name}**: {b['cases']} paired cases on {b['objects']} objects.", "",
+         "| arm | success % | irreversible % | give-up % |", "|---|---|---|---|"]
+    L += [f"| {ARM_NAMES[k]} | {_pc(b['rates'][k]['success'])} | {_pc(b['rates'][k]['irr'])} | {_pc(b['rates'][k]['give_up'])} |" for k in ARMS]
+    if b["cases"]:
+        for k, rule, lab in (("gg_vs_c10", "rule", "the design's rule"), ("ggb_vs_c10", "rule_b", "the between-pad variant")):
+            x, t = b[k], b["success_2x2" if k == "gg_vs_c10" else "success_2x2_b"]
+            L += ["", f"- GraspGen ({lab}) − the 10-pinch ceiling, points, 95 % object bootstrap: success {_ci(x, 'success')}, "
+                  f"irreversible {_ci(x, 'irr')}, give-up {_ci(x, 'give_up')}. The 2-point rule (pilot, no verdict): {b[rule]}.",
+                  f"- Success, case by case: both {t['both']}, GraspGen only {t['graspgen_only']}, the 10-pinch only {t['c10_only']}, "
+                  f"neither {t['neither']}."]
+    return L
+
+
+def summary_markdown(rep: dict[str, Any]) -> str:
+    R, G, D, c = rep["readings"], rep["gates"], rep["disclosures"], rep["counts"]
+    F = FUNNEL + FUNNEL_B
+    L = ["# The GraspGen menu pilot: the readings (a pilot: no verdict is claimed)", "",
+         f"{c['cases']} cases ({c['skipped']} skipped, {c['case_errors']} case errors, {c['pilot_dropped']} dropped by the pilot). "
+         f"Rows simulated {c['rows_simulated']}, row errors {c['row_errors']}, row artifacts {c['row_artifacts']}. Paired: "
+         f"{c['paired']['test']} test cases on {c['objects']['test']} objects, {c['paired']['validation']} validation cases on "
+         f"{c['objects']['validation']} objects; dropped {c['paired_dropped']}.", "",
+         "## 1. The funnel and the approach angles", "", "| object | cases | " + " | ".join(F) + " | lost at the approach step |",
+         "|---|---|" + "---|" * len(F) + "---|"]
+    L += [f"| {o} | {x['cases']} | " + " | ".join(str(x[k]) for k in F) + f" | {_pc(x['lost_at_approach'])} % |" for o, x in R["1_funnel"].items()]
+    L += ["", "| object | " + " | ".join(ANGLE_BINS) + " |", "|---|" + "---|" * len(ANGLE_BINS)]
+    L += [f"| {o} | " + " | ".join(str(v) for v in h) + " |" for o, h in R["1_angles"].items()]
+    L += ["", "The cloud holds no table points, so GraspGen also proposes grasps from below the object.", "",
+          "## 2. The ceilings beside the four arms", ""]
+    L += _md_block("Test (the pilot interval)", R["2_test"]) + [""]
+    L += [f"Without thin plastic: {D['thin_cases']} thin-plastic cases, so the values equal the all-object values." if not D["thin_cases"]
+          else "Without thin plastic:", ""]
+    if D["thin_cases"]:
+        L += _md_block("Test without thin plastic", R["2_test_no_thin"]) + [""]
+    vo = [o for o, x in R["2_by_object"].items() if x["side"] == "validation"]
+    L += _md_block(f"Validation, apart ({', '.join(vo) or 'none'})", R["2_validation"]) + ["", "By object (success % of each arm):", "",
+          "| object (side) | n | " + " | ".join(ARM_NAMES[k] for k in ARMS) + " |", "|---|---|" + "---|" * len(ARMS)]
+    L += [f"| {o} ({x['side']}) | {x['n']} | " + " | ".join(_pc(x[k]['success']) for k in ARMS) + " |" for o, x in R["2_by_object"].items()]
+    h = R["3_hammer"]
+    L += ["", "## 3. The hammers", "", f"{h['cases']} cases on {', '.join(h['objects']) or 'no object'}."]
+    L += [f"- {ARM_NAMES[n]}: " + ", ".join(f"{k} {v}" for k, v in h["classes"][n].items()) for n, _ in RULES]
+    L += ["- The 10-pinch ceiling: " + ", ".join(f"{k} {v}" for k, v in h["c10_classes"].items()),
+          f"- Clean kept rows that placed a hammer: median distance from the balance point {_med(h['placed']['balance_m'])}, from the head end "
+          f"{_med(h['placed']['head_m'])}. Rows that did not place it: {_med(h['not_placed']['balance_m'])} and {_med(h['not_placed']['head_m'])}."]
+    for pc in h["per_case"]:
+        rows = "; ".join(f"{r['id']} at f {r['f']:.2f} ({100 * r['balance_m']:.1f} cm from the balance point, {100 * r['head_m']:.1f} cm from "
+                         f"the head end, {r['tag']}, {'+'.join(r['rules'])})" for r in pc["placed"]) or "none"
+        L.append(f"  - {pc['object']} {pc['idx']} (balance point at f {pc['com_f']:.2f}): {pc['classes']['gg']} / {pc['classes']['ggb']} "
+                 f"(design / variant), 10-pinch: {pc['c10_class']}; placing rows: {rows}.")
+    L += ["", "## 4. The bowl and the pitcher (both rules)", ""]
+    for o, x in R["4_objects"].items():
+        for n, _ in RULES:
+            y = x[n]
+            L.append(f"- {o}, {ARM_NAMES[n]}: {y['cases_with_row']} of {y['cases']} cases with a kept row; {y['rows']} kept rows "
+                     f"{y['tags']}; {y['clean']} clean, {y['placing']} placing {y['placing_tags']}; the ceiling places {y['cases_placed']} of "
+                     f"{y['cases']}; labels {y['labels']}.")
+        L.append(f"- {o}, the 10-pinch ceiling: places {x['c10_placed']}, {x['c10_rows']} feasible rows.")
+    L += ["", "## 5. Where the placing rows sit (both rules)", ""]
+    for side, key in (("test", "5_tags"), ("validation", "5_tags_validation")):
+        for n, _ in RULES:
+            t = R[key][n]
+            L.append(f"- {side}, {ARM_NAMES[n]}: placing rows by tag {t['rows']}; cases by tag {t['cases']}; the gain cases (GraspGen places, the "
+                     f"10-pinch ceiling does not) {t['gain']['cases']}, by tag {t['gain']['tags']}; the loss cases {t['loss']['cases']}.")
+    s, e, lg = G["smoke"], G["exact"], G["label"]
+    L += ["", "## 6. The gates", "",
+          f"- The 2-seed gate (the smoke): {s['replay']['rows']} rows replayed, {s['replay']['mismatches']} mismatches, {s['replay']['stops']} stops "
+          f"(wandb {s.get('wandb')}).",
+          f"- The exact gate (the full run): {e['cases']} gate rows, {e['equal']} equal final state and trace, {e['differ']} differ, {e['missing']} missing.",
+          f"- The tolerance label gate (no stop): {lg['compared']} kept rows within 1 cm and 10° of a current pinch, {lg['agree']} agree with the pose "
+          f"set's label, {lg['differ']} differ, {lg['missing']} missing."]
+    L += [f"  - {x['object']} {x['idx']}: {x['row']} {x['graspgen']} against {x['pose_row']} {x['pose']}" for x in lg["differences"]]
+    L += ["", "## Disclosures", ""]
+    for name, fr in D["frame"].items():
+        for cand in ("palm", "tip"):
+            x = fr[cand]
+            L.append(f"- The frame check, {name}, {cand}: {fr['n']} grasps within 30° of down, opening found {x['opening_found']}, within 5 mm "
+                     f"{x['within_5mm']} of {x['both']} (the design's width), {x['within_5mm_b']} of {x['both_b']} (the between-pad width).")
+    L += [f"- The pad sizes: the lab pad is {100 * D['pad_height_m']['lab']:.1f} cm tall, GraspGen's finger {100 * D['pad_height_m']['graspgen']:.1f} cm.",
+          f"- Thin plastic: {D['thin_cases']} paired cases."]
+    return "\n".join(L) + "\n"
+
+
+def pilot_figure(rep: dict[str, Any], path: str) -> None:
+    """Each object's success and irreversible damage under the six arms (two panels, one row per object, the test objects
+    above the validation ones), from the summary's figure data."""
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    by = rep["figure"]["by_object"]
+    objs = list(by)
+    fig, axes = plt.subplots(1, 2, figsize=(9.6, 0.42 * len(objs) + 1.6), sharey=True)
+    ys = {o: -(k + (1 if by[o]["side"] != "test" else 0)) for k, o in enumerate(objs)}
+    off = dict(zip(ARMS, np.linspace(-0.27, 0.27, len(ARMS))))
+    for ax, k, title in ((axes[0], "success", "task success (% of cases)"), (axes[1], "irr", "irreversible damage (% of cases)")):
+        for arm in ARMS:
+            col, m, filled = ARM_STYLE[arm]
+            x = [100 * (by[o][arm][k] or 0.0) for o in objs]
+            y = [ys[o] + off[arm] for o in objs]
+            ax.scatter(x, y, marker=m, s=46 if m != "*" else 90, facecolors=col if filled else "white", edgecolors=col if not filled else "#1f1e1c",
+                       linewidths=1.3 if not filled else 0.5, zorder=3, label=ARM_NAMES[arm])
+        ax.set_xlim(-4, 104)
+        ax.set_xlabel(title)
+        ax.grid(True, axis="x", color="#e6e5e0", linewidth=0.8, zorder=0)
+        for sp in ("top", "right"):
+            ax.spines[sp].set_visible(False)
+    axes[0].set_yticks([ys[o] for o in objs])
+    axes[0].set_yticklabels([f"{o.split('__', 1)[-1]}{' (validation)' if by[o]['side'] != 'test' else ''}, n = {by[o]['n']}" for o in objs],
+                            fontsize=8)
+    axes[0].legend(frameon=False, fontsize=7.5, loc="upper center", bbox_to_anchor=(1.05, 1.0 + 1.6 / (0.42 * len(objs) + 1.6)), ncol=3)
+    fig.tight_layout()
+    fig.savefig(path, dpi=200, bbox_inches="tight")
+    plt.close(fig)
+
+
+def figure(a: Any) -> str:
+    """The figure again from a finished summary's graspgen_summary.json (its figure data only; no records file is opened)."""
+    import json
+    import os
+
+    from robots.mujoco_lab.curve import _sha
+
+    if os.path.exists(a.out):
+        raise SystemExit(f"{a.out} exists")
+    os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True)
+    pilot_figure(json.load(open(a.summary)), a.out)
+    print(f"wrote {a.out} from {a.summary} (sha256 {_sha(a.summary)})", flush=True)
+    return a.out
+
+
 def main(argv: list[str] | None = None) -> Any:
     import argparse
 
@@ -921,8 +1478,24 @@ def main(argv: list[str] | None = None) -> Any:
     s.add_argument("--runs", required=True, help="comma-separated smoke run dirs")
     s.add_argument("--poseset", required=True, help="comma-separated pose-set run dirs (test and validation)")
     s.add_argument("--out", required=True)
+    m = sub.add_parser("summary", help="the readings from finished pilot runs (opens the pilot's records once)")
+    m.add_argument("--runs", required=True, help="comma-separated pilot run dirs")
+    m.add_argument("--poseset", required=True, help="comma-separated pose-set test run dirs (the pose-set summary's)")
+    m.add_argument("--poseset-validation", default="", help="comma-separated pose-set validation run dirs")
+    m.add_argument("--poseset-summary", required=True, help="the pose set's poseset_summary.json")
+    m.add_argument("--oracle", required=True, help="comma-separated oracle-arm test run dirs (the oracle summary's)")
+    m.add_argument("--oracle-validation", default="", help="comma-separated oracle-arm validation run dirs")
+    m.add_argument("--oracle-summary", required=True, help="the oracle arm's oracle_summary.json")
+    m.add_argument("--stage2", required=True, help="comma-separated Stage 2 run dirs")
+    m.add_argument("--stage2-summary", required=True, help="Stage 2's stage2_summary.json")
+    m.add_argument("--locked", required=True, help="Stage 2's locked.json")
+    m.add_argument("--smoke", required=True, help="the smoke report's smoke_summary.json (the 2-seed gate)")
+    m.add_argument("--out", required=True)
+    g = sub.add_parser("figure", help="the figure again from a finished summary's json (reads no records)")
+    g.add_argument("--summary", required=True, help="graspgen_summary.json")
+    g.add_argument("--out", required=True, help="the png to write")
     a = p.parse_args(argv)
-    return {"clouds": clouds, "run": run, "log-request": log_request, "smoke": smoke}[a.cmd](a)
+    return {"clouds": clouds, "run": run, "log-request": log_request, "smoke": smoke, "summary": summary, "figure": figure}[a.cmd](a)
 
 
 if __name__ == "__main__":
