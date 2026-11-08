@@ -380,3 +380,90 @@ def test_the_rotation_error_counts_a_half_turn_as_a_half_turn():
     for flip in (np.diag([-1.0, -1.0, 1.0]), np.diag([1.0, -1.0, -1.0])):
         assert abs(sixdof.pose_error(arm, q, pos, R @ flip)[1] - math.pi) < 1e-3
     assert sixdof.pose_error(arm, q, pos, R) == pytest.approx((ep, er), abs=1e-12)
+
+
+# ------------------------------------------------------------------ the clearance check (ruling 1)
+
+def test_a_closed_finger_puts_its_pad_face_on_the_width_within_the_joint_range():
+    from types import SimpleNamespace
+
+    sc = SimpleNamespace(MAX_OPEN=0.055, PAD_HALF=(0.004, 0.00875, 0.012))
+    assert sixdof.finger_q(sc, 0.05) == pytest.approx(0.055 - 0.008 - 0.025)
+    assert sixdof.finger_q(sc, 0.2) == 0.0
+    assert sixdof.finger_q(sc, -1.0) == pytest.approx(0.055 - 0.002)
+
+
+@SIM
+def test_the_bodies_are_the_palm_the_wrist_and_the_two_finger_boxes_and_the_obstacles_are_by_kind():
+    env, p = _sugar_box()
+    sim = env.sim
+    m = sim.m
+    hg = sixdof.hand_geoms(sim)
+    assert hg["palm"] == [m.geom("palm").id] and hg["wrist"] == [m.geom("wrist").id] and len(hg["finger"]) == 2
+    assert all(m.geom_contype[g] == 0 and np.allclose(m.geom_size[g], [0.004, 0.008, 0.03]) for g in hg["finger"])
+    assert np.allclose(m.jnt_range[m.joint("jl").id], [0.0, env.s["scene"].MAX_OPEN - 0.002])
+    ob = sixdof.obstacle_sets(sim, "bin")
+    assert ob["object"] == set(sim.hull_ids) and ob["table"] == {sim.table} and ob["destination"] == set(sim.bin_geoms)
+    assert ob["fixture"] == set().union(*sim.fixture_geoms.values())
+    ob = sixdof.obstacle_sets(sim, "box")
+    assert ob["destination"] == sim.fixture_geoms["box"] and set(sim.bin_geoms) <= ob["fixture"] and not ob["fixture"] & sim.fixture_geoms["box"]
+    assert sixdof.obstacle_sets(sim, "table_centre")["destination"] == set()
+
+
+@SIM
+def test_the_hand_geoms_sit_on_the_hand_pose_with_the_fingers_at_their_joint():
+    import mujoco
+
+    env, p = _sugar_box()
+    sim, arm = env.sim, env.sim.arm
+    q = sixdof.candidates(env, sixdof.from_graspgen(_at(p, 40.0)), "box:0:g1")[0]["q"]
+    geoms = [g for gs in sixdof.hand_geoms(sim).values() for g in gs]
+    for jl in (0.0, 0.02):
+        loc = sixdof.local_poses(sim, geoms, jl)
+        arm.kd.qpos[:] = sim.d.qpos
+        arm.kd.qpos[arm.q0:arm.q0 + 7] = q
+        arm.kd.qpos[sim.finger_q] = jl
+        mujoco.mj_kinematics(sim.m, arm.kd)
+        ph, Rh = arm.kd.xpos[arm.hand].copy(), arm.kd.xmat[arm.hand].reshape(3, 3).copy()
+        for g, (lp, lR) in loc.items():
+            assert np.allclose(ph + Rh @ lp, arm.kd.geom_xpos[g], atol=1e-12)
+            assert np.allclose(Rh @ lR, arm.kd.geom_xmat[g].reshape(3, 3), atol=1e-12)
+
+
+def _pinch(env, f):
+    return env.proposals((f,))[0]
+
+
+@SIM
+def test_a_palm_inside_the_object_fails_the_clearance_against_the_object():
+    env, p = _sugar_box()                   # upright, 17.5 cm tall: a vertical pinch at mid-height puts the palm inside it
+    c = sixdof.clearance(env, sixdof.from_graspgen(_at(p), s=p.s, width=p.width), 0.05, "table_centre")
+    assert c is not None and "palm/object" in c["pairs"] and c["by_pair"]["palm/object"]["phase"] in ("approach", "close")
+    assert c["first"]["pair"] in c["pairs"] and c["by_pair"]["palm/object"]["depth"] > 0.01
+    assert all(pr.split("/")[0] != "finger" or pr.split("/")[1] != "object" for pr in c["pairs"])      # the width rule's
+
+
+@SIM
+def test_a_pinch_near_the_top_set_down_on_the_table_is_clear():
+    env, _ = _sugar_box()
+    p = _pinch(env, 0.9)
+    assert sixdof.clearance(env, sixdof.from_graspgen(_at(p), s=p.s, width=p.width), 0.05, "table_centre") is None
+
+
+@SIM
+def test_the_fingers_are_closed_on_the_width_from_the_close_to_the_lower_and_open_otherwise(monkeypatch):
+    env, p = _sugar_box()
+    seen = {}
+
+    def fake_local(sim, geoms, jl):          # open: the bodies 0.5 m above the hand; closed: 0.5 m below it, into the table
+        seen[jl > 0] = jl
+        return {g: (np.array([0.0, 0.0, -0.5 if jl > 0 else 0.5]), np.eye(3)) for g in geoms}
+
+    phases = ("wait", "approach", "close", "lift", "hold", "transport", "lower", "release", "retreat")
+    P = np.array([-0.3, 0.15, env.s["scene"].TABLE_TOP + 0.49])
+    monkeypatch.setattr(sixdof, "local_poses", fake_local)
+    monkeypatch.setattr(sixdof, "hand_path6", lambda *a, **k: [(ph, P, np.eye(3)) for ph in phases])
+    c = sixdof.clearance(env, sixdof.from_graspgen(_at(p)), 0.02, "table_centre")
+    assert seen == {False: 0.0, True: pytest.approx(sixdof.finger_q(env.s["scene"], 0.02))}
+    t = c["by_pair"]["palm/table"]
+    assert (t["phase"], t["step"], t["steps"]) == ("close", 2, 5) and c["first"]["pair"] == "palm/table"

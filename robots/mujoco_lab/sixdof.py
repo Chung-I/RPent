@@ -307,6 +307,95 @@ def choose(env: Any, p: Grasp6, key: str, destination: str, v_lift: float = 0.1,
     return {"goal": bool(cands), "candidate": None, "failed": failed}
 
 
+# ------------------------------------------------------------------ the clearance check (design ruling 1)
+
+OPEN_PHASES = ("wait", "approach", "release", "retreat")   # the fingers open; closed on the width from the close to the lower
+OBJECT_PHASES = ("wait", "approach", "close")             # the palm and wrist against the object's hulls at its rest pose
+CLEAR_DISTMAX = 0.01                                      # mj_geomDistance's horizon (m): a pair this far apart is clear
+
+
+def finger_q(sc: Any, w: float) -> float:
+    """The finger joints' position that closes each pad's inner face onto +-w/2 (a pad is 2 PAD_HALF[0] thick and its
+    finger starts MAX_OPEN out), within the joints' range [0, MAX_OPEN - 0.002]."""
+    return float(np.clip(sc.MAX_OPEN - 2.0 * sc.PAD_HALF[0] - 0.5 * float(w), 0.0, sc.MAX_OPEN - 0.002))
+
+
+def hand_geoms(sim: Any) -> dict[str, list[int]]:
+    """The hand's bodies the sim never collides (contype 0): the palm box, the wrist cylinder and the two finger boxes."""
+    m = sim.m
+    fingers = [g for b in ("finger_l", "finger_r") for g in range(m.ngeom)
+               if int(m.geom_bodyid[g]) == m.body(b).id and g not in (sim.pad_l, sim.pad_r)]
+    return {"palm": [m.geom("palm").id], "wrist": [m.geom("wrist").id], "finger": fingers}
+
+
+def obstacle_sets(sim: Any, destination: str) -> dict[str, set[int]]:
+    """The obstacles by kind: the object's hulls, the table, the destination (the bin's geoms or the fixture of that
+    name; none for a table spot), and every other fixture with the bin when it is not the destination."""
+    dest = set(sim.bin_geoms) if destination == "bin" else set(sim.fixture_geoms.get(destination, ()))
+    scene = set(sim.bin_geoms).union(*sim.fixture_geoms.values())
+    return {"object": set(sim.hull_ids), "table": {sim.table}, "fixture": scene - dest, "destination": dest}
+
+
+def local_poses(sim: Any, geoms: list[int], jl: float) -> dict[int, tuple[np.ndarray, np.ndarray]]:
+    """Each geom's pose in the hand frame with both finger joints at ``jl`` (kinematics scratch)."""
+    import mujoco
+
+    m, kd, h = sim.m, sim.arm.kd, sim.arm.hand
+    kd.qpos[:] = sim.d.qpos
+    kd.qpos[sim.finger_q] = jl
+    mujoco.mj_kinematics(m, kd)
+    ph, Rh = kd.xpos[h].copy(), kd.xmat[h].reshape(3, 3).copy()
+    return {g: (Rh.T @ (kd.geom_xpos[g] - ph), Rh.T @ kd.geom_xmat[g].reshape(3, 3)) for g in geoms}
+
+
+def clearance(env: Any, p: Grasp6, w: float, destination: str, v_lift: float = 0.1, v_transport: float = 0.5,
+              release_height: float | None = None, a_transport: float = A_TRANSPORT) -> dict[str, Any] | None:
+    """Ruling 1's kinematic clearance of the bodies the sim never collides (hand_geoms) along hand_path6, at every
+    control step from the pregrasp to the end of the retreat, the boxes placed on the hand pose (they do not depend on
+    the arm's joints): the palm and wrist against the object's hulls at its rest pose from the pregrasp to the close
+    (the finger boxes against the object are the width rule's), every body against the table, the fixtures and the
+    destination at every step; the fingers open in OPEN_PHASES, closed on ``w`` (finger_q) from the close to the lower.
+    A pair fails when mj_geomDistance is below 0. None when clear, else {"pairs": the failing body/obstacle pairs,
+    "first": the earliest failure, "by_pair": {pair: its first phase and step, its steps and its deepest overlap}}."""
+    import mujoco
+
+    sim, sc = env.sim, env.s["scene"]
+    m, kd = sim.m, sim.arm.kd
+    body_of = {g: b for b, gs in hand_geoms(sim).items() for g in gs}
+    kind_of = {o: k for k, os_ in obstacle_sets(sim, destination).items() for o in os_}
+    hand = list(body_of)
+    loc = {"open": local_poses(sim, hand, 0.0), "closed": local_poses(sim, hand, finger_q(sc, w))}
+    path = hand_path6(env, p, v_lift, v_transport, destination, release_height, a_transport)
+    kd.qpos[:] = sim.d.qpos                     # the obstacles where they are now (the object at rest)
+    mujoco.mj_kinematics(m, kd)
+    obs = np.array(sorted(kind_of), dtype=int)
+    centres, rb = kd.geom_xpos[obs].copy(), m.geom_rbound[obs]
+    by: dict[str, dict[str, Any]] = {}
+    for k, (ph, pos, R) in enumerate(path):
+        L = loc["open" if ph in OPEN_PHASES else "closed"]
+        for g in hand:
+            lp, lR = L[g]
+            gp = pos + R @ lp
+            kd.geom_xpos[g] = gp
+            kd.geom_xmat[g] = (R @ lR).reshape(-1)
+            near = obs[np.linalg.norm(centres - gp, axis=1) <= rb + m.geom_rbound[g] + CLEAR_DISTMAX]
+            for o in near:
+                kind = kind_of[int(o)]
+                if kind == "object" and (body_of[g] == "finger" or ph not in OBJECT_PHASES):
+                    continue
+                dist = float(mujoco.mj_geomDistance(m, kd, int(g), int(o), CLEAR_DISTMAX, None))
+                if dist < 0.0:
+                    pair = f"{body_of[g]}/{kind}"
+                    b = by.setdefault(pair, {"phase": ph, "step": k, "steps": 0, "depth": 0.0, "geoms": [m.geom(g).name or body_of[g],
+                                                                                                         m.geom(int(o)).name]})
+                    b["steps"] += 1
+                    b["depth"] = max(b["depth"], -dist)
+    if not by:
+        return None
+    first = min(by, key=lambda pr: by[pr]["step"])
+    return {"pairs": sorted(by), "first": dict(pair=first, **by[first]), "by_pair": by}
+
+
 def _today(p: Proposal | Grasp6) -> Proposal:
     """The Proposal today's executor runs: a Proposal (anything but a Grasp6) as it is, a Grasp6 within VERTICAL_DEG by the
     vertical mapping."""
