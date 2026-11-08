@@ -1423,9 +1423,10 @@ def summary_markdown(rep: dict[str, Any]) -> str:
     return "\n".join(L) + "\n"
 
 
-def pilot_figure(rep: dict[str, Any], path: str) -> None:
+def pilot_figure(rep: dict[str, Any], path: str) -> list[tuple[float, float, float, float]]:
     """Each object's success and irreversible damage under the six arms (two panels, one row per object, the test objects
-    above the validation ones), from the summary's figure data."""
+    above the validation ones), from the summary's figure data; returns the panels' (x0, y0, width, height) in figure
+    fractions."""
     import matplotlib
 
     matplotlib.use("Agg")
@@ -1451,10 +1452,13 @@ def pilot_figure(rep: dict[str, Any], path: str) -> None:
     axes[0].set_yticks([ys[o] for o in objs])
     axes[0].set_yticklabels([f"{o.split('__', 1)[-1]}{' (validation)' if by[o]['side'] != 'test' else ''}, n = {by[o]['n']}" for o in objs],
                             fontsize=8)
-    axes[0].legend(frameon=False, fontsize=7.5, loc="upper center", bbox_to_anchor=(1.05, 1.0 + 1.6 / (0.42 * len(objs) + 1.6)), ncol=3)
     fig.tight_layout()
+    h, lab = axes[0].get_legend_handles_labels()
+    fig.legend(h, lab, frameon=False, fontsize=7.5, loc="lower center", bbox_to_anchor=(0.5, 1.0), ncol=3)   # outside the layout
+    boxes = [tuple(ax.get_position().bounds) for ax in axes]
     fig.savefig(path, dpi=200, bbox_inches="tight")
     plt.close(fig)
+    return boxes
 
 
 def figure(a: Any) -> str:

@@ -1096,3 +1096,15 @@ def test_the_figure_is_redrawn_from_the_summary_json_alone(tmp_path, monkeypatch
     assert os.path.getsize(out) > 0
     with pytest.raises(SystemExit):
         gg.figure(SimpleNamespace(summary=os.path.join(a.out, "graspgen_summary.json"), out=out))
+
+
+def test_the_figures_two_panels_sit_side_by_side_without_a_wide_gap(tmp_path, monkeypatch):
+    import json
+    import os
+
+    monkeypatch.setenv("WANDB_MODE", "disabled")
+    a = _pilot_inputs(tmp_path, _five_cases())
+    gg.summary(a)
+    boxes = gg.pilot_figure(json.load(open(os.path.join(a.out, "graspgen_summary.json"))), str(tmp_path / "f.png"))
+    (x0, _, w0, _), (x1, _, w1, _) = boxes
+    assert 0.0 < x1 - (x0 + w0) < 0.1 and w0 > 0.3 and w1 > 0.3
