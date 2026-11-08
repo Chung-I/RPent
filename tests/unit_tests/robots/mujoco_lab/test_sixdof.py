@@ -461,6 +461,17 @@ def test_the_hand_geoms_sit_on_the_hand_pose_with_the_fingers_at_their_joint():
             assert np.allclose(Rh @ lR, arm.kd.geom_xmat[g].reshape(3, 3), atol=1e-12)
 
 
+@SIM
+def test_the_open_fingers_rest_at_open_q_past_the_soft_stop():
+    env, _ = _sugar_box()
+    sim, sc = env.sim, env.s["scene"]
+    sim.grip(-20.0)                                   # run_grasp's open command, given before the free move
+    for _ in range(int(0.5 * sc.CTRL_HZ)):
+        sim.step_ctrl()
+    assert np.allclose(sim.d.qpos[sim.finger_q], sixdof.OPEN_Q, atol=2e-5)
+    assert 2 * (sc.MAX_OPEN - sixdof.OPEN_Q) == pytest.approx(0.119, abs=1e-4)      # the open hand: 119.0 mm, not 110 mm
+
+
 def _pinch(env, f):
     return env.proposals((f,))[0]
 
@@ -531,6 +542,113 @@ def test_the_fingers_are_closed_on_the_width_from_the_close_to_the_lower_and_ope
     monkeypatch.setattr(sixdof, "local_poses", fake_local)
     monkeypatch.setattr(sixdof, "hand_path6", lambda *a, **k: [(ph, P, np.eye(3)) for ph in phases])
     c = sixdof.clearance(env, sixdof.from_graspgen(_at(p)), 0.02, "table_centre")
-    assert seen == {False: 0.0, True: pytest.approx(sixdof.finger_q(env.s["scene"], 0.02))}
+    assert seen == {False: sixdof.OPEN_Q, True: pytest.approx(sixdof.finger_q(env.s["scene"], 0.02))}
     t = c["by_pair"]["palm/table"]
     assert (t["phase"], t["step"], t["steps"]) == ("close", 2, 5) and c["first"]["pair"] == "palm/table"
+    seen.clear()
+    sixdof.clearance_on_path(env, [(ph, P, np.eye(3)) for ph in phases], 0.02, "table_centre", open_q=0.0)
+    assert seen[False] == 0.0                # a caller can place the open fingers elsewhere (the palm audit: at the stop)
+
+
+# ------------------------------------------------------------------ width and centring on the tilted closing axis (unit c)
+
+def _box(l, w, h, centre=(0.0, 0.0, 0.0)):
+    return np.array([[x, y, z] for x in (-l / 2, l / 2) for y in (-w / 2, w / 2) for z in (-h / 2, h / 2)]) + np.asarray(centre)
+
+
+def _to_vertical(hulls, p):
+    """The hulls moved rigidly so the pinch ``p`` becomes a vertical pinch at yaw 0 with its pad centre at the origin (the
+    lab point 4 mm below it): v -> diag(1, -1, -1) R^T (v - tcp)."""
+    M = np.diag([1.0, -1.0, -1.0]) @ np.asarray(p.R, dtype=float).T
+    return [(np.asarray(V, dtype=float) - np.asarray(p.tcp, dtype=float)) @ M.T for V in hulls], np.array([0.0, 0.0, -gg.PAD_ABOVE])
+
+
+def test_the_slab_the_column_and_the_open_pads_of_a_pinch_turn_with_its_frame():
+    from rpent.skills.pick_place import features
+    from rpent.skills.pick_place.features import PAD_HALF
+
+    rng = np.random.default_rng(3)
+    for _ in range(12):
+        p = sixdof.from_graspgen(_random_within(rng, 60.0))
+        tcp = np.asarray(p.tcp)
+        hulls = [rng.normal(size=(14, 3)) * 0.03 + tcp + rng.normal(size=3) * 0.01, _box(0.05, 0.02, 0.04, tcp + rng.normal(size=3) * 0.02)]
+        hv, pt = _to_vertical(hulls, p)
+        assert sixdof.pinch_extent6(hulls, p) == pytest.approx(features.pinch_extent(hv, pt, 0.0, PAD_HALF), abs=1e-7)
+        assert sixdof.column_extent6(hulls, p) == pytest.approx(features.column_extent(hv, pt, 0.0, PAD_HALF), abs=1e-7, nan_ok=True)
+        assert sixdof.bounded_width6(hulls, p) == pytest.approx(gg.bounded_width(hv, pt, 0.0), abs=1e-7, nan_ok=True)
+        assert sixdof.pads_free6(hulls, p) == gg.pads_free(hv, pt, 0.0)
+        lo, hi = sixdof.pinch_extent6(hulls, p)
+        assert sixdof.pinch_width6(hulls, p) == pytest.approx(hi - lo, nan_ok=True)
+
+
+def test_a_vertical_pinchs_slab_is_the_labs_slab_at_its_mapped_point_and_yaw():
+    from rpent.skills.pick_place import features
+    from rpent.skills.pick_place.features import PAD_HALF
+
+    rng = np.random.default_rng(4)
+    hulls = [rng.normal(size=(12, 3)) * 0.03 + [0.1, 0.2, 0.9], _box(0.06, 0.03, 0.05, (0.11, 0.2, 0.9))]
+    for yaw in (0.0, 0.7, -2.0):
+        p = sixdof.from_graspgen(_tilted(0.0, yaw=yaw, t=(0.1, 0.2, 0.9 + gg.DEPTH)))
+        q = sixdof.as_vertical(p)
+        assert sixdof.pinch_extent6(hulls, p) == pytest.approx(features.pinch_extent(hulls, q.point, q.yaw, PAD_HALF), abs=1e-7)
+        assert sixdof.column_extent6(hulls, p) == pytest.approx(features.column_extent(hulls, q.point, q.yaw, PAD_HALF), abs=1e-7)
+
+
+def test_the_closing_axis_is_the_pinchs_own_when_it_leaves_the_horizontal():
+    # a 6 cm cube; the closing axis 30° above the horizontal, the approach square to it: the slab (2.4 cm thick along the
+    # approach) holds the cube's far edges (x = z = +-3 cm), so each end lies 3 cm (cos 30° + sin 30°) out along the axis
+    a = math.radians(30.0)
+    x = np.array([math.cos(a), 0.0, math.sin(a)])
+    z = np.array([math.sin(a), 0.0, -math.cos(a)])
+    g = np.eye(4)
+    g[:3, 0], g[:3, 1], g[:3, 2] = x, np.cross(z, x), z
+    p = sixdof.from_graspgen(g, depth=0.0)
+    lo, hi = sixdof.pinch_extent6([_box(0.06, 0.06, 0.06)], p)
+    assert hi == pytest.approx(0.03 * (math.cos(a) + math.sin(a)), abs=1e-9) and lo == pytest.approx(-hi, abs=1e-9)
+    assert sixdof.pinch_width6([_box(0.06, 0.06, 0.06)], p) > 0.06 + 0.02        # a level-axis rule would read 6 cm
+
+
+class WidthEnv:
+    """The hulls and the lab's widest pinch."""
+
+    max_pinch_width = 0.09
+
+    def __init__(self, hulls):
+        self.hulls = hulls
+
+    def _hull_vertex_list(self):
+        return self.hulls
+
+
+def test_the_width_rules_on_a_tilted_pinch_give_the_pilots_reasons():
+    from rpent.skills.pick_place.menu import OFF_OBJECT, TOO_WIDE
+
+    from robots.mujoco_lab.curve_poseset import OFF_CENTRE, OFF_CENTRE_COLUMN
+
+    p = sixdof.from_graspgen(_tilted(40.0, yaw=0.0, t=(0.0, 0.0, 0.0)), depth=0.0)     # the pad centre at the origin
+    R = np.asarray(p.R)
+    ex, a = R[:, 0], R[:, 2]
+
+    def slab_box(lo, hi, back=0.0, depth=0.02):
+        """A box along the closing axis from lo to hi, ``depth`` deep along the approach, its centre ``back`` behind the pad."""
+        c = 0.5 * (lo + hi) * ex - back * a
+        corners = [c + s1 * 0.5 * (hi - lo) * ex + s2 * 0.01 * R[:, 1] + s3 * 0.5 * depth * a
+                   for s1 in (-1, 1) for s2 in (-1, 1) for s3 in (-1, 1)]
+        return np.array(corners)
+
+    ok = sixdof.width_rule6(WidthEnv([slab_box(-0.02, 0.02)]), p)
+    assert ok["width"] == pytest.approx(0.04) and ok["why"] is None and ok["centred"] and ok["width_b"] == pytest.approx(0.04)
+    assert ok["pads_free"] and ok["why_b"] is None and ok["slab"] == pytest.approx([-0.02, 0.02])
+    wide = sixdof.width_rule6(WidthEnv([slab_box(-0.06, 0.06)]), p)    # 12 cm: 9.4 cm between the open pads, both too wide
+    assert wide["why"] == TOO_WIDE and wide["why_b"] == TOO_WIDE and wide["width_b"] == pytest.approx(2 * gg.OPEN_GAP)
+    long = sixdof.width_rule6(WidthEnv([slab_box(-0.02, 0.08)]), p)     # 10 cm: too wide; 6.7 cm between the pads, a pad lands
+    assert long["why"] == TOO_WIDE and long["width_b"] == pytest.approx(0.067) and long["why_b"] == gg.PAD_LANDS
+    gone = sixdof.width_rule6(WidthEnv([slab_box(-0.02, 0.02) + 0.5]), p)
+    assert gone["why"] == OFF_OBJECT and gone["why_b"] == OFF_OBJECT
+    off = sixdof.width_rule6(WidthEnv([slab_box(-0.01, 0.05)]), p)                # 6 cm wide, one end 5 cm out: past the 4.5 cm
+    assert off["why"] == OFF_CENTRE and off["width"] == pytest.approx(0.06) and not off["centred"]
+    col = sixdof.width_rule6(WidthEnv([slab_box(-0.02, 0.02), slab_box(-0.06, 0.06, back=0.2)]), p)   # wide 20 cm back
+    assert col["why"] == OFF_CENTRE_COLUMN and col["width"] == pytest.approx(0.04) and col["column"] == pytest.approx([-0.06, 0.06])
+    assert col["why_b"] == gg.PAD_LANDS and not col["pads_free"]
+    behind = sixdof.width_rule6(WidthEnv([slab_box(-0.02, 0.02), slab_box(-0.06, 0.06, back=-0.2)]), p)  # 20 cm past the pad
+    assert behind["why"] is None and behind["why_b"] is None

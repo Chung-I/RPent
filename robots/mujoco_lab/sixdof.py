@@ -33,7 +33,8 @@ import numpy as np
 
 from robots.mujoco_lab.adapter import (A_TRANSPORT, APPROACH_M, CLOSE_S, HOLD_S, LIFT_H, REACH_CHECK_EVERY, REACH_TOL_M, REACH_TOL_RAD,
                                        RELEASE_S, RETREAT_M, V_DOWN, V_LOWER, Proposal, ramp_profile, transport_profile)
-from robots.mujoco_lab.curve_graspgen import DEPTH, PAD_ABOVE, VERTICAL_DEG
+from robots.mujoco_lab.curve_graspgen import DEPTH, PAD_ABOVE, PAD_LANDS, VERTICAL_DEG, bounded_width, pads_free
+from rpent.skills.pick_place.features import PAD_HALF, column_extent, pinch_extent
 
 BIN_EDGES = (VERTICAL_DEG, 45.0, 60.0, 75.0, 105.0)     # each bin (lo, hi], the first from 0; past the last: from below
 BINS = ("≤ 30°", "30–45°", "45–60°", "60–75°", "75–105°")
@@ -330,6 +331,8 @@ def choose(env: Any, p: Grasp6, key: str, destination: str, v_lift: float = 0.1,
 OPEN_PHASES = ("wait", "approach", "release", "retreat")   # the fingers open; closed on the width from the close to the lower
 OBJECT_PHASES = ("wait", "approach", "close")             # the palm and wrist against the object's hulls at its rest pose
 CLEAR_DISTMAX = 0.01                                      # mj_geomDistance's horizon (m): a pair this far apart is clear
+OPEN_Q = -0.00451        # the finger joints at rest under the open command (-20 N): 4.51 mm past the soft stop at 0 (both
+                         # sims), so the open hand is 119.0 mm, not 110 mm (design, open width in the clearance check)
 
 
 def finger_q(sc: Any, w: float) -> float:
@@ -373,17 +376,20 @@ def clearance(env: Any, p: Grasp6, w: float, destination: str, v_lift: float = 0
     control step from the pregrasp to the end of the retreat, the boxes placed on the hand pose (they do not depend on
     the arm's joints): the palm and wrist against the object's hulls at its rest pose from the pregrasp to the close
     (the finger boxes against the object are the width rule's), every body against the table, the fixtures and the
-    destination at every step; the fingers open in OPEN_PHASES, closed on ``w`` (finger_q) from the close to the lower.
+    destination at every step; the fingers open at OPEN_Q in OPEN_PHASES (the release too: its 0.15 to 0.25 s overshoot
+    is the physics', not a failure of the plan), closed on ``w`` (finger_q) from the close to the lower.
     A pair fails when mj_geomDistance is below 0. None when clear, else clearance_on_path's result."""
     return clearance_on_path(env, hand_path6(env, p, v_lift, v_transport, destination, release_height, a_transport), w, destination)
 
 
 def clearance_on_path(env: Any, path: list[tuple[str, Any, Any]], w: float, destination: str,
-                      fingers_on_object: bool = False, closed_q: tuple[float, float] | None = None) -> dict[str, Any] | None:
+                      fingers_on_object: bool = False, closed_q: tuple[float, float] | None = None,
+                      open_q: float = OPEN_Q) -> dict[str, Any] | None:
     """clearance's check along a given hand path [(phase, hand position, hand rotation)] (hand_path6's, or today's
     MuJoCoLabEnv.hand_path with each yaw as a rotation about the vertical); with ``fingers_on_object`` the finger boxes
     are also checked against the object's hulls in OBJECT_PHASES, and ``closed_q`` (the left and right finger joints)
-    places the closed fingers instead of finger_q on ``w`` (both are the palm-contact audit's). None when clear, else
+    places the closed fingers instead of finger_q on ``w`` (both are the palm-contact audit's), and ``open_q`` the open
+    fingers (the audit's published run: 0, the stop). None when clear, else
     {"pairs": the failing body/obstacle pairs, "first": the earliest failure, "by_pair": {pair: its first phase and step,
     its steps, its deepest overlap and its geoms, and per phase its steps and deepest overlap}}."""
     import mujoco
@@ -393,7 +399,7 @@ def clearance_on_path(env: Any, path: list[tuple[str, Any, Any]], w: float, dest
     body_of = {g: b for b, gs in hand_geoms(sim).items() for g in gs}
     kind_of = {o: k for k, os_ in obstacle_sets(sim, destination).items() for o in os_}
     hand = list(body_of)
-    loc = {"open": local_poses(sim, hand, 0.0), "closed": local_poses(sim, hand, finger_q(sc, w) if closed_q is None else closed_q)}
+    loc = {"open": local_poses(sim, hand, open_q), "closed": local_poses(sim, hand, finger_q(sc, w) if closed_q is None else closed_q)}
     kd.qpos[:] = sim.d.qpos                     # the obstacles where they are now (the object at rest)
     mujoco.mj_kinematics(m, kd)
     obs = np.array(sorted(kind_of), dtype=int)
@@ -426,6 +432,71 @@ def clearance_on_path(env: Any, path: list[tuple[str, Any, Any]], w: float, dest
         return None
     first = min(by, key=lambda pr: by[pr]["step"])
     return {"pairs": sorted(by), "first": dict(pair=first, **by[first]), "by_pair": by}
+
+
+# ------------------------------------------------------------------ width and centring on the tilted closing axis
+
+_LAB_POINT = np.array([0.0, 0.0, -PAD_ABOVE])     # the lab point of a vertical pinch whose pad centre is the origin
+
+
+def pinch_frame(hulls: list[np.ndarray], p: Grasp6) -> list[np.ndarray]:
+    """The hulls moved rigidly so that the pinch ``p`` is a vertical pinch at yaw 0 with its pad centre at the origin
+    (its lab point _LAB_POINT): v -> diag(1, -1, -1) R^T (v - tcp), a rotation that takes the closing axis to +x and the
+    approach to -z. The pilot's width and centring rules read a tilted pinch there, on its own closing axis."""
+    M = np.diag([1.0, -1.0, -1.0]) @ np.asarray(p.R, dtype=float).T
+    t = np.asarray(p.tcp, dtype=float)
+    return [(np.asarray(V, dtype=float) - t) @ M.T for V in hulls]
+
+
+def pinch_extent6(hulls: list[np.ndarray], p: Grasp6) -> tuple[float, float]:
+    """features.pinch_extent on the pinch's own frame: (lo, hi) along its closing axis from its pad centre, of the hulls
+    inside the pads' swept slab (PAD_HALF[1] across, PAD_HALF[2] along the approach); (nan, nan) when no hull meets it."""
+    return pinch_extent(pinch_frame(hulls, p), _LAB_POINT, 0.0, PAD_HALF)
+
+
+def pinch_width6(hulls: list[np.ndarray], p: Grasp6) -> float:
+    lo, hi = pinch_extent6(hulls, p)
+    return hi - lo
+
+
+def column_extent6(hulls: list[np.ndarray], p: Grasp6) -> tuple[float, float]:
+    """features.column_extent on the pinch's own frame: the slab's footprint from its bottom to 1 m back along the
+    approach (the column the open pads come through)."""
+    return column_extent(pinch_frame(hulls, p), _LAB_POINT, 0.0, PAD_HALF)
+
+
+def bounded_width6(hulls: list[np.ndarray], p: Grasp6) -> float:
+    """curve_graspgen.bounded_width on the pinch's own frame: the width between the open pads' inner faces."""
+    return bounded_width(pinch_frame(hulls, p), _LAB_POINT, 0.0)
+
+
+def pads_free6(hulls: list[np.ndarray], p: Grasp6) -> bool:
+    """curve_graspgen.pads_free on the pinch's own frame: both open pads' columns, back along the approach, free."""
+    return pads_free(pinch_frame(hulls, p), _LAB_POINT, 0.0)
+
+
+def width_rule6(env: Any, p: Grasp6) -> dict[str, Any]:
+    """The pilot's two width rules (curve_graspgen.funnel's, without the vertical mapping and the reach) on the pinch's
+    own closing axis. The design's: the slab width within the opening (menu.unusable_reason), then both ends of the slab
+    and of the column within the open pads (curve_poseset.centred at half the opening). The variant: the width between
+    the open pads within the opening, then both pads' columns free (PAD_LANDS). ``why`` / ``why_b`` None when usable."""
+    from rpent.skills.pick_place.menu import unusable_reason
+
+    from robots.mujoco_lab.curve_poseset import OFF_CENTRE, OFF_CENTRE_COLUMN, centred
+
+    wmax = float(env.max_pinch_width)
+    hv = pinch_frame(env._hull_vertex_list(), p)
+    slab, column = pinch_extent(hv, _LAB_POINT, 0.0, PAD_HALF), column_extent(hv, _LAB_POINT, 0.0, PAD_HALF)
+    w, wb, free = float(slab[1] - slab[0]), float(bounded_width(hv, _LAB_POINT, 0.0)), pads_free(hv, _LAB_POINT, 0.0)
+    in_slab, in_column = centred(slab, wmax / 2), centred(column, wmax / 2)
+    why = unusable_reason(w, wmax)
+    if why is None and not (in_slab and in_column):
+        why = OFF_CENTRE if not in_slab else OFF_CENTRE_COLUMN
+    why_b = unusable_reason(wb, wmax)
+    if why_b is None and not free:
+        why_b = PAD_LANDS
+    return {"width": w, "slab": [float(x) for x in slab], "column": [float(x) for x in column], "centred": in_slab and in_column,
+            "why": why, "width_b": wb, "pads_free": free, "why_b": why_b}
 
 
 def _today(p: Proposal | Grasp6) -> Proposal:

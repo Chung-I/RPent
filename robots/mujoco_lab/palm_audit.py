@@ -128,9 +128,10 @@ def audit_path(env: Any, prop: Any, act: dict[str, Any]) -> dict[str, Any]:
     """flags_of the clearance of ``prop``'s planned path under ``act``: the palm, wrist and finger boxes against the object
     from the pregrasp to the close (the design's; sixdof's own check leaves the finger boxes to the width rule) and against
     the table, the fixtures and the destination at every step, the closed fingers each on its side of the slab
-    (pads_on_extent)."""
+    (pads_on_extent), the open fingers at the stop (q 0: the published audit ran before the open-width ruling put
+    sixdof's check at the fingers' rest, OPEN_Q)."""
     return flags_of(sixdof.clearance_on_path(env, today_path(env, prop, act), float(prop.width), act["destination"],
-                                             fingers_on_object=True, closed_q=pads_on_extent(env, prop)))
+                                             fingers_on_object=True, closed_q=pads_on_extent(env, prop), open_q=0.0))
 
 
 def state_sha(env: Any) -> str:

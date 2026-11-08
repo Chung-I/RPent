@@ -191,6 +191,7 @@ def test_the_audit_checks_the_finger_boxes_against_the_object_with_the_pads_on_t
     monkeypatch.setattr(sixdof, "clearance_on_path", spy)
     pa.audit_path(env, p, act)
     assert seen["fingers_on_object"] is True and seen["closed_q"] == pa.pads_on_extent(env, p)
+    assert seen["open_q"] == 0.0             # the published audit's open fingers, at the stop (before the open-width ruling)
 
 
 # ---------------------------------------------------------------- the summary
