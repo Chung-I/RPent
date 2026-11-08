@@ -129,6 +129,8 @@ IDENT_SETTLE_S = 0.3
 ARM_SUB = 10                 # arm port: the sidecar samples every control step (50 Hz), the last physics substep of it
 REACH_TOL_M, REACH_TOL_RAD = 1e-3, 1e-2     # reach: a planned hand pose whose IK error is above these is out of reach
 REACH_CHECK_EVERY = 5        # reach: the arm-scene collision check every 5 control steps of the path and at phase changes
+REPLAN_BAND_M = 3e-3         # the re-plan at the hold (design amendment 8): the carry rises only when the held object hangs
+                             # more than this below its planned offset (ruling of 2026-11-09: firm grasps turn 1 to 2 mm)
 UNREACHABLE = "unreachable"  # the decline reason of a proposal out of the arm's reach, and a probe's kind when its pose is
 ARM_PHASES = ("hold", "transport")   # an attempt's per-phase arm summaries (the weigh: its hold)
 
@@ -345,6 +347,24 @@ def ramp_profile(distance: float, v_max: float, hz: float) -> list[float]:
     return transport_profile(distance, v_max, hz, accel=v_max / RAMP_S)
 
 
+def replan_at_hold(trace: list[dict[str, Any]], planned_off: float, rose: bool) -> tuple[dict[str, Any], float]:
+    """The re-plan at the hold (design amendment 8, rules (a) and (e)): the reading at the end of the hold (the trace's
+    last "hold" step) and the carry's raise. The record: whether both pads hold the object there, whether it rose, the
+    planned offset (the object's lowest point relative to the hand at rest, the planned path's), the measured offset (the
+    same at the end of the hold), d = planned - measured (> 0 when the object hangs lower than planned), all in mm, and
+    the raise applied and the reach flag (execute fills both). The raise in m: d when the object rose, both pads hold it
+    and d > REPLAN_BAND_M, else 0 (the rule only raises)."""
+    hold = [s for s in trace if s["phase"] == "hold"]
+    rec: dict[str, Any] = {"held": False, "lifted": bool(rose), "planned_mm": 1e3 * planned_off, "measured_mm": None,
+                           "d_mm": None, "raise_mm": 0.0, "unreachable": False}
+    if not hold:
+        return rec, 0.0
+    measured = float(hold[-1]["low_z"]) - float(hold[-1]["hand_z"])
+    d = planned_off - measured
+    rec.update(held=bool(all(hold[-1]["pads"])), measured_mm=1e3 * measured, d_mm=1e3 * d)
+    return rec, (d if rec["held"] and rose and d > REPLAN_BAND_M else 0.0)
+
+
 class MuJoCoLabEnv:
     """One object on the table with hidden properties, the pads, and the place fixtures."""
 
@@ -356,6 +376,7 @@ class MuJoCoLabEnv:
         self.s = load_sim(sim_dir)
         self.render = render
         self.damage_meter = bool(damage_meter)
+        self.replan_hold = False     # the re-plan at the hold (design amendment 8, rule (f)); off is the published executor
         th0 = Thresholds.from_json(THRESHOLDS_V0)
         self.slosh_zeta = float(th0.slosh_zeta if slosh_zeta is None else slosh_zeta)
         self.slosh_scale = th0.slosh_scale          # the thresholds' forcing factors per profile class and fill
@@ -1100,6 +1121,8 @@ class MuJoCoLabEnv:
         dest = self._dest(destination)
         self._refresh_baselines()
         planned = self.plan_trajectory(proposal, v_lift, v_transport, destination, release_height, a_transport)
+        # the re-plan at the hold reads the planned path's offset: the object's lowest point at rest below the hand
+        off0 = self.sim.obj_low_z() - gr.hand_start_z(np.asarray(proposal.point, dtype=float)) if self.replan_hold else None
         self._meter_begin()
         self._log_begin()
         sim = self.sim
@@ -1109,6 +1132,7 @@ class MuJoCoLabEnv:
         out, _, _ = gr.run_grasp(sim, pt, proposal.yaw, force=force, v_lift=v_lift, lift_h=LIFT_H, hold_s=HOLD_S,
                                  on_step=on_step, lift_profile=ramp_profile(LIFT_H, v_lift, hz))
         rose = first_lifted(trace, ("lift", "hold")) is not None
+        replan, rise = replan_at_hold(trace, off0, rose) if self.replan_hold else (None, 0.0)
         release = None
         if rose:
             hand_z0 = gr.hand_start_z(pt)
@@ -1116,7 +1140,18 @@ class MuJoCoLabEnv:
             xy = pt[:2].copy()
             goal = np.asarray(dest["xy"], dtype=float)
             self._slosh_profile("carry")
-            for frac in transport_profile(float(np.linalg.norm(goal - xy)), v_transport, hz, accel=a_transport):
+            carry = transport_profile(float(np.linalg.norm(goal - xy)), v_transport, hz, accel=a_transport)
+            if rise > 0.0:          # the raise: straight up at the lift's speed, as transport steps, then the carry above it
+                if self._carry_reaches(xy, goal, z, rise, proposal.yaw, v_lift, carry):
+                    for frac in ramp_profile(rise, v_lift, hz):
+                        sim.set_hand([xy[0], xy[1], z + rise * frac], proposal.yaw)
+                        sim.step_ctrl()
+                        on_step("transport")
+                    z += rise
+                    replan["raise_mm"] = 1e3 * rise
+                else:
+                    replan["unreachable"] = True
+            for frac in carry:
                 cur = xy + (goal - xy) * frac
                 sim.set_hand([cur[0], cur[1], z], proposal.yaw)
                 sim.step_ctrl()
@@ -1140,6 +1175,8 @@ class MuJoCoLabEnv:
         wrench = self._joint_wrench(log) if log is not None else {}
         rtrace = self._with_joint_fz(trace, wrench) if log is not None else None
         r = self._label(trace, rose, dest, release, planned, v_lift, meter, damage, readout_trace=rtrace)
+        if replan is not None:
+            r.replan = replan
         r.time_s = (int(out.get("free_steps", 0)) + len(trace)) / hz
         if log is not None:
             joint, rec = self._attempt_joint(log, trace) if rose else (None, {"torque_noise": self.torque_noise})
@@ -1153,6 +1190,27 @@ class MuJoCoLabEnv:
             r.sensor["pad_readouts"] = {k: v for k, v in summarize(trace, self._label_out, v_lift).items()
                                         if k in ("fz_hold_n", "fz_slip_max_n", "fz_at_loss_n")}
         return r
+
+    def _carry_reaches(self, xy: np.ndarray, goal: np.ndarray, z: float, rise: float, yaw: float, v_lift: float,
+                       carry: list[float]) -> bool:
+        """Rule (d) of the re-plan at the hold: can the arm run the raised carry, the raise from z to z + rise at v_lift and
+        then the transport (``carry``'s path fractions from xy to goal) at z + rise? IK per control step at the poses
+        execute commands, warm-started at the arm's current joint target as set_hand is; False when an error is above
+        REACH_TOL_M or REACH_TOL_RAD. On the arm's scratch data: nothing moves. The floating hand reaches everything."""
+        sim = self.sim
+        arm = getattr(sim, "arm", None)
+        if arm is None:
+            return True
+        A = sys.modules[type(arm).__module__]
+        hz = self.s["scene"].CTRL_HZ
+        poses = [[xy[0], xy[1], z + rise * frac] for frac in ramp_profile(rise, v_lift, hz)]
+        poses += [[c[0], c[1], z + rise] for c in (xy + (goal - xy) * frac for frac in carry)]
+        yaw_f, q = A.fold_yaw(float(yaw), sim.yaw_ref), arm.q_to
+        for p in poses:
+            q, ep, er = arm.ik(p, yaw_f, q_init=q)
+            if ep > REACH_TOL_M or er > REACH_TOL_RAD:
+                return False
+        return True
 
     def _open_and_rise(self, x: float, y: float, z: float, yaw: float, trace: list[dict[str, Any]], on_step) -> dict[str, Any]:
         """Open the gripper with the hand at (x, y, z) for RELEASE_S, then rise RETREAT_M and settle; the release
