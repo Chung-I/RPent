@@ -20,6 +20,7 @@ import math
 import numpy as np
 import pytest
 
+from robots.mujoco_lab import adapter
 from robots.mujoco_lab import curve_graspgen as gg
 from robots.mujoco_lab import sixdof
 from robots.mujoco_lab.adapter import Proposal
@@ -652,3 +653,421 @@ def test_the_width_rules_on_a_tilted_pinch_give_the_pilots_reasons():
     assert col["why_b"] == gg.PAD_LANDS and not col["pads_free"]
     behind = sixdof.width_rule6(WidthEnv([slab_box(-0.02, 0.02), slab_box(-0.06, 0.06, back=-0.2)]), p)  # 20 cm past the pad
     assert behind["why"] is None and behind["why_b"] is None
+
+
+# ------------------------------------------------------------------ the tilted executor (unit d): the grasp phase
+
+def _chosen(env, p6, key="box:0:g1", destination="box"):
+    """The pinch (or its twin) of the first candidate whose path passes, and that candidate's configuration."""
+    ch = sixdof.choose(env, p6, key, destination)
+    c = ch["candidate"]
+    return (sixdof.twin(p6) if c["twin"] else p6), c["q"]
+
+
+@SIM
+def test_the_rotation_hand_command_at_a_yaw_rotation_is_the_sims_yaw_command():
+    env, p = _sugar_box()
+    sim = env.sim
+    pos = np.asarray(p.point) + [0.0, 0.0, 0.3]
+    sim.yaw_ref = p.yaw                       # set_hand folds the yaw toward this: the pinch itself, not its half turn
+    sim.set_hand(pos, p.yaw)
+    q_ref = sim.arm.q_to.copy()
+    env.reset("ycb__sugar_box", seed=0)
+    sixdof.set_hand6(env.sim, pos, _yaw_frame(p.yaw))
+    assert np.allclose(env.sim.arm.q_to, q_ref, rtol=0.0, atol=1e-9) and env.sim.in_episode
+    assert env.sim.ik_error[0] < 1e-6 and env.sim.ik_error[1] < 1e-5
+
+
+@SIM
+def test_the_free_move_waypoints_are_the_sims_quintic():
+    env, p = _sugar_box()
+    sim = env.sim
+    pt = np.asarray(p.point)
+    start = [pt[0], pt[1], env.s["grasp"].hand_start_z(pt) + adapter.APPROACH_M]
+    plan = sim.plan_free(start, p.yaw)
+    way = sixdof.quintic(sim.arm, plan["q"], env.s["scene"].CTRL_HZ)
+    seen, move = [], sim.arm.move
+    sim.arm.move = lambda q, n: (seen.append(np.asarray(q, dtype=float).copy()), move(q, n))[1]
+    sim.free_move(start, p.yaw, plan=plan)
+    assert len(way) == len(seen) == plan["steps"] and all(np.array_equal(a, b) for a, b in zip(way, seen))
+    A = sixdof._armlib(sim.arm)
+    assert len(sixdof.quintic(sim.arm, sim.arm.desired() + 1e-3, env.s["scene"].CTRL_HZ)) == math.ceil(A.FREE_MIN_S * env.s["scene"].CTRL_HZ)
+
+
+def _record(env, out):
+    def on_step(ph):
+        sim = env.sim
+        out.append((ph, sim.obj_pos().copy(), sim.d.xpos[sim.hand].copy(),
+                    0.5 * (sim.d.geom_xpos[sim.pad_l] + sim.d.geom_xpos[sim.pad_r])))
+    return on_step
+
+
+@SIM
+def test_at_no_tilt_the_grasp_phase_is_todays_run_grasp():
+    env, p = _sugar_box()
+    sim, gr, hz = env.sim, env.s["grasp"], env.s["scene"].CTRL_HZ
+    pt = np.asarray(p.point)
+    plan = sim.plan_free([pt[0], pt[1], gr.hand_start_z(pt) + adapter.APPROACH_M], p.yaw)
+    today: list = []
+    gr.run_grasp(sim, pt, p.yaw, force=12.0, v_lift=0.1, lift_h=adapter.LIFT_H, hold_s=adapter.HOLD_S,
+                 on_step=_record(env, today), lift_profile=adapter.ramp_profile(adapter.LIFT_H, 0.1, hz))
+    env.reset("ycb__sugar_box", seed=0)
+    g = sixdof.from_graspgen(_at(p), s=p.s, width=p.width)
+    if abs(math.remainder(plan["yaw_rep"] - p.yaw, 2 * math.pi)) > 1.0:        # the free move took the half turn
+        g = sixdof.twin(g)
+    new: list = []
+    out = sixdof.grasp_phase6(env, g, sixdof.quintic(env.sim.arm, plan["q"], hz), 12.0, 0.1, _record(env, new))
+    assert [x[0] for x in new] == [x[0] for x in today] and {x[0] for x in new} == {"approach", "close", "lift", "hold"}
+    for k in (1, 2):
+        assert max(float(np.abs(a[k] - b[k]).max()) for a, b in zip(new, today)) < 1e-6
+    assert out["free_steps"] == plan["steps"] and [c["check"] for c in out["g2"]] == ["pregrasp", "grasp"]
+    assert all(c["pos_m"] < adapter.REACH_TOL_M and c["rot_rad"] < adapter.REACH_TOL_RAD for c in out["g2"])
+
+
+@SIM
+def test_a_tilted_approach_keeps_the_pad_centre_on_the_approach_line_at_v_down():
+    env, p = _sugar_box()
+    g, q = _chosen(env, sixdof.from_graspgen(_at(p, 40.0), s=p.s, width=p.width))
+    hz = env.s["scene"].CTRL_HZ
+    rec: list = []
+    sixdof.grasp_phase6(env, g, sixdof.quintic(env.sim.arm, q, hz), 12.0, 0.1, _record(env, rec))
+    a, tcp = np.asarray(g.R)[:, 2], np.asarray(g.tcp)
+    mids = [x[3] for x in rec if x[0] == "approach"]
+    off = [float(np.linalg.norm((m - tcp) - ((m - tcp) @ a) * a)) for m in mids]
+    assert max(off) < 1e-3                                             # within 1 mm of the approach line
+    s = np.array([float((m - tcp) @ a) for m in mids])
+    assert abs(s[-1]) < 1e-3 and float(np.max(np.diff(s))) * hz == pytest.approx(adapter.V_DOWN, rel=0.05)
+
+
+@SIM
+def test_a_free_move_that_ends_off_the_pregrasp_fails_the_tracking_check():
+    env, p = _sugar_box()
+    g, q = _chosen(env, sixdof.from_graspgen(_at(p, 40.0), s=p.s, width=p.width))
+    off = np.asarray(q, dtype=float) + np.array([0.02, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])     # 0.02 rad on joint 1: about 1 cm
+    rec: list = []
+    with pytest.raises(sixdof.Unreachable6) as e:
+        sixdof.grasp_phase6(env, g, sixdof.quintic(env.sim.arm, off, env.s["scene"].CTRL_HZ), 12.0, 0.1, _record(env, rec))
+    assert e.value.record["check"] == "pregrasp" and e.value.record["pos_m"] > adapter.REACH_TOL_M and rec == []
+
+
+# ------------------------------------------------------------------ the tracer and readouts in the grasp frame (unit d)
+
+def _turn_object(sim, axis, angle):
+    """Turn the object ``angle`` rad about the world ``axis`` through its body origin, and update the kinematics."""
+    import mujoco
+
+    v = sim.m.joint("obj_free").qposadr[0]
+    out = np.zeros(4)
+    mujoco.mju_mulQuat(out, np.array([math.cos(angle / 2), *(math.sin(angle / 2) * np.asarray(axis, dtype=float))]),
+                       sim.d.qpos[v + 3:v + 7].copy())
+    sim.d.qpos[v + 3:v + 7] = out
+    mujoco.mj_forward(sim.m, sim.d)
+
+
+@SIM
+def test_the_pitch_meter_in_a_vertical_grasp_frame_is_todays():
+    env, p = _sugar_box()
+    pt = np.asarray(p.point)
+    ex = np.array([math.cos(p.yaw), math.sin(p.yaw), 0.0])
+    today = env._pitch_meter(pt, p.yaw)
+    framed = env._pitch_meter(pt, p.yaw, (np.cross([0.0, 0.0, 1.0], ex), np.array([0.0, 0.0, 1.0])))
+    _turn_object(env.sim, ex, 0.2)
+    assert today() == framed() and today() == pytest.approx(math.sin(0.2), abs=1e-9)
+
+
+@SIM
+def test_the_pitch_meter_in_a_tilted_grasp_frame_reads_the_turn_about_the_closing_axis():
+    env, p = _sugar_box()
+    g = sixdof.from_graspgen(_at(p, 40.0))
+    R = np.asarray(g.R)
+    ex, up = R[:, 0], -R[:, 2]
+    pitch = env._pitch_meter(np.asarray(g.tcp), 0.0, (np.cross(up, ex), up))
+    assert pitch() == pytest.approx(0.0, abs=1e-12)
+    _turn_object(env.sim, ex, 0.1)                                      # (ex, ey, up) is right-handed: the +ey side rises
+    assert pitch() == pytest.approx(math.sin(0.1), abs=1e-9)
+
+
+@SIM
+def test_the_pads_contact_normals_read_along_the_grasp_frames_up():
+    env, p = _sugar_box()
+    out, _, _ = env.s["grasp"].run_grasp(env.sim, np.asarray(p.point), p.yaw, force=12.0, v_lift=0.1, lift_h=adapter.LIFT_H,
+                                         hold_s=adapter.HOLD_S)
+    assert out["label"] == "held"
+    plain = env._pad_hull_sums()
+    assert plain[1] > 0.0 and plain[2] > 0.0                                 # both pads press on the box
+    env._pad_up = np.array([0.0, 0.0, 1.0])
+    assert np.array_equal(env._pad_hull_sums(), plain)                      # the vertical frame: today's sums
+    env._pad_up = np.array([math.cos(p.yaw), math.sin(p.yaw), 0.0])         # the closing axis: the normals lie along it
+    tilted = env._pad_hull_sums()
+    assert np.array_equal(tilted[:3], plain[:3]) and not np.array_equal(tilted[3:], plain[3:])
+    env._tracer(np.asarray(p.point), p.yaw)
+    assert env._pad_up is None                                               # a tracer without a frame: today's
+
+
+@SIM
+def test_the_tracer_reads_the_pitch_in_its_frame():
+    env, p = _sugar_box()
+    seen = []
+    env._pitch_meter = lambda pt, yaw, frame=None: (seen.append(frame), lambda: 0.0)[1]
+    frame = (np.array([0.0, 1.0, 0.0]), np.array([0.6, 0.0, 0.8]))
+    env._tracer(np.asarray(p.point), 0.0, frame)
+    env._tracer(np.asarray(p.point), p.yaw)
+    assert seen[0] is frame and seen[1] is None
+
+
+# ------------------------------------------------------------------ the tilted re-plan at the hold (rule (c), unit d)
+
+def _cloud(p, seed=0):
+    """50 points of an object below the pinch's pad centre, at rest."""
+    return np.asarray(p.tcp) + np.random.default_rng(seed).uniform(-0.04, 0.04, (50, 3)) - [0.0, 0.0, 0.03]
+
+
+def test_at_no_tilt_the_tilted_replan_reads_todays_d_and_raises_only_past_the_band_when_held_and_lifted():
+    p = sixdof.from_graspgen(_grasp((0.0, 0.0, -1.0), (math.cos(0.4), math.sin(0.4), 0.0), (0.1, 0.2, 0.9)))
+    hp, Rh = sixdof.hand_frame(p)
+    V, top = _cloud(p), hp + [0.0, 0.0, adapter.LIFT_H]
+    for drop, held, rose, rise in ((0.005, True, True, 0.005), (0.002, True, True, 0.0), (0.005, False, True, 0.0),
+                                   (0.005, True, False, 0.0), (-0.004, True, True, 0.0)):
+        Vn = V + [0.0, 0.0, adapter.LIFT_H - drop]                    # lifted with the hand, then slipped down by drop
+        rec, r = sixdof.replan_at_hold6(p, V, Vn, top, Rh, [0.0, 0.5, 1.0], held, rose)
+        today, _ = adapter.replan_at_hold([{"phase": "hold", "low_z": float(Vn[:, 2].min()), "hand_z": float(top[2]),
+                                            "pads": [held, held]}], float(V[:, 2].min() - hp[2]), rose)
+        assert rec["d_mm"] == pytest.approx(today["d_mm"], abs=1e-9) and rec["d_mm"] == pytest.approx(1e3 * drop, abs=1e-9)
+        assert r == pytest.approx(rise, abs=1e-12)
+        assert (rec["held"], rec["lifted"], rec["raise_mm"], rec["unreachable"], rec["frame"]) == (held, rose, 0.0, False, "tcp")
+
+
+def test_the_tilted_replan_reads_the_in_hand_pose_not_the_arms_sag_or_droop():
+    p = sixdof.from_graspgen(_tilted(40.0))
+    hp, Rh = sixdof.hand_frame(p)
+    V = _cloud(p)
+    c, s = math.cos(0.05), math.sin(0.05)
+    droop = np.array([[c, 0.0, s], [0.0, 1.0, 0.0], [-s, 0.0, c]])           # the hand 0.05 rad off, 8 mm low
+    hand = hp + [0.0, 0.0, adapter.LIFT_H - 0.008]
+    Vn = hand + (V - hp) @ droop.T                                          # the object rigid in the drooped hand
+    rec, r = sixdof.replan_at_hold6(p, V, Vn, hand, droop @ Rh, [0.0, 0.25, 0.5, 1.0], True, True)
+    assert abs(rec["d_mm"]) < 1e-9 and r == 0.0
+
+
+def test_the_tilted_replan_takes_the_lowest_point_over_the_return_to_vertical():
+    p = sixdof.from_graspgen(_tilted(40.0))
+    hp, Rh = sixdof.hand_frame(p)
+    a, tcp = np.asarray(p.R)[:, 2], np.asarray(p.tcp)
+    V = _cloud(p)
+    fr = [0.0, 0.2, 0.6, 1.0]
+    low = min(float(((V - tcp) @ sixdof.return_rotation(a, f).T)[:, 2].min()) for f in fr)
+    assert sixdof.carry_low6(a, V - tcp, fr) == pytest.approx(low, abs=1e-15)
+    ex = np.asarray(p.R)[:, 0]
+    k = ex / np.linalg.norm(ex)
+    K = np.array([[0.0, -k[2], k[1]], [k[2], 0.0, -k[0]], [-k[1], k[0], 0.0]])
+    turn = np.eye(3) + math.sin(0.3) * K + (1.0 - math.cos(0.3)) * (K @ K)    # the object turned 0.3 rad in the pads
+    Vn = tcp + [0.0, 0.0, adapter.LIFT_H] + (V - tcp) @ turn.T
+    rec, r = sixdof.replan_at_hold6(p, V, Vn, hp + [0.0, 0.0, adapter.LIFT_H], Rh, fr, True, True)
+    d = sixdof.carry_low6(a, V - tcp, fr) - sixdof.carry_low6(a, (V - tcp) @ turn.T, fr)
+    assert rec["d_mm"] == pytest.approx(1e3 * d, abs=1e-9) and r == (d if d > adapter.REPLAN_BAND_M else 0.0)
+
+
+# ------------------------------------------------------------------ the tilted attempt (unit d)
+
+def _spy(monkeypatch):
+    seen, real = [], sixdof.set_hand6
+
+    def spy(sim, pos, R):
+        seen.append((np.asarray(pos, dtype=float).copy(), np.asarray(R, dtype=float).copy()))
+        real(sim, pos, R)
+    monkeypatch.setattr(sixdof, "set_hand6", spy)
+    return seen
+
+
+def _phase_runs(path, phases):
+    return [x for x in path if x[0] in phases]
+
+
+@SIM
+def test_a_tilted_attempt_runs_hand_path6_to_the_end_of_the_transport_and_flags_its_readouts(monkeypatch):
+    env, p = _sugar_box()
+    g, q = _chosen(env, sixdof.from_graspgen(_at(p, 40.0), s=p.s, width=p.width))
+    hz = env.s["scene"].CTRL_HZ
+    path = sixdof.hand_path6(env, g, 0.1, 0.5, "box")
+    free = sixdof.quintic(env.sim.arm, q, hz)
+    seen = _spy(monkeypatch)
+    r = sixdof.execute6(env, g, free, 12.0, 0.1, 0.5, "box")
+    phases = [x["phase"] for x in r.trace]
+    assert sorted(set(phases), key=phases.index) == ["approach", "close", "lift", "hold", "transport", "lower", "release", "retreat"]
+    planned = _phase_runs(path, ("approach", "lift", "transport"))
+    assert len(seen) > len(planned)
+    for (pos, R), (_, hp, Rp) in zip(seen, planned):
+        assert np.allclose(pos, hp, rtol=0.0, atol=1e-12) and np.allclose(R, Rp, rtol=0.0, atol=1e-12)
+    Re = path[-1][2]
+    assert all(np.allclose(R, Re, rtol=0.0, atol=1e-12) for _, R in seen[len(planned):])     # lower and retreat: returned
+    rel = seen[len(planned) + phases.count("lower")][0]
+    assert all(np.allclose(pos[:2], rel[:2], atol=1e-12) for pos, _ in seen[len(planned) + phases.count("lower"):])
+    assert r.sixdof["readouts_valid"] is False and r.sixdof["tilt_deg"] == pytest.approx(40.0, abs=1e-9)
+    assert r.sixdof["turn_deg"] == pytest.approx(sixdof.turn_deg(env, g, "box")) and [c["check"] for c in r.sixdof["g2"]] == ["pregrasp", "grasp"]
+    assert r.time_s == pytest.approx((len(free) + len(r.trace)) / hz) and not hasattr(r, "replan")
+    assert [s.phase for s in r.planned] == ["approach", "close", "lift", "hold", "transport", "lower", "release", "retreat"]
+    for s in r.planned:
+        if s.phase not in ("lower",):                                     # the lower follows the end-of-transport read
+            assert phases.count(s.phase) == s.n_steps
+    assert env._metering is False and getattr(env.sim, "log", None) is None
+    assert np.array_equal(env._pad_up, -np.asarray(g.R)[:, 2])               # the trace read along the grasp frame's up
+    tr = [x for x in r.trace if x["phase"] == "transport"][-1]                # the end-of-transport read of the lowest point
+    z_rel = env._release_target_low_z(env._dest("box"), None) - (tr["low_z"] - tr["hand_z"])
+    assert seen[len(planned) + phases.count("lower") - 1][0][2] == pytest.approx(z_rel, abs=1e-12)
+
+
+@SIM
+def test_a_tilted_raise_lifts_the_hand_straight_up_then_carries_the_planned_path_that_much_higher(monkeypatch):
+    env, p = _sugar_box()
+    env.replan_hold = True
+    g, q = _chosen(env, sixdof.from_graspgen(_at(p, 40.0), s=p.s, width=p.width))
+    hz = env.s["scene"].CTRL_HZ
+    path = sixdof.hand_path6(env, g, 0.1, 0.5, "box")
+    real = sixdof.replan_at_hold6
+    monkeypatch.setattr(sixdof, "replan_at_hold6", lambda *a, **k: (real(*a, **k)[0], 0.007))
+    seen = _spy(monkeypatch)
+    r = sixdof.execute6(env, g, sixdof.quintic(env.sim.arm, q, hz), 12.0, 0.1, 0.5, "box")
+    n = len(_phase_runs(path, ("approach", "lift")))
+    up = adapter.ramp_profile(0.007, 0.1, hz)
+    _, top, Rh = _phase_runs(path, ("lift",))[-1]
+    for (pos, R), f in zip(seen[n:n + len(up)], up):
+        assert np.allclose(pos, top + [0.0, 0.0, 0.007 * f], atol=1e-12) and np.allclose(R, Rh, atol=1e-12)
+    carry = _phase_runs(path, ("transport",))
+    for (pos, R), (_, hp, Rp) in zip(seen[n + len(up):n + len(up) + len(carry)], carry, strict=True):
+        assert np.allclose(pos, hp + [0.0, 0.0, 0.007], atol=1e-12) and np.allclose(R, Rp, atol=1e-12)
+    assert r.replan["raise_mm"] == pytest.approx(7.0) and r.replan["unreachable"] is False and r.replan["frame"] == "tcp"
+    hold = [x for x in r.trace if x["phase"] == "hold"]
+    assert r.replan["held"] == all(hold[-1]["pads"]) and r.replan["lifted"] is True
+    assert [x["phase"] for x in r.trace].count("transport") == len(up) + len(carry)
+
+
+@SIM
+def test_a_raise_the_arm_cannot_carry_keeps_the_planned_height_and_says_so(monkeypatch):
+    env, p = _sugar_box()
+    env.replan_hold = True
+    g, q = _chosen(env, sixdof.from_graspgen(_at(p, 40.0), s=p.s, width=p.width))
+    path = sixdof.hand_path6(env, g, 0.1, 0.5, "box")
+    real = sixdof.replan_at_hold6
+    monkeypatch.setattr(sixdof, "replan_at_hold6", lambda *a, **k: (real(*a, **k)[0], 0.007))
+    monkeypatch.setattr(sixdof, "carry_reaches6", lambda *a, **k: False)
+    seen = _spy(monkeypatch)
+    r = sixdof.execute6(env, g, sixdof.quintic(env.sim.arm, q, env.s["scene"].CTRL_HZ), 12.0, 0.1, 0.5, "box")
+    planned = _phase_runs(path, ("approach", "lift", "transport"))
+    assert all(np.allclose(pos, hp, atol=1e-12) for (pos, _), (_, hp, _) in zip(seen, planned))
+    assert r.replan["unreachable"] is True and r.replan["raise_mm"] == 0.0
+
+
+class _Body:
+    def __init__(self, pos, R):
+        self.xpos, self.xmat = {7: np.asarray(pos, dtype=float)}, {7: np.asarray(R, dtype=float).ravel()}
+
+
+class _Sim:
+    hand = 7
+
+    def __init__(self, pos, R):
+        self.d = _Body(pos, R)
+
+
+def test_the_tracking_check_measures_the_tcp_and_the_hands_turn():
+    p = sixdof.from_graspgen(_tilted(40.0))
+    hp, Rh = sixdof.hand_frame(p)
+    tcp = np.asarray(p.tcp)
+    k = np.array([0.3, -0.5, 0.8]) / np.linalg.norm([0.3, -0.5, 0.8])
+    K = np.array([[0.0, -k[2], k[1]], [k[2], 0.0, -k[0]], [-k[1], k[0], 0.0]])
+    for ang, ok in ((0.005, True), (0.02, False)):
+        T = np.eye(3) + math.sin(ang) * K + (1.0 - math.cos(ang)) * (K @ K)     # the hand turned about the TCP
+        c = sixdof.tracking(_Sim(tcp + T @ (hp - tcp), T @ Rh), "grasp", hp, Rh)
+        assert c["pos_m"] < 1e-12 and c["rot_rad"] == pytest.approx(ang, abs=1e-12) and c["ok"] is ok and c["check"] == "grasp"
+    c = sixdof.tracking(_Sim(hp + [0.0, 0.0, 0.002], Rh), "pregrasp", hp, Rh)
+    assert c["pos_m"] == pytest.approx(0.002, abs=1e-12) and c["rot_rad"] == 0.0 and c["ok"] is False
+
+
+@SIM
+def test_the_raised_carry_check_tests_the_poses_the_attempt_commands(monkeypatch):
+    env, p = _sugar_box()
+    g = sixdof.from_graspgen(_at(p, 40.0), s=p.s, width=p.width)
+    hz = env.s["scene"].CTRL_HZ
+    path = sixdof.hand_path6(env, g, 0.1, 0.5, "box")
+    _, top, Rh = _phase_runs(path, ("lift",))[-1]
+    want = [(top + [0.0, 0.0, 0.007 * f], Rh) for f in adapter.ramp_profile(0.007, 0.1, hz)]
+    want += [(hp + [0.0, 0.0, 0.007], Rp) for _, hp, Rp in _phase_runs(path, ("transport",))]
+    seen = []
+    monkeypatch.setattr(sixdof, "ik6", lambda arm, pos, R, q_init=None: (seen.append((np.asarray(pos), np.asarray(R))), np.asarray(q_init), 0.0, 0.0)[1:])
+    assert sixdof.carry_reaches6(env, g, 0.007, 0.1, 0.5, "box") is True
+    assert len(seen) == len(want)
+    assert all(np.allclose(a, b, atol=1e-12) and np.allclose(Ra, Rb, atol=1e-12) for (a, Ra), (b, Rb) in zip(seen, want))
+
+
+@SIM
+def test_the_raised_carry_check_passes_the_chosen_path_and_fails_a_raise_out_of_reach():
+    env, p = _sugar_box()
+    g, q = _chosen(env, sixdof.from_graspgen(_at(p, 40.0), s=p.s, width=p.width))
+    hz = env.s["scene"].CTRL_HZ
+    sixdof.grasp_phase6(env, g, sixdof.quintic(env.sim.arm, q, hz), 12.0, 0.1)
+    q_to = env.sim.arm.q_to.copy()
+    assert sixdof.carry_reaches6(env, g, 0.0, 0.1, 0.5, "box") is True
+    assert sixdof.carry_reaches6(env, g, 1.0, 0.1, 0.5, "box") is False
+    assert np.array_equal(env.sim.arm.q_to, q_to)                            # a check only: nothing moves
+
+
+@SIM
+def test_a_tilted_attempt_that_fails_the_tracking_check_stops_its_meters_and_raises():
+    env, p = _sugar_box()
+    g, q = _chosen(env, sixdof.from_graspgen(_at(p, 40.0), s=p.s, width=p.width))
+    off = np.asarray(q, dtype=float) + np.array([0.02, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+    with pytest.raises(sixdof.Unreachable6):
+        sixdof.execute6(env, g, sixdof.quintic(env.sim.arm, off, env.s["scene"].CTRL_HZ), 12.0, 0.1, 0.5, "box")
+    assert env._metering is False and env._dmeter is None and getattr(env.sim, "log", None) is None
+
+
+@SIM
+def test_a_tilted_pinch_that_lifts_nothing_opens_at_the_lift_top_and_backs_out_along_the_approach(monkeypatch):
+    env, p = _sugar_box()
+    env.replan_hold = True
+    g = sixdof.from_graspgen(_at(p, 40.0), s=p.s, width=p.width)
+    g, q = _chosen(env, sixdof.Grasp6(s=g.s, tcp=list(np.asarray(g.tcp) + [0.0, 0.0, 0.15]), R=g.R, width=g.width))   # in the air
+    path = sixdof.hand_path6(env, g, 0.1, 0.5, "box")
+    seen = _spy(monkeypatch)
+    r = sixdof.execute6(env, g, sixdof.quintic(env.sim.arm, q, env.s["scene"].CTRL_HZ), 12.0, 0.1, 0.5, "box")
+    phases = [x["phase"] for x in r.trace]
+    assert sorted(set(phases), key=phases.index) == ["approach", "close", "lift", "hold", "release", "retreat"]
+    assert r.label == "not_lifted"
+    assert (r.replan["held"], r.replan["lifted"], r.replan["raise_mm"]) == (False, False, 0.0)
+    n = len(_phase_runs(path, ("approach", "lift")))
+    _, top, Rh = _phase_runs(path, ("lift",))[-1]
+    a = np.asarray(g.R)[:, 2]
+    back = adapter.ramp_profile(adapter.RETREAT_M, adapter.V_LOWER, env.s["scene"].CTRL_HZ)
+    assert len(seen) == n + len(back)
+    for (pos, R), f in zip(seen[n:], back):
+        assert np.allclose(pos, top - adapter.RETREAT_M * f * a, atol=1e-12) and np.allclose(R, Rh, atol=1e-12)
+
+
+@SIM
+def test_at_no_tilt_the_tilted_plan_is_todays_plan():
+    env, p = _sugar_box()
+    g = sixdof.from_graspgen(_at(p), s=p.s, width=p.width)
+    a = sixdof.plan_trajectory6(env, g, 0.1, 0.5, "box")
+    b = env.plan_trajectory(sixdof.as_vertical(g), 0.1, 0.5, "box")
+    assert [(s.phase, s.n_steps, s.has_surface, s.speed) for s in a] == [(s.phase, s.n_steps, s.has_surface, s.speed) for s in b]
+    assert np.allclose([[s.z_start, s.z_end] for s in a], [[s.z_start, s.z_end] for s in b], rtol=0.0, atol=1e-9)
+
+
+@SIM
+def test_the_tilted_plan_counts_hand_path6s_steps_and_ends_the_transport_at_the_returned_lowest_point():
+    env, p = _sugar_box()
+    g = sixdof.from_graspgen(_at(p, 40.0), s=p.s, width=p.width)
+    plan = sixdof.plan_trajectory6(env, g, 0.1, 0.5, "box")
+    path = sixdof.hand_path6(env, g, 0.1, 0.5, "box")
+    hz = env.s["scene"].CTRL_HZ
+    n = {s.phase: s.n_steps for s in plan}
+    for ph in ("approach", "close", "lift", "hold", "transport", "lower", "release"):
+        assert n[ph] == sum(x[0] == ph for x in path)
+    assert n["retreat"] == sum(x[0] == "retreat" for x in path) + int(adapter.RETREAT_SETTLE_S * hz)
+    a, tcp = np.asarray(g.R)[:, 2], np.asarray(g.tcp)
+    V = np.concatenate(env._hull_vertex_list()) - tcp
+    Q = sixdof._rz(math.radians(sixdof.turn_deg(env, g, "box"))) @ sixdof.return_rotation(a, 1.0)
+    dest = env._dest("box")
+    low_end = tcp[2] + adapter.LIFT_H + float((V @ Q.T)[:, 2].min())
+    tr = next(s for s in plan if s.phase == "transport")
+    assert tr.z_end == pytest.approx(low_end - float(dest["surface_z"]), abs=1e-12)

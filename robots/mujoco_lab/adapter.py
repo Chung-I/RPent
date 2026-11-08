@@ -637,7 +637,8 @@ class MuJoCoLabEnv:
     def _pad_hull_sums(self) -> np.ndarray:
         """Over the pad-hull contacts now: [the net vertical force of both pads on the object, the left
         pad's normal force, the right pad's, and each pad's normal force times the vertical part of its
-        contact normal into the object (-1 for a pad that presses down on a top face, 0 on a vertical side)].
+        contact normal into the object (-1 for a pad that presses down on a top face, 0 on a vertical side), or its part
+        along ``_pad_up``, the commanded grasp frame's up, when the tracer has one (a tilted pinch)].
 
         The vertical force is signed (up is positive), so in a static two-pad hold it equals the
         weight whatever the squeeze; a per-contact absolute sum (t3_probes.pad_forces) also counts
@@ -649,6 +650,7 @@ class MuJoCoLabEnv:
         f = np.zeros(6)
         hull = set(sim.hull_ids)
         pads = (sim.pad_l, sim.pad_r)
+        up = self._pad_up
         out = np.zeros(5)
         for i in range(sim.d.ncon):
             c = sim.d.contact[i]
@@ -661,7 +663,7 @@ class MuJoCoLabEnv:
                     sign = 1.0 if other == c.geom2 else -1.0       # the force and the normal on the object
                     out[0] += sign * float((frame.T @ f[:3])[2])
                     out[1 + k] += abs(float(f[0]))
-                    out[3 + k] += abs(float(f[0])) * sign * float(frame[0, 2])
+                    out[3 + k] += abs(float(f[0])) * sign * float(frame[0, 2] if up is None else frame[0] @ up)
         return out
 
     def _watch_contacts(self) -> None:
@@ -708,7 +710,7 @@ class MuJoCoLabEnv:
 
         ref, plain, sub = weakref.ref(self.sim), type(self.sim).step_ctrl, int(self.s["scene"].SUB)
         plain_sub = type(self.sim).substep
-        self._metering, self._step_forces = False, None
+        self._metering, self._step_forces, self._pad_up = False, None, None
         self._watch = {"rev_steps": 0, "deepest_mm": 0.0}
         self._dmeter, self._hull_set, self._fbuf = None, set(self.sim.hull_ids), np.zeros(6)
 
@@ -1200,6 +1202,13 @@ class MuJoCoLabEnv:
             release = self._open_and_rise(goal[0], goal[1], z, proposal.yaw, trace, on_step)
         else:           # not lifted (a pivot holds one end up): let it down where it is and carry nothing off
             self._open_and_rise(pt[0], pt[1], gr.hand_start_z(pt) + LIFT_H, proposal.yaw, trace, on_step)
+        return self._finish_attempt(trace, rose, dest, release, planned, v_lift, int(out.get("free_steps", 0)), replan)
+
+    def _finish_attempt(self, trace: list[dict[str, Any]], rose: bool, dest: dict[str, Any], release: dict[str, Any] | None,
+                        planned: list[Segment], v_lift: float, free_steps: int, replan: dict[str, Any] | None) -> Rollout:
+        """The end of an attempt (execute, sixdof.execute6): stop the meters and the joint log, label, and the record's
+        replan, time (the free move's steps and the trace's), joint readouts and sensor diagnostics."""
+        hz = self.s["scene"].CTRL_HZ
         self._metering = False
         meter, damage = self._meter_end()
         log = self._log_end()
@@ -1208,7 +1217,7 @@ class MuJoCoLabEnv:
         r = self._label(trace, rose, dest, release, planned, v_lift, meter, damage, readout_trace=rtrace)
         if replan is not None:
             r.replan = replan
-        r.time_s = (int(out.get("free_steps", 0)) + len(trace)) / hz
+        r.time_s = (free_steps + len(trace)) / hz
         if log is not None:
             joint, rec = self._attempt_joint(log, trace) if rose else (None, {"torque_noise": self.torque_noise})
             if joint is not None:
@@ -1257,7 +1266,7 @@ class MuJoCoLabEnv:
             on_step("retreat")
         return release
 
-    def _tracer(self, pt: np.ndarray, yaw: float):
+    def _tracer(self, pt: np.ndarray, yaw: float, frame: tuple[np.ndarray, np.ndarray] | None = None):
         """(trace, on_step): on_step(phase) appends one dict per control step (see execute's trace). ``pads``
         tells whether each pad pressed on the object in any physics substep of the step: the contact at the end
         of a step flickers while an object chatters in the pads (wood_block d78 showed no pad at the end of a
@@ -1266,13 +1275,17 @@ class MuJoCoLabEnv:
         vertical force on the object, ``fn`` their normal force, ``pad_nz`` each pad's force-weighted
         vertical part of its contact normal into the object (None without contact). ``hand_z`` is the
         hand's height, ``rot_lift_deg`` the object's turn since the lift began and ``grip_dz`` the rise since
-        then of the object point that sat between the pads at the end of the close (both None before it)."""
+        then of the object point that sat between the pads at the end of the close (both None before it). ``frame``:
+        (ey, up) of a tilted pinch's commanded grasp frame, the axis across the pinch and the one against the approach
+        (sixdof); ``pad_nz`` is then read along up and ``pitch_ey`` across ey and along up (None: today's vertical and
+        horizontal axes). The tilted readouts are not valid for the belief update (sixdof flags the record)."""
         sim = self.sim
         hz = self.s["scene"].CTRL_HZ
         p0z = sim.obj_pos()[2]
         R0 = sim.obj_mat().copy()
         trace: list[dict[str, Any]] = []
-        pitch_of = self._pitch_meter(pt, yaw)
+        self._pad_up = None if frame is None else np.asarray(frame[1], dtype=float)
+        pitch_of = self._pitch_meter(pt, yaw, frame)
         pitch0: list[float] = []
         self._metering = True
         self._watch = {"rev_steps": 0, "deepest_mm": 0.0}
@@ -2043,17 +2056,21 @@ class MuJoCoLabEnv:
         return ProbeResult("squeeze", "damaged" if damage else "measured", reading, disp, tilt, thrown, steps[0] / hz, trace,
                            **self._monitor(), meter=meter, damage=damage, sensor=sensor, arm=arm)
 
-    def _pitch_meter(self, pt: np.ndarray, yaw: float):
+    def _pitch_meter(self, pt: np.ndarray, yaw: float, frame: tuple[np.ndarray, np.ndarray] | None = None):
         """A function giving (z+ - z-) / 0.10 for the object-fixed points pt ± 0.05 ey (ey: the hand's
-        horizontal axis across the pinch), positive when the +ey side is higher."""
+        horizontal axis across the pinch), positive when the +ey side is higher. ``frame`` (ey, up): a tilted
+        pinch's axes, the points' difference read along up instead of z (yaw unused)."""
         sim = self.sim
-        ey = np.array([-np.sin(yaw), np.cos(yaw), 0.0])
+        ey = np.array([-np.sin(yaw), np.cos(yaw), 0.0]) if frame is None else np.asarray(frame[0], dtype=float)
+        up = None if frame is None else np.asarray(frame[1], dtype=float)
         R0, p0 = sim.obj_mat(), sim.obj_pos()
         qp, qm = R0.T @ (pt + 0.05 * ey - p0), R0.T @ (pt - 0.05 * ey - p0)
 
         def pitch() -> float:
             R, p = sim.obj_mat(), sim.obj_pos()
-            return float(((R @ qp + p)[2] - (R @ qm + p)[2]) / 0.10)
+            if up is None:
+                return float(((R @ qp + p)[2] - (R @ qm + p)[2]) / 0.10)
+            return float(((R @ qp + p) - (R @ qm + p)) @ up / 0.10)
         return pitch
 
     # ----------------------------------------------------------------- labels
