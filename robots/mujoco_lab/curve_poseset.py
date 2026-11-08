@@ -661,16 +661,21 @@ def hammer_line(vs: list[dict[str, Any]]) -> dict[str, Any]:
 
 def no_row_line(vs: list[dict[str, Any]]) -> dict[str, Any]:
     """Design reading 5: the group (a) cases (R4 gives up: no menu row), how many gain a feasible pose row, by object, and
-    the 10-row ceiling over all of them and over those that gain a row."""
+    the 10-row ceiling over all of them and over those that gain a row; the same counts and ceilings for the upright and
+    the lying cases apart."""
     a = [v for v in vs if v["group"] == "a"]
-    gained = [v for v in a if v["c10"]["n_rows"] > 0]
+
+    def line(x: list[dict[str, Any]]) -> dict[str, Any]:
+        gained = [v for v in x if v["c10"]["n_rows"] > 0]
+        return {"cases": len(x), "gain_a_row": len(gained), "c10": _rates([v["c10"] for v in x]),
+                "c10_gained": _rates([v["c10"] for v in gained])}
+
     by: dict[str, dict[str, int]] = {}
     for v in a:
         x = by.setdefault(v["object"], {"cases": 0, "gain_a_row": 0})
         x["cases"] += 1
         x["gain_a_row"] += v["c10"]["n_rows"] > 0
-    return {"cases": len(a), "gain_a_row": len(gained), "by_object": by, "c10": _rates([v["c10"] for v in a]),
-            "c10_gained": _rates([v["c10"] for v in gained])}
+    return dict(line(a), by_object=by, upright=line([v for v in a if v["upright"]]), lying=line([v for v in a if not v["upright"]]))
 
 
 def pose_change_table(vs: list[dict[str, Any]]) -> dict[str, Any]:
@@ -959,9 +964,12 @@ def _md4(X: dict[str, Any]) -> list[str]:
 
 def _md5(X: dict[str, Any]) -> list[str]:
     n5 = X["5_no_row"]
+    part = lambda x: (f"{x['gain_a_row']} of {x['cases']} gain a row, 10-row ceiling over all {_cells(x['c10']).replace(' | ', ' / ')}, "  # noqa: E731
+                      f"over those with a row {_cells(x['c10_gained']).replace(' | ', ' / ')}")
     return [f"{n5['gain_a_row']} of {n5['cases']} cases gain a feasible pose row. By object: {n5['by_object']}. The 10-row ceiling "
             f"over all {n5['cases']}: {_cells(n5['c10']).replace(' | ', ' / ')}; over the {n5['gain_a_row']} with a row: "
-            f"{_cells(n5['c10_gained']).replace(' | ', ' / ')} (success % / irreversible % / give-up %).", ""]
+            f"{_cells(n5['c10_gained']).replace(' | ', ' / ')} (success % / irreversible % / give-up %). Apart: upright: "
+            f"{part(n5['upright'])}; lying: {part(n5['lying'])}.", ""]
 
 
 def _md6(X: dict[str, Any]) -> list[str]:

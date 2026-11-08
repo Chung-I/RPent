@@ -770,3 +770,15 @@ def test_the_summary_opens_each_pose_set_records_file_once(tmp_path, monkeypatch
     monkeypatch.setattr(builtins, "open", counting)
     ps.summary(a)
     assert sum(n) == 1
+
+
+def test_the_no_row_line_splits_upright_and_lying():
+    no = dict(s2dec=("give_up", "give_up"), oracle=_ep(give_up=True))
+    up = _case(o="ycb__cheez_it", idx=0, rows=_rows(along_0_7="placed_stable"), upright=True, **no)
+    up_none = _case(o="ycb__cheez_it", idx=1, rows=_rows(), upright=True, **no)
+    lying = _case(o="hope__pitcher", idx=0, rows=_rows(), **no)
+    n5 = ps.no_row_line(ps.views([up, up_none, lying], K0, K4))
+    assert (n5["upright"]["cases"], n5["upright"]["gain_a_row"], n5["lying"]["cases"], n5["lying"]["gain_a_row"]) == (2, 1, 1, 0)
+    assert n5["upright"]["c10_gained"]["success"] == 1.0 and n5["lying"]["c10"]["give_up"] == 1.0
+    md = "\n".join(ps._md5({"5_no_row": n5}))
+    assert "upright: 1 of 2" in md and "lying: 0 of 1" in md
