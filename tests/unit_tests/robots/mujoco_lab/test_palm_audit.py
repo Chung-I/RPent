@@ -277,3 +277,48 @@ def test_the_pose_views_without_their_flagged_rows_recompute_both_ceilings():
     del idx[("poseset", "test", "o", 0, "along_0.3")]
     (w,) = pa.poseset_without([v], idx)
     assert w["kept_unaudited"] == ["along_0.3"] and w["c10"]["success"] and w["c10"]["rows"] == ["along_0.3"]    # kept, not removed
+
+
+def test_a_files_sha256_is_read_from_its_reference_with_or_without_a_commit():
+    h = "0123456789abcdef" * 4
+    assert pa.ref_sha(f"/x/locked.json (sha256 {h}, commit 21778cdc)") == pa.ref_sha(f"/x/locked.json (sha256 {h})") == h
+    assert pa.ref_sha("/x/locked.json") is None and pa.ref_sha(None) is None
+
+
+def _published(lk="a" * 64, s2="b" * 64, osh="c" * 64):
+    s2sum = {"q1": {"boot": {"a": "K0", "b": "K4"}}, "provenance": {"runs": "s/0,s/1", "locked": f"/x/locked.json (sha256 {lk}, commit 21778cdc)"}}
+    common = {"keys": ["K0", "K4"], "locked": f"/y/locked.json (sha256 {lk})", "stage2": "s/1,s/0", "stage2_summary": f"/s.json (sha256 {s2})",
+              "stage1": ["t/1", "t/0"]}
+    osum = {"provenance": dict(common, runs="o/0,o/1")}
+    psum = {"provenance": dict(common, runs="p/0", oracle="o/1,o/0", oracle_summary=f"/o.json (sha256 {osh})")}
+    return s2sum, osum, psum, {"locked": lk, "stage2_summary": s2, "oracle_summary": osh}
+
+
+def test_the_published_summaries_must_link_the_same_lock_keys_and_inputs():
+    s2sum, osum, psum, sha = _published()
+    assert pa.provenance_errors(s2sum, osum, psum, ("K0", "K4"), sha, ["t/0", "t/1"]) == []
+    assert pa.provenance_errors(s2sum, osum, psum, ("K0", "K9"), sha, ["t/0", "t/1"]) == [
+        "the Stage 2 summary compared other keys than the lock's", "the oracle summary read other keys", "the pose-set summary read other keys"]
+    assert pa.provenance_errors(s2sum, osum, psum, ("K0", "K4"), dict(sha, locked="d" * 64), ["t/0", "t/1"]) == [
+        "the Stage 2 summary read another lock", "the oracle summary read another lock", "the pose-set summary read another lock"]
+    bad = {"provenance": dict(psum["provenance"], oracle="o/0", oracle_summary=f"/o.json (sha256 {'e' * 64})", stage2="s/0")}
+    assert pa.provenance_errors(s2sum, osum, bad, ("K0", "K4"), sha, ["t/0", "t/1"]) == [
+        "the pose-set summary read other Stage 2 runs", "the pose-set summary read other oracle runs", "the pose-set summary read another oracle summary"]
+    assert pa.provenance_errors(s2sum, osum, psum, ("K0", "K4"), dict(sha, stage2_summary="f" * 64), ["t/0", "t/1"]) == [
+        "the oracle summary read another Stage 2 summary", "the pose-set summary read another Stage 2 summary"]
+    assert pa.provenance_errors(s2sum, osum, psum, ("K0", "K4"), sha, ["t/0"]) == [
+        "the oracle summary read another Stage 1", "the pose-set summary read another Stage 1"]
+
+
+def test_the_audit_must_hold_every_stored_row_and_no_other():
+    idx = {("pilot", "test", "o", 0, "x"): _row(0), ("pilot", "test", "o", 0, "y"): _row(0)}
+    want = {("pilot", "test", "o", 0, "x"): "placed_stable", ("pilot", "test", "o", 0, "z"): "tipped"}
+    assert pa.row_coverage(idx, want) == {"missing": [("pilot", "test", "o", 0, "z")], "extra": [("pilot", "test", "o", 0, "y")]}
+    assert pa.row_coverage(idx, dict.fromkeys(idx)) == {"missing": [], "extra": []}
+
+
+def test_the_gate_compares_an_empty_view_without_raising():
+    empty = {"cases": 0, "success": None, "irr": None}
+    want = {"cases": 10, "success": {"diff": -0.0125, "lo": -0.03, "hi": 0.0}, "irr": {"diff": -0.13, "lo": -0.17, "hi": -0.09}}
+    assert pa.differs(empty, dict(empty)) == []
+    assert pa.differs(empty, want) == ["cases 0 vs 10", f"success None vs {want['success']!r}", f"irr None vs {want['irr']!r}"]

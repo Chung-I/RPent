@@ -483,7 +483,50 @@ def reading1(rows: list[tuple[str, dict[str, Any]]], level: str = PRIMARY) -> di
 def differs(got: dict[str, Any], want: dict[str, Any], names: tuple[str, ...] = ("success", "irr")) -> list[str]:
     """The gate against a published paired difference: each field (the cases; diff, lo and hi per name) that is not equal."""
     bad = [] if got.get("cases") == want.get("cases") else [f"cases {got.get('cases')} vs {want.get('cases')}"]
-    return bad + [f"{n}.{k} {got[n][k]!r} vs {want[n][k]!r}" for n in names for k in ("diff", "lo", "hi") if got[n][k] != want[n][k]]
+    for n in names:
+        if got[n] is None or want[n] is None:              # an empty view: no interval
+            bad += [] if got[n] == want[n] else [f"{n} {got[n]!r} vs {want[n]!r}"]
+            continue
+        bad += [f"{n}.{k} {got[n][k]!r} vs {want[n][k]!r}" for k in ("diff", "lo", "hi") if got[n][k] != want[n][k]]
+    return bad
+
+
+def ref_sha(ref: str | None) -> str | None:
+    """The sha256 in a provenance reference "path (sha256 HEX)" or "path (sha256 HEX, commit C)"; None without one."""
+    import re
+
+    m = re.search(r"\(sha256 ([0-9a-f]{64})[,)]", ref or "")
+    return m.group(1) if m else None
+
+
+def provenance_errors(s2sum: dict[str, Any], osum: dict[str, Any], psum: dict[str, Any], keys: tuple[str, str], sha: dict[str, str],
+                      stage1: list[str]) -> list[str]:
+    """Each way the three published summaries fail to link the same inputs: the lock's R0 and R4 keys and the lock file
+    itself, the Stage 2 runs and summary that the oracle and pose-set summaries read, the oracle runs and summary that the
+    pose-set summary read, and the Stage 1 runs. ``sha``: the sha256 of the lock, the Stage 2 summary and the oracle summary
+    given to this summary; ``stage1``: the audit units' Stage 1 runs."""
+    po, pp = osum["provenance"], psum["provenance"]
+    out = []
+    if [s2sum["q1"]["boot"]["a"], s2sum["q1"]["boot"]["b"]] != list(keys):
+        out.append("the Stage 2 summary compared other keys than the lock's")
+    out += [f"the {name} summary read other keys" for name, p in (("oracle", po), ("pose-set", pp)) if list(p["keys"]) != list(keys)]
+    out += [f"the {name} summary read another lock" for name, p in (("Stage 2", s2sum["provenance"]), ("oracle", po), ("pose-set", pp))
+            if ref_sha(p["locked"]) != sha["locked"]]
+    for name, p in (("oracle", po), ("pose-set", pp)):
+        if set(p["stage2"].split(",")) != set(s2sum["provenance"]["runs"].split(",")):
+            out.append(f"the {name} summary read other Stage 2 runs")
+        if ref_sha(p["stage2_summary"]) != sha["stage2_summary"]:
+            out.append(f"the {name} summary read another Stage 2 summary")
+    if set(pp["oracle"].split(",")) != set(po["runs"].split(",")):
+        out.append("the pose-set summary read other oracle runs")
+    if ref_sha(pp["oracle_summary"]) != sha["oracle_summary"]:
+        out.append("the pose-set summary read another oracle summary")
+    return out + [f"the {name} summary read another Stage 1" for name, p in (("oracle", po), ("pose-set", pp)) if sorted(p["stage1"]) != sorted(stage1)]
+
+
+def row_coverage(idx: dict[tuple[Any, ...], Any], want: dict[tuple[Any, ...], Any]) -> dict[str, list[tuple[Any, ...]]]:
+    """The stored rows (``want``'s keys) that the audit lacks, and the audited rows that no record stores."""
+    return {"missing": sorted(set(want) - set(idx), key=repr), "extra": sorted(set(idx) - set(want), key=repr)}
 
 
 def poseset_without(vs: list[dict[str, Any]], idx: dict[tuple[Any, ...], dict[str, Any]], side: str = "test",
@@ -581,11 +624,17 @@ def summary_markdown(rep: dict[str, Any]) -> str:
         if objs:
             L.append(f"- {name}: " + "; ".join(f"{o} {x['flagged']}/{x['rows']} ({x['depth_median_mm']:.1f}, {x['depth_max_mm']:.1f})"
                                                for o, x in sorted(objs, key=lambda t: -t[1]["flagged"])))
+    arms = {"R0": "Stage 2 R0 (kept cases)", "R4": "Stage 2 R4 (kept cases)", "oracle": "oracle (paired cases)",
+            "c10": "pose set, 10-row union (paired cases)", "c3": "pose set, 3-row union (paired cases)",
+            "oracle_all": "oracle (every kept oracle case)", "c10_all": "pose set, 10-row union (every case with rows)",
+            "c3_all": "pose set, 3-row union (every case with rows)"}
     L += ["", "## Reading 2: flagged share (> 1 mm) among the executed rows, per arm", "",
-          "| arm | placed rows | flagged | share | irreversible rows | flagged | share | all rows | flagged | share |", "|---|---|---|---|---|---|---|---|---|---|"]
+          "Each cell: rows, audited, flagged (flagged share of the audited rows).", "",
+          "| arm | placed | irreversible | all |", "|---|---|---|---|"]
     for arm, r in rep["readings"]["2"][PRIMARY].items():
-        L.append(f"| {arm} | " + " | ".join(f"{r[g]['audited']} | {r[g]['flagged']} | " + ("–" if r[g]["share"] is None else f"{100 * r[g]['share']:.1f} %")
-                                           for g in ("placed", "irreversible", "all")) + " |")
+        L.append(f"| {arms[arm]} | " + " | ".join(f"{r[g]['rows']}, {r[g]['audited']}, {r[g]['flagged']} ("
+                                                 + ("–" if r[g]["share"] is None else f"{100 * r[g]['share']:.1f} %") + ")"
+                                                 for g in ("placed", "irreversible", "all")) + " |")
     L += ["", "## Reading 3: headline sensitivity (points, 95 % object bootstrap), beside the published numbers", "",
           "| reading | published | " + " | ".join(f"unflagged at {k}" for k in FLAG_MM) + " |", "|---|---|" + "---|" * len(FLAG_MM)]
     pub, r3 = rep["published"], rep["readings"]["3"]
@@ -625,14 +674,10 @@ def summary(a: argparse.Namespace) -> dict[str, Any]:
     lk = json.load(open(a.locked))["lock"]
     k0, k4 = lk["R0"]["key"], lk["R4"]["key"]
     s2sum, osum, psum = (json.load(open(x)) for x in (a.stage2_summary, a.oracle_summary, a.poseset_summary))
-    if [s2sum["q1"]["boot"]["a"], s2sum["q1"]["boot"]["b"]] != [k0, k4]:
-        raise SystemExit("the Stage 2 summary compared other keys than the lock's R0 and R4")
-    for name, sm in (("Stage 2", s2sum), ("oracle", osum), ("pose-set", psum)):
-        if sm["provenance"]["locked"].split(" (sha256 ")[1].rstrip(")") != _sha(a.locked):
-            raise SystemExit(f"the {name} summary read another lock")
-    for name, sm in (("oracle", osum), ("pose-set", psum)):
-        if list(sm["provenance"]["keys"]) != [k0, k4]:
-            raise SystemExit(f"the {name} summary read other keys")
+    bad = provenance_errors(s2sum, osum, psum, (k0, k4), {"locked": _sha(a.locked), "stage2_summary": _sha(a.stage2_summary),
+                                                          "oracle_summary": _sha(a.oracle_summary)}, cfgs[0]["stage1"].split(","))
+    if bad:
+        raise SystemExit("; ".join(bad))
     s2dirs, odirs, pdirs = (sm["provenance"]["runs"].split(",") for sm in (s2sum, osum, psum))
     for d in s2dirs:
         if _sha(records_path(d, "test")) != s2sum["provenance"]["records_sha256"].get(f"{d} test"):
@@ -653,9 +698,14 @@ def summary(a: argparse.Namespace) -> dict[str, Any]:
     for k, dirs in ((("stage2", "test"), s2dirs), (("oracle", "test"), odirs), (("poseset", "test"), pdirs)):
         if runs_of[k] != set(dirs):
             raise SystemExit(f"the {k} units read other runs than the published summary")
-    if len({c["stage1"] for c in cfgs}) != 1 or any(sorted(cfgs[0]["stage1"].split(",")) != sorted(sm["provenance"]["stage1"]) for sm in (osum, psum)):
-        raise SystemExit("the units read another Stage 1 than the oracle and pose-set summaries")
-    s2, _ = load_stage2(s2dirs, ("test",))
+    if len({c["stage1"] for c in cfgs}) != 1:
+        raise SystemExit("the units read different Stage 1 runs")
+    s2, s2cfg = load_stage2(s2dirs, ("test",))
+    if sorted(s2cfg["stage1_records_sha256"]) != sorted(cfgs[0]["stage1"].split(",")):
+        raise SystemExit("the units read another Stage 1 than Stage 2")
+    for d, h in s2cfg["stage1_records_sha256"].items():
+        if _sha(os.path.join(d, "records.jsonl")) != h:
+            raise SystemExit(f"{d}: the Stage 1 records changed since Stage 2 ran (the audit read the first menus from them)")
     recs1, _ = load_stage1(cfgs[0]["stage1"].split(","))
     src = {("stage2", "test"): s2}
     for k in SIDES_OF[1:]:
@@ -669,6 +719,10 @@ def summary(a: argparse.Namespace) -> dict[str, Any]:
     labels = {}
     for k, recs in src.items():
         labels.update(stored_labels(k[0], k[1], audited_cases(k[0], recs)))
+    cov = row_coverage(idx, labels)
+    if cov["missing"] or cov["extra"]:
+        raise SystemExit(f"{len(cov['missing'])} stored rows are not in the audit (the first {cov['missing'][:1]}), "
+                         f"{len(cov['extra'])} audited rows are not stored (the first {cov['extra'][:1]})")
     key_of = lambda r: (r["object"], int(r["idx"]))  # noqa: E731
     by1, byo, byp = ({key_of(r): r for r in x} for x in (recs1, src[("oracle", "test")], src[("poseset", "test")]))
 
@@ -709,13 +763,16 @@ def summary(a: argparse.Namespace) -> dict[str, Any]:
         return [(y, status(idx.get((source, "test", r["object"], int(r["idx"]), first, att, row)), level))
                 for r in recs for att, first, row, y in episode_rows(r, key)]
 
-    def pose_items(current_only: bool, level: str) -> list[tuple[str | None, str]]:
+    def pose_items(cases: list[dict[str, Any]], current_only: bool, level: str) -> list[tuple[str | None, str]]:
         return [(x.get("label"), status(idx.get(("poseset", "test", v["object"], int(v["idx"]), x["id"])), level))
-                for v in vs for x in v["rows"] if "seconds" in x and (x["current"] or not current_only)]
+                for v in cases for x in v["rows"] if "seconds" in x and (x["current"] or not current_only)]
 
+    o_all, p_all = audited_cases("oracle", src[("oracle", "test")]), audited_cases("poseset", src[("poseset", "test")])
     r2 = {lv: {"R0": label_shares(lab_items("stage2", kept2, k0, lv)), "R4": label_shares(lab_items("stage2", kept2, k4, lv)),
                "oracle": label_shares(lab_items("oracle", [j["oracle"] for j in paired_o], k0, lv)),
-               "c10": label_shares(pose_items(False, lv)), "c3": label_shares(pose_items(True, lv))} for lv in FLAG_MM}
+               "c10": label_shares(pose_items(vs, False, lv)), "c3": label_shares(pose_items(vs, True, lv)),
+               "oracle_all": label_shares(lab_items("oracle", o_all, k0, lv)),
+               "c10_all": label_shares(pose_items(p_all, False, lv)), "c3_all": label_shares(pose_items(p_all, True, lv))} for lv in FLAG_MM}
     # reading 3
     r3: dict[str, dict[str, Any]] = {}
     for lv in FLAG_MM:
@@ -759,7 +816,8 @@ def summary(a: argparse.Namespace) -> dict[str, Any]:
               "rows": len(idx), "replays": len(reps), "replays_passed": sum(bool(x["audited"]) for x in reps),
               "replays_differ": sum(bool(x["differs"]) for x in reps), "replays_fresh_state_differs": sum(x["fresh_state_equal"] is False for x in reps),
               "rows_not_audited": sum(status(x) == "not audited" for x in idx.values()), "flagged_list_lines": len(flagged),
-              "stage2_kept": len(kept2), "oracle_paired": len(views_o), "poseset_paired": len(vs), "poseset_upright": len(up)}
+              "stage2_kept": len(kept2), "oracle_paired": len(views_o), "oracle_kept": len(o_all), "poseset_paired": len(vs),
+              "poseset_with_rows": len(p_all), "poseset_upright": len(up)}
     published = {"stage2_r0_r4": b_s2, "oracle_r0": b_o, "poseset_1p": b_p, "poseset_1p_upright": b_pu}
     rep = {"counts": counts, "gate": gate, "published": published, "readings": {"1": r1, "2": r2, "3": r3}, "provenance": prov}
     with open(os.path.join(a.out, "flagged_rows.jsonl"), "w") as f:
