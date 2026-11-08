@@ -548,6 +548,9 @@ ARM_NAMES = {"gg": "GraspGen, the design's rule", "ggb": "GraspGen, the between-
              "c3": "3-pinch ceiling", "oracle": "oracle arm", "r4": "R4 (always grasp)"}
 HAMMER_ROW_CLASSES = ("placed by a row", "lifted, never placed", "not lifted by any row", "no clean simulation", "no kept row")
 ROW_OBJECTS = ("ycb__bowl", "ycb__pitcher")          # reading 4
+# Reading 3's head end, as a pinch fraction: the hammer's wide end on its hulls (15.1 and 15.2 cm across at f 0 to 0.2,
+# 4.7 and 5.0 cm at f 0.8 to 1). The drawn CoM is not used: a CoM-shift draw can put it on the handle side.
+HAMMER_HEAD_F = {"handal__hammer_1": 0.0, "handal__hammer_7": 0.0}
 G_ABOVE = "more than 2 points above the 10-pinch ceiling"
 G_NOT = "not more than 2 points above the 10-pinch ceiling"
 
@@ -579,10 +582,15 @@ def kept_rows(rows: list[dict[str, Any]], key: str) -> list[dict[str, Any]]:
     return [r for r in rows if r.get(key) and not r.get("gate")]
 
 
+def _has_state(x: dict[str, Any] | None) -> bool:
+    """A simulated row without an error and with both its final-state and trace hashes."""
+    return x is not None and "seconds" in x and not x.get("error") and bool(x.get("qpos_sha")) and bool(x.get("trace_sha"))
+
+
 def exact_gate(recs: list[dict[str, Any]], pose: list[dict[str, Any]]) -> dict[str, Any]:
     """The gate row against the pose set's record of the same case: its across pinch at 0.5 (GATE) must have the same
-    final state and trace hashes. Counts the cases with a simulated gate row: equal, differ (listed), missing (the pose
-    set did not simulate that row)."""
+    final state and trace hashes. Counts the cases with a simulated gate row: equal, differ (listed), missing (either
+    row has no state: the pose set did not simulate it, or a row holds an error or lacks a hash)."""
     from robots.mujoco_lab.curve_poseset import _key, row_id
 
     pidx = {_key(p): {x["id"]: x for x in p["rows"]} for p in pose}
@@ -593,7 +601,7 @@ def exact_gate(recs: list[dict[str, Any]], pose: list[dict[str, Any]]) -> dict[s
             continue
         out["cases"] += 1
         p = pidx.get(_key(r), {}).get(row_id(*GATE))
-        if p is None or "seconds" not in p:
+        if not (_has_state(p) and _has_state(g)):
             out["missing"] += 1
         elif (p.get("qpos_sha"), p.get("trace_sha")) == (g.get("qpos_sha"), g.get("trace_sha")):
             out["equal"] += 1
@@ -690,8 +698,8 @@ def hammer_rows_class(rows: list[dict[str, Any]], key: str) -> str:
 def hammer_line(vs: list[dict[str, Any]]) -> dict[str, Any]:
     """Reading 3: the hammer cases by class under each rule and under the 10-pinch ceiling (curve_poseset.hammer_class);
     for the clean rows either rule keeps, the distance from the balance point along the axis (|f - com_f| x length) and
-    from the head end (the end nearer the balance point), apart for the rows that placed the hammer; per case its
-    classes, the placing rows (with their tag and rules) and the lifting rows."""
+    from the head end (HAMMER_HEAD_F; a hammer without one is refused), apart for the rows that placed the hammer; per
+    case its classes, the placing rows (with their tag and rules) and the lifting rows."""
     from robots.mujoco_lab.curve_poseset import HAMMER_CLASSES, LIFT_FAILS, hammer_class
 
     hv = [v for v in vs if v["hammer"]]
@@ -701,7 +709,9 @@ def hammer_line(vs: list[dict[str, Any]]) -> dict[str, Any]:
                            "not_placed": {"balance_m": [], "head_m": []}, "per_case": []}
     for v in hv:
         L, cf = float(v["length"]), float(v["com_f"])
-        head = 0.0 if cf < 0.5 else 1.0
+        if v["object"] not in HAMMER_HEAD_F:
+            raise ValueError(f"{v['object']}: no head end in HAMMER_HEAD_F")
+        head = HAMMER_HEAD_F[v["object"]]
         cls = {name: hammer_rows_class(v["rows"], key) for name, key in RULES}
         for name, c in cls.items():
             out["classes"][name][c] += 1
@@ -1241,7 +1251,11 @@ def summary(a: Any) -> dict[str, Any]:
     grecs.sort(key=lambda r: (_order(r["object"]), int(r["idx"])))
     prec = _load_lines([records_path(d, "test") for d in pdirs] + [records_path(d, "validation") for d in pvdirs])
     orec = _load_lines([records_path(d, "test") for d in odirs] + [records_path(d, "validation") for d in ovdirs])
-    arms = {"pose-set": {_key(r): r for r in prec}, "oracle": {_key(r): r for r in orec}, "Stage 2": {_key(r): r for r in s2t + s2v}}
+    arms = {"pose-set": prec, "oracle": orec, "Stage 2": s2t + s2v}
+    for name, recs in arms.items():
+        if len({_key(r) for r in recs}) != len(recs):
+            raise SystemExit(f"a case appears twice in the {name} records")
+    arms = {name: {_key(r): r for r in recs} for name, recs in arms.items()}
     joined = []
     for r in grecs:
         k = _key(r)
@@ -1269,13 +1283,14 @@ def summary(a: Any) -> dict[str, Any]:
     vs = sorted(pilot_views(paired, k0, k4), key=lambda v: (v["side"] != "test", _order(v["object"]), v["idx"]))
     vt, vv = [v for v in vs if v["side"] == "test"], [v for v in vs if v["side"] == "validation"]
     entries = load_grasps(cfg["grasps"])
-    angles: dict[str, list[int]] = {}
-    for r in grecs:
-        e = entries.get(_key(r))
-        if e is not None and e.get("grasps") is not None:
-            angles[r["object"]] = [x + y for x, y in zip(angles.get(r["object"], [0, 0, 0, 0]), angle_histogram(e["grasps"]))]
-    angles["all"] = [sum(h[i] for h in angles.values()) for i in range(4)]
     done = [r for r in grecs if r.get("counts")]
+    angles: dict[str, list[int]] = {}
+    for r in done:                                                              # the cases whose grasps went through the funnel
+        e = entries.get(_key(r))
+        if e is None or e["error"] or e["grasps"] is None:
+            raise SystemExit(f"{r['object']} {r['idx']}: its grasps do not load ({'no index line' if e is None else e['error']})")
+        angles[r["object"]] = [x + y for x, y in zip(angles.get(r["object"], [0, 0, 0, 0]), angle_histogram(e["grasps"]))]
+    angles["all"] = [sum(h[i] for h in angles.values()) for i in range(4)]
     sim_rows = [x for r in done for x in r["rows"] if "seconds" in x]
     counts = {"cases": len(grecs), "skipped": sum(bool(r.get("skipped")) for r in grecs), "pilot_dropped": sum(bool(r["dropped"]) for r in grecs),
               "case_errors": sum(bool(r.get("error")) for r in grecs), "rows_simulated": len(sim_rows),
@@ -1288,7 +1303,8 @@ def summary(a: Any) -> dict[str, Any]:
                 "5_tags_validation": {name: placing_tags(vv, name) for name, _ in RULES}}
     smoke_rep = json.load(open(a.smoke))
     gates = {"smoke": {"replay": smoke_rep["replay"], "gate": smoke_rep.get("gate"), "wandb": smoke_rep.get("wandb")}, "exact": gate,
-             "label": label_gate(vs)}
+             "label": label_gate([{"object": j["g"]["object"], "idx": int(j["g"]["idx"]), "prows": j["pose"].get("rows") or [],
+                                   "rows": [r for r in j["g"].get("rows") or [] if not r.get("gate")]} for j in joined])}
     one = "hope__milk_carton"
     disclosures = {"frame": {"all": _frame_total(done), one: _frame_total([r for r in done if r["object"] == one])},
                    "thin_cases": sum(v["thin"] for v in vs), "pad_height_m": {"lab": 2 * float(PAD_HALF[2]), "graspgen": 2 * PANDA_BOX[2]}}
@@ -1363,7 +1379,8 @@ def summary_markdown(rep: dict[str, Any]) -> str:
           "| object (side) | n | " + " | ".join(ARM_NAMES[k] for k in ARMS) + " |", "|---|---|" + "---|" * len(ARMS)]
     L += [f"| {o} ({x['side']}) | {x['n']} | " + " | ".join(_pc(x[k]['success']) for k in ARMS) + " |" for o, x in R["2_by_object"].items()]
     h = R["3_hammer"]
-    L += ["", "## 3. The hammers", "", f"{h['cases']} cases on {', '.join(h['objects']) or 'no object'}."]
+    L += ["", "## 3. The hammers", "", f"{h['cases']} cases on {', '.join(h['objects']) or 'no object'}. The head end is the hammer's "
+          "wide end on its hulls (" + ", ".join(f"{o} f {HAMMER_HEAD_F[o]:.0f}" for o in h["objects"]) + "), not the drawn CoM's side."]
     L += [f"- {ARM_NAMES[n]}: " + ", ".join(f"{k} {v}" for k, v in h["classes"][n].items()) for n, _ in RULES]
     L += ["- The 10-pinch ceiling: " + ", ".join(f"{k} {v}" for k, v in h["c10_classes"].items()),
           f"- Clean kept rows that placed a hammer: median distance from the balance point {_med(h['placed']['balance_m'])}, from the head end "

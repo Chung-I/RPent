@@ -718,6 +718,19 @@ def test_the_exact_gate_compares_the_gate_row_with_the_pose_sets_across_pinch():
     assert g["differences"] == [{"object": "ycb__sugar_box", "idx": 1}, {"object": "ycb__sugar_box", "idx": 4}]
 
 
+def test_the_exact_gate_counts_a_gate_row_without_a_state_as_missing():
+    from robots.mujoco_lab import curve_poseset as ps
+
+    broken = dict(_gate(), label=None, error="boom", qpos_sha=None, trace_sha=None)
+    prows = _prows(across_0_5="tipped")
+    bad = [dict(r, label=None, error="boom", qpos_sha=None, trace_sha=None) if r["id"] == ps.row_id(*gg.GATE) else r for r in prows]
+    a, b = _jcase(idx=0, gate=None), _jcase(idx=1, gate=None)
+    a["g"]["rows"] = [broken]
+    b["g"]["rows"] = [broken]
+    g = gg.exact_gate([a["g"], b["g"]], [dict(a["pose"], rows=bad), b["pose"]])
+    assert {k: g[k] for k in ("cases", "equal", "differ", "missing")} == {"cases": 2, "equal": 0, "differ": 0, "missing": 2}
+
+
 def test_the_paired_set_drops_a_case_any_arm_drops_or_an_undetermined_variant():
     js = [_jcase(idx=0), _jcase(idx=1, dropped=(True, False, False, False)), _jcase(idx=2, undetermined_b=True),
           _jcase(idx=3, dropped=(False, True, False, False)), _jcase(idx=4, dropped=(False, False, True, False)),
@@ -778,11 +791,35 @@ def test_the_hammer_line_classes_each_rule_and_measures_the_placing_rows_from_th
     assert h["c10_classes"]["lifted, never placed"] == 1 and h["c10_classes"]["not lifted by any pose"] == 1
     assert h["placed"]["balance_m"] == [pytest.approx(0.015)] and h["placed"]["head_m"] == [pytest.approx(0.075)]
     assert sorted(h["not_placed"]["balance_m"]) == [pytest.approx(0.12), pytest.approx(0.18)]
-    assert sorted(h["not_placed"]["head_m"]) == [pytest.approx(0.16), pytest.approx(0.24)]     # hammer_7's head is at its f = 1 end
+    assert sorted(h["not_placed"]["head_m"]) == [pytest.approx(0.24), pytest.approx(0.24)]     # both heads at f = 0, whatever com_f
     pc = h["per_case"][0]
     assert pc["placed"] == [{"id": "g0", "f": 0.25, "balance_m": pytest.approx(0.015), "head_m": pytest.approx(0.075),
                              "tag": "on the axis at another fraction or yaw", "rules": ["gg", "ggb"]}]
     assert pc["classes"] == {"gg": "placed by a row", "ggb": "placed by a row"} and pc["c10_class"] == "lifted, never placed"
+
+
+def test_the_head_end_is_each_hammers_own_and_a_hammer_without_one_is_refused():
+    assert gg.HAMMER_HEAD_F == {"handal__hammer_1": 0.0, "handal__hammer_7": 0.0}
+    other = _jcase(o="handal__hammer_9", idx=0, rows=[_g("g0", 0, "placed_stable", f=0.25)])
+    with pytest.raises(ValueError, match="handal__hammer_9"):
+        gg.hammer_line(gg.pilot_views([other], K0, K4))
+
+
+@SIM
+def test_each_hammers_head_end_is_its_wide_end_on_the_hulls():
+    import os
+
+    from robots.mujoco_lab.adapter import load_sim, object_props
+
+    for o, head in gg.HAMMER_HEAD_F.items():
+        p = object_props(o, "v11")
+        ax, c, lo, L = np.asarray(p["axis"]), np.asarray(p["centre"]), float(p["axis_lo"]), float(p["length"])
+        z = np.load(os.path.join(load_sim()["scene"].MESHES, o, "hulls.npz"))
+        V = np.concatenate([z[f"v{k}"] for k in range(int(z["n"]))])
+        f = ((V - c) @ ax - lo) / L
+        perp = (V - c) - np.outer((V - c) @ ax, ax)
+        wide = [float(np.ptp(perp[(f >= a) & (f <= b)], axis=0).max()) for a, b in ((0.0, 0.2), (0.8, 1.0))]
+        assert (0.0 if wide[0] > 2 * wide[1] else 1.0 if wide[1] > 2 * wide[0] else None) == head, (o, wide)
 
 
 def test_the_object_line_counts_the_bowls_rows_by_tag_and_rule_and_their_labels():
@@ -985,6 +1022,37 @@ def test_the_summary_refuses_a_pilot_run_without_exit_0_and_a_case_an_arm_lacks(
     with pytest.raises(SystemExit) as e:
         gg.summary(a)
     assert "oracle" in str(e.value) and "fruits_veggies__lemon1" in str(e.value)
+
+
+def test_the_summary_refuses_a_grasp_file_that_changed_under_its_index(tmp_path, monkeypatch):
+    monkeypatch.setenv("WANDB_MODE", "disabled")
+    a = _pilot_inputs(tmp_path, _five_cases())
+    G = np.array([_grasp(), _grasp(), _grasp()], dtype=np.float32)
+    np.savez(f"{tmp_path}/grasps/ycb__bowl__1.npz", grasps=G, conf=np.array([0.9, 0.8, 0.7], dtype=np.float32))
+    with pytest.raises(SystemExit) as e:
+        gg.summary(a)
+    assert "ycb__bowl" in str(e.value) and "grasp" in str(e.value)
+
+
+def test_the_summary_label_gate_reads_the_cases_an_arm_drops(tmp_path, monkeypatch):
+    monkeypatch.setenv("WANDB_MODE", "disabled")
+    six = _five_cases() + [_jcase(o="hope__oatmeal_raisin_cookies", idx=5, rows=[_g("g0", 0, "tipped", near="across_0.5")],
+                                  prows=_prows(across_0_5="placed_stable"), dropped=(False, False, True, False))]
+    rep = gg.summary(_pilot_inputs(tmp_path, six))
+    assert rep["counts"]["paired_dropped"]["oracle"] == 1
+    assert (rep["gates"]["label"]["compared"], rep["gates"]["label"]["differ"]) == (2, 2)
+
+
+@pytest.mark.parametrize("arm", ["oracle", "pose"])
+def test_the_summary_refuses_a_case_twice_in_an_arms_records(tmp_path, monkeypatch, arm):
+    monkeypatch.setenv("WANDB_MODE", "disabled")
+    a = _pilot_inputs(tmp_path, _five_cases())
+    path = f"{a.oracle_validation if arm == 'oracle' else a.poseset_validation}/records_validation.jsonl"
+    lines = open(path).read().splitlines()
+    open(path, "a").write(lines[-1] + "\n")
+    with pytest.raises(SystemExit) as e:
+        gg.summary(a)
+    assert "twice" in str(e.value) and {"oracle": "oracle", "pose": "pose-set"}[arm] in str(e.value)
 
 
 def test_the_summary_opens_the_pilot_records_once(tmp_path, monkeypatch):
