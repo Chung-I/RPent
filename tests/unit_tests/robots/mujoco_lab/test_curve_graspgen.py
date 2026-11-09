@@ -597,12 +597,16 @@ SIM = pytest.mark.skipif(not __import__("os").environ.get("RPENT_MUJOCO_SIM_DIR"
 
 @SIM
 def test_a_grasp_at_a_menu_pinch_maps_to_that_pinch_on_the_real_adapter():
+    from robots.mujoco_lab import sixdof
     from robots.mujoco_lab.adapter import MuJoCoLabEnv
+    from robots.mujoco_lab.palm_audit import today_path
 
     env = MuJoCoLabEnv()
     env.reset("ycb__sugar_box", seed=0)
-    p = min((env.proposals((0.5,), turn=t)[0] for t in (0.0, -math.pi / 2)), key=lambda q: q.width)   # the narrower side
+    p = min((env.proposals((0.9,), turn=t)[0] for t in (0.0, -math.pi / 2)), key=lambda q: q.width)   # the narrower side
     assert p.width < 0.09
+    # 1.8 cm below the box top the palm clears the box (at s 0.5 it is 36 mm inside, and reach() fails on the contacts sim)
+    assert sixdof.clearance_on_path(env, today_path(env, p, {"v_lift": 0.1, "v_transport": 0.5, "destination": "bin"}), p.width, "bin") is None
     ex = np.array([math.cos(p.yaw), math.sin(p.yaw), 0.0])
     pad = np.asarray(p.point) + [0.0, 0.0, gg.PAD_ABOVE]
     g = _grasp((0.0, 0.0, -1.0), ex, pad - gg.DEPTH * np.array([0.0, 0.0, -1.0]))
