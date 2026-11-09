@@ -694,3 +694,81 @@ def test_the_smoke_command_refuses_before_it_writes_or_logs_anything_when_a_unit
         rr.main(["smoke-report", "--execute", f"{d['ex0']},{d['ex1']}", "--plan", d["plan"], "--full-cases", str(full),
                  "--out", str(tmp_path / "out")])
     assert not os.path.exists(tmp_path / "out" / "smoke_summary.json") and not os.path.exists(tmp_path / "out" / "smoke_summary.md")
+
+
+# ------------------------------------------------------------------ the tags pass (the level-A summary rulings, 9 Nov)
+
+def _tag_case(lab):
+    """The fake lab's case 3 with two ≤ 30° rows (g0, g1: the pilot's mapped fields) and one 30–45° row (g3: 40° about
+    its closing axis, pad centre 5 mm from the pose set's along_0.7 pinch), as the prepass records them, and its grasps."""
+    from tests.unit_tests.robots.mujoco_lab.test_curve_graspgen import _down
+
+    G = np.array([_down(-0.1, yaw=math.pi / 2), _down(0.0003, yaw=math.pi / 2), _down(0.1, yaw=math.pi / 2), _down(0.055, yaw=0.0, tilt_deg=40.0)])
+    entry = dict(_entry(lab), grasps=G, conf=np.array([0.9, 0.8, 0.7, 0.6]))
+    prep = dict(_prep(lab), rows30=[dict({"id": f"g{k}", "kept_all": True}, **gg.map_grasp(G[k])) for k in (0, 1)],
+                rows6=[{"id": "g3", "approach_deg": float(sixdof.approach_deg(sixdof.from_graspgen(G[3]))), "candidate": None}])
+    return prep, entry, G
+
+
+def test_the_tags_pass_tags_both_bins_rows_with_the_pilots_tags_at_one_checked_reset_and_reads_no_label(lab):
+    prep, entry, G = _tag_case(lab)
+    rec = rr.tags_case(SimpleNamespace(env=lab), _rec1(), 3, None, prep, entry)
+    assert rec["stop"] is None and rec["error"] is None and lab.resets == [3003] and lab.calls == []
+    t30, t6 = {r["id"]: r for r in rec["rows30"]}, {r["id"]: r for r in rec["rows6"]}
+    assert t30["g0"]["f"] == pytest.approx(0.05 / 0.30) and t30["g0"]["r_axis"] == pytest.approx(0.0, abs=1e-12)
+    assert t30["g0"]["h"] == pytest.approx((0.004 + 0.015) / 0.03) and t30["g0"]["near"] is None
+    assert t30["g1"]["near"] == "across_0.5" and t30["g1"]["near_current"]
+    want = dict({"id": "g3"}, **gg.map_grasp(G[3]))
+    gg._tags(lab, [want])
+    assert t6["g3"]["near"] == "along_0.7" and not t6["g3"]["near_current"] and t6["g3"]["f"] == pytest.approx(0.205 / 0.30)
+    assert {k: t6["g3"][k] for k in ("point", "pad", "yaw", "f", "r_axis", "h", "near", "near_current")} == \
+        {k: want[k] for k in ("point", "pad", "yaw", "f", "r_axis", "h", "near", "near_current")}
+    assert rec["object_z"] == pytest.approx([-0.015, 0.015]) and rec["map_err"] == 0.0 and rec["deg_err"] == pytest.approx(0.0, abs=1e-9)
+    assert not any(k in r for r in rec["rows30"] + rec["rows6"] for k in ("label", "run", "kept_all", "candidate"))
+
+
+def test_the_tags_pass_stops_a_case_whose_row_ids_do_not_map_to_its_grasps_or_whose_reset_is_not_the_prepasss(lab):
+    prep, entry, _ = _tag_case(lab)
+    bad = dict(prep, rows30=[dict(prep["rows30"][0], point=[-0.099, 0.0, 0.0])] + prep["rows30"][1:])
+    assert "map" in rr.tags_case(SimpleNamespace(env=lab), _rec1(), 3, None, bad, entry)["stop"]
+    bad = dict(prep, rows6=[dict(prep["rows6"][0], approach_deg=41.0)])
+    assert "map" in rr.tags_case(SimpleNamespace(env=lab), _rec1(), 3, None, bad, entry)["stop"]
+    assert "hulls" in rr.tags_case(SimpleNamespace(env=lab), _rec1(), 3, None, dict(prep, hull_sha="0" * 64), entry)["stop"]
+    assert "fingerprint" in rr.tags_case(SimpleNamespace(env=lab), _rec1(fingerprint="other"), 3, None, prep, entry)["stop"]
+    assert "no grasps" in rr.tags_case(SimpleNamespace(env=lab), _rec1(), 3, None, prep, None)["stop"]
+    n = len(lab.resets)
+    for p in (dict(prep, stop="x"), dict(prep, dropped=True)):
+        rec = rr.tags_case(SimpleNamespace(env=lab), _rec1(), 3, None, p, entry)
+        assert rec["stop"] is None and rec["tags_skipped"] and rec["rows30"] == [] and rec["rows6"] == []
+    assert len(lab.resets) == n                                          # nothing to tag: no reset
+
+
+def test_the_tags_command_tags_one_prepass_unit_on_the_level_a_record_and_refuses_another_before_it_writes(tmp_path, monkeypatch, quiet):
+    from robots.mujoco_lab import tracking
+    from robots.mujoco_lab.curve import _sha
+
+    stage, recs1 = _stage1(tmp_path, monkeypatch, objects=("ycb__bowl",))
+    preps = [dict(r, stop=None, dropped=False) for r in recs1[:2]]
+    cfg = {"bundle": "/b", "seed": 3, "grasps": "/g", "stage1_records_sha256": {stage: "s"}, "code_revision": rr.LEVEL_A_CODE}
+    pre = _provenance(_finished_dir(tmp_path / "pre", "prepass_records.jsonl", preps, cfg))
+    jobs = []
+    monkeypatch.setattr(rr, "tags_object", lambda job: jobs.append(job) or
+                        {"records": [{"object": p["object"], "idx": p["idx"], "stop": None, "rows30": [{"id": "g0"}], "rows6": [],
+                                      "map_err": 0.0, "deg_err": 0.0} for _, p in job[1]], "stop": None})
+    rr.main(["tags", "--prepass", pre, "--out", str(tmp_path / "out")])
+    recs = [json.loads(line) for line in open(tmp_path / "out" / "tags_records.jsonl")]
+    assert [(r["object"], r["idx"]) for r in recs] == [("ycb__bowl", 0), ("ycb__bowl", 1)]
+    assert jobs[0][0] == "ycb__bowl" and jobs[0][2] == {"bundle": "/b/folds/fold_0", "seed": 3, "grasps": "/g"}
+    assert [x[0]["idx"] for x in jobs[0][1]] == [0, 1] and jobs[0][1][0][1] == preps[0]
+    m = json.load(open(tmp_path / "out" / "run_metrics.json"))
+    assert m["cases"] == 2 and m["rows30"] == 2 and m["rows6"] == 0 and m["map_err"] == 0.0 and m["wandb"] == "wandb:sixdof-rerun-tags"
+    c = json.load(open(tmp_path / "out" / "run_config.json"))
+    assert c["prepass"] == pre and c["prepass_records_sha256"] == _sha(os.path.join(pre, "prepass_records.jsonl"))
+    assert c["prepass_provenance"]["code"] == rr.LEVEL_A_CODE and c["prepass_provenance"]["sim"] == rr.LEVEL_A_SIM
+    with pytest.raises(SystemExit, match="exists"):
+        rr.main(["tags", "--prepass", pre, "--out", str(tmp_path / "out")])
+    _provenance(pre, sim=FE46, sim_dir="/w/v12checks-armsim-fe46f6c/sim")
+    monkeypatch.setattr(tracking, "log_run", lambda *a: (_ for _ in ()).throw(AssertionError("wandb called")))
+    with pytest.raises(SystemExit, match="provenance gate"):
+        rr.main(["tags", "--prepass", pre, "--out", str(tmp_path / "out2")])
+    assert not os.path.exists(tmp_path / "out2" / "tags_records.jsonl")

@@ -443,6 +443,71 @@ def execute_case(prims: Any, rec1: dict[str, Any], seed: int, world: Any, prep: 
     return out
 
 
+# ------------------------------------------------------------------ the tags pass: the pilot's row tags, geometry only (no label)
+
+MAP_TOL = 1e-9          # a ≤ 30° row's recorded point, pad (m) and yaw (rad) against map_grasp of its grasp k
+DEG_TOL = 1e-6          # a 30–45° row's recorded approach angle against map_grasp's, in degrees
+
+
+def tag_rows(env: Any, rows30: list[dict[str, Any]], rows6: list[dict[str, Any]], grasps: Any) -> dict[str, Any]:
+    """The pilot's row tags (curve_graspgen._tags: f, r_axis, h, near, near_current) of a case's rows at its reset, with
+    the pilot's mapping (the level-A summary rulings, 9 Nov): a ≤ 30° row on its recorded point, pad and yaw; a 30–45°
+    row on map_grasp of its grasp k (the row id g<k>; its pinch or its twin: the same pad centre, the yaw a half turn
+    apart). ``map_err``: the largest difference of a ≤ 30° row's recorded point, pad and yaw from map_grasp of its grasp
+    k; ``deg_err``: of a 30–45° row's recorded approach angle from map_grasp's. Reads no outcome."""
+    from robots.mujoco_lab import curve_graspgen as gg
+
+    G = np.asarray(grasps, dtype=float)
+    t30: list[dict[str, Any]] = []
+    t6: list[dict[str, Any]] = []
+    err, deg = 0.0, 0.0
+    for r in rows30:
+        m = gg.map_grasp(G[int(r["id"][1:])])
+        err = max([err, abs(float(m["yaw"]) - float(r["yaw"]))] + [abs(float(x) - float(y)) for k in ("point", "pad") for x, y in zip(m[k], r[k])])
+        t30.append({"id": r["id"], "point": r["point"], "pad": r["pad"], "yaw": r["yaw"]})
+    for r in rows6:
+        m = gg.map_grasp(G[int(r["id"][1:])])
+        deg = max(deg, abs(float(m["approach_deg"]) - float(r["approach_deg"])))
+        t6.append({"id": r["id"], "point": m["point"], "pad": m["pad"], "yaw": m["yaw"], "approach_deg": m["approach_deg"]})
+    z = gg._tags(env, t30 + t6)
+    keep = ("id", "f", "r_axis", "h", "near", "near_current")
+    return {"rows30": [{k: r[k] for k in keep} for r in t30], "rows6": t6, "object_z": [float(x) for x in z], "map_err": err, "deg_err": deg}
+
+
+def tags_case(prims: Any, rec1: dict[str, Any], seed: int, world: Any, prep: dict[str, Any], entry: dict[str, Any] | None) -> dict[str, Any]:
+    """The tags of one prepass record's rows (tag_rows) at the case's reset with the execute pass's checks (Stage 1's
+    fingerprint, the record's hulls): nothing for a case the prepass stopped or dropped (``tags_skipped``); a failed
+    check, or a row id that does not map to its grasp (MAP_TOL, DEG_TOL), is the case's stop; an exception its error."""
+    from robots.mujoco_lab import com_gap
+    from robots.mujoco_lab import curve_graspgen as gg
+    from robots.mujoco_lab.curve_poseset import _err
+    from robots.mujoco_lab.curve_sixdof import _checked_reset
+
+    out: dict[str, Any] = {"object": prep["object"], "idx": int(prep["idx"]), "side": prep.get("side"), "tags_skipped": None, "stop": None,
+                           "error": None, "rows30": [], "rows6": [], "object_z": None, "map_err": None, "deg_err": None}
+    if prep.get("stop") or prep.get("dropped"):
+        return dict(out, tags_skipped="the prepass stopped or dropped the case")
+    if entry is None:
+        return dict(out, stop="no grasps for this case")
+    if entry.get("error"):
+        return dict(out, stop=f"the generator failed on this case: {entry['error']}")
+    env = prims.env
+    st = gg._setup(prims, rec1, seed, world)
+    if st["stop"]:
+        return dict(out, stop=st["stop"])
+    try:
+        _, stop = _checked_reset(env, st["reset_at"](0), com_gap.fingerprint, rec1["fingerprint"], prep["hull_sha"])
+        if stop:
+            return dict(out, stop=stop)
+        t = tag_rows(env, prep.get("rows30") or [], prep.get("rows6") or [], entry["grasps"])
+    except Exception as exc:  # noqa: BLE001  the case's error; tags_object stops the object on it
+        return dict(out, error=_err(exc))
+    if t["map_err"] > MAP_TOL or t["deg_err"] > DEG_TOL:
+        return dict(out, stop=f"the row ids do not map to the case's grasps (point, pad, yaw off by {t['map_err']:.3g}; "
+                              f"approach off by {t['deg_err']:.3g} deg)")
+    return dict(out, **t)
+
+
 # ------------------------------------------------------------------ the unit's counts, the stop rule, the smoke report (no label)
 
 def _total(counts: list[dict[str, Any]], keys: tuple[str, ...]) -> dict[str, int]:
@@ -527,6 +592,16 @@ def read_provenance(d: str) -> dict[str, Any]:
     return out
 
 
+def provenance_problem(d: str, code: str, sim: str, with_sim: bool) -> tuple[dict[str, Any], str | None]:
+    """One run dir's provenance (read_provenance) and what in it is not ``code`` (and ``sim`` when ``with_sim``) with no
+    dirty file, as "<dir>: <what>", or None."""
+    p = read_provenance(d)
+    why = [] if p["code"] == code and p["code_dirty"] == 0 else [f"code {p['code']}, dirty files {p['code_dirty']}"]
+    if with_sim and not (p["sim"] == sim and p["sim_dirty"] == 0):
+        why.append(f"sim {p['sim']} ({p['sim_dir']}), dirty files {p['sim_dirty']}")
+    return p, (f"{d}: " + "; ".join(why)) if why else None
+
+
 def provenance_gate(execute_dirs: list[str], plan_dir: str, sim: str = LEVEL_A_SIM, code: str = LEVEL_A_CODE) -> dict[str, Any]:
     """The level-A record's provenance gate (the coordinator's ruling of 9 Nov, after a resume script ran the execute
     pass on the launcher's default sim with EXIT 0 everywhere). Every execute unit, and the prepass unit it read (its
@@ -537,12 +612,9 @@ def provenance_gate(execute_dirs: list[str], plan_dir: str, sim: str = LEVEL_A_S
     bad: list[str] = []
 
     def check(d: str, with_sim: bool) -> dict[str, Any]:
-        p = read_provenance(d)
-        why = [] if p["code"] == code and p["code_dirty"] == 0 else [f"code {p['code']}, dirty files {p['code_dirty']}"]
-        if with_sim and not (p["sim"] == sim and p["sim_dirty"] == 0):
-            why.append(f"sim {p['sim']} ({p['sim_dir']}), dirty files {p['sim_dirty']}")
+        p, why = provenance_problem(d, code, sim, with_sim)
         if why:
-            bad.append(f"{d}: " + "; ".join(why))
+            bad.append(why)
         return p
 
     prepass: list[str] = []
@@ -736,6 +808,39 @@ def execute_object(job: tuple[str, list[tuple[dict[str, Any], dict[str, Any]]], 
     return out
 
 
+def tags_line(rec: dict[str, Any]) -> str:
+    """A tags record's log line: rows tagged and the time; no label."""
+    return (f"{rec['object']} {rec['idx']}: tagged {len(rec.get('rows30') or [])} <= 30 deg rows and {len(rec.get('rows6') or [])} "
+            f"30-45 deg rows; {float(rec.get('seconds') or 0.0):.1f} s" + (f", {rec['tags_skipped']}" if rec.get("tags_skipped") else "")
+            + (f", error {rec['error']}" if rec.get("error") else "") + (f", STOP {rec['stop']}" if rec.get("stop") else ""))
+
+
+def tags_object(job: tuple[str, list[tuple[dict[str, Any], dict[str, Any]]], dict[str, Any]]) -> dict[str, Any]:
+    """One object's tags pass: each (Stage 1 case, prepass record) on its fold's bundle with the pilot's grasps
+    (tags_case, timed); a stop or an error ends the object (``stop``)."""
+    from robots.mujoco_lab import curve_graspgen as gg
+    from robots.mujoco_lab.prior import fragility_world
+
+    o, items, s = job
+    entries = gg.load_grasps(s["grasps"])
+    prims, probes = _object_prims(s["bundle"])
+    world = fragility_world(prims.manifest)
+    out: dict[str, Any] = {"records": [], "stop": None}
+    try:
+        for rec1, prep in items:
+            t0 = time.time()
+            rec = tags_case(prims, rec1, int(s["seed"]), world, prep, entries.get((o, int(rec1["idx"]))))
+            rec["seconds"] = round(time.time() - t0, 2)
+            out["records"].append(rec)
+            print(tags_line(rec), file=sys.stderr, flush=True)
+            if rec["stop"] or rec["error"]:
+                out["stop"] = f"{o} {rec1['idx']}: {rec['stop'] or rec['error']}"
+                break
+    finally:
+        prims.probe_models = probes
+    return out
+
+
 def _run_jobs(fn: Any, jobs: list[Any], workers: int, rec_path: str) -> str | None:
     """The object jobs in order (``workers`` 1) or in a spawn pool, each job's records appended to ``rec_path`` as it
     ends; the first job that stops ends the run. Returns that stop or None."""
@@ -897,6 +1002,54 @@ def execute_cmd(a: Any) -> str:
     return a.out
 
 
+def tags_cmd(a: Any) -> str:
+    """The tags pass (CPU, geometry only, the level-A summary rulings of 9 Nov): the rows of one finished --prepass run
+    with their Stage 1 cases, by object (tags_object), on the run's bundle, seed and grasps. Refuses, before it writes
+    anything, a prepass unit whose provenance is not the level-A record's (LEVEL_A_CODE and LEVEL_A_SIM, no dirty file),
+    and an existing --out. tags_records.jsonl, run_config.json (with the prepass's provenance and records hash) and
+    run_metrics.json (counts, the mapping checks, times; wandb). Exit 3 at a stop. Returns --out."""
+    from collections import defaultdict
+
+    from robots.mujoco_lab.curve import _peak_rss_mb, _sha, load_stage1
+    from robots.mujoco_lab.estimation_check import _revision
+
+    _finished(a.prepass)
+    prov, why = provenance_problem(a.prepass, LEVEL_A_CODE, LEVEL_A_SIM, True)
+    if why:
+        raise SystemExit(f"provenance gate: the prepass unit did not run on code {LEVEL_A_CODE} and sim {LEVEL_A_SIM} with no dirty file:\n{why}")
+    os.makedirs(a.out, exist_ok=True)
+    rec_path = os.path.join(a.out, "tags_records.jsonl")
+    _fresh(rec_path)
+    pcfg = json.load(open(os.path.join(a.prepass, "run_config.json")))
+    ppath = os.path.join(a.prepass, "prepass_records.jsonl")
+    preps = [json.loads(line) for line in open(ppath)]
+    recs1, _ = load_stage1(list(pcfg["stage1_records_sha256"]))
+    by1 = {(r["object"], int(r["idx"])): r for r in recs1}
+    config = {**vars(a), **_revision(), "bundle": pcfg["bundle"], "seed": pcfg["seed"], "grasps": pcfg["grasps"],
+              "prepass_code_revision": pcfg.get("code_revision"), "prepass_records_sha256": _sha(ppath), "prepass_provenance": prov,
+              "cases": [[p["object"], int(p["idx"])] for p in preps]}
+    with open(os.path.join(a.out, "run_config.json"), "w") as f:
+        json.dump(config, f, indent=1)
+    by: dict[str, list[tuple[dict[str, Any], dict[str, Any]]]] = defaultdict(list)
+    for p in preps:
+        by[p["object"]].append((by1[(p["object"], int(p["idx"]))], p))
+    jobs = [(o, items, {"bundle": os.path.join(pcfg["bundle"], "folds", f"fold_{items[0][0]['fold']}"), "seed": pcfg["seed"],
+                        "grasps": pcfg["grasps"]}) for o, items in by.items()]
+    t0 = time.time()
+    stop = _run_jobs(tags_object, jobs, int(a.workers), rec_path)
+    done = [json.loads(line) for line in open(rec_path)]
+    errs = [r["map_err"] for r in done if r.get("map_err") is not None]
+    degs = [r["deg_err"] for r in done if r.get("deg_err") is not None]
+    metrics = {"cases": len(done), "of_cases": len(preps), "skipped": sum(bool(r.get("tags_skipped")) for r in done),
+               "rows30": sum(len(r.get("rows30") or []) for r in done), "rows6": sum(len(r.get("rows6") or []) for r in done),
+               "map_err": max(errs) if errs else None, "deg_err": max(degs) if degs else None, "stop": stop,
+               "wall_seconds": round(time.time() - t0, 1), "peak_rss_mb": _peak_rss_mb()}
+    _write_metrics(a.out, "sixdof-rerun-tags", config, metrics)
+    if stop:
+        raise SystemExit(3)
+    return a.out
+
+
 def smoke_cmd(a: Any) -> dict[str, Any]:
     """The smoke report on finished execute runs (--execute) and their plan step (--plan): smoke_report with the full
     run's cases per object from --full-cases (a comma-separated object:idx file, the pilot's cases.txt). The provenance
@@ -959,13 +1112,17 @@ def main(argv: list[str] | None = None) -> Any:
     e.add_argument("--replay", action="store_true", help="G3's 2-seed replay: every row again at the second seed")
     e.add_argument("--workers", type=int, default=1)
     e.add_argument("--out", required=True)
+    t = sub.add_parser("tags", help="the pilot's row tags of one finished prepass run's rows, geometry only, no label (CPU)")
+    t.add_argument("--prepass", required=True, help="a finished prepass run dir on the level-A code and sim")
+    t.add_argument("--workers", type=int, default=1)
+    t.add_argument("--out", required=True)
     m = sub.add_parser("smoke-report", help="the smoke report (counts only, no label) and the stop rule")
     m.add_argument("--execute", required=True, help="comma-separated finished execute run dirs")
     m.add_argument("--plan", required=True, help="their finished plan step")
     m.add_argument("--full-cases", required=True, help="the full run's cases: a comma-separated object:idx file")
     m.add_argument("--out", required=True)
     a = ap.parse_args(argv)
-    return {"prepass": prepass_cmd, "plan": plan_cmd, "execute": execute_cmd, "smoke-report": smoke_cmd}[a.cmd](a)
+    return {"prepass": prepass_cmd, "plan": plan_cmd, "execute": execute_cmd, "tags": tags_cmd, "smoke-report": smoke_cmd}[a.cmd](a)
 
 
 if __name__ == "__main__":
