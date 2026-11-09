@@ -104,3 +104,35 @@ def test_the_funnel_runs_reach6_also_after_a_clearance_failure_and_the_row_stops
     assert ik["why"] == "clearance: palm/object" and ik["reach"]["goal"] and ik["reach"]["box_hit"] is None
     assert [f["reason"] for f in ik["reach"]["failed"]] == ["ik", "ik"]
     assert [r["disagree"] for r in rows] == [None, None, None] and counts["disagree"] == 0
+
+
+@SIM
+def test_the_vertical_rows_run_the_pilots_funnel_with_the_published_planner_set_and_a_flag_for_the_clearance(monkeypatch):
+    from robots.mujoco_lab import curve_graspgen as gg
+    from tests.unit_tests.robots.mujoco_lab.test_sixdof import _at, _sugar_box
+
+    monkeypatch.setattr(gg, "KEEP_ROWS", 1)          # the pilot's cap, lowered so that the two distinct rows exceed it
+    env, _ = _sugar_box()
+    top, mid = (env.proposals((s,), turn=-math.pi / 2)[0] for s in (0.9, 0.5))
+    G = np.stack([_at(top, 10.0), _at(mid, 0.0), _at(top, 20.0), _at(top, 36.0)])
+    rows, counts = rr.funnel30(env, G, np.array([0.9, 0.8, 0.7, 0.6]), "box")
+    assert [r["id"] for r in rows] == ["g0", "g1", "g2"] and all(r["bin"] == "≤ 30°" for r in rows)
+    clear, palm, dup = rows
+    # the palm 36 mm inside the box: the published planner set (ruling A) passes it, the clearance flags it, and it runs
+    assert palm["reach"] == "ok" and palm["clearance"]["first"]["pair"] == "palm/object" and palm["kept_all"] and palm["kept_all_b"]
+    assert clear["clearance"] is None and clear["kept_all"] and dup["dup_of"] == "g0" and not dup["kept_all"]
+    assert [r["kept"] for r in rows] == [True, False, False] and [r["kept_b"] for r in rows] == [True, False, False]   # the pilot's cap
+    assert counts["kept"] == 1 and counts["distinct"] == 2 and counts["clearance_fail"] == 1
+    assert env.plan_without_hand_boxes is False      # the caller's planner set again
+
+
+@SIM
+def test_the_tilted_rows_check_the_path_with_the_hand_boxes_whatever_the_callers_planner_set():
+    from tests.unit_tests.robots.mujoco_lab.test_sixdof import _at, _sugar_box
+
+    env, _ = _sugar_box()
+    env.plan_without_hand_boxes = True
+    low = env.proposals((0.7,), turn=-math.pi / 2)[0]
+    rows, _ = rr.funnel6(env, np.stack([_at(low, 36.0)]), np.array([0.9]), "box", {"object": "ycb__sugar_box", "idx": 0})
+    assert rows[0]["reach"]["box_hit"]["box"] == "palm" and rows[0]["disagree"] is None
+    assert env.plan_without_hand_boxes is True

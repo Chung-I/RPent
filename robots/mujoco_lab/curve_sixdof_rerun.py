@@ -13,17 +13,35 @@
 # limitations under the License.
 """The level-A rerun driver (design 2026-11-08-sixdof-rerun-design.md, unit (f)): the pilot's cases with the 30–45°
 rows added. The funnel of those rows (funnel6): the width rules on the pinch's own closing axis, the kinematic
-clearance (ruling 1), the configuration and path check (choose), then the cached cuRobo free move and execute6."""
+clearance (ruling 1), the configuration and path check (choose) with the hand boxes in the planner's set, then the
+cached cuRobo free move and execute6. The ≤ 30° rows (funnel30) keep the pilot's funnel and executor without its cap,
+with the published planner set (ruling A) and the clearance as a flag (amendment 6)."""
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any
 
 import numpy as np
 
 from robots.mujoco_lab import sixdof
 
+VERTICAL_BIN = sixdof.BINS[0]         # "≤ 30°": the pilot's vertical rows, its mapping and executor
 LEVEL_A_BIN = sixdof.BINS[1]          # "30–45°": the rows level A adds; the pilot's vertical rows stay its own
+CHECK_SPEEDS = {"v_lift": 0.1, "v_transport": 0.5, "release_height": None}   # the speeds the pilot's reach() checks at
+
+
+@contextmanager
+def planner_set(env: Any, without_boxes: bool) -> Iterator[Any]:
+    """env.plan_without_hand_boxes at ``without_boxes`` inside the block (on: ruling A's published set, the arm links
+    and the pads), the caller's value after it."""
+    old = env.plan_without_hand_boxes
+    env.plan_without_hand_boxes = without_boxes
+    try:
+        yield env
+    finally:
+        env.plan_without_hand_boxes = old
 
 
 def _path_reason(f: dict[str, Any]) -> str:
@@ -80,29 +98,61 @@ def funnel6(env: Any, grasps: Any, conf: Any, destination: str, case: dict[str, 
     and all pairs, or None) and choose(), also after a clearance failure (``reach``: goal, the chosen candidate's index
     or None, box_hit, the failed candidates), and ``disagree`` of the two. ``candidate`` (index, twin, seed, q): only
     for a row that passes both. ``why`` / ``why_b``: the first step each rule's row stops at (None: the row goes to the
-    planner). Counts: generated, level_a, chosen, disagree."""
+    planner). The path check sees the hand boxes whatever the caller's planner set (planner_set off). Counts: generated,
+    level_a, chosen, disagree."""
     G, S = np.asarray(grasps, dtype=float), np.asarray(conf, dtype=float)
     boxes = hand_boxes(env.sim)
     rows: list[dict[str, Any]] = []
-    for rank, k in enumerate(np.argsort(-S, kind="stable")):
-        p = sixdof.from_graspgen(G[k])
-        deg = float(sixdof.approach_deg(p))
-        if sixdof.angle_bin(deg) != LEVEL_A_BIN:
-            continue
-        rid = f"g{int(k)}"
-        wr = sixdof.width_rule6(env, p)
-        why, why_b = wr["why"], wr["why_b"]
-        r: dict[str, Any] = {"id": rid, "rank": rank, "conf": float(S[k]), "approach_deg": deg, "bin": LEVEL_A_BIN,
-                             "width": float(wr["width"]), "why_width": why, "why_width_b": why_b, "clearance": None,
-                             "reach": None, "disagree": None, "candidate": None}
-        if why is None or why_b is None:
-            p = sixdof.from_graspgen(G[k], width=float(wr["width"]))
-            c = sixdof.clearance(env, p, float(wr["width"]), destination)
-            out, stop = assess(c, sixdof.choose(env, p, sixdof.row_key(case, rid), destination), boxes)
-            r.update(out)
-            why, why_b = why or stop, why_b or stop
-        r.update(why=why, why_b=why_b)
-        rows.append(r)
+    with planner_set(env, False):
+        for rank, k in enumerate(np.argsort(-S, kind="stable")):
+            p = sixdof.from_graspgen(G[k])
+            deg = float(sixdof.approach_deg(p))
+            if sixdof.angle_bin(deg) != LEVEL_A_BIN:
+                continue
+            rid = f"g{int(k)}"
+            wr = sixdof.width_rule6(env, p)
+            why, why_b = wr["why"], wr["why_b"]
+            r: dict[str, Any] = {"id": rid, "rank": rank, "conf": float(S[k]), "approach_deg": deg, "bin": LEVEL_A_BIN,
+                                 "width": float(wr["width"]), "why_width": why, "why_width_b": why_b, "clearance": None,
+                                 "reach": None, "disagree": None, "candidate": None}
+            if why is None or why_b is None:
+                p = sixdof.from_graspgen(G[k], width=float(wr["width"]))
+                c = sixdof.clearance(env, p, float(wr["width"]), destination)
+                out, stop = assess(c, sixdof.choose(env, p, sixdof.row_key(case, rid), destination), boxes)
+                r.update(out)
+                why, why_b = why or stop, why_b or stop
+            r.update(why=why, why_b=why_b)
+            rows.append(r)
     counts = {"generated": int(len(S)), "level_a": len(rows), "chosen": sum(r["candidate"] is not None for r in rows),
               "disagree": sum(r["disagree"] is not None for r in rows)}
+    return rows, counts
+
+
+def vertical_clearance(env: Any, r: dict[str, Any], destination: str) -> dict[str, Any] | None:
+    """Ruling 1's clearance of a vertical row (amendment 6): along today's planned path of the row's Proposal
+    (palm_audit.today_path at CHECK_SPEEDS), the closed fingers on the exact slab width (as width_rule6 measures a
+    tilted row). sixdof.clearance_on_path's result, or None when clear."""
+    from robots.mujoco_lab import curve_graspgen as gg
+    from robots.mujoco_lab.palm_audit import today_path
+
+    path = today_path(env, gg._proposal(r), dict(CHECK_SPEEDS, destination=destination))
+    return sixdof.clearance_on_path(env, path, float(r["slab"][1] - r["slab"][0]), destination)
+
+
+def funnel30(env: Any, grasps: Any, conf: Any, destination: str) -> tuple[list[dict[str, Any]], dict[str, int]]:
+    """The ≤ 30° rows: the pilot's funnel (curve_graspgen.funnel: the vertical mapping, both width rules, the centring,
+    reach()) with ruling A's planner set (planner_set on, as Stage 2c: the published planner, and the physics decides),
+    and ruling 1's clearance on every row that reaches reach() (vertical_clearance; ``clearance``: its first pair and
+    all pairs, or None). A row that fails the clearance stays kept and runs, flagged (amendment 6). ``kept`` /
+    ``kept_b``: the pilot's flags under its cap (KEEP_ROWS); ``kept_all`` / ``kept_all_b``: without the cap, feasible
+    and not a duplicate (the pilot's ``distinct`` counts). Counts: the pilot's and clearance_fail."""
+    from robots.mujoco_lab import curve_graspgen as gg
+
+    with planner_set(env, True):
+        rows, counts = gg.funnel(env, grasps, conf, destination)
+    for r in rows:
+        c = vertical_clearance(env, r, destination) if r["reach"] is not None else None
+        r.update(bin=VERTICAL_BIN, clearance=None if c is None else {"first": c["first"], "pairs": sorted(c["pairs"])},
+                 kept_all=bool(r["feasible"]) and r["dup_of"] is None, kept_all_b=bool(r["feasible_b"]) and r["dup_of_b"] is None)
+    counts["clearance_fail"] = sum(r["clearance"] is not None for r in rows)
     return rows, counts
