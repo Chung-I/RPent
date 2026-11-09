@@ -614,14 +614,83 @@ def test_the_execute_command_runs_each_prepass_record_with_its_stage1_case_after
         rr.main(args[:-1] + [str(tmp_path / "out3")])
 
 
+FE46 = "e823247052a2bf4d1b97d5077a51f0ead91fd80c"   # the published sim's last commit (the fe46f6c worktree): hand boxes contype 0
+
+
+def _provenance(d, code=None, sim=None, code_dirty=0, sim_dirty=0, sim_dir="/w/armsim-contacts-ee882f9b/sim"):
+    """A run dir's provenance.txt as the launcher (run_curve.sh) writes it: the code line, then the sim line."""
+    with open(os.path.join(d, "provenance.txt"), "w") as f:
+        f.write(f"code {code or rr.LEVEL_A_CODE} (detached run worktree), dirty files {code_dirty}\n"
+                f"sim {sim_dir}, last commit {sim or rr.LEVEL_A_SIM}, dirty files {sim_dirty}\n"
+                "command python -P -u -m robots.mujoco_lab.curve_sixdof_rerun execute\n")
+    return d
+
+
+def _gate_dirs(tmp_path, records=(), plans=()):
+    """One prepass unit, two execute units that read it, and a plan step whose sim line names the published sim."""
+    pre = _provenance(_finished_dir(tmp_path / "pre", "prepass_records.jsonl", []))
+    ex = [_provenance(_finished_dir(tmp_path / f"ex{k}", "exec_records.jsonl", list(records) if k == 0 else [], {"prepass": pre}))
+          for k in (0, 1)]
+    plan = _provenance(_finished_dir(tmp_path / "plan", "plan_records.jsonl", list(plans)), sim=FE46, sim_dir="/w/v12checks-armsim-fe46f6c/sim")
+    return {"pre": pre, "ex0": ex[0], "ex1": ex[1], "plan": plan}
+
+
+def test_the_provenance_gate_passes_units_on_the_level_a_code_and_sim_and_records_the_plans_sim_without_checking_it(tmp_path):
+    d = _gate_dirs(tmp_path)
+    g = rr.provenance_gate([d["ex0"], d["ex1"]], d["plan"])
+    assert g == {"code": rr.LEVEL_A_CODE, "sim": rr.LEVEL_A_SIM, "execute_units": 2, "prepass_units": 1,
+                 "plan": {"code": rr.LEVEL_A_CODE, "sim": FE46, "sim_dir": "/w/v12checks-armsim-fe46f6c/sim"}}
+    assert rr.LEVEL_A_SIM == "ee882f9b5574a4adc30559fd92c9df3bf69afdf3" and rr.LEVEL_A_CODE == "f63ff35ce11cca646650c99c14e5eb9c95a1fa77"
+
+
+@pytest.mark.parametrize("where, change", [("ex1", {"sim": FE46}), ("pre", {"sim": FE46}), ("pre", {"code": "c2cfaac" + "0" * 33}),
+                                           ("ex0", {"sim_dirty": 1}), ("ex1", {"code_dirty": 2}), ("plan", {"code": "c2cfaac" + "0" * 33}),
+                                           ("plan", {"code_dirty": 1}), ("ex0", None), ("pre", None)])
+def test_the_provenance_gate_refuses_a_unit_on_another_sim_or_code_with_dirty_files_or_without_provenance(tmp_path, where, change):
+    d = _gate_dirs(tmp_path)
+    if change is None:
+        os.remove(os.path.join(d[where], "provenance.txt"))
+    elif where == "plan":
+        _provenance(d["plan"], **dict({"sim": FE46, "sim_dir": "/w/v12checks-armsim-fe46f6c/sim"}, **change))
+    else:
+        _provenance(d[where], **change)
+    with pytest.raises(SystemExit) as e:
+        rr.provenance_gate([d["ex0"], d["ex1"]], d["plan"])
+    msg = str(e.value)
+    assert msg.startswith("provenance gate") and f"{d[where]}:" in msg
+    assert [k for k in d if f"{d[k]}:" in msg] == [where]
+
+
+def test_the_provenance_gate_refuses_an_execute_unit_that_names_no_prepass_run(tmp_path):
+    d = _gate_dirs(tmp_path)
+    json.dump({}, open(os.path.join(d["ex1"], "run_config.json"), "w"))
+    with pytest.raises(SystemExit, match="no prepass"):
+        rr.provenance_gate([d["ex0"], d["ex1"]], d["plan"])
+
+
 def test_the_smoke_command_writes_the_report_and_exits_3_when_the_stop_rule_fires(tmp_path, monkeypatch, quiet):
-    ex = _finished_dir(tmp_path / "ex", "exec_records.jsonl", _done_records())
-    plan = _finished_dir(tmp_path / "plan", "plan_records.jsonl", [{"object": "ycb__bowl", "idx": 0, "plan": None, "plan_error": None,
-                                                                   "seconds": 1.0}])
+    d = _gate_dirs(tmp_path, records=_done_records(), plans=[{"object": "ycb__bowl", "idx": 0, "plan": None, "plan_error": None, "seconds": 1.0}])
+    ex, plan = f"{d['ex0']},{d['ex1']}", d["plan"]
     full = tmp_path / "cases.txt"
     full.write_text(",".join(f"ycb__bowl:{i}" for i in range(11)) + "\n")
     with pytest.raises(SystemExit) as e:
         rr.main(["smoke-report", "--execute", ex, "--plan", plan, "--full-cases", str(full), "--out", str(tmp_path / "out")])
     sm = json.load(open(tmp_path / "out" / "smoke_summary.json"))
     assert e.value.code == 3 and sm["stop"] and sm["full_cases"] == {"ycb__bowl": 11} and sm["wandb"] == "wandb:sixdof-rerun-smoke"
-    assert (tmp_path / "out" / "smoke_summary.md").read_text() == rr.smoke_markdown(sm)
+    md = (tmp_path / "out" / "smoke_summary.md").read_text()
+    assert md == rr.smoke_markdown(sm) and sm["provenance"] == rr.provenance_gate(ex.split(","), plan)
+    assert f"code {rr.LEVEL_A_CODE}" in md and f"sim {rr.LEVEL_A_SIM}" in md and FE46 in md
+
+
+def test_the_smoke_command_refuses_before_it_writes_or_logs_anything_when_a_unit_ran_on_another_sim(tmp_path, monkeypatch, quiet):
+    from robots.mujoco_lab import tracking
+
+    d = _gate_dirs(tmp_path, records=_done_records())
+    _provenance(d["ex1"], sim=FE46, sim_dir="/w/v12checks-armsim-fe46f6c/sim")
+    monkeypatch.setattr(tracking, "log_run", lambda *a: (_ for _ in ()).throw(AssertionError("wandb called")))
+    full = tmp_path / "cases.txt"
+    full.write_text("ycb__bowl:0\n")
+    with pytest.raises(SystemExit, match="provenance gate"):
+        rr.main(["smoke-report", "--execute", f"{d['ex0']},{d['ex1']}", "--plan", d["plan"], "--full-cases", str(full),
+                 "--out", str(tmp_path / "out")])
+    assert not os.path.exists(tmp_path / "out" / "smoke_summary.json") and not os.path.exists(tmp_path / "out" / "smoke_summary.md")

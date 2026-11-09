@@ -40,6 +40,8 @@ FUNNEL30 = ("generated", "vertical", "mapped", "width", "centred", "reach", "dis
 SAME6 = ("label", "artifact", "error", "damage", "drop_z", "loss_phase", "max_z", "qpos_sha", "trace_sha", "free", "unreachable")
 #                                                                          G3's replay: curve_poseset.SAME, the free move, G2
 CHECK_SPEEDS = {"v_lift": 0.1, "v_transport": 0.5, "release_height": None}   # the speeds the pilot's reach() checks at
+LEVEL_A_SIM = "ee882f9b5574a4adc30559fd92c9df3bf69afdf3"    # daily-logs: the contacts sim (amendment 8), the level-A record's
+LEVEL_A_CODE = "f63ff35ce11cca646650c99c14e5eb9c95a1fa77"   # RPent sixdof: the level-A record's code (unit f, step 6)
 
 
 @contextmanager
@@ -506,6 +508,59 @@ def plan_counts(plans: list[dict[str, Any]]) -> dict[str, int]:
             "errors": sum(bool(p.get("plan_error")) for p in plans)}
 
 
+def read_provenance(d: str) -> dict[str, Any]:
+    """The code and sim lines of a run dir's provenance.txt, as the launcher (run_curve.sh) writes them: the code
+    commit and its dirty files, the sim folder, its last commit and its dirty files. A missing file or line gives None."""
+    import re
+
+    out: dict[str, Any] = {"code": None, "code_dirty": None, "sim_dir": None, "sim": None, "sim_dirty": None}
+    path = os.path.join(d, "provenance.txt")
+    if not os.path.exists(path):
+        return out
+    for line in open(path):
+        c = re.match(r"code ([0-9a-f]{40}) .*dirty files (\d+)\s*$", line)
+        s = re.match(r"sim (.+), last commit ([0-9a-f]{40}), dirty files (\d+)\s*$", line)
+        if c:
+            out.update(code=c[1], code_dirty=int(c[2]))
+        if s:
+            out.update(sim_dir=s[1], sim=s[2], sim_dirty=int(s[3]))
+    return out
+
+
+def provenance_gate(execute_dirs: list[str], plan_dir: str, sim: str = LEVEL_A_SIM, code: str = LEVEL_A_CODE) -> dict[str, Any]:
+    """The level-A record's provenance gate (the coordinator's ruling of 9 Nov, after a resume script ran the execute
+    pass on the launcher's default sim with EXIT 0 everywhere). Every execute unit, and the prepass unit it read (its
+    run_config's ``prepass``), must name the code ``code`` and the sim ``sim`` in its provenance.txt, each with no dirty
+    file. The plan step must name ``code`` with no dirty file. Its sim line is recorded, not checked: the plan reads no
+    sim (cuRobo takes the request's world and the committed robot files). Anything else raises SystemExit with every
+    failing dir. Returns what the report prints. The level-A summary calls it too, before it opens a record."""
+    bad: list[str] = []
+
+    def check(d: str, with_sim: bool) -> dict[str, Any]:
+        p = read_provenance(d)
+        why = [] if p["code"] == code and p["code_dirty"] == 0 else [f"code {p['code']}, dirty files {p['code_dirty']}"]
+        if with_sim and not (p["sim"] == sim and p["sim_dirty"] == 0):
+            why.append(f"sim {p['sim']} ({p['sim_dir']}), dirty files {p['sim_dirty']}")
+        if why:
+            bad.append(f"{d}: " + "; ".join(why))
+        return p
+
+    prepass: list[str] = []
+    for d in execute_dirs:
+        check(d, True)
+        pre = json.load(open(os.path.join(d, "run_config.json"))).get("prepass")
+        if not pre:
+            bad.append(f"{d}: its run_config names no prepass run")
+        elif pre not in prepass:
+            prepass.append(pre)
+            check(pre, True)
+    p = check(plan_dir, False)
+    if bad:
+        raise SystemExit(f"provenance gate: not every unit ran on code {code} and sim {sim} with no dirty file:\n" + "\n".join(bad))
+    return {"code": code, "sim": sim, "execute_units": len(execute_dirs), "prepass_units": len(prepass),
+            "plan": {"code": p["code"], "sim": p["sim"], "sim_dir": p["sim_dir"]}}
+
+
 def smoke_report(done: list[dict[str, Any]], plans: list[dict[str, Any]], full: dict[str, int]) -> dict[str, Any]:
     """The smoke's numbers, no label: exec_metrics and the stop rule; both funnels by object and in all; where the
     30–45° rows leave (``why``) and the clearance/reach6 disagreements, by object; the plan step's counts; and the full
@@ -541,8 +596,13 @@ def smoke_report(done: list[dict[str, Any]], plans: list[dict[str, Any]], full: 
 def smoke_markdown(sm: dict[str, Any]) -> str:
     """The smoke report as markdown (counts only, no label)."""
     m = sm["counts"]
-    L = ["# Sixdof rerun, level A: the smoke (counts only, no label)", "",
-         f"{m['cases']} cases ({m['dropped']} dropped, {m['stops']} stops, {m['errors']} case errors).", "",
+    L = ["# Sixdof rerun, level A: the smoke (counts only, no label)", ""]
+    if sm.get("provenance"):
+        g = sm["provenance"]
+        L += [f"Provenance gate passed: code {g['code']} and sim {g['sim']}, no dirty file, on all {g['execute_units']} execute "
+              f"units and their {g['prepass_units']} prepass units. The plan step: code {g['plan']['code']}; its sim line "
+              f"{g['plan']['sim']} ({g['plan']['sim_dir']}) is not checked, because the plan reads no sim.", ""]
+    L += [f"{m['cases']} cases ({m['dropped']} dropped, {m['stops']} stops, {m['errors']} case errors).", "",
          "## The stop rule (design section 6, with G3's zeros)", ""]
     L += [f"- STOP: {x}" for x in sm["stop"]] or ["- No reason to stop: the full run can follow after the clip review."]
     L += ["", "## The ≤ 30° rows (the pilot's funnel without the cap; ruling A's planner set)", "",
@@ -839,8 +899,10 @@ def execute_cmd(a: Any) -> str:
 
 def smoke_cmd(a: Any) -> dict[str, Any]:
     """The smoke report on finished execute runs (--execute) and their plan step (--plan): smoke_report with the full
-    run's cases per object from --full-cases (a comma-separated object:idx file, the pilot's cases.txt).
-    smoke_summary.{json,md} in --out (refuses an existing one), wandb. Exit 3 when the stop rule fires."""
+    run's cases per object from --full-cases (a comma-separated object:idx file, the pilot's cases.txt). The provenance
+    gate runs first: a unit off the level-A code or sim stops the report before it writes or logs anything. The report
+    prints what the gate checked. smoke_summary.{json,md} in --out (refuses an existing one), wandb. Exit 3 when the stop
+    rule fires."""
     from collections import Counter
 
     from robots.mujoco_lab.tracking import log_run
@@ -851,10 +913,12 @@ def smoke_cmd(a: Any) -> dict[str, Any]:
     dirs = a.execute.split(",")
     for d in dirs + [a.plan]:
         _finished(d)
+    gate = provenance_gate(dirs, a.plan)
     done = [json.loads(line) for d in dirs for line in open(os.path.join(d, "exec_records.jsonl"))]
     plans = [json.loads(line) for line in open(os.path.join(a.plan, "plan_records.jsonl"))]
     full = Counter(c.strip().rsplit(":", 1)[0] for c in open(a.full_cases).read().split(",") if c.strip())
     sm = smoke_report(done, plans, dict(sorted(full.items())))
+    sm["provenance"] = gate
     sm["wandb"] = log_run("sixdof-rerun-smoke", {"execute": a.execute, "plan": a.plan, "full_cases": a.full_cases},
                           {"counts": sm["counts"], "plans": sm["plans"], "stop": sm["stop"], "projection_cpu_h": sm["projection_cpu_h"],
                            "projection_gpu_h": sm["projection_gpu_h"]})
