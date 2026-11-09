@@ -138,3 +138,126 @@ def robot_yml(franka: dict[str, Any], lab: dict[str, Any]) -> dict[str, Any]:
     n = len(k["cspace"]["joint_names"])
     k["cspace"]["velocity_scale"] = [float(lab["free_v"]) / v for v in PANDA_V_MAX] + [1.0] * (n - len(PANDA_V_MAX))
     return fy
+
+
+# ------------------------------------------------------------------ the cuRobo process (its own venv)
+
+def identity(robot_yml_path: str, settings: dict[str, Any]) -> dict[str, Any]:
+    """The planner's identity in the key: the robot yml's sha256, the settings, cuRobo's version and git commit, torch's
+    version and CUDA's."""
+    import subprocess
+
+    import curobo
+    import torch
+
+    root = os.path.dirname(os.path.dirname(os.path.abspath(curobo.__file__)))
+    commit = subprocess.run(["git", "-C", root, "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+    return {"robot_yml_sha256": hashlib.sha256(open(robot_yml_path, "rb").read()).hexdigest(), "settings": settings,
+            "curobo": curobo.__version__, "curobo_commit": commit, "torch": torch.__version__, "cuda": torch.version.cuda}
+
+
+def ensure_identity(cache: str, ident: dict[str, Any]) -> None:
+    """The cache serves one planner: identity.json is written once and must equal ``ident`` afterwards."""
+    p = os.path.join(cache, "identity.json")
+    if os.path.exists(p):
+        if canonical(json.load(open(p))) != canonical(ident):
+            raise ValueError(f"{cache} holds plans of another planner (identity.json differs)")
+        return
+    os.makedirs(cache, exist_ok=True)
+    json.dump(_plain(ident), open(p, "w"), indent=1)
+
+
+def _trajectory(result: Any, joint_names: list[str]) -> np.ndarray:
+    """The interpolated plan (cuRobo's own trim to its last step), the arm joints only, one row per interpolation step:
+    the plan's state also carries the locked finger joints."""
+    js = result.get_interpolated_plan()
+    p = js.position
+    while p.ndim > 2:
+        p = p[0]
+    names = list(js.joint_names)
+    return p[:, [names.index(n) for n in joint_names]].detach().cpu().numpy().astype(np.float64)
+
+
+def plan_request(request_path: str, cache: str, robot_yml_path: str, settings: dict[str, Any] = SETTINGS) -> dict[str, Any]:
+    """Plan every goal of one request (one case: its world, the start joints, the goals) whose key is not cached, with
+    plan_cspace, and cache each result, failures included. Returns {"goals", "planned" (distinct keys planned), "cached"
+    (goals whose key was cached before)}. cuRobo is imported (and warmed up) only when something is left to plan."""
+    import time
+
+    import yaml
+
+    req = json.load(open(request_path))
+    ident = identity(robot_yml_path, settings)
+    ensure_identity(cache, ident)
+    todo: dict[str, list[float]] = {}
+    cached = 0
+    for g in req["goals"]:
+        k = plan_key(req["world"], req["start"], g["q"], ident)
+        if read_entry(cache, k) is None:
+            todo.setdefault(k, g["q"])
+        else:
+            cached += 1
+    summary = {"goals": len(req["goals"]), "planned": len(todo), "cached": cached}
+    if not todo:
+        return summary
+    import torch
+    from curobo.motion_planner import MotionPlanner, MotionPlannerCfg
+    from curobo.types import JointState
+
+    cfg = MotionPlannerCfg.create(robot=yaml.safe_load(open(robot_yml_path)), scene_model=req["world"],
+                                  collision_cache=settings["collision_cache"], position_tolerance=settings["position_tolerance"],
+                                  orientation_tolerance=settings["orientation_tolerance"], interpolation_dt=settings["interpolation_dt"],
+                                  random_seed=settings["random_seed"], use_cuda_graph=settings["use_cuda_graph"])
+    planner = MotionPlanner(cfg)
+    if list(planner.joint_names) != [f"panda_joint{i}" for i in range(1, 8)]:
+        raise ValueError(f"the planner's joints are {planner.joint_names}")
+    planner.warmup(enable_graph=True, num_warmup_iterations=settings["warmup_iterations"])
+
+    def js(q: Any) -> Any:
+        return JointState.from_position(torch.tensor([q], device="cuda", dtype=torch.float32), joint_names=planner.joint_names)
+
+    start = js(req["start"])
+    for k, q in todo.items():
+        torch.cuda.synchronize()
+        t0 = time.perf_counter()
+        r = planner.plan_cspace(js(q), start, max_attempts=settings["max_attempts"], enable_graph_attempt=settings["enable_graph_attempt"],
+                                finetune_attempts=settings["finetune_attempts"])
+        torch.cuda.synchronize()
+        wall = time.perf_counter() - t0
+        ok = r is not None and bool(r.success.reshape(-1)[0].item())
+        traj = _trajectory(r, list(planner.joint_names)) if ok else None
+        write_entry(cache, k, {"success": ok, "status": "ok" if ok else ("no plan" if r is None else "trajopt failed"),
+                               "dt": settings["interpolation_dt"], "q": traj, "wall_s": round(wall, 4), "case": req["case"]})
+        print(json.dumps({"key": k, "success": ok, "steps": None if traj is None else len(traj), "wall_s": round(wall, 4)}), flush=True)
+    return summary
+
+
+def main(argv: list[str] | None = None) -> None:
+    """robot-config --lab LAB --out YML [--franka FRANKA]: the robot yml from the lab's fit and franka.yml.
+    plan --request REQ --cache DIR --robot YML: plan one request's uncached goals; the last line is the summary."""
+    import argparse
+
+    import yaml
+
+    ap = argparse.ArgumentParser(prog="curobo_plan")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    r = sub.add_parser("robot-config")
+    r.add_argument("--lab", required=True)
+    r.add_argument("--out", required=True)
+    r.add_argument("--franka", default=os.path.expanduser("~/Codes/curobo/curobo/content/configs/robot/franka.yml"))
+    p = sub.add_parser("plan")
+    p.add_argument("--request", required=True)
+    p.add_argument("--cache", required=True)
+    p.add_argument("--robot", required=True)
+    a = ap.parse_args(argv)
+    if a.cmd == "robot-config":
+        if os.path.exists(a.out):
+            raise SystemExit(f"refusing: {a.out} exists")
+        y = robot_yml(yaml.safe_load(open(a.franka)), json.load(open(a.lab)))
+        yaml.safe_dump(y, open(a.out, "w"), sort_keys=False)
+        return
+    print(json.dumps(plan_request(a.request, a.cache, a.robot)), flush=True)
+
+
+if __name__ == "__main__":
+    main()

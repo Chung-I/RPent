@@ -194,3 +194,38 @@ def test_free_hits_reads_the_waypoints_against_the_scene():
     assert hits and all(h["step"] == 1 for h in hits) and any(h["other"] == "table" for h in hits)
     robot = sp.robot_subtree_geoms(env.sim)
     assert all(h["robot_id"] in robot and h["other_id"] not in robot for h in hits)
+
+
+GPU = pytest.mark.skipif(not (os.path.exists(sp.CUROBO_PY) and os.path.exists("/dev/nvidia0")), reason="needs cuRobo's venv and a GPU")
+
+
+@SIM
+@GPU
+def test_plan_case_plans_once_and_serves_the_free_move(tmp_path):
+    from robots.mujoco_lab.adapter import MuJoCoLabEnv
+
+    env = MuJoCoLabEnv()
+    env.reset("ycb__sugar_box", seed=0)
+    q0 = np.asarray(env.sim.arm.desired(), dtype=float)
+    goal = q0 + np.array([0.4, 0.25, -0.3, 0.35, 0.2, -0.25, 0.5])
+    world = sp.world_export(env.sim)
+    req = sp.request(("ycb__sugar_box", 0), world, q0, [{"row": "a", "q": goal}, {"row": "b", "q": goal}])
+    assert sp.plan_case(req, str(tmp_path)) == {"goals": 2, "planned": 1, "cached": 0}
+    assert sp.plan_case(req, str(tmp_path)) == {"goals": 2, "planned": 0, "cached": 2}    # the second run plans nothing
+    free = sp.free_from_cache(str(tmp_path), world, q0, goal, 50)
+    q = np.array([q0] + free)
+    assert q.shape[1] == 7 and len(free) > 10
+    assert np.abs(q[-1] - goal).max() < 1e-3                                             # ends at the goal (ruling 7)
+    assert np.abs(np.diff(q, axis=0)).max() * 50 <= 1.0 + 1e-3                           # FREE_V cap on every joint
+    assert sp.free_hits(env.sim, free) == []
+
+
+def test_plan_case_keeps_one_request_per_case_and_reports_a_crash(tmp_path):
+    a = sp.request(("obj", 0), {"cuboid": {}}, [0.0] * 7, [{"row": "r", "q": [0.1] * 7}])
+    b = sp.request(("obj", 0), {"cuboid": {}}, [0.0] * 7, [{"row": "r", "q": [0.2] * 7}])
+    with pytest.raises(RuntimeError, match="exited 1 on obj_0"):
+        sp.plan_case(a, str(tmp_path), python="/bin/false")
+    with pytest.raises(RuntimeError, match="exited 1"):
+        sp.plan_case(a, str(tmp_path), python="/bin/false")                       # the same request again is fine
+    with pytest.raises(ValueError, match="another request"):
+        sp.plan_case(b, str(tmp_path), python="/bin/false")

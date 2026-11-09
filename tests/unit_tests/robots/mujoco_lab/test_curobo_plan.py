@@ -134,3 +134,12 @@ def test_robot_yml_caps_the_joint_speed_at_the_lab_free_move():
     for v, lim in zip(vs[:7], cp.PANDA_V_MAX, strict=True):
         assert v * lim == pytest.approx(LAB["free_v"])
     assert vs[7:] == [1.0, 1.0]
+
+
+def test_ensure_identity_writes_once_and_refuses_another_planner(tmp_path):
+    ident = {"robot_yml_sha256": "a" * 64, "settings": cp.SETTINGS, "curobo": "0.9.0", "torch": "2.14.1"}
+    cp.ensure_identity(str(tmp_path), ident)
+    cp.ensure_identity(str(tmp_path), json.loads(json.dumps(ident)))              # the same planner again
+    with pytest.raises(ValueError, match="another planner"):
+        cp.ensure_identity(str(tmp_path), {**ident, "torch": "2.14.2"})
+    assert json.load(open(tmp_path / "identity.json")) == json.loads(json.dumps(ident))
