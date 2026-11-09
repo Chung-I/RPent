@@ -423,3 +423,91 @@ def test_the_artifact_causes_are_counted_by_level_and_a_row_can_have_several():
     assert a["by_level"]["40N"]["rows"] == 0 and a["cases"] == 2 and a["deepest_mm_max"] == 4.2
     sm = hf.smoke_report(recs, full_cases=99)
     assert sm["artifacts"] == a and "70N" in hf.smoke_markdown(sm)
+
+
+# ------------------------------------------------------------------ the close monitor pass (the coordinator's addition)
+
+class TrackEnv(SimEnv):
+    """SimEnv whose execute steps a tracer as the adapter's execute does: per step of ``path`` (phase, the object's
+    position, its turn since the start, its turn since the lift began, the pads) the object moves, then on_step(phase)
+    appends the step to the trace."""
+
+    def __init__(self, path, **kw):
+        super().__init__(**kw)
+        self.path, self.pos = path, np.zeros(3)
+        self.sim = SimpleNamespace(d=None, obj_pos=lambda: self.pos.copy())
+
+    def _tracer(self, pt, yaw):
+        trace = []
+
+        def on_step(phase):
+            _, _, rot, rot_lift, pads = self.path[len(trace)]
+            trace.append({"phase": phase, "fn": 10.0, "pads": list(pads), "rot_deg": rot, "rot_lift_deg": rot_lift})
+        return trace, on_step
+
+    def execute(self, proposal, force, v_lift, v_transport, destination, release_height, a_transport):
+        self.calls.append((proposal.s, force))
+        trace, on_step = self._tracer(proposal.point, proposal.yaw)
+        for ph, pos, *_ in self.path:
+            self.pos = np.asarray(pos, dtype=float)
+            on_step(ph)
+        return SimpleNamespace(label="tipped", artifact=False, damage=None, drop_z=None, loss_phase=None, max_z=0.0, trace=trace,
+                               rev_steps=0, deepest_mm=0.0, sensor={})
+
+
+ON, OFF = (True, True), (False, False)
+PATH = [("approach", [0.0, 0.0, 0.0], 0.0, None, OFF), ("approach", [0.001, 0.0, 0.0], 0.0, None, OFF),    # the approach ends at x 1 mm
+        ("close", [0.004, 0.0, 0.0], 0.5, None, (True, False)), ("close", [0.001, 0.005, 0.0], 1.0, None, ON),
+        ("lift", [0.001, 0.005, 0.01], 1.2, 0.0, ON), ("lift", [0.001, 0.005, 0.05], 3.0, 2.5, ON),
+        ("hold", [0.001, 0.005, 0.05], 3.1, 2.6, ON)]
+
+
+def test_the_close_fields_read_the_shift_from_the_approach_end_and_the_turns():
+    steps = [(ph, pos) for ph, pos, *_ in PATH]
+    trace = [{"phase": ph, "pads": list(p), "rot_deg": r, "rot_lift_deg": rl} for ph, _, r, rl, p in PATH]
+    c = hf.close_fields(steps, trace)
+    assert c["close_shift_mm"] == pytest.approx(5.0) and c["close_turn_deg"] == 1.0          # max |p - p(approach end)| over the close
+    assert c["lift_end_turn_deg"] == 2.5 and c["lift_end_pads"] is True
+    trace[5]["pads"] = [True, False]                                                          # a pad off at the lift's end: no turn in the pads
+    c = hf.close_fields(steps, trace)
+    assert c["lift_end_turn_deg"] is None and c["lift_end_pads"] is False
+    assert hf.close_fields([("approach", [0, 0, 0])], [{"phase": "approach", "pads": [False, False], "rot_deg": 0.0}]) == {
+        "close_shift_mm": None, "close_turn_deg": None, "lift_end_turn_deg": None, "lift_end_pads": False}
+
+
+def test_the_close_monitor_reads_the_object_per_step_and_leaves_the_trace_and_the_tracer_as_they_were():
+    env = TrackEnv(PATH)
+    rows = hf.pinch_rows(env, "bin", 0.37, 12.0)
+    hf.simulate(env, lambda: True, rows, BASE, lambda e: "fp", "fp")
+    plain = json.dumps(rows, sort_keys=True)
+    assert "close" not in rows[0] and "_tracer" not in vars(env)
+    rows2 = hf.pinch_rows(env, "bin", 0.37, 12.0)
+    hf.simulate(env, lambda: True, rows2, BASE, lambda e: "fp", "fp", close_monitor=True)
+    assert "_tracer" not in vars(env)                                                           # the hook is removed after each row
+    assert all(r["close"]["close_shift_mm"] == pytest.approx(5.0) and r["close"]["lift_end_turn_deg"] == 2.5 for r in rows2)
+    for r in rows2:
+        del r["close"]
+    assert json.dumps(rows2, sort_keys=True).replace('"seconds": 0.0', "") == plain.replace('"seconds": 0.0', "")
+
+
+def test_a_monitor_record_keeps_the_hashes_and_the_monitor_and_no_label_or_outcome():
+    rec = _done_rec(labels=("placed_stable",) * 8, replay=None, com_f=0.4, sim_truth={"mass": 1.7})
+    for r in rec["rows"]:
+        r.update(qpos_sha="q", trace_sha="t", max_z=0.2, damage=None, drop_z=None, loss_phase=None, replan={"d": 1},
+                 monitor={"deepest_mm": 1.0}, close={"close_shift_mm": 2.0})
+    m = hf.monitor_record(rec)
+    assert "placed_stable" not in json.dumps(m) and "hold_contact" not in json.dumps(m)
+    assert set(m["rows"][0]) == {"id", "pinch", "level", "feasible", "qpos_sha", "trace_sha", "artifact", "error", "seconds", "monitor", "close"}
+    assert (m["object"], m["idx"], m["side"], m["g0"]) == ("handal__hammer_7", 3, "test", [])
+
+
+def test_a_case_passes_the_close_monitor_to_its_rows_and_not_to_the_replay(lab, monkeypatch):
+    seen = []
+    real = hf.simulate
+
+    def spy(*a, **kw):
+        seen.append(kw.get("close_monitor", False))
+        return real(*a, **{k: v for k, v in kw.items() if k != "close_monitor"})
+    monkeypatch.setattr(hf, "simulate", spy)
+    hf.force_case(SimpleNamespace(env=lab), _rec1(), 3, None, _entry(), replay=True, close_monitor=True)
+    assert seen == [True, False]

@@ -126,12 +126,58 @@ def _outcome(env: Any, ro: Any, at_rest: Any) -> dict[str, Any]:
     return outcome(env, ro, at_rest)
 
 
-def simulate(env: Any, reset: Any, rows: list[dict[str, Any]], base: dict[str, Any], fingerprint: Any, want: str) -> str | None:
+def _track(env: Any) -> tuple[list[tuple[str, list[float]]], Any]:
+    """The close monitor's hook for one rollout: env._tracer wrapped so that after each control step's own on_step the
+    phase and the object's position (env.sim.obj_pos) are appended to a list; it only reads (the trace, the physics and
+    the hashes stay as they were: the clips' check). Returns the list and the function that removes the hook."""
+    steps: list[tuple[str, list[float]]] = []
+    own = "_tracer" in vars(env)
+    orig = env._tracer
+
+    def tracer(pt: Any, yaw: Any) -> Any:
+        trace, on_step = orig(pt, yaw)
+
+        def step(phase: str) -> None:
+            on_step(phase)
+            steps.append((phase, [float(x) for x in env.sim.obj_pos()]))
+        return trace, step
+
+    env._tracer = tracer
+
+    def remove() -> None:
+        if own:
+            env._tracer = orig
+        else:
+            del env._tracer
+    return steps, remove
+
+
+def close_fields(steps: list[tuple[str, list[float]]], trace: list[dict[str, Any]]) -> dict[str, Any]:
+    """The close monitor of one rollout (the coordinator's addition of 9 Nov): ``close_shift_mm``, the largest 3-D
+    displacement of the object over the close's steps from where it was at the approach's end (the step before the first
+    close step); ``close_turn_deg``, the object's turn since the start at the close's last step; ``lift_end_turn_deg``,
+    the turn since the lift began (the hand does not turn: the turn in the pads) at the lift's last step, only when both
+    pads touch the object there (``lift_end_pads``). None where the rollout has no such step."""
+    close = [i for i, (ph, _) in enumerate(steps) if ph == "close"]
+    shift = None
+    if close:
+        p0 = np.asarray(steps[max(close[0] - 1, 0)][1], dtype=float)
+        shift = max(1000.0 * float(np.linalg.norm(np.asarray(steps[i][1], dtype=float) - p0)) for i in close)
+    tclose = [s for s in trace if s.get("phase") == "close"]
+    lift = [s for s in trace if s.get("phase") == "lift"]
+    both = bool(lift) and _both_pads(lift[-1])
+    return {"close_shift_mm": shift, "close_turn_deg": tclose[-1].get("rot_deg") if tclose else None,
+            "lift_end_turn_deg": lift[-1].get("rot_lift_deg") if both else None, "lift_end_pads": both}
+
+
+def simulate(env: Any, reset: Any, rows: list[dict[str, Any]], base: dict[str, Any], fingerprint: Any, want: str,
+             close_monitor: bool = False) -> str | None:
     """Run each feasible row once, in place: reset() (the case's seed), the reset's fingerprint must be ``want`` and the
     pinch the first reset's (else the case stops: the reason is returned), then env.execute at the row's squeeze and
     ``base``'s speeds, destination and release height. Each run row gets curve_sixdof.outcome's fields (the label, the
     artifact flag, also when ``reset`` returns False, the damage and loss fields, the highest rise, the hashes of the
-    final state and of the trace, the re-plan's record), its squeeze and its seconds; an exception is the row's error."""
+    final state and of the trace, the re-plan's record), its squeeze and its seconds; an exception is the row's error.
+    With ``close_monitor`` each rollout runs under the read-only hook (_track) and the row gets ``close`` (close_fields)."""
     for r in rows:
         if not r["feasible"]:
             continue
@@ -144,9 +190,16 @@ def simulate(env: Any, reset: Any, rows: list[dict[str, Any]], base: dict[str, A
         t0 = time.time()
         r.update(label=None, artifact=False, error=None)
         try:
-            ro = env.execute(p, r["force"], base["v_lift"], base["v_transport"], base["destination"], base["release_height"],
-                             a_transport=base["a_transport"])
+            steps, remove = _track(env) if close_monitor else (None, None)
+            try:
+                ro = env.execute(p, r["force"], base["v_lift"], base["v_transport"], base["destination"], base["release_height"],
+                                 a_transport=base["a_transport"])
+            finally:
+                if remove is not None:
+                    remove()
             r.update(_outcome(env, ro, at_rest), squeeze=squeeze(getattr(ro, "trace", None) or []), monitor=monitor(ro, at_rest))
+            if close_monitor:
+                r["close"] = close_fields(steps, getattr(ro, "trace", None) or [])
         except Exception as exc:  # noqa: BLE001  a simulator fault is this row's error
             r["error"] = f"{type(exc).__name__}: {str(exc)[:200]}"
         r["seconds"] = round(time.time() - t0, 2)
@@ -168,7 +221,7 @@ def replay_rows(env: Any, reset: Any, rows: list[dict[str, Any]], base: dict[str
     "fields"}: the names of the fields that differ, no value), the label mismatches and simulate's stop."""
     from robots.mujoco_lab.curve_poseset import OUTCOME, SAME
 
-    drop = set(OUTCOME) | {"squeeze", "replan", "monitor"}
+    drop = set(OUTCOME) | {"squeeze", "replan", "monitor", "close"}
     twin = [{k: v for k, v in r.items() if k not in drop} for r in reversed(rows) if "seconds" in r]
     stop = simulate(env, reset, twin, base, fingerprint, want)
     first = {r["id"]: r for r in rows}
@@ -183,14 +236,16 @@ def replay_rows(env: Any, reset: Any, rows: list[dict[str, Any]], base: dict[str
             "stop": stop}
 
 
-def force_case(prims: Any, rec1: dict[str, Any], seed: int, world: Any, entry: dict[str, Any], replay: bool = False) -> dict[str, Any]:
+def force_case(prims: Any, rec1: dict[str, Any], seed: int, world: Any, entry: dict[str, Any], replay: bool = False,
+               close_monitor: bool = False) -> dict[str, Any]:
     """One case: Stage 2's skip rules on the Stage 1 record; the case's draw and reset (curve_graspgen._setup, as the G1′
     passes; Stage 1's fingerprint, else a stop); the executor's re-plan flag (REPLAN_HOLD); the balance fraction, the
     length and the truth (env.truth); commit_std's base (base_gate against Stage 1's row and equal to the pose set's,
     else a stop); the eight rows (pinch_rows: the control's pinch must be the pose set's across_0.5, else a stop); one
     simulation per feasible row after its own reset; G0 on the control row (a difference stops the case); with
-    ``replay`` G1 at the second reset seed (replay_rows: a label that differs stops the case). An exception outside a
-    row's simulation is the case's error."""
+    ``replay`` G1 at the second reset seed (replay_rows: a label that differs stops the case); ``close_monitor``: the
+    first pass's rows run under the close monitor (simulate), the replay's do not. An exception outside a row's
+    simulation is the case's error."""
     from robots.mujoco_lab import com_gap
     from robots.mujoco_lab.curve import stage2_skip
     from robots.mujoco_lab.curve_graspgen import _setup
@@ -228,7 +283,7 @@ def force_case(prims: Any, rec1: dict[str, Any], seed: int, world: Any, entry: d
         if _js([ctl["point"], ctl["yaw"], ctl["width"], ctl["feasible"]]) != _js([pin["point"], pin["yaw"], pin["width"], pin["feasible"]]):
             return dict(rec, stop="the across_0.5 pinch is not the pose set's")
         rec.update(base=base, rows=rows)
-        stop = simulate(env, reset0, rows, base, com_gap.fingerprint, want)
+        stop = simulate(env, reset0, rows, base, com_gap.fingerprint, want, close_monitor=close_monitor)
         if stop:
             return dict(rec, stop=stop)
         rec["g0"] = g0_diff(ctl, entry["ref"]) if "seconds" in ctl else list(G0_FIELDS)
@@ -418,6 +473,19 @@ def metrics(done: list[dict[str, Any]]) -> dict[str, Any]:
             "case_seconds_max": max(secs, default=0.0)}
 
 
+MON_ROW_KEYS = ("id", "pinch", "level", "feasible", "qpos_sha", "trace_sha", "artifact", "error", "seconds", "monitor", "close")
+MON_CASE_KEYS = ("object", "idx", "side", "skipped", "stop", "error", "g0", "seconds")
+
+
+def monitor_record(rec: dict[str, Any]) -> dict[str, Any]:
+    """A close-monitor pass's record (the coordinator's acceptance of 9 Nov: no label in the pass): the case's keys
+    (MON_CASE_KEYS) and per row the hashes the summary joins on, the artifact flag, the error, the seconds, the contact
+    monitor and the close monitor (MON_ROW_KEYS); no label, outcome, squeeze or re-plan field."""
+    out = {k: rec.get(k) for k in MON_CASE_KEYS}
+    out["rows"] = [{k: r.get(k) for k in MON_ROW_KEYS} for r in rec["rows"]]
+    return out
+
+
 def force_object(job: tuple[str, list[tuple[dict[str, Any], dict[str, Any]]], dict[str, Any]]) -> dict[str, Any]:
     """One object's cases on its fold's bundle (curve_poseset.poseset_object's sensor and world, no probe models); a
     case_line per case on stderr; a stop ends the object."""
@@ -436,7 +504,8 @@ def force_object(job: tuple[str, list[tuple[dict[str, Any], dict[str, Any]]], di
     try:
         for rec1, entry in items:
             t0 = time.time()
-            rec = force_case(prims, rec1, int(s["seed"]), world, entry, replay=bool(s.get("replay")))
+            rec = force_case(prims, rec1, int(s["seed"]), world, entry, replay=bool(s.get("replay")),
+                             close_monitor=bool(s.get("close_monitor")))
             rec["seconds"] = round(time.time() - t0, 2)
             out["records"].append(rec)
             print(case_line(rec), file=sys.stderr, flush=True)
@@ -458,7 +527,9 @@ def run(a: argparse.Namespace) -> str:
     """The rows' simulations: the sim gate first (sim_problem: the contacts sim, no dirty file), then the cases file's
     Stage 1 records (their sha256), the cases (--cases object:idx, else --objects, else all), by object (force_object);
     records_validation.jsonl and records_test.jsonl, run_config.json (the cases file's sha256, the flag, the sim) and
-    run_metrics.json (metrics; wandb). Refuses an existing records file. Exit 3 at a stop. Returns --out."""
+    run_metrics.json (metrics; wandb). With --close-monitor (the separate monitor pass): the rows run under the close
+    monitor and the records are monitor_record's (no label). Refuses an existing records file. Exit 3 at a stop. Returns
+    --out."""
     import multiprocessing as mp
 
     from robots.mujoco_lab.curve import SIDES, _peak_rss_mb, _sha, load_stage1, records_path
@@ -485,14 +556,15 @@ def run(a: argparse.Namespace) -> str:
     os.makedirs(a.out, exist_ok=True)
     config = {**vars(a), **_revision(), "cases_sha256": _sha(a.cases_file), "bundle": C["bundle"], "seed": C["seed"],
               "stage1_records_sha256": C["stage1_records_sha256"], "replan_hold": REPLAN_HOLD, "sim_dir": sim_dir, "sim": CONTACTS_SIM,
-              "pinches": PINCHES, "levels": LEVELS, "fixed_n": FIXED_N, "keys": [list(k) for k in keys]}
+              "pinches": PINCHES, "levels": LEVELS, "fixed_n": FIXED_N, "keys": [list(k) for k in keys],
+              "close_monitor": bool(getattr(a, "close_monitor", False))}
     with open(os.path.join(a.out, "run_config.json"), "w") as f:
         json.dump(config, f, indent=1)
     by: dict[str, list[tuple[dict[str, Any], dict[str, Any]]]] = defaultdict(list)
     for k in keys:
         by[k[0]].append((by1[k], entries[k]))
     jobs = [(o, items, {"bundle": os.path.join(C["bundle"], "folds", f"fold_{items[0][0]['fold']}"), "seed": C["seed"],
-                        "replay": bool(a.replay)}) for o, items in by.items()]
+                        "replay": bool(a.replay), "close_monitor": config["close_monitor"]}) for o, items in by.items()]
     t0, stop = time.time(), None
     outs = {side: open(records_path(a.out, side), "w") for side in SIDES}
     try:
@@ -501,7 +573,7 @@ def run(a: argparse.Namespace) -> str:
         try:
             for res in results:
                 for r in res["records"]:
-                    outs[r["side"]].write(json.dumps(r) + "\n")
+                    outs[r["side"]].write(json.dumps(monitor_record(r) if config["close_monitor"] else r) + "\n")
                 for f in outs.values():
                     f.flush()
                 if res["stop"]:
@@ -516,7 +588,7 @@ def run(a: argparse.Namespace) -> str:
             f.close()
     done = [json.loads(line) for side in SIDES for line in open(records_path(a.out, side))]
     m = dict(metrics(done), of_cases=len(keys), stop=stop, wall_seconds=round(time.time() - t0, 1), peak_rss_mb=_peak_rss_mb())
-    m["wandb"] = log_run("curve-hammer-force", config, m)
+    m["wandb"] = log_run("curve-hammer-force-monitor" if config["close_monitor"] else "curve-hammer-force", config, m)
     with open(os.path.join(a.out, "run_metrics.json"), "w") as f:
         json.dump(m, f, indent=1)
     print(f"done: {json.dumps(m)}", flush=True)
@@ -662,6 +734,7 @@ def main(argv: list[str] | None = None) -> Any:
     r.add_argument("--objects", default=None, help="comma-separated objects (all their cases)")
     r.add_argument("--workers", type=int, default=1)
     r.add_argument("--replay", action="store_true", help="G1: every simulated row again at the second reset seed")
+    r.add_argument("--close-monitor", action="store_true", help="the separate monitor pass: the close monitor, records without a label")
     s = sub.add_parser("smoke-report", help="the smoke's counts and gates, no label")
     s.add_argument("--runs", required=True, help="comma-separated smoke run dirs")
     s.add_argument("--cases-file", required=True)
