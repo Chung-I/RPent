@@ -79,8 +79,9 @@ class SimEnv(FakeEnv):
         self.calls.append((proposal.s, force, v_lift, v_transport, destination, release_height, a_transport))
         if (proposal.s, force) in self.fail:
             raise RuntimeError("the sim fell over")
-        return SimpleNamespace(label=self.labels.get((proposal.s, force), "not_lifted"), artifact=False, damage=None,
-                               drop_z=None, loss_phase=None, max_z=0.0, trace=_trace(hold_fn=(2 * force, 2 * force)))
+        return SimpleNamespace(label=self.labels.get((proposal.s, force), "not_lifted"), artifact=force > 50.0, damage=None,
+                               drop_z=None, loss_phase=None, max_z=0.0, trace=_trace(hold_fn=(2 * force, 2 * force)),
+                               rev_steps=0, deepest_mm=force / 10.0, sensor={"jam": {"jam": False, "artifact": False}})
 
 
 # ------------------------------------------------------------------ the rows
@@ -137,6 +138,8 @@ def test_each_feasible_row_runs_once_after_its_own_reset_at_its_squeeze():
     assert by["across_com@70N"]["label"] == "placed_stable" and by[hf.CONTROL]["label"] == "not_lifted"
     assert by["across_com@70N"]["squeeze"]["hold"] == 70.0 and by[hf.CONTROL]["squeeze"]["hold"] == 12.0
     assert all(k in by[hf.CONTROL] for k in ("qpos_sha", "trace_sha", "seconds", "artifact", "error", "max_z"))
+    assert by["across_com@70N"]["monitor"] == {"rev_steps": 0, "deepest_mm": 7.0, "at_rest": None, "jam": False, "jam_artifact": False}
+    assert by["across_com@70N"]["artifact"] and not by[hf.CONTROL]["artifact"]
 
 
 def test_an_infeasible_row_is_not_run_and_an_exception_is_the_rows_error():
@@ -406,3 +409,17 @@ def test_the_smoke_report_counts_both_gates_and_the_squeeze_without_a_label_or_t
     assert sm["seconds_per_case"] == pytest.approx(1.0) and sm["projection_cpu_h"] == pytest.approx(99 / 3600.0)
     text = json.dumps(sm) + hf.smoke_markdown(sm)
     assert "placed_stable" not in text and "not_lifted" not in text
+
+
+def test_the_artifact_causes_are_counted_by_level_and_a_row_can_have_several():
+    def row(level, deep=0.0, rev=0, at_rest=True, jam=False, artifact=True):
+        return {"id": hf.row_id("across_com", level), "pinch": "across_com", "level": level, "feasible": True, "artifact": artifact,
+                "seconds": 1.0, "monitor": {"rev_steps": rev, "deepest_mm": deep, "at_rest": at_rest, "jam": jam, "jam_artifact": jam}}
+    recs = [_done_rec(rows=[row("70N", deep=4.2), row("70N", deep=3.5, rev=6), row("40N", artifact=False, deep=1.0)]),
+            _done_rec(idx=4, rows=[row("f_std", at_rest=False), row("70N", jam=True)])]
+    a = hf.artifact_counts(recs)
+    assert a["by_level"]["70N"] == {"rows": 3, "deep": 2, "reversed": 1, "not_at_rest": 0, "jam": 1}
+    assert a["by_level"]["f_std"] == {"rows": 1, "deep": 0, "reversed": 0, "not_at_rest": 1, "jam": 0}
+    assert a["by_level"]["40N"]["rows"] == 0 and a["cases"] == 2 and a["deepest_mm_max"] == 4.2
+    sm = hf.smoke_report(recs, full_cases=99)
+    assert sm["artifacts"] == a and "70N" in hf.smoke_markdown(sm)

@@ -111,6 +111,15 @@ def squeeze(trace: list[dict[str, Any]]) -> dict[str, Any]:
             "close": med(close[len(close) // 2:])}
 
 
+def monitor(ro: Any, at_rest: Any) -> dict[str, Any]:
+    """The contact monitor's record of a rollout (read after it: no hook), the causes of its artifact flag
+    (adapter.artifact): reversed pad contacts in squeeze substeps, the deepest pad penetration (mm), whether the reset
+    reached rest, and the jam record (a jam, and whether it made the run an artifact)."""
+    jam = (getattr(ro, "sensor", None) or {}).get("jam") or {}
+    return {"rev_steps": int(getattr(ro, "rev_steps", 0) or 0), "deepest_mm": float(getattr(ro, "deepest_mm", 0.0) or 0.0),
+            "at_rest": at_rest, "jam": bool(jam.get("jam", False)), "jam_artifact": bool(jam.get("artifact", False))}
+
+
 def _outcome(env: Any, ro: Any, at_rest: Any) -> dict[str, Any]:
     from robots.mujoco_lab.curve_sixdof import outcome
 
@@ -137,7 +146,7 @@ def simulate(env: Any, reset: Any, rows: list[dict[str, Any]], base: dict[str, A
         try:
             ro = env.execute(p, r["force"], base["v_lift"], base["v_transport"], base["destination"], base["release_height"],
                              a_transport=base["a_transport"])
-            r.update(_outcome(env, ro, at_rest), squeeze=squeeze(getattr(ro, "trace", None) or []))
+            r.update(_outcome(env, ro, at_rest), squeeze=squeeze(getattr(ro, "trace", None) or []), monitor=monitor(ro, at_rest))
         except Exception as exc:  # noqa: BLE001  a simulator fault is this row's error
             r["error"] = f"{type(exc).__name__}: {str(exc)[:200]}"
         r["seconds"] = round(time.time() - t0, 2)
@@ -159,7 +168,7 @@ def replay_rows(env: Any, reset: Any, rows: list[dict[str, Any]], base: dict[str
     "fields"}: the names of the fields that differ, no value), the label mismatches and simulate's stop."""
     from robots.mujoco_lab.curve_poseset import OUTCOME, SAME
 
-    drop = set(OUTCOME) | {"squeeze", "replan"}
+    drop = set(OUTCOME) | {"squeeze", "replan", "monitor"}
     twin = [{k: v for k, v in r.items() if k not in drop} for r in reversed(rows) if "seconds" in r]
     stop = simulate(env, reset, twin, base, fingerprint, want)
     first = {r["id"]: r for r in rows}
@@ -522,6 +531,31 @@ def _median(v: list[float]) -> float | None:
     return float(np.median(v)) if v else None
 
 
+def artifact_counts(recs: list[dict[str, Any]]) -> dict[str, Any]:
+    """The artifact rows by level and cause (a row can have several: a pad penetration over adapter.DEEP_M, reversed
+    contacts in adapter.REV_STEPS squeeze substeps or more, a reset not at rest, a jam), the cases with an artifact row
+    and the deepest penetration over the simulated rows (mm). Counts only, no label."""
+    from robots.mujoco_lab.adapter import DEEP_M, REV_STEPS
+
+    by = {lv: {"rows": 0, "deep": 0, "reversed": 0, "not_at_rest": 0, "jam": 0} for lv in LEVELS}
+    cases = 0
+    for rec in recs:
+        hit = False
+        for r in rec["rows"]:
+            if "seconds" not in r or not r.get("artifact"):
+                continue
+            m, x = r.get("monitor") or {}, by[r["level"]]
+            x["rows"] += 1
+            x["deep"] += float(m.get("deepest_mm") or 0.0) > 1000 * DEEP_M
+            x["reversed"] += int(m.get("rev_steps") or 0) >= REV_STEPS
+            x["not_at_rest"] += m.get("at_rest") is False
+            x["jam"] += bool(m.get("jam_artifact"))
+            hit = True
+        cases += hit
+    deep = [float((r.get("monitor") or {}).get("deepest_mm") or 0.0) for rec in recs for r in rec["rows"] if "seconds" in r]
+    return {"by_level": by, "cases": cases, "deepest_mm_max": max(deep) if deep else None}
+
+
 def smoke_report(recs: list[dict[str, Any]], full_cases: int) -> dict[str, Any]:
     """The smoke report, no label: metrics; G0 (compared, mismatches); G1 (cases, rows, label mismatches, other
     mismatches by field); per level the median of the rows' hold squeeze (no count of the rows with a hold reading: it
@@ -542,7 +576,8 @@ def smoke_report(recs: list[dict[str, Any]], full_cases: int) -> dict[str, Any]:
     sm = dict(m, g0={"compared": m["g0_compared"], "mismatches": m["g0_mismatches"]},
               g1={"cases": len(rep), "rows": sum(x["rows"] for x in rep), "label_mismatches": sum(x["label_mismatches"] for x in rep),
                   "other_mismatches": sum(len(x["mismatches"]) - x["label_mismatches"] for x in rep), "other_fields": dict(other)},
-              squeeze=sq, stop_texts=[r["stop"] for r in recs if r["stop"]], seconds_per_case=float(np.mean(secs)) if secs else None,
+              squeeze=sq, artifacts=artifact_counts(recs), stop_texts=[r["stop"] for r in recs if r["stop"]],
+              seconds_per_case=float(np.mean(secs)) if secs else None,
               seconds_per_case_max=max(secs) if secs else None, full_cases=full_cases)
     sm["projection_cpu_h"] = sm["seconds_per_case"] * full_cases / 3600.0 if secs else None
     sm["projection_cpu_h_at_max"] = sm["seconds_per_case_max"] * full_cases / 3600.0 if secs else None
@@ -566,8 +601,13 @@ def smoke_markdown(sm: dict[str, Any]) -> str:
          "| level | median squeeze per pad in the hold (N) | median squeeze per pad, late close (N) | rows (close) |", "|---|---|---|---|"]
     for lv, x in sm["squeeze"].items():
         L.append(f"| {lv} | {_f(x['hold_median'])} | {_f(x['close_median'])} | {x['close_rows']} |")
+    A = sm["artifacts"]
     L += ["", "The hold median leaves out its number of rows (rows with both pads on the object in the hold): that number follows "
-          "the lifted count.", ""] + [f"- STOP: {s}" for s in sm["stop_texts"]]
+          "the lifted count.", "", f"Artifact rows by level and cause (a row can have several); cases with an artifact row: {A['cases']}; "
+          f"the deepest pad penetration over the simulated rows: {_f(A['deepest_mm_max'], 2)} mm.", "",
+          "| level | artifact rows | penetration over 3 mm | reversed contacts | reset not at rest | jam |", "|---|---|---|---|---|---|"]
+    L += [f"| {lv} | {x['rows']} | {x['deep']} | {x['reversed']} | {x['not_at_rest']} | {x['jam']} |" for lv, x in A["by_level"].items()]
+    L += [""] + [f"- STOP: {s}" for s in sm["stop_texts"]]
     return "\n".join(L) + "\n"
 
 
