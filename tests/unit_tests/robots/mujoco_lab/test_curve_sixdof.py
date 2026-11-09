@@ -303,6 +303,21 @@ def test_a_second_rollout_in_one_context_counts_each_substep_once():
     assert bc.summary()["by"]["close|palm/object"]["substeps"] == 8 and env.sim.substep is wrapped
 
 
+def test_the_recorder_wraps_a_tracer_called_with_the_grasp_frame_as_execute6_calls_it():
+    class FrameEnv(_BoxEnv):
+        def _tracer(self, pt, yaw, frame=None):
+            self.frame = frame
+            return super()._tracer(pt, yaw)
+
+    env, frame = FrameEnv(), (np.array([0.0, 1.0, 0.0]), np.array([0.0, 0.0, 1.0]))
+    with cs.BoxContacts(env) as bc:
+        trace, on_step = env._tracer(None, 0.0, frame)                # execute6: the tilted pinch's frame, the third argument
+        env.at(0.105)
+        for _ in range(env.s["scene"].SUB):
+            env.sim.substep()
+        on_step("close")
+    assert env.frame is frame and trace == [{"phase": "close"}] and bc.summary()["by"]["close|palm/object"]["substeps"] == 4
+
 def test_the_recorder_reads_only():
     a, b = _BoxEnv(), _BoxEnv()
     a.run(SCRIPT)

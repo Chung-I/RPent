@@ -144,8 +144,8 @@ class BoxContacts:
             return self
         self._wrapped, self._had, self._old = True, "_tracer" in vars(env), vars(env).get("_tracer")
 
-        def tracer(pt: Any, yaw: float) -> tuple[list[dict[str, Any]], Any]:
-            trace, on_step = orig(pt, yaw)
+        def tracer(pt: Any, yaw: float, *frame: Any) -> tuple[list[dict[str, Any]], Any]:
+            trace, on_step = orig(pt, yaw, *frame)          # execute6 passes the tilted pinch's frame as a third argument
             self.observed = True
             self._watch(env.sim)
             sub, hz = int(env.s["scene"].SUB), float(env.s["scene"].CTRL_HZ)
