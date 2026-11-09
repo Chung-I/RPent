@@ -646,7 +646,7 @@ def figure(rep: dict[str, Any], path: str) -> None:
             if j == 0:
                 ax.set_ylabel(f"{out} (% of test cases)")
             if i == 1:
-                ax.set_xlabel("squeeze per finger (N, the panel's median command per level)")
+                ax.set_xlabel("squeeze per finger (N)")         # the panel's median command per level (the caption says so)
     axes[0][0].legend(fontsize=8, loc="upper left")
     fig.tight_layout()
     fig.savefig(path, dpi=150)
