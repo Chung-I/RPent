@@ -13,7 +13,9 @@
 # limitations under the License.
 
 """The 6-DoF executor of the sixdof rerun (design 2026-11-08-sixdof-rerun-design.md, level A): a pinch with a rotation,
-its angle bin, and the routing; a Proposal or a grasp within 30° of straight down runs on today's executor unchanged."""
+its angle bin, and the routing; a Proposal or a grasp within 30° of straight down runs on today's executor unchanged.
+The tests target the contacts sim (armsim ee882f9b, level A's sim): its hand boxes collide (contype 2, conaffinity 1),
+so the fixtures use pinches whose palm clears the object."""
 
 import math
 
@@ -184,12 +186,12 @@ def test_the_twin_is_the_same_pinch_turned_a_half_turn_about_the_approach():
     assert np.allclose(sixdof.hand_frame(t)[0], sixdof.hand_frame(p6)[0])
 
 
-def _sugar_box():
+def _sugar_box(s=0.9):
     from robots.mujoco_lab.adapter import MuJoCoLabEnv
 
     env = MuJoCoLabEnv()
     env.reset("ycb__sugar_box", seed=0)
-    return env, env.proposals((0.5,))[0]
+    return env, env.proposals((s,))[0]        # 0.9: 1.8 cm below the box top, the palm clears it (at 0.5 it is 3 to 4 mm inside)
 
 
 def _at(p, tilt_deg=0.0):
@@ -432,7 +434,7 @@ def test_the_bodies_are_the_palm_the_wrist_and_the_two_finger_boxes_and_the_obst
     m = sim.m
     hg = sixdof.hand_geoms(sim)
     assert hg["palm"] == [m.geom("palm").id] and hg["wrist"] == [m.geom("wrist").id] and len(hg["finger"]) == 2
-    assert all(m.geom_contype[g] == 0 and np.allclose(m.geom_size[g], [0.004, 0.008, 0.03]) for g in hg["finger"])
+    assert all((m.geom_contype[g], m.geom_conaffinity[g]) == (2, 1) and np.allclose(m.geom_size[g], [0.004, 0.008, 0.03]) for g in hg["finger"])
     assert np.allclose(m.jnt_range[m.joint("jl").id], [0.0, env.s["scene"].MAX_OPEN - 0.002])
     ob = sixdof.obstacle_sets(sim, "bin")
     assert ob["object"] == set(sim.hull_ids) and ob["table"] == {sim.table} and ob["destination"] == set(sim.bin_geoms)
@@ -479,7 +481,7 @@ def _pinch(env, f):
 
 @SIM
 def test_a_palm_inside_the_object_fails_the_clearance_against_the_object():
-    env, p = _sugar_box()                   # upright, 17.5 cm tall: a vertical pinch at mid-height puts the palm inside it
+    env, p = _sugar_box(0.5)                # upright, 17.5 cm tall: a vertical pinch at mid-height puts the palm inside it
     c = sixdof.clearance(env, sixdof.from_graspgen(_at(p), s=p.s, width=p.width), 0.05, "table_centre")
     assert c is not None and "palm/object" in c["pairs"] and c["by_pair"]["palm/object"]["phase"] in ("approach", "close")
     assert c["first"]["pair"] in c["pairs"] and c["by_pair"]["palm/object"]["depth"] > 0.01
@@ -488,7 +490,7 @@ def test_a_palm_inside_the_object_fails_the_clearance_against_the_object():
 
 @SIM
 def test_the_clearance_of_a_pinch_is_the_clearance_on_its_tilted_path_with_each_pairs_phases():
-    env, p = _sugar_box()
+    env, p = _sugar_box(0.5)                # the mid-height pinch: the palm inside the box
     p6 = sixdof.from_graspgen(_at(p), s=p.s, width=p.width)
     c = sixdof.clearance(env, p6, 0.05, "table_centre")
     assert c is not None and c == sixdof.clearance_on_path(env, sixdof.hand_path6(env, p6, 0.1, 0.5, "table_centre"), 0.05, "table_centre")
