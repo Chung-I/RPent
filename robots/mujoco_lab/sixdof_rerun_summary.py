@@ -191,8 +191,9 @@ F45 = ("within", "width", "width_b", "either_width", "clearance_ok", "reach_ok",
 
 
 def funnel(vs: list[dict[str, Any]]) -> dict[str, Any]:
-    """Reading 1 over every case with prepass rows (a case the execute pass stopped included, as in the counts report):
-    per object and in all, the ≤ 30° funnel (the pilot's counts from the prepass, the uncapped rows, the clearance
+    """Reading 1 over every case record, as in the counts report (a case the execute pass stopped keeps its prepass
+    rows; a case the prepass dropped adds its prepass counts and no row, so an object stays even when all its cases
+    drop): per object and in all, the ≤ 30° funnel (the pilot's counts from the prepass, the uncapped rows, the clearance
     failures and the flagged rows that ran) and the 30–45° funnel (width rules, clearance, the lab path check, to the
     planner, cuRobo planned, missed or failed, G2 passed, executed to a label, each rule, after the pilot's de-dup of the
     rule's rows on their mapped point and yaw); each rule's first stop per 30–45° row (``why6``); the generator's shares
@@ -204,8 +205,6 @@ def funnel(vs: list[dict[str, Any]]) -> dict[str, Any]:
     depth: dict[str, list[float]] = {"30": [], "45": []}
     failed, g2 = Counter(), Counter()
     for v in vs:
-        if not v["rows"] and v["dropped"]:
-            continue
         x = by.setdefault(v["object"], {"30": _zero(F30), "45": _zero(F45)})
         w = why6.setdefault(v["object"], {"a": Counter(), "b": Counter()})
         c30, s30 = v.get("counts30") or {}, x["30"]
@@ -387,13 +386,18 @@ def _stats(x: list[float]) -> dict[str, Any]:
     return {"rows": len(x), "median": statistics.median(x) if x else None, "min": min(x) if x else None, "max": max(x) if x else None}
 
 
+RELEASE_TILT = ("planned, not measured: the tilt of the object's rest-pose vertical at the release with the object rigid in "
+                "the hand, which equals the row's approach angle (hand_path6's release rotation; level_a/release_tilt.py). "
+                "The records hold no object pose at the release. A row that did not lift the object has no release, and "
+                "its value is its approach angle only.")
+
+
 def release_tilt(vs: list[dict[str, Any]]) -> dict[str, Any]:
-    """The object's tilt at release of the 30–45° rows executed to a label: the approach angle (the release keeps the
-    grasp's tilt; identity checked on the smoke, level_a/release_tilt.py), by object, in all and, exploratory, by
-    outcome (placed, lifted and not placed, not lifted, not clean)."""
+    """The planned tilt at the release (RELEASE_TILT: the approach angle) of the 30–45° rows executed to a label, by
+    object, in all and, exploratory, by outcome (placed, lifted and not placed, not lifted, not clean)."""
     rows = [(v["object"], r) for v in vs for r in v["rows"] if r["x6"]]
     objs = list(dict.fromkeys(o for o, _ in rows))
-    return {"by_object": {o: _stats([r["approach_deg"] for p, r in rows if p == o]) for o in objs},
+    return {"what": RELEASE_TILT, "by_object": {o: _stats([r["approach_deg"] for p, r in rows if p == o]) for o in objs},
             "all": _stats([r["approach_deg"] for _, r in rows]),
             "by_outcome": {k: _stats([r["approach_deg"] for _, r in rows if _outcome(r) == k]) for k in OUTCOMES}}
 
@@ -577,6 +581,25 @@ def counts_check(f: dict[str, Any], counts: dict[str, Any]) -> list[str]:
 
 # ------------------------------------------------------------------ the inputs, the published and corrected gates, the level-A records
 
+def readings_refs(rsum: dict[str, Any], a: Any, shas: dict[str, str], k0: str, k4: str) -> list[str]:
+    """The G1′ readings summary (the corrected gate's reference) must have read the inputs that this summary reads: the
+    contacts and the re-plan passes (--contacts, --replan), the pilot and the pose-set summaries (their sha256 in
+    ``shas``) and the keys [k0, k4]. Lists each difference."""
+    from robots.mujoco_lab.palm_audit import ref_sha
+
+    p = rsum.get("provenance") or {}
+    passes, bad = p.get("passes") or {}, []
+    for n, q in (("contacts", a.contacts), ("replan", a.replan)):
+        if passes.get(n) is None or os.path.realpath(passes[n]) != os.path.realpath(q):
+            bad.append(f"the readings' {n} pass {passes.get(n)} is not {q}")
+    for k, path in (("pilot_summary", a.pilot_summary), ("poseset_summary", a.poseset_summary)):
+        if ref_sha(p.get(k)) is None or ref_sha(p.get(k)) != shas.get(path):
+            bad.append(f"the readings' {k} {p.get(k)} is not {path}")
+    if list(p.get("keys") or []) != [k0, k4]:
+        bad.append(f"the readings' keys {p.get('keys')} are not {[k0, k4]}")
+    return bad
+
+
 def _open_inputs(a: Any) -> dict[str, Any]:
     """Every input but the level-A records: the published pose-set and pilot records with the G1′ readings' checks
     (sixdof_readings.run: each record file's sha256 is the one its summary read; each pass replayed only cases these
@@ -693,8 +716,7 @@ def inputs_gate(D: dict[str, Any]) -> dict[str, Any]:
 def _open_level_a(ex_dirs: list[str], tg_dirs: list[str]) -> dict[str, Any]:
     """The level-A records, each file once: the execute units' exec_records.jsonl and the tags units' tags_records.jsonl,
     with each file's sha256."""
-    from robots.mujoco_lab.curve import _sha
-    from robots.mujoco_lab.curve_poseset import _load_lines
+    from robots.mujoco_lab.curve_poseset import _read_once
 
     shas: dict[str, str] = {}
     out: dict[str, list[dict[str, Any]]] = {"exs": [], "tgs": []}
@@ -703,8 +725,9 @@ def _open_level_a(ex_dirs: list[str], tg_dirs: list[str]) -> dict[str, Any]:
             path = os.path.join(d, fname)
             if path in shas:
                 raise SystemExit(f"{path}: named twice")
-            shas[path] = _sha(path)
-            out[name] += _load_lines([path])
+            recs, sha = _read_once([path])            # one open: the sha256 is of the bytes that are read
+            shas.update(sha)
+            out[name] += recs
     return dict(out, shas=shas)
 
 
@@ -753,8 +776,8 @@ def level_a_build(D: dict[str, Any], P: dict[str, Any], L: dict[str, Any], gate:
     LC = [v for v in Lt if v["corr"] is not None]
     LX = [v for v in LC if v["extra"]["oracle_c"] is not None and v["extra"]["r4_c"] is not None]
     ran = [v for v in vs if v["a"] is not None]
-    rt = [v for v in ran if v["side"] == "test"]
     test = [v for v in vs if v["side"] == "test"]
+    rt = test                       # the row tables: every labelled row of the test cases (a stopped case's rows that ran too)
     ct = [v for v in P["cv"] if v["side"] == "test"]
     f = funnel(vs)
     in8 = any((v["object"], int(v["idx"])) == PITCHER_8 for v in Lt)
@@ -799,7 +822,8 @@ def level_a_build(D: dict[str, Any], P: dict[str, Any], L: dict[str, Any], gate:
 def summary_cmd(a: Any) -> dict[str, Any]:
     """The level-A summary. First the provenance gate (curve_sixdof_rerun.provenance_gate: every execute unit, its
     prepass unit and the plan step on the level-A code and sim) and the tags gate (tags_gate), before any input opens or
-    any file is written; then every other input (_open_inputs) and the published and corrected gates (inputs_gate: a
+    any file is written; then every other input (_open_inputs), the G1′ readings' references (readings_refs: its
+    passes, pilot and pose-set summaries and keys must be the ones read here) and the published and corrected gates (inputs_gate: a
     difference writes rerun_a_summary_stop.json and exits 3 before any level-A record opens); then the level-A records,
     once (_open_level_a); the readings (level_a_build); rerun_a_summary.{json,md} and rerun_a_ceiling.png in --out
     (refuses an existing summary); wandb."""
@@ -821,6 +845,9 @@ def summary_cmd(a: Any) -> dict[str, Any]:
         raise SystemExit(f"{a.out}: a summary exists: pick a new --out")
     os.makedirs(a.out, exist_ok=True)
     D = _open_inputs(a)
+    bad = readings_refs(D["side"]["readings"], a, D["prov"]["inputs_sha256"], D["k0"], D["k4"])
+    if bad:
+        raise SystemExit("the G1′ readings summary read other inputs: " + "; ".join(bad) + " (no level-A record opened)")
     me = _revision()
     prov = dict(D["prov"], execute=a.execute, plan=a.plan, tags=a.tags, code_revision=me["code_revision"], dirty=me["dirty"],
                 bootstrap=f"{BOOT_DRAWS} object draws, seed {BOOT_SEED}, 95 % percentile interval", eps=EPS)
@@ -961,7 +988,8 @@ def summary_markdown(rep: dict[str, Any]) -> str:
     L += ["## The loss-phase split (clean rows that lifted the object and did not place it)", "",
           f"- 30–45°: {lp['45']['rows']} rows, by phase {lp['45']['phases']}, by label {lp['45']['labels']}",
           f"- ≤ 30° (reference): {lp['30']['rows']} rows, by phase {lp['30']['phases']}, by label {lp['30']['labels']}", "",
-          "## The tilt at release (the approach angle of the 30–45° rows executed to a label)", ""]
+          "## The planned tilt at the release (not measured)", "",
+          f"The 30–45° rows executed to a label. {R['release_tilt']['what']}", ""]
     for o, s in list(R["release_tilt"]["by_object"].items()) + [("all", R["release_tilt"]["all"])]:
         L.append(f"- {o}: {s['rows']} rows, median {s['median']:.1f}°, {s['min']:.1f} to {s['max']:.1f}°" if s["rows"] else f"- {o}: 0 rows")
     L.append("- Exploratory, by outcome: " + "; ".join(f"{k} {s['rows']} (median {s['median']:.1f}°)" if s["rows"] else f"{k} 0"

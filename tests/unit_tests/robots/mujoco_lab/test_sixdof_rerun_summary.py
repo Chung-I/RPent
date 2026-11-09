@@ -193,6 +193,10 @@ def _funnel_record():
 
 def test_the_counts_check_agrees_with_the_counts_reports_own_code_on_the_same_records_and_lists_each_difference():
     ex = _funnel_record()
+    skip = _ex(o="hot3d__mug", skipped="no stable base")          # the prepass dropped every case of this object
+    f = ss.funnel([ss.case_view(ex, _tg(ex)), ss.case_view(skip, None)])
+    rep = rr.smoke_report([ex, skip], [], {})
+    assert ss.counts_check(f, rep) == [] and f["by_object"]["hot3d__mug"]["30"]["cases"] == 1
     f = ss.funnel([ss.case_view(ex, _tg(ex))])
     rep = rr.smoke_report([ex], [], {})
     assert ss.counts_check(f, rep) == []
@@ -254,6 +258,7 @@ def test_the_tilt_at_release_is_the_approach_angle_of_each_executed_tilted_row_b
     ex = _ex(rows6=[_r6(1, 1, "placed_stable", deg=33.0), _r6(2, 2, "not_lifted", deg=41.0), _r6(3, 3, "tipped", deg=44.0),
                     _r6(4, 4, None, g2=True, deg=35.0)])
     t = ss.release_tilt([ss.case_view(ex, _tg(ex))])
+    assert t["what"].startswith("planned, not measured")
     assert t["by_object"]["ycb__bowl"] == {"rows": 3, "median": 41.0, "min": 33.0, "max": 44.0}
     assert t["by_outcome"]["placed"]["rows"] == 1 and t["by_outcome"]["not lifted"]["median"] == 41.0
     assert t["by_outcome"]["lifted, not placed"]["median"] == 44.0
@@ -458,11 +463,14 @@ def test_the_level_a_build_puts_each_column_on_its_own_cases_and_the_extra_on_th
     assert g["cache_misses"] == 0 and g["g2"]["45"] == {"planned": 14, "failed": 7, "share": 0.5} and isinstance(g["g2"]["30"], str)
     assert R["1_funnel"]["all"]["45"]["within"] == 21                     # the funnel keeps the stopped case's prepass rows
     assert R["ruling3"]["rows"] == {"compared": 6, "agree": 6, "differ": 0, "missing": 0}
-    assert R["release_tilt"]["all"]["rows"] == 5 and R["replan_d"]["45"]["bins"]["3 to 10 mm"]["rows"] == 5
+    # the row tables take every labelled row of the test cases, the stopped case's (pitcher:3) too
+    assert R["release_tilt"]["all"]["rows"] == 6 and R["replan_d"]["45"]["bins"]["3 to 10 mm"]["rows"] == 6
+    assert R["by_cause"]["45"]["raise only"]["rows"] == 6 and R["loss_phase"]["test"]["30"]["rows"] == 8     # 7 without pitcher:3
     json.dumps(rep)
     rep["provenance"] = {"bootstrap": "2000 object draws, seed 20261108, 95 % percentile interval"}     # summary_cmd adds it
     md = ss.summary_markdown(rep)
     assert "## Reading 2" in md and "headline" in md and "ycb__pitcher:8" in md and "exploratory" in md
+    assert "## The planned tilt at the release (not measured)" in md
     ss.figure(rep, str(tmp_path / "f.png"))
     assert os.path.getsize(tmp_path / "f.png") > 1000
 
@@ -473,9 +481,41 @@ def _cmd_args(d, tmp_path):
             "--oracle-c-summary", "o", "--counts", "n", "--smoke", "m", "--g1", "x", "--out", str(tmp_path / "out")]
 
 
+SHAS = {"g": "a" * 64, "p": "b" * 64}       # the sha256 of _cmd_args' pilot and pose-set summaries (_open_inputs' inputs_sha256)
+
+
+def _readings(**k):
+    """The G1′ readings summary's provenance that names _cmd_args' passes, pilot and pose-set summaries and keys."""
+    return {"provenance": dict({"passes": {"contacts": "c", "replan": "q"}, "pilot_summary": f"g (sha256 {SHAS['g']})",
+                                "poseset_summary": f"p (sha256 {SHAS['p']}, commit x)", "keys": [K0, K4]}, **k)}
+
+
+def test_the_readings_refs_name_the_passes_the_pilot_and_pose_set_summaries_and_the_keys_this_summary_reads():
+    import argparse
+
+    a = argparse.Namespace(contacts="c", replan="q/", pilot_summary="g", poseset_summary="p")
+    assert ss.readings_refs(_readings(), a, SHAS, K0, K4) == []
+    bad = ss.readings_refs(_readings(passes={"contacts": "c", "replan": "other"}, pilot_summary="g (sha256 " + "c" * 64 + ")",
+                                     poseset_summary="p", keys=[K4, K0]), a, SHAS, K0, K4)
+    assert [b.split(" ")[2] for b in bad] == ["replan", "pilot_summary", "poseset_summary", "keys"]
+    assert ss.readings_refs({}, a, SHAS, K0, K4)[0].startswith("the readings' contacts pass None")
+
+
+def test_readings_that_read_other_inputs_stop_the_command_before_any_level_a_record_opens(tmp_path, monkeypatch):
+    d = _record(tmp_path)
+    D, *_ = _level_a()
+    monkeypatch.setattr(ss, "_open_inputs", lambda a: dict(D, prov={"inputs_sha256": dict(SHAS)},
+                                                          side=dict(D["side"], readings=_readings(keys=[K0]))))
+    monkeypatch.setattr(ss, "inputs_gate", lambda D_: (_ for _ in ()).throw(AssertionError("the gates ran")))
+    monkeypatch.setattr(ss, "_open_level_a", lambda *a: (_ for _ in ()).throw(AssertionError("a level-A record opened")))
+    with pytest.raises(SystemExit, match="the G1′ readings summary read other inputs: the readings' keys"):
+        ss.main(_cmd_args(d, tmp_path))
+
+
 def test_a_published_or_corrected_gate_that_fails_stops_before_any_level_a_record_opens(tmp_path, monkeypatch):
     d = _record(tmp_path)
-    monkeypatch.setattr(ss, "_open_inputs", lambda a: {"prov": {}})
+    monkeypatch.setattr(ss, "_open_inputs", lambda a: {"prov": {"inputs_sha256": dict(SHAS)}, "side": {"readings": _readings()},
+                                                       "k0": K0, "k4": K4})
     monkeypatch.setattr(ss, "inputs_gate", lambda D: {"stop": True, "g_pub": {"pilot_gg_vs_c10": ["success.diff 0.1 vs 0.2"]}, "g_corr": []})
     monkeypatch.setattr(ss, "_open_level_a", lambda *a: (_ for _ in ()).throw(AssertionError("a level-A record opened")))
     with pytest.raises(SystemExit) as e:
@@ -490,7 +530,7 @@ def test_the_command_opens_the_level_a_records_once_after_both_gates_and_writes_
     D, P, L, _, _ = _level_a()
     calls = []
     monkeypatch.setenv("WANDB_MODE", "disabled")
-    monkeypatch.setattr(ss, "_open_inputs", lambda a: dict(D, prov={"inputs_sha256": {}}))
+    monkeypatch.setattr(ss, "_open_inputs", lambda a: dict(D, prov={"inputs_sha256": dict(SHAS)}, side=dict(D["side"], readings=_readings())))
     monkeypatch.setattr(ss, "inputs_gate", lambda D_: P)
     monkeypatch.setattr(ss, "_open_level_a", lambda ex, tg: calls.append((ex, tg)) or L)
     rep = ss.main(_cmd_args(d, tmp_path))
@@ -530,12 +570,20 @@ def test_the_inputs_gate_stops_on_a_published_difference_or_a_corrected_one(monk
     assert g["g_corr"][2].startswith("paired") and len(g["g_corr"]) == 3
 
 
-def test_the_level_a_loader_reads_each_named_file_once_with_its_sha256(tmp_path):
+def test_the_level_a_loader_reads_each_named_file_once_with_its_sha256(tmp_path, monkeypatch):
+    import builtins
+    from collections import Counter
+
     from robots.mujoco_lab.curve import _sha
 
     ex = [_unit(tmp_path / f"ex{k}", "exec_records.jsonl", [{"object": "ycb__bowl", "idx": k}], {}) for k in (0, 1)]
     tg = [_unit(tmp_path / f"tg{k}", "tags_records.jsonl", [{"object": "ycb__bowl", "idx": k}], {}) for k in (0, 1)]
-    L = ss._open_level_a(ex, tg)
+    opened, real = [], builtins.open
+    with monkeypatch.context() as m:
+        m.setattr(builtins, "open", lambda p, *a, **k: opened.append(str(p)) or real(p, *a, **k))
+        L = ss._open_level_a(ex, tg)
+    names = [os.path.join(d, "exec_records.jsonl") for d in ex] + [os.path.join(d, "tags_records.jsonl") for d in tg]
+    assert Counter(opened) == dict.fromkeys(names, 1)          # one open per file: the sha256 is of the bytes read
     assert [e["idx"] for e in L["exs"]] == [0, 1] and len(L["tgs"]) == 2
     assert L["shas"][os.path.join(ex[1], "exec_records.jsonl")] == _sha(os.path.join(ex[1], "exec_records.jsonl")) and len(L["shas"]) == 4
     with pytest.raises(SystemExit, match="named twice"):
