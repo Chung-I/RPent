@@ -480,9 +480,10 @@ MON_CASE_KEYS = ("object", "idx", "side", "skipped", "stop", "error", "g0", "sec
 def monitor_record(rec: dict[str, Any]) -> dict[str, Any]:
     """A close-monitor pass's record (the coordinator's acceptance of 9 Nov: no label in the pass): the case's keys
     (MON_CASE_KEYS) and per row the hashes the summary joins on, the artifact flag, the error, the seconds, the contact
-    monitor and the close monitor (MON_ROW_KEYS); no label, outcome, squeeze or re-plan field."""
+    monitor and the close monitor (MON_ROW_KEYS, those the row has: an unsimulated row keeps no ``seconds``); no label,
+    outcome, squeeze or re-plan field."""
     out = {k: rec.get(k) for k in MON_CASE_KEYS}
-    out["rows"] = [{k: r.get(k) for k in MON_ROW_KEYS} for r in rec["rows"]]
+    out["rows"] = [{k: r[k] for k in MON_ROW_KEYS if k in r} for r in rec["rows"]]
     return out
 
 

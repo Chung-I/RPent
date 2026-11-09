@@ -511,3 +511,11 @@ def test_a_case_passes_the_close_monitor_to_its_rows_and_not_to_the_replay(lab, 
     monkeypatch.setattr(hf, "simulate", spy)
     hf.force_case(SimpleNamespace(env=lab), _rec1(), 3, None, _entry(), replay=True, close_monitor=True)
     assert seen == [True, False]
+
+
+def test_a_monitor_record_keeps_an_infeasible_row_unsimulated_and_the_metrics_read_it():
+    rec = _done_rec()
+    rec["rows"][4] = {"id": "across_com@f_std", "pinch": "across_com", "level": "f_std", "feasible": False, "why": "unreachable: x"}
+    m = hf.monitor_record(rec)
+    assert m["rows"][4] == {"id": "across_com@f_std", "pinch": "across_com", "level": "f_std", "feasible": False}
+    assert hf.metrics([m])["rows_simulated"] == 7
