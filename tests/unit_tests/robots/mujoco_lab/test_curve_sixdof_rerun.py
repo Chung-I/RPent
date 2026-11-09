@@ -216,3 +216,177 @@ def test_the_prepass_plans_the_chosen_configuration_and_the_cache_serves_it_afte
     free = sp.free_from_cache(str(tmp_path), sp.world_export(env.sim), [float(x) for x in env.sim.arm.desired()], goal,
                               env.s["scene"].CTRL_HZ)
     assert len(free) > 10 and np.abs(np.asarray(free[-1]) - goal).max() < 1e-3
+
+
+# ------------------------------------------------------------------ step 5: the execute pass (lab only, cached plans only)
+
+IDENT = {"robot_yml_sha256": "00" * 32, "settings": cp.SETTINGS, "curobo": "test", "torch": "test"}
+
+
+def _cache_at(path, world, start, goal, **entry):
+    """A plan cache at ``path`` with IDENT and, given ``entry``, that entry under the key of (world, start, goal)."""
+    import json
+
+    os.makedirs(path, exist_ok=True)
+    json.dump(IDENT, open(os.path.join(path, "identity.json"), "w"))
+    if entry:
+        cp.write_entry(str(path), cp.plan_key(world, start, goal, IDENT), entry)
+    return str(path)
+
+
+def _tilted_row(env):
+    """The s 0.9 / 36° sugar-box row through funnel6, its pinch (the twin when its candidate is the twin's) and a reset."""
+    from tests.unit_tests.robots.mujoco_lab.test_sixdof import _at
+
+    g = _at(env.proposals((0.9,), turn=-math.pi / 2)[0], 36.0)
+    r = rr.funnel6(env, np.stack([g]), np.array([0.9]), "box", {"object": "ycb__sugar_box", "idx": 0})[0][0]
+    p = sixdof.from_graspgen(g, width=r["width"])
+
+    def reset():
+        env.reset("ycb__sugar_box", seed=0)
+        return True
+    return r, sixdof.twin(p) if r["candidate"]["twin"] else p, reset
+
+
+def test_the_straight_joint_line_ends_at_the_goal_in_steps_within_the_free_moves_speed():
+    a, b = np.zeros(7), np.array([0.5, -0.1, 0.0, 0.2, 0.0, 0.0, 0.05])
+    pts = rr.straight_path(a, b, 50.0, 1.0)
+    assert len(pts) == 25 and np.allclose(pts[-1], b) and np.abs(np.diff([a] + pts, axis=0)).max() <= 0.02 + 1e-12
+    assert len(rr.straight_path(a, a, 50.0, 1.0)) == 1
+
+
+@SIM
+def test_a_cached_planning_failure_is_the_planners_spheres_only_when_the_straight_line_touches_nothing():
+    from tests.unit_tests.robots.mujoco_lab.test_sixdof import _sugar_box
+
+    env, _ = _sugar_box()
+    q0 = np.asarray(env.sim.arm.desired(), dtype=float)
+    low = q0.copy()
+    low[1], low[3] = 1.4, -1.6                                         # the arm reaches down into the table
+    assert rr.plan_failure(env.sim, q0, q0 + np.array([0.2, 0.0, 0.0, 0.1, 0.0, 0.0, 0.3]), 50.0) == \
+        {"reason": "planner spheres", "hits": 0, "first": None}
+    f = rr.plan_failure(env.sim, q0, low, 50.0)
+    assert f["reason"] == "path blocked" and f["hits"] > 0 and f["first"]["robot_id"] in sp.robot_subtree_geoms(env.sim)
+
+
+@SIM
+def test_a_tilted_row_takes_its_free_move_from_the_cache_only_and_a_miss_or_a_failure_stops_it_before_any_motion(tmp_path, monkeypatch):
+    from robots.mujoco_lab.curve_poseset import commit_std_base
+    from tests.unit_tests.robots.mujoco_lab.test_sixdof import _sugar_box
+
+    env, _ = _sugar_box()
+    r, p, reset = _tilted_row(env)
+    reset()
+    world, start, goal, hz = sp.world_export(env.sim), [float(x) for x in env.sim.arm.desired()], r["candidate"]["q"], env.s["scene"].CTRL_HZ
+    base, fp = commit_std_base(env, "ycb__sugar_box", "box"), (lambda e: "fp")
+    new, stop = rr.run_row6(env, reset, r, p, _cache_at(tmp_path / "miss", world, start, goal), base, fp, "fp", None)
+    assert stop is None and new["free"] == "miss" and new["label"] is None and "box_contacts" not in new     # G3: counted
+    failed = _cache_at(tmp_path / "failed", world, start, goal, success=False, status="trajopt failed", dt=1.0 / hz, q=None)
+    new, _ = rr.run_row6(env, reset, r, p, failed, base, fp, "fp", None)
+    assert new["free"] == "failed" and new["free_failure"]["reason"] in ("planner spheres", "path blocked") and new["label"] is None
+    assert "trajopt failed" in new["free_failure"]["status"]
+    env.replan_hold, env.plan_without_hand_boxes = True, True
+    seen, execute6 = [], sixdof.execute6
+    monkeypatch.setattr(sixdof, "execute6", lambda *a, **k: seen.append((env.plan_without_hand_boxes, a[1], a[3:], k)) or execute6(*a, **k))
+    plan = [start] + [list(q) for q in sixdof.quintic(env.sim.arm, goal, hz)]   # the lab's own free move, as a cached plan
+    ok = _cache_at(tmp_path / "ok", world, start, goal, success=True, status="ok", dt=1.0 / hz, q=plan)
+    new, _ = rr.run_row6(env, reset, r, p, ok, base, fp, "fp", None)
+    assert new["free"] == "ok" and new["error"] is None and new["unreachable"] is None and new["label"] is not None
+    assert [c["ok"] for c in new["sixdof"]["g2"]] == [True, True] and new["box_contacts"]["observed"] and "replan" in new
+    assert set(new["free_hits"]) == {"n", "first", "pairs"}
+    assert seen == [(False, p, (base["force"], base["v_lift"], base["v_transport"], base["destination"], base["release_height"]),
+                     {"a_transport": base["a_transport"]})]           # the hand boxes in the planner's set, the pinch at the base
+    assert rr.run_row6(env, reset, r, p, ok, base, fp, "fp", None)[0]["free"] == "ok"   # the key is read after the row's own reset
+    assert env.plan_without_hand_boxes is True                         # the caller's planner set again
+
+
+@SIM
+def test_a_tilted_row_whose_free_move_stops_short_fails_g2_and_records_the_failed_check_not_an_outcome(tmp_path):
+    from robots.mujoco_lab.curve_poseset import commit_std_base
+    from tests.unit_tests.robots.mujoco_lab.test_sixdof import _sugar_box
+
+    env, _ = _sugar_box()
+    r, p, reset = _tilted_row(env)
+    reset()
+    world, start, goal, hz = sp.world_export(env.sim), [float(x) for x in env.sim.arm.desired()], r["candidate"]["q"], env.s["scene"].CTRL_HZ
+    stay = _cache_at(tmp_path, world, start, goal, success=True, status="ok", dt=1.0 / hz, q=[start, start])   # the arm stays at rest
+    new, stop = rr.run_row6(env, reset, r, p, stay, commit_std_base(env, "ycb__sugar_box", "box"), lambda e: "fp", "fp", None)
+    assert stop is None and new["free"] == "ok" and new["error"] is None and new["label"] is None and "sixdof" not in new
+    assert new["unreachable"]["check"] == "pregrasp" and new["unreachable"]["ok"] is False and new["unreachable"]["pos_m"] > 0.01
+
+
+def test_the_free_moves_contact_summary_counts_every_hit_and_names_each_pair_once():
+    hits = [{"step": 3, "robot": "palm", "other": "table", "robot_id": 1, "other_id": 2, "dist_m": -0.001},
+            {"step": 4, "robot": "palm", "other": "table", "robot_id": 1, "other_id": 2, "dist_m": -0.002},
+            {"step": 4, "robot": "link7", "other": "ycb__sugar_box", "robot_id": 5, "other_id": 9, "dist_m": -0.003}]
+    assert rr.hits_summary(hits) == {"n": 3, "first": hits[0], "pairs": ["link7/ycb__sugar_box", "palm/table"]}
+    assert rr.hits_summary([]) == {"n": 0, "first": None, "pairs": []}
+
+
+@SIM
+def test_a_vertical_row_runs_todays_executor_with_ruling_As_planner_set_and_records_the_box_contacts(monkeypatch):
+    from robots.mujoco_lab.curve_poseset import commit_std_base
+    from tests.unit_tests.robots.mujoco_lab.test_sixdof import _at, _sugar_box
+
+    env, _ = _sugar_box()
+    mid = env.proposals((0.5,), turn=-math.pi / 2)[0]
+    r = rr.funnel30(env, np.stack([_at(mid, 0.0)]), np.array([0.9]), "box")[0][0]
+    seen, execute = [], env.execute
+    monkeypatch.setattr(env, "execute", lambda *a, **k: seen.append(env.plan_without_hand_boxes) or execute(*a, **k))
+
+    def reset():
+        env.reset("ycb__sugar_box", seed=0)
+        return True
+    new, stop = rr.run_row30(env, reset, r, commit_std_base(env, "ycb__sugar_box", "box"), lambda e: "fp", "fp", None)
+    assert stop is None and new["error"] is None and new["label"] is not None and seen == [True]
+    assert new["box_contacts"]["observed"] and any(k.endswith("palm/object") for k in new["box_contacts"]["by"])   # the palm meets the box
+    assert env.plan_without_hand_boxes is False
+
+
+def _prep(lab):
+    """A prepass record of the fake lab's case 3: two kept ≤ 30° rows and one not kept, a planned 30–45° row (on its
+    twin) and one without a candidate."""
+    return {"object": "ycb__sugar_box", "idx": 3, "fingerprint": "fp", "stop": None, "dropped": False, "base": BASE147,
+            "destination": "bin", "hull_sha": gg.hulls_sha(lab), "request": {"goals": [{"row": "g3", "q": [0.0] * 7}]},
+            "rows30": [{"id": "g0", "kept_all": True, "kept_all_b": False}, {"id": "g1", "kept_all": False, "kept_all_b": True},
+                       {"id": "g2", "kept_all": False, "kept_all_b": False}],
+            "rows6": [{"id": "g3", "width": 0.05, "candidate": {"index": 1, "twin": True, "seed": "aimed", "q": [0.0] * 7}},
+                      {"id": "g9", "width": 0.05, "candidate": None}]}
+
+
+def test_the_execute_pass_runs_the_kept_vertical_rows_then_the_planned_tilted_rows_each_with_the_re_plan_on(lab, monkeypatch):
+    seen = []
+    monkeypatch.setattr(rr, "run_row30", lambda env, reset, r, base, fp, want, hull:
+                        seen.append(("30", r["id"], env.replan_hold, base)) or ({"label": "placed_stable"}, None))
+    monkeypatch.setattr(rr, "run_row6", lambda env, reset, r, p, cache, base, fp, want, hull:
+                        seen.append(("6", r["id"], env.replan_hold, cache, p.R)) or ({"label": "tipped"}, None))
+    entry, prep = _entry(lab), _prep(lab)
+    out = rr.execute_case(SimpleNamespace(env=lab), _rec1(), 3, None, prep, entry, "/cache")
+    twin = sixdof.twin(sixdof.from_graspgen(entry["grasps"][3], width=0.05))
+    assert [s[:3] for s in seen] == [("30", "g0", True), ("30", "g1", True), ("6", "g3", True)] and seen[2][3] == "/cache"
+    assert seen[0][3] == BASE147 and seen[2][4] == twin.R
+    assert [r.get("run") for r in out["rows30"]] == [{"label": "placed_stable"}, {"label": "placed_stable"}, None]
+    assert [r.get("run") for r in out["rows6"]] == [{"label": "tipped"}, None] and out["exec_stop"] is None and out["exec_error"] is None
+    assert lab.replan_hold is False                                    # the executor's flag is the caller's again
+    assert rr.execute_case(SimpleNamespace(env=lab), _rec1(), 3, None, dict(prep, stop="x"), entry, "/cache")["exec_stop"] is None
+    assert rr.execute_case(SimpleNamespace(env=lab), _rec1(), 3, None, dict(prep, dropped=True), entry, "/cache")["exec_stop"] is None
+    assert "fingerprint" in rr.execute_case(SimpleNamespace(env=lab), _rec1(fingerprint="other"), 3, None, prep, entry, "/cache")["exec_stop"]
+    assert "base" in rr.execute_case(SimpleNamespace(env=lab), _rec1(), 3, None, dict(prep, base=dict(BASE147, force=1.0)), entry,
+                                     "/cache")["exec_stop"]
+    assert len(seen) == 3 and prep == _prep(lab)                       # a stopped case runs no row, the runs go into copies
+
+
+def test_a_row_that_stops_stops_its_case_and_an_exception_is_the_cases_error_and_the_prepass_record_stays_as_it_was(lab, monkeypatch):
+    seen, prep, entry = [], _prep(lab), _entry(lab)
+    monkeypatch.setattr(rr, "run_row30", lambda env, reset, r, *a:
+                        (None, "the fingerprint differs") if r["id"] == "g1" else ({"label": "placed_stable"}, None))
+    monkeypatch.setattr(rr, "run_row6", lambda *a: seen.append("6") or ({"label": "tipped"}, None))
+    out = rr.execute_case(SimpleNamespace(env=lab), _rec1(), 3, None, prep, entry, "/cache")
+    assert out["exec_stop"] == "g1: the fingerprint differs" and seen == [] and lab.replan_hold is False
+    monkeypatch.setattr(rr, "run_row30", lambda *a: ({"label": "placed_stable"}, None))
+    monkeypatch.setattr(rr, "run_row6", lambda *a: (None, "the hulls differ"))
+    assert rr.execute_case(SimpleNamespace(env=lab), _rec1(), 3, None, prep, entry, "/cache")["exec_stop"] == "g3: the hulls differ"
+    monkeypatch.setattr(rr, "run_row6", lambda *a: (_ for _ in ()).throw(RuntimeError("the sim broke")))
+    out = rr.execute_case(SimpleNamespace(env=lab), _rec1(), 3, None, prep, entry, "/cache")
+    assert out["exec_error"] == "RuntimeError: the sim broke" and out["exec_stop"] is None and lab.replan_hold is False
+    assert prep == _prep(lab)                                          # the runs go into copies of the rows

@@ -19,6 +19,8 @@ with the published planner set (ruling A) and the clearance as a flag (amendment
 
 from __future__ import annotations
 
+import math
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any
@@ -243,4 +245,156 @@ def plan_prepass(rec: dict[str, Any], cache: str, plan: Any = None) -> dict[str,
         out["plan"] = (plan or sp.plan_case)(rec["request"], cache)
     except Exception as exc:  # noqa: BLE001  a planner process that fails is this case's record, not the run's end
         out["plan_error"] = _err(exc)
+    return out
+
+
+# ------------------------------------------------------------------ the execute pass: lab only, cached plans only (G3)
+
+def straight_path(start: Any, goal: Any, hz: float, v: float) -> list[np.ndarray]:
+    """The straight joint line from ``start`` to ``goal``, past the start, in steps of at most ``v``/``hz`` rad on every
+    joint; it ends at the goal."""
+    a, b = np.asarray(start, dtype=float), np.asarray(goal, dtype=float)
+    n = max(1, int(math.ceil(float(np.max(np.abs(b - a))) / (v / hz))))
+    return [a + (b - a) * (k / n) for k in range(1, n + 1)]
+
+
+def plan_failure(sim: Any, start: Any, goal: Any, hz: float) -> dict[str, Any]:
+    """Why cuRobo's cached free move to ``goal`` failed, read with the lab's exact geometry (sixdof_plan.free_hits) on
+    the straight joint line from the start to the goal (straight_path at the arm's FREE_V, the goal included): "planner
+    spheres" when nothing touches the scene, a lower-bound test of the failures that cuRobo's sphere cover (its
+    protrusion) causes, since a blocked straight line does not prove that no path exists; else "path blocked".
+    {"reason", "hits", "first"}."""
+    from robots.mujoco_lab import sixdof_plan as sp
+
+    hits = sp.free_hits(sim, straight_path(start, goal, hz, float(sixdof._armlib(sim.arm).FREE_V)))
+    return {"reason": "path blocked" if hits else "planner spheres", "hits": len(hits), "first": hits[0] if hits else None}
+
+
+def hits_summary(hits: list[dict[str, Any]]) -> dict[str, Any]:
+    """sixdof_plan.free_hits in short: the number of hits, the first, and each robot/other pair once (sorted)."""
+    return {"n": len(hits), "first": hits[0] if hits else None, "pairs": sorted({f"{h['robot']}/{h['other']}" for h in hits})}
+
+
+def run_row30(env: Any, reset: Any, r: dict[str, Any], base: dict[str, Any], fingerprint: Any, want: str,
+              hull_sha: str | None) -> tuple[dict[str, Any] | None, str | None]:
+    """A ≤ 30° row through today's executor after its own reset (curve_sixdof.run_row at the row's Proposal), with
+    ruling A's planner set and the box contacts recorded (BoxContacts: ``box_contacts``). run_row's return."""
+    from robots.mujoco_lab import curve_graspgen as gg
+    from robots.mujoco_lab.curve_sixdof import BoxContacts, run_row
+
+    with planner_set(env, True), BoxContacts(env) as bc:
+        new, stop = run_row(env, reset, lambda e: (gg._proposal(r), None), base, fingerprint, want, hull_sha)
+    if new is not None:
+        new["box_contacts"] = bc.summary()
+    return new, stop
+
+
+def run_row6(env: Any, reset: Any, r: dict[str, Any], p: sixdof.Grasp6, cache: str, base: dict[str, Any], fingerprint: Any,
+             want: str, hull_sha: str | None) -> tuple[dict[str, Any] | None, str | None]:
+    """A 30–45° row after its own reset (the reset checks of curve_sixdof.run_row), with the hand boxes in the planner's
+    set: the world and the arm's start there, and the free move to the row's candidate from the plan cache, never
+    planned here (G3). ``free``: "miss" (PlanCacheMiss: the row stops, counted) or "failed" (PlanFailed: the row stops,
+    ``free_failure`` = plan_failure with cuRobo's status) before any motion, else "ok": ``free_hits`` (the cached
+    waypoints against the exact scene, a record) and execute6 at ``base`` on ``p`` with the box contacts recorded; a
+    G2 failure (Unreachable6) is ``unreachable`` (its check), else the outcome fields and ``sixdof`` (tilt, turn, G2).
+    Returns (the fields with the error and the seconds, None) or (None, the reason the case stops)."""
+    from robots.mujoco_lab import sixdof_plan as sp
+    from robots.mujoco_lab.curve_poseset import _err
+    from robots.mujoco_lab.curve_sixdof import BoxContacts, _checked_reset, outcome
+
+    with planner_set(env, False):
+        at_rest, stop = _checked_reset(env, reset, fingerprint, want, hull_sha)
+        if stop:
+            return None, stop
+        t0 = time.time()
+        new: dict[str, Any] = {"label": None, "artifact": False, "error": None, "free": None, "free_failure": None,
+                               "free_hits": None, "unreachable": None}
+        try:
+            hz = float(env.s["scene"].CTRL_HZ)
+            start, goal = [float(x) for x in env.sim.arm.desired()], r["candidate"]["q"]
+            try:
+                free = sp.free_from_cache(cache, sp.world_export(env.sim), start, goal, hz)
+            except sp.PlanCacheMiss:
+                new["free"] = "miss"
+            except sp.PlanFailed as exc:
+                new.update(free="failed", free_failure=dict(plan_failure(env.sim, start, goal, hz), status=str(exc)))
+            else:
+                new.update(free="ok", free_hits=hits_summary(sp.free_hits(env.sim, free)))
+                with BoxContacts(env) as bc:
+                    try:
+                        ro = sixdof.execute6(env, p, free, base["force"], base["v_lift"], base["v_transport"], base["destination"],
+                                             base["release_height"], a_transport=base["a_transport"])
+                    except sixdof.Unreachable6 as exc:
+                        new["unreachable"] = exc.record
+                    else:
+                        new.update(outcome(env, ro, at_rest), sixdof=ro.sixdof)
+                new["box_contacts"] = bc.summary()
+        except Exception as exc:  # noqa: BLE001  a simulator fault is this row's error
+            new["error"] = _err(exc)
+        new["seconds"] = round(time.time() - t0, 2)
+    return new, None
+
+
+@contextmanager
+def replan_on(env: Any) -> Iterator[Any]:
+    """The executor's re-plan at the hold on inside the block (design amendment 8, rule (f): the rerun driver sets it
+    on), the caller's value after it."""
+    old = getattr(env, "replan_hold", False)
+    env.replan_hold = True
+    try:
+        yield env
+    finally:
+        env.replan_hold = old
+
+
+def execute_case(prims: Any, rec1: dict[str, Any], seed: int, world: Any, prep: dict[str, Any], entry: dict[str, Any],
+                 cache: str) -> dict[str, Any]:
+    """The execute pass of one prepass record (lab only): nothing for a case that stopped or dropped in the prepass;
+    else the case's setup (curve_graspgen._setup), a reset with the prepass's checks (Stage 1's fingerprint, the
+    record's hulls, its base), then every row the record keeps, each after its own reset, with the executor's re-plan
+    at the hold on (replan_on): the ≤ 30° rows that either width rule keeps without the cap (kept_all, kept_all_b;
+    run_row30), then the 30–45° rows with a candidate (run_row6 on the row's pinch, or on its twin when the candidate
+    is the twin's). Each row's fields go into the row as ``run``. A failed check stops the case (``exec_stop``); an
+    exception outside a row's rollout is the case's ``exec_error``."""
+    from robots.mujoco_lab import com_gap
+    from robots.mujoco_lab import curve_graspgen as gg
+    from robots.mujoco_lab.curve_poseset import _err, commit_std_base
+    from robots.mujoco_lab.curve_sixdof import _checked_reset, _js
+
+    out = dict(prep, exec_stop=None, exec_error=None)
+    if prep.get("stop") or prep.get("dropped"):
+        return out
+    env = prims.env
+    st = gg._setup(prims, rec1, seed, world)
+    if st["stop"]:
+        return dict(out, exec_stop=st["stop"])
+    reset, want, hull = st["reset_at"](0), rec1["fingerprint"], prep["hull_sha"]
+    try:
+        with replan_on(env):
+            _, stop = _checked_reset(env, reset, com_gap.fingerprint, want, hull)
+            if stop:
+                return dict(out, exec_stop=stop)
+            base = commit_std_base(env, prep["object"], st["destination"])
+            if _js(base) != _js(prep["base"]):
+                return dict(out, exec_stop=f"the base {base} differs from the prepass's")
+            rows30 = [dict(r) for r in prep["rows30"]]
+            rows6 = [dict(r) for r in prep["rows6"]]
+            out.update(rows30=rows30, rows6=rows6)
+            for r in rows30:
+                if r["kept_all"] or r["kept_all_b"]:
+                    new, stop = run_row30(env, reset, r, base, com_gap.fingerprint, want, hull)
+                    if stop:
+                        return dict(out, exec_stop=f"{r['id']}: {stop}")
+                    r["run"] = new
+            for r in rows6:
+                if r["candidate"] is None:
+                    continue
+                p = sixdof.from_graspgen(entry["grasps"][int(r["id"][1:])], width=float(r["width"]))
+                new, stop = run_row6(env, reset, r, sixdof.twin(p) if r["candidate"]["twin"] else p, cache, base,
+                                     com_gap.fingerprint, want, hull)
+                if stop:
+                    return dict(out, exec_stop=f"{r['id']}: {stop}")
+                r["run"] = new
+    except Exception as exc:  # noqa: BLE001  a case that raises outside a row's rollout is this case's error
+        out["exec_error"] = _err(exc)
     return out
