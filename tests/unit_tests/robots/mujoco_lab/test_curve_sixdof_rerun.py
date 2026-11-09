@@ -15,6 +15,7 @@
 """The level-A rerun driver (design 2026-11-08-sixdof-rerun-design.md, unit (f)): the funnel of the 30–45° rows. The
 tests target the contacts sim (armsim ee882f9b)."""
 
+import json
 import math
 import os
 from types import SimpleNamespace
@@ -390,3 +391,237 @@ def test_a_row_that_stops_stops_its_case_and_an_exception_is_the_cases_error_and
     out = rr.execute_case(SimpleNamespace(env=lab), _rec1(), 3, None, prep, entry, "/cache")
     assert out["exec_error"] == "RuntimeError: the sim broke" and out["exec_stop"] is None and lab.replan_hold is False
     assert prep == _prep(lab)                                          # the runs go into copies of the rows
+
+
+# ------------------------------------------------------------------ step 6: G3's replay, the unit's counts, the stop rule, the smoke report
+
+def _stub_rows(monkeypatch, differ=()):
+    """run_row30 / run_row6 stubs: each resets (the fake lab records the seed) and returns fixed fields; a row in
+    ``differ`` returns another label at its second run. Returns the row ids in call order."""
+    seen = []
+
+    def fields(r, label):
+        seen.append(r["id"])
+        return {"label": "dropped_high" if r["id"] in differ and seen.count(r["id"]) == 2 else label, "error": None, "seconds": 1.0}
+
+    monkeypatch.setattr(rr, "run_row30", lambda env, reset, r, *a: (reset(), (fields(r, "placed_stable"), None))[1])
+    monkeypatch.setattr(rr, "run_row6", lambda env, reset, r, *a: (reset(), (dict(fields(r, "tipped"), free="ok", unreachable=None), None))[1])
+    return seen
+
+
+def test_the_replay_runs_every_row_that_ran_again_at_the_second_seed_in_reverse_and_lists_what_changed(lab, monkeypatch):
+    seen = _stub_rows(monkeypatch)
+    out = rr.execute_case(SimpleNamespace(env=lab), _rec1(), 3, None, _prep(lab), _entry(lab), "/cache", replay=True)
+    assert seen == ["g0", "g1", "g3", "g3", "g1", "g0"] and lab.resets == [3003] * 4 + [777] * 3
+    assert out["replay"] == {"rows": 3, "mismatches": [], "stop": None} and out["exec_stop"] is None and out["replay_seconds"] >= 0
+    lab.resets.clear()
+    _stub_rows(monkeypatch, differ=("g1",))
+    out = rr.execute_case(SimpleNamespace(env=lab), _rec1(), 3, None, _prep(lab), _entry(lab), "/cache", replay=True)
+    assert [m["id"] for m in out["replay"]["mismatches"]] == ["g1"] and out["exec_stop"] == "replay: 1 rows differ at the second seed (G3)"
+    assert out["rows30"][1]["run"]["label"] == "placed_stable" and lab.replan_hold is False   # the first pass's fields stay
+    calls = []
+    monkeypatch.setattr(rr, "run_row6", lambda env, reset, r, *a:
+                        (calls.append(r["id"]), ({"label": "tipped", "free": "ok"}, None) if len(calls) == 1 else (None, "the hulls differ"))[1])
+    out = rr.execute_case(SimpleNamespace(env=lab), _rec1(), 3, None, _prep(lab), _entry(lab), "/cache", replay=True)
+    assert out["exec_stop"] == "replay: g3: the hulls differ" and out["replay"]["stop"] == "g3: the hulls differ"
+    assert rr.execute_case(SimpleNamespace(env=lab), _rec1(), 3, None, _prep(lab), _entry(lab), "/cache")["replay"] is None
+
+
+def _done_records():
+    """Three executed records of real shape: one with every kind of row (its replay included), one stopped in the
+    prepass, one dropped with an error."""
+    c30 = dict({k: 2 for k in gg.FUNNEL + gg.FUNNEL_B}, clearance_fail=1)
+    ok = {"object": "ycb__bowl", "idx": 0, "skipped": None, "dropped": False, "stop": None, "error": None, "exec_stop": None,
+          "exec_error": None, "seconds": 30.0, "exec_seconds": 50.0, "replay_seconds": 20.0, "counts30": c30,
+          "counts6": {"generated": 10, "level_a": 5, "chosen": 4, "disagree": 1},
+          "rows30": [{"id": "g0", "kept_all": True, "kept_all_b": False, "clearance": {"first": "palm/object", "pairs": ["palm/object"]},
+                      "run": {"label": "placed_stable", "error": None}},
+                     {"id": "g1", "kept_all": False, "kept_all_b": True, "clearance": None, "run": {"label": "tipped", "error": "RuntimeError: x"}},
+                     {"id": "g2", "kept_all": False, "kept_all_b": False, "clearance": None}],
+          "rows6": [{"id": "g3", "disagree": None, "candidate": {"index": 0}, "run": {"free": "ok", "unreachable": None, "error": None, "label": "tipped"}},
+                    {"id": "g4", "disagree": None, "candidate": {"index": 0},
+                     "run": {"free": "ok", "unreachable": {"check": "pregrasp", "ok": False}, "error": None, "label": None}},
+                    {"id": "g5", "disagree": None, "candidate": {"index": 1},
+                     "run": {"free": "failed", "free_failure": {"reason": "planner spheres"}, "error": None, "label": None}},
+                    {"id": "g6", "disagree": None, "candidate": {"index": 0}, "run": {"free": "miss", "error": None, "label": None}},
+                    {"id": "g7", "disagree": "clearance fail, reach6 pass", "candidate": None}],
+          "replay": {"rows": 5, "mismatches": [{"id": "g3"}], "stop": None}}
+    stop = dict(ok, idx=1, stop="the reset's fingerprint differs from Stage 1's", counts30=None, counts6=None, rows30=[], rows6=[],
+                replay=None, exec_seconds=0.0, replay_seconds=None)
+    return [ok, stop, dict(stop, idx=2, stop=None, dropped=True, error="ValueError: y")]
+
+
+def test_the_units_counts_hold_the_funnels_the_free_moves_g2_and_g3_and_no_label():
+    m = rr.exec_metrics(_done_records())
+    assert m == {"cases": 3, "skipped": 0, "dropped": 1, "stops": 1, "errors": 1,
+                 "funnel30": dict({k: 2 for k in gg.FUNNEL + gg.FUNNEL_B}, clearance_fail=1),
+                 "funnel6": {"generated": 10, "level_a": 5, "chosen": 4, "disagree": 1},
+                 "rows30_run": 2, "rows30_flagged_run": 1, "rows30_errors": 1,
+                 "path_passed": 4, "free": {"ok": 2, "miss": 1, "failed": 1}, "failed_by_reason": {"planner spheres": 1},
+                 "g2_fail": 1, "g2_by_check": {"pregrasp": 1}, "rows6_errors": 0,
+                 "replay_rows": 5, "replay_mismatches": 1, "case_seconds": 140.0, "case_seconds_max": 80.0}
+    assert "placed_stable" not in json.dumps(m) and "tipped" not in json.dumps(m)
+    late = rr.exec_metrics([dict(_done_records()[0], exec_stop="g3: x", exec_error="RuntimeError: z",
+                                 rows30=[{"id": "g9", "kept_all": False, "kept_all_b": False, "clearance": {"first": "palm/object"}}])])
+    assert (late["stops"], late["errors"], late["rows30_run"], late["rows30_flagged_run"]) == (1, 1, 0, 0)   # an execute-pass stop counts
+
+
+def test_the_stop_rule_fires_above_ten_percent_of_tracking_or_plan_failures_and_at_any_miss_mismatch_stop_or_error():
+    base = {"stops": 0, "errors": 0, "path_passed": 20, "free": {"ok": 10, "miss": 0, "failed": 2}, "g2_fail": 1, "replay_mismatches": 0}
+    assert rr.stop_rule(base) == []                                    # 1 of 10 and 2 of 20 are 10 %, not more
+    assert rr.stop_rule(dict(base, g2_fail=2)) == ["tracking (G2) fails on 2 of 10 planned rows (more than 10 %)"]
+    assert rr.stop_rule(dict(base, free={"ok": 10, "miss": 0, "failed": 3})) == \
+        ["cuRobo fails on 3 of 20 rows that passed the lab's path check (more than 10 %)"]
+    assert rr.stop_rule(dict(base, free={"ok": 10, "miss": 1, "failed": 2}, replay_mismatches=2, stops=1, errors=1)) == \
+        ["G3: 1 plan-cache misses (0 required)", "G3: 2 rows differ at the second seed (0 required)", "1 case stops and 1 case errors"]
+    assert rr.stop_rule(dict(base, path_passed=0, free={"ok": 0, "miss": 0, "failed": 0}, g2_fail=0)) == []
+    assert rr.stop_rule(dict(base, errors=1)) == ["0 case stops and 1 case errors"]
+
+
+def test_the_smoke_report_projects_the_full_run_from_each_objects_mean_times_and_holds_no_label():
+    plans = [{"object": "ycb__bowl", "idx": 0, "seconds": 40.0, "plan": {"goals": 4, "planned": 4, "cached": 0}, "plan_error": None},
+             {"object": "ycb__bowl", "idx": 1, "seconds": 0.0, "plan": None, "plan_error": None},
+             {"object": "ycb__bowl", "idx": 2, "seconds": 0.5, "plan": None, "plan_error": None}]
+    sm = rr.smoke_report(_done_records(), plans, {"ycb__bowl": 11, "ycb__pitcher": 11})
+    assert sm["projection_cpu_h"] == pytest.approx(((30 + 30) + 30 + 30) / 3 * 22 / 3600)   # first pass only; no smoke case: the largest mean
+    assert sm["projection_gpu_h"] == pytest.approx((40.0 + 0.0 + 0.5) / 3 * 22 / 3600)
+    assert sm["counts"] == rr.exec_metrics(_done_records()) and sm["stop"] == rr.stop_rule(sm["counts"]) and sm["stop"]
+    assert sm["disagree"] == {"ycb__bowl": 1} and sm["funnel6"]["ycb__bowl"]["level_a"] == 5 and sm["funnel30"]["all"]["kept"] == 2
+    assert sm["plans"] == {"cases": 3, "with_plan": 1, "goals": 4, "planned": 4, "cached": 0, "errors": 0}
+    bad = rr.smoke_report(_done_records(), [dict(plans[0], plan=None, plan_error="RuntimeError: cuRobo exited 1")], {"ycb__bowl": 11})
+    assert bad["plans"]["errors"] == 1 and bad["plans"]["with_plan"] == 0
+    text = json.dumps(sm) + rr.smoke_markdown(sm)
+    assert "placed_stable" not in text and "tipped" not in text and '"label"' not in text and "stop rule" in text
+
+
+# ------------------------------------------------------------------ step 6: the commands (the heavy parts stubbed)
+
+@pytest.fixture
+def quiet(monkeypatch):
+    """The commands' outside calls stubbed: the code revision, the bundle's generator and wandb."""
+    from robots.mujoco_lab import estimation_check, identify_fit, tracking
+
+    monkeypatch.setattr(estimation_check, "_revision", lambda: {"code_revision": "r"})
+    monkeypatch.setattr(identify_fit, "require_bundle_generator", lambda b: "v11")
+    monkeypatch.setattr(tracking, "log_run", lambda name, config, metrics: f"wandb:{name}")
+
+
+def _stage1(tmp_path, monkeypatch, objects=("ycb__bowl", "ycb__pitcher")):
+    """A Stage 1 dir and its records (3 cases per object, fold 0), load_stage1 stubbed to return them."""
+    from robots.mujoco_lab import curve
+
+    d = tmp_path / "stage1"
+    d.mkdir()
+    (d / "records.jsonl").write_text("{}\n")
+    recs1 = [_rec1(object=o, idx=i) for o in objects for i in (0, 1, 2)]
+    monkeypatch.setattr(curve, "load_stage1", lambda dirs: (recs1, {"bundle": "/b", "seed": 3, "code_revision": "c"}))
+    return str(d), recs1
+
+
+def _finished_dir(path, name, lines, config=None):
+    os.makedirs(path, exist_ok=True)
+    with open(os.path.join(path, name), "w") as f:
+        f.writelines(json.dumps(x) + "\n" for x in lines)
+    json.dump(config or {}, open(os.path.join(path, "run_config.json"), "w"))
+    json.dump({}, open(os.path.join(path, "run_metrics.json"), "w"))
+    return str(path)
+
+
+def test_the_prepass_command_runs_the_chosen_cases_on_the_pilots_grasps_and_refuses_other_grasps_or_an_existing_out(tmp_path, monkeypatch, quiet):
+    from robots.mujoco_lab.curve import _sha
+
+    stage, _ = _stage1(tmp_path, monkeypatch)
+    g = tmp_path / "grasps"
+    g.mkdir()
+    (g / "index.jsonl").write_text("{}\n")
+    pilot = {"grasps_index_sha256": _sha(str(g / "index.jsonl")), "bundle": "/b", "seed": 3,
+             "stage1_records_sha256": {stage: _sha(os.path.join(stage, "records.jsonl"))}}
+    _finished_dir(tmp_path / "pilot", "records_test.jsonl", [], pilot)
+    jobs = []
+    monkeypatch.setattr(rr, "prepass_object", lambda job: jobs.append(job) or
+                        {"records": [dict(r, seconds=1.0, stop=None, request={"goals": [1, 2]} if r["idx"] == 0 else None) for r in job[1]],
+                         "stop": None})
+    args = ["prepass", "--stage1", stage, "--grasps", str(g), "--pilot", str(tmp_path / "pilot"), "--objects", "ycb__bowl,ycb__pitcher",
+            "--sides", "test", "--per-object", "2", "--out", str(tmp_path / "out")]
+    rr.main(args)
+    recs = [json.loads(line) for line in open(tmp_path / "out" / "prepass_records.jsonl")]
+    assert [(r["object"], r["idx"]) for r in recs] == [("ycb__bowl", 0), ("ycb__bowl", 1), ("ycb__pitcher", 0), ("ycb__pitcher", 1)]
+    assert [j[0] for j in jobs] == ["ycb__bowl", "ycb__pitcher"] and jobs[0][2] == {"bundle": "/b/folds/fold_0", "seed": 3, "grasps": str(g)}
+    m = json.load(open(tmp_path / "out" / "run_metrics.json"))
+    assert m["cases"] == 4 and m["requests"] == 2 and m["goals"] == 4 and m["stop"] is None and m["wandb"] == "wandb:sixdof-rerun-prepass"
+    assert json.load(open(tmp_path / "out" / "run_config.json"))["cases"] == [["ycb__bowl", 0], ["ycb__bowl", 1], ["ycb__pitcher", 0], ["ycb__pitcher", 1]]
+    with pytest.raises(SystemExit, match="exists"):
+        rr.main(args)
+    json.dump(dict(pilot, grasps_index_sha256="0" * 64), open(tmp_path / "pilot" / "run_config.json", "w"))
+    with pytest.raises(SystemExit, match="grasps_index_sha256"):
+        rr.main(args[:-1] + [str(tmp_path / "out2")])
+    json.dump(pilot, open(tmp_path / "pilot" / "run_config.json", "w"))
+    monkeypatch.setattr(rr, "prepass_object", lambda job: {"records": [dict(job[1][0], stop="x")], "stop": "ycb__bowl 0: x"})
+    with pytest.raises(SystemExit) as e:
+        rr.main(args[:-1] + [str(tmp_path / "out3")])
+    assert e.value.code == 3 and json.load(open(tmp_path / "out3" / "run_metrics.json"))["stop"] == "ycb__bowl 0: x"
+
+
+def test_the_plan_command_plans_each_request_in_turn_and_exits_3_when_a_planner_process_fails(tmp_path, monkeypatch, quiet):
+    recs = [{"object": "ycb__bowl", "idx": 0, "stop": None, "dropped": False, "request": {"case": ["ycb__bowl", 0]}},
+            {"object": "ycb__bowl", "idx": 1, "stop": None, "dropped": False, "request": None},
+            {"object": "ycb__bowl", "idx": 2, "stop": "x", "dropped": False, "request": {"case": ["ycb__bowl", 2]}}]
+    pre = _finished_dir(tmp_path / "pre", "prepass_records.jsonl", recs)
+    calls = []
+    monkeypatch.setattr(sp, "plan_case", lambda req, cache: calls.append((req["case"], cache)) or {"goals": 2, "planned": 2, "cached": 0})
+    rr.main(["plan", "--prepass", pre, "--cache", str(tmp_path / "cache"), "--out", str(tmp_path / "out")])
+    lines = [json.loads(line) for line in open(tmp_path / "out" / "plan_records.jsonl")]
+    assert calls == [(["ycb__bowl", 0], str(tmp_path / "cache"))] and [x["idx"] for x in lines] == [0, 1, 2]
+    assert lines[0]["plan"] == {"goals": 2, "planned": 2, "cached": 0} and lines[1]["plan"] is None and set(lines[0]) == {
+        "object", "idx", "plan", "plan_error", "seconds"}
+    m = json.load(open(tmp_path / "out" / "run_metrics.json"))
+    assert (m["cases"], m["with_plan"], m["goals"], m["planned"], m["errors"]) == (3, 1, 2, 2, 0) and m["wandb"] == "wandb:sixdof-rerun-plan"
+    monkeypatch.setattr(sp, "plan_case", lambda req, cache: (_ for _ in ()).throw(RuntimeError("cuRobo exited 1")))
+    with pytest.raises(SystemExit) as e:
+        rr.main(["plan", "--prepass", pre, "--cache", str(tmp_path / "cache"), "--out", str(tmp_path / "out2")])
+    assert e.value.code == 3
+    os.remove(os.path.join(pre, "run_metrics.json"))
+    with pytest.raises(SystemExit, match="not finished"):
+        rr.main(["plan", "--prepass", pre, "--cache", str(tmp_path / "cache"), "--out", str(tmp_path / "out3")])
+
+
+def test_the_execute_command_runs_each_prepass_record_with_its_stage1_case_after_a_finished_plan_step(tmp_path, monkeypatch, quiet):
+    from robots.mujoco_lab.curve import _sha
+
+    stage, recs1 = _stage1(tmp_path, monkeypatch)
+    preps = [{"object": o, "idx": i, "stop": None, "dropped": False, "request": {"goals": []} if i == 0 else None, "seconds": 1.0}
+             for o in ("ycb__bowl", "ycb__pitcher") for i in (0, 1)]
+    cfg = {"stage1_records_sha256": {stage: _sha(os.path.join(stage, "records.jsonl"))}, "bundle": "/b", "seed": 3, "grasps": "/g"}
+    pre = _finished_dir(tmp_path / "pre", "prepass_records.jsonl", preps, cfg)
+    plan = _finished_dir(tmp_path / "plan", "plan_records.jsonl", [{"object": p["object"], "idx": p["idx"], "plan": None, "plan_error": None,
+                                                                    "seconds": 0.0} for p in preps])
+    jobs = []
+    monkeypatch.setattr(rr, "execute_object", lambda job: jobs.append(job) or
+                        {"records": [dict(prep, exec_stop=None, exec_error=None, replay=None, exec_seconds=2.0) for _, prep in job[1]], "stop": None})
+    args = ["execute", "--prepass", pre, "--plan", plan, "--cache", str(tmp_path / "cache"), "--replay", "--out", str(tmp_path / "out")]
+    rr.main(args)
+    assert [j[0] for j in jobs] == ["ycb__bowl", "ycb__pitcher"] and [(r1["idx"], p["idx"]) for r1, p in jobs[0][1]] == [(0, 0), (1, 1)]
+    assert jobs[0][1][0][0] is recs1[0] and jobs[1][2] == {"bundle": "/b/folds/fold_0", "seed": 3, "grasps": "/g",
+                                                           "cache": str(tmp_path / "cache"), "replay": True}
+    assert len(open(tmp_path / "out" / "exec_records.jsonl").readlines()) == 4
+    m = json.load(open(tmp_path / "out" / "run_metrics.json"))
+    assert m["cases"] == 4 and m["stop"] is None and m["wandb"] == "wandb:sixdof-rerun-execute"
+    _finished_dir(tmp_path / "plan2", "plan_records.jsonl", [])
+    with pytest.raises(SystemExit, match="no plan record"):
+        rr.main(args[:4] + [str(tmp_path / "plan2")] + args[5:-1] + [str(tmp_path / "out2")])
+    os.remove(os.path.join(plan, "run_metrics.json"))
+    with pytest.raises(SystemExit, match="not finished"):
+        rr.main(args[:-1] + [str(tmp_path / "out3")])
+
+
+def test_the_smoke_command_writes_the_report_and_exits_3_when_the_stop_rule_fires(tmp_path, monkeypatch, quiet):
+    ex = _finished_dir(tmp_path / "ex", "exec_records.jsonl", _done_records())
+    plan = _finished_dir(tmp_path / "plan", "plan_records.jsonl", [{"object": "ycb__bowl", "idx": 0, "plan": None, "plan_error": None,
+                                                                   "seconds": 1.0}])
+    full = tmp_path / "cases.txt"
+    full.write_text(",".join(f"ycb__bowl:{i}" for i in range(11)) + "\n")
+    with pytest.raises(SystemExit) as e:
+        rr.main(["smoke-report", "--execute", ex, "--plan", plan, "--full-cases", str(full), "--out", str(tmp_path / "out")])
+    sm = json.load(open(tmp_path / "out" / "smoke_summary.json"))
+    assert e.value.code == 3 and sm["stop"] and sm["full_cases"] == {"ycb__bowl": 11} and sm["wandb"] == "wandb:sixdof-rerun-smoke"
+    assert (tmp_path / "out" / "smoke_summary.md").read_text() == rr.smoke_markdown(sm)
