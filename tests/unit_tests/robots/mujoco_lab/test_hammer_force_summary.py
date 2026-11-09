@@ -30,9 +30,9 @@ FORCE = {"f_std": 10.0, "2f_std": 20.0, "40N": 40.0, "70N": 70.0}
 
 
 def _row(pinch, level, label="not_lifted", feasible=True, deep=1.0, rev=0, at_rest=True, jam=False, error=None, damage=None,
-         hold=None, close=None, qpos="q", trace="t"):
-    r = {"id": hf.row_id(pinch, level), "pinch": pinch, "level": level, "force": FORCE[level], "feasible": feasible,
-         "why": None if feasible else "unreachable: collision (approach)"}
+         hold=None, close=None, qpos="q", trace="t", force=None):
+    r = {"id": hf.row_id(pinch, level), "pinch": pinch, "level": level, "force": FORCE[level] if force is None else force,
+         "feasible": feasible, "why": None if feasible else "unreachable: collision (approach)"}
     if feasible:
         r.update(label=None if error else label, artifact=rev >= 5 or deep > 3.0 or at_rest is False or jam, error=error, damage=damage,
                  seconds=1.0, qpos_sha=qpos, trace_sha=trace,
@@ -198,13 +198,24 @@ def test_reading_7_pairs_the_best_cell_with_the_corrected_ceiling_and_stage_2c()
     assert hs.reading7(val, "across_com@70N")["vs_r4"]["n"] == 0                  # Stage 2c holds test cases only
 
 
-def test_reading_4_breaks_down_a_cell_over_every_case_of_the_side_and_reading_6_counts_damage():
+def test_reading_4_breaks_down_a_cell_over_the_given_cases_and_reading_6_counts_damage():
     vs = [_view(_case(idx=0, labels={"across_com@70N": "tipped"})), _view(_case(idx=1, rows={"across_com@70N": {"rev": 7}})),
           _view(_case(idx=2, rows={"across_com@70N": {"feasible": False}})), _view(_case(idx=3, labels={"across_com@70N": "crushed"}))]
     b = hs.breakdown(vs, "across_com@70N")
     assert b["tipped"] == 1 and b["artifact"] == 1 and b["infeasible"] == 1 and b["damage"] == 1 and sum(b.values()) == 4
     assert list(b) == list(hs.STATES)
-    assert hs.damage_counts(vs)["across_com@70N"] == 1 and hs.damage_counts(vs)[hf.CONTROL] == 0
+    d = hs.damage_counts(vs)
+    assert d["across_com@70N"] == {"rows": 1, "artifact_rows": 0} and d[hf.CONTROL] == {"rows": 0, "artifact_rows": 0}
+
+
+def test_a_damage_label_counts_in_reading_6_on_any_row_also_on_an_artifact_row():
+    v = _view(_case(rows={"across_com@70N": {"label": "crushed", "rev": 9}, "across_0.5@70N": {"label": "crushed"}}))
+    c = v["cells"]
+    assert c["across_com@70N"]["state"] == "artifact" and c["across_com@70N"]["damage_label"] and c["across_0.5@70N"]["damage_label"]
+    assert not c[hf.CONTROL]["damage_label"]
+    d = hs.damage_counts([v])
+    assert d["across_com@70N"] == {"rows": 1, "artifact_rows": 1} and d["across_0.5@70N"] == {"rows": 1, "artifact_rows": 0}
+    assert hs.per_cell([v])["across_com@70N"]["damage"] == 1 and hs.per_cell([v])["across_0.5@70N"]["damage"] == 1
 
 
 def test_the_per_cell_table_counts_infeasible_artifacts_errors_penetration_missed_and_drops():
@@ -299,6 +310,57 @@ def test_a_monitor_row_with_another_hash_stops_the_summary():
     assert any("monitor" in p and "missing" in p for p in hs.post_gates(recs, mon, cases)["problems"])
 
 
+def _probs(recs, mon, cases, **kw):
+    return hs.post_gates(recs, mon, cases, **kw)["problems"]
+
+
+def test_the_monitor_join_needs_each_case_and_the_eight_rows_once_with_the_runs_feasibility():
+    recs, mon, cases = _set()
+    k0 = (recs[0]["object"], 0)
+    rows = mon[k0]["rows"]
+    rows.insert(2, dict(rows[2], trace_sha="other"))                 # a doubled row: the first copy differs, the last matches
+    assert any("monitor pass" in p and "rows" in p for p in _probs(recs, mon, cases))
+    recs, mon, cases = _set()
+    recs[0]["rows"][4] = _row("across_com", "f_std", feasible=False)
+    mon[k0] = _mon(recs[0])
+    assert _probs(recs, mon, cases) == []
+    mon[k0]["rows"] = [r for r in mon[k0]["rows"] if r["id"] != "across_com@f_std"]   # the infeasible row is missing
+    assert any("monitor pass" in p and "rows" in p for p in _probs(recs, mon, cases))
+    recs, mon, cases = _set()
+    mon[k0]["rows"][4]["feasible"] = False
+    assert any("feasib" in p for p in _probs(recs, mon, cases))
+    recs, mon, cases = _set()
+    del mon[(recs[-1]["object"], recs[-1]["idx"])]                     # the skipped case
+    assert any("missing from the monitor pass" in p for p in _probs(recs, mon, cases))
+    recs, mon, cases = _set()
+    mon[k0]["error"] = "RuntimeError: x"
+    assert any("monitor pass" in p and "error" in p for p in _probs(recs, mon, cases))
+
+
+def test_a_monitor_row_with_an_error_or_without_its_close_record_stops_even_with_equal_hashes():
+    recs, mon, cases = _set()
+    k0 = (recs[0]["object"], 0)
+    mon[k0]["rows"][1]["error"] = "RuntimeError: x"
+    assert any("monitor pass" in p and "error" in p for p in _probs(recs, mon, cases))
+    recs, mon, cases = _set()
+    del mon[k0]["rows"][1]["close"]
+    assert any("close" in p for p in _probs(recs, mon, cases))
+    recs, mon, cases = _set()
+    mon[k0]["rows"][1]["close"] = dict(mon[k0]["rows"][1]["close"], close_shift_mm=None)
+    assert any("close" in p for p in _probs(recs, mon, cases))
+
+
+def test_g0_on_the_hashes_alone_for_the_gates_that_read_no_label():
+    recs, mon, cases = _set()
+    for r in recs:
+        for x in r["rows"]:
+            x.pop("label", None)
+    assert _probs(recs, mon, cases, g0_fields=hs.HASH_FIELDS) == []
+    assert any("G0" in p for p in _probs(recs, mon, cases))
+    cases[1]["ref"] = dict(cases[1]["ref"], qpos_sha="other")
+    assert any("G0" in p and "qpos_sha" in p for p in _probs(recs, mon, cases, g0_fields=hs.HASH_FIELDS))
+
+
 def test_the_squeeze_gate_reads_the_hold_at_70_n_states_n_and_falls_back_to_the_close():
     recs = [_case(idx=i, rows={"across_com@70N": {"hold": 68.0}, "across_0.5@70N": {"hold": 69.0}}) for i in range(6)]
     g = hs.squeeze_gate(recs)
@@ -336,12 +398,47 @@ def test_the_report_has_the_headline_the_sensitivity_the_validation_and_the_expl
     assert rep["lines"]["test_penetration_dropped"]["n"] == 6 and rep["lines"]["pooled"]["n"] == 12
     assert rep["lines"]["pooled"]["exploratory"] is True and rep["unpaired"] is None
     assert rep["squeeze"]["gate"]["ok"] and set(rep["wedge"]) == {"test", "validation"} and set(rep["close"]) == {"test", "validation"}
-    assert "r1_missed" in t and rep["r4"]["test"]["control"]["not_lifted"] == 8
+    assert "r1_missed" in t and t["r4"]["control"]["not_lifted"] == 8
 
 
 def test_more_than_five_test_drops_add_the_unpaired_lines():
     rep = _report(n_test=10, drop_test=6)
     assert rep["lines"]["test"]["n"] == 4 and rep["unpaired"] is not None and rep["unpaired"][hf.CONTROL]["placed"]["n"] == 4
+
+
+def test_reading_4_counts_the_kept_cases_of_each_line_and_the_cases_before_the_drop_apart():
+    rep = _report(n_test=10, drop_test=3)
+    b = rep["lines"]["test"]["r4"]["control"]
+    assert sum(b.values()) == 7 and b["artifact"] == 0
+    d = rep["r4_all"]["test"]["control"]
+    assert sum(d.values()) == 10 and d["artifact"] == 3 and set(rep["r4_all"]) == {"test", "validation"}
+
+
+def test_the_penetration_sensitivity_line_carries_every_reading_and_the_markdown_shows_each():
+    rep = _report()
+    for ln in hs.LINES:
+        assert {"r1", "r1_missed", "r2", "r3", "r4", "r5", "r6", "r7"} <= set(rep["lines"][ln]), ln
+    s = rep["lines"]["test_penetration_dropped"]
+    assert s["r5"]["70N"]["hold_n"] == 2 * s["n"] and s["r6"]["across_com@70N"] == {"rows": 0, "artifact_rows": 0}
+    md = hs.markdown(rep)
+    for h in ("## Reading 1", "## Reading 2", "## Reading 3", "## Reading 4", "## Reading 5", "## Reading 6", "## Reading 7"):
+        sec = md.split(h)[1].split("\n## ")[0]
+        assert hs.LINE_NAMES["test_penetration_dropped"] in sec, h
+
+
+def test_the_figure_places_each_band_at_the_median_command_of_its_own_test_cases():
+    recs, mon, cases = [], {}, []
+    for i, (side, mass, f) in enumerate([("test", 0.5, 10.0), ("test", 0.6, 10.0), ("test", 1.5, 12.0), ("test", 1.8, 12.0),
+                                         ("validation", 0.5, 13.5), ("validation", 0.6, 13.5), ("validation", 0.7, 13.5)]):
+        r = _case(obj=hf.HAMMERS[side][0], idx=i, side=side, mass=mass,
+                  rows={hf.row_id(p, lv): {"force": f * (2 if lv == "2f_std" else 1)} for p in hf.PINCHES for lv in ("f_std", "2f_std")})
+        recs.append(r)
+        mon[(r["object"], i)] = _mon(r)
+        cases.append(_entry(r))
+    rep = hs.build(recs, mon, cases, pre={})
+    r3 = rep["lines"]["test"]["r3"]
+    assert r3["light"]["force"] == {"f_std": 10.0, "2f_std": 20.0, "40N": 40.0, "70N": 70.0}
+    assert r3["heavy"]["force"]["f_std"] == 12.0 and r3["heavy"]["force"]["2f_std"] == 24.0
 
 
 def test_the_markdown_states_the_lines_the_selection_and_the_independence_note():
@@ -371,36 +468,118 @@ def _write_run(d, recs, cfg, metrics=None):
     open(os.path.join(d, "run.exit"), "w").write("EXIT 0\n")
 
 
-def _fixture(tmp_path, n_test=12, bad_hold=False):
-    recs, cases = [], []
-    for i in range(n_test + 4):
-        side = "test" if i < n_test else "validation"
-        hold = 50.0 if bad_hold else 69.0
-        r = _case(idx=i, side=side, rows={"across_com@70N": {"hold": hold}, "across_0.5@70N": {"hold": hold}})
-        recs.append(r)
-        cases.append(_entry(r))
+def _first_two(recs):
+    by = {}
+    for r in recs:
+        by.setdefault(r["object"], []).append(r["idx"])
+    return {(o, i) for o, ix in by.items() for i in sorted(ix)[:2]}
+
+
+def _fixture(tmp_path, monkeypatch, n_test=12, n_val=4, bad_hold=False):
+    """A run, a close monitor pass and a smoke on a synthetic cohort: the real objects of each side, idx counting up per
+    object, the approved skipped case; the cohort sizes and the summary's own code are patched to it."""
+    recs = []
+    for side, n in (("test", n_test), ("validation", n_val)):
+        objs = hf.HAMMERS[side]
+        for i in range(n):
+            hold = 50.0 if bad_hold else 69.0
+            recs.append(_case(obj=objs[i % len(objs)], idx=i // len(objs), side=side,
+                              rows={"across_com@70N": {"hold": hold}, "across_0.5@70N": {"hold": hold}}))
+    (so, si), = hs.SKIPPED
+    sk = _case(obj=so, idx=si, side="validation", skipped="stage1 artifact", g0=None)
+    sk["rows"], sk["sim_truth"] = [], None
+    recs.append(sk)
+    monkeypatch.setattr(hs, "COHORT", {"test": n_test, "validation": n_val + 1})
+    monkeypatch.setattr(hs, "_code", lambda: {"code_revision": "s" * 40, "dirty": False})
+    cases = [_entry(r) for r in recs]
     cf = tmp_path / "cases.json"
     cf.write_text(json.dumps({"cases": cases}))
     sha = hashlib.sha256(cf.read_bytes()).hexdigest()
     keys = [[r["object"], r["idx"]] for r in recs]
     base = {"replan_hold": True, "sim": hf.CONTACTS_SIM, "cases_sha256": sha, "dirty": False, "code_revision": "c" * 40, "keys": keys}
-    _write_run(str(tmp_path / "run" / "unit_0"), recs, dict(base, close_monitor=False))
+    _write_run(str(tmp_path / "run" / "unit_0"), recs, dict(base, close_monitor=False, replay=False))
     _write_run(str(tmp_path / "mon" / "unit_0"), [hf.monitor_record(dict(r, rows=[dict(x, close={"close_shift_mm": 1.0, "close_turn_deg": 0.1,
                "lift_end_turn_deg": None, "lift_end_pads": False}) for x in r["rows"]])) for r in recs],
                dict(base, close_monitor=True, code_revision="d" * 40))
     sm = tmp_path / "smoke"
-    _write_run(str(sm / "unit_0"), recs[:2], dict(base, close_monitor=False))
+    two = _first_two(recs)
+    srecs = [r for r in recs if (r["object"], r["idx"]) in two]
+    ssim = [r for r in srecs if not r["skipped"]]
+    nrows = sum("seconds" in x for r in ssim for x in r["rows"])
+    _write_run(str(sm / "unit_0"), srecs, dict(base, close_monitor=False, replay=True, keys=[[o, i] for o, i in sorted(two)]))
     os.makedirs(sm / "report")
     (sm / "report" / "run.exit").write_text("EXIT 0\n")
-    (sm / "report" / "smoke_summary.json").write_text(json.dumps({"runs": str(sm / "unit_0"), "g0": {"compared": 2, "mismatches": 0},
-                                                                  "g1": {"label_mismatches": 0, "other_mismatches": 0},
-                                                                  "projection_cpu_h": 0.2}))
+    (sm / "report" / "smoke_summary.json").write_text(json.dumps({
+        "runs": str(sm / "unit_0"), "cases": len(srecs), "skipped": len(srecs) - len(ssim), "rows_simulated": nrows,
+        "g0": {"compared": len(ssim), "mismatches": 0}, "g1": {"cases": len(ssim), "rows": nrows, "label_mismatches": 0, "other_mismatches": 0},
+        "projection_cpu_h": 0.2}))
     return SimpleNamespace(runs=str(tmp_path / "run" / "unit_0"), monitor=str(tmp_path / "mon" / "unit_0"), cases_file=str(cf),
                            smoke=str(sm / "report"), out=str(tmp_path / "out"))
 
 
+def test_the_cohort_is_the_approved_one():
+    assert hs.COHORT == {"test": 44, "validation": 55} and hs.SKIPPED == {("handal__hammer_3", 2)}
+
+
+def test_the_cases_file_must_hold_the_approved_cohort(monkeypatch):
+    monkeypatch.setattr(hs, "COHORT", {"test": 4, "validation": 6})
+    cases = [{"object": o, "idx": 0, "side": s, "skipped": None} for s, objs in hf.HAMMERS.items() for o in objs]
+    cases.append({"object": "handal__hammer_3", "idx": 2, "side": "validation", "skipped": "stage1 artifact"})
+    assert hs.check_cohort(cases) == []
+    assert any("twice" in p for p in hs.check_cohort(cases + [cases[0]]))
+    assert any("side" in p for p in hs.check_cohort([dict(cases[0], side="validation")] + cases[1:]))
+    assert any("cases per side" in p for p in hs.check_cohort(cases[1:]))
+    assert any("skipped" in p for p in hs.check_cohort([dict(cases[0], skipped="x")] + cases[1:]))
+    assert any("skipped" in p for p in hs.check_cohort(cases[:-1] + [dict(cases[-1], skipped=None)]))
+
+
+def test_the_smoke_gate_needs_the_first_two_cases_per_object_g0_on_each_and_the_full_replay(tmp_path, monkeypatch):
+    a = _fixture(tmp_path, monkeypatch)
+    hs.pre_gates(a)
+    smf = os.path.join(a.smoke, "smoke_summary.json")
+    sm = json.load(open(smf))
+    for bad, match in ((dict(sm, g1=dict(sm["g1"], rows=0, cases=0)), "G1"), (dict(sm, g1=dict(sm["g1"], rows=sm["g1"]["rows"] - 1)), "G1"),
+                       (dict(sm, g0=dict(sm["g0"], compared=0)), "G0"), (dict(sm, g0=dict(sm["g0"], compared=sm["g0"]["compared"] - 1)), "G0")):
+        json.dump(bad, open(smf, "w"))
+        with pytest.raises(SystemExit, match=match):
+            hs.pre_gates(a)
+    json.dump(sm, open(smf, "w"))
+    cfg = os.path.join(sm["runs"], "run_config.json")
+    c = json.load(open(cfg))
+    for bad, match in ((dict(c, keys=c["keys"][1:]), "first two"), (dict(c, cases_sha256="0" * 64), "cases file"), (dict(c, replay=False), "replay"),
+                       (dict(c, dirty=True), "clean")):
+        json.dump(bad, open(cfg, "w"))
+        with pytest.raises(SystemExit, match=match):
+            hs.pre_gates(a)
+    json.dump(c, open(cfg, "w"))
+    hs.pre_gates(a)
+
+
+def test_a_cases_file_outside_the_cohort_refuses_before_any_record_is_read(tmp_path, monkeypatch):
+    a = _fixture(tmp_path, monkeypatch)
+    monkeypatch.setattr(hs, "COHORT", {"test": 11, "validation": 5})
+    opened = []
+    monkeypatch.setattr(hs, "_read_jsonl", lambda p: opened.append(p) or [])
+    with pytest.raises(SystemExit, match="cases per side"):
+        hs.summary_cmd(a)
+    assert opened == []
+
+
+def test_the_summary_records_its_own_code_and_refuses_a_dirty_tree(tmp_path, monkeypatch):
+    a = _fixture(tmp_path, monkeypatch)
+    monkeypatch.setenv("WANDB_MODE", "disabled")
+    monkeypatch.setattr(hs, "_code", lambda: {"code_revision": "s" * 40, "dirty": True})
+    with pytest.raises(SystemExit, match="dirty"):
+        hs.summary_cmd(a)
+    with pytest.raises(SystemExit, match="dirty"):
+        hs.gates_cmd(a)
+    monkeypatch.setattr(hs, "_code", lambda: {"code_revision": "s" * 40, "dirty": False})
+    rep = hs.summary_cmd(a)
+    assert rep["code"] == {"code_revision": "s" * 40, "dirty": False}
+
+
 def test_the_command_writes_the_summary_after_the_gates_and_opens_each_records_file_once(tmp_path, monkeypatch):
-    a = _fixture(tmp_path)
+    a = _fixture(tmp_path, monkeypatch)
     opened = []
     real = hs._read_jsonl
     monkeypatch.setattr(hs, "_read_jsonl", lambda p: opened.append(p) or real(p))
@@ -415,7 +594,7 @@ def test_the_command_writes_the_summary_after_the_gates_and_opens_each_records_f
 
 
 def test_a_gate_before_the_open_refuses_without_reading_a_record(tmp_path, monkeypatch):
-    a = _fixture(tmp_path)
+    a = _fixture(tmp_path, monkeypatch)
     opened = []
     monkeypatch.setattr(hs, "_read_jsonl", lambda p: opened.append(p) or [])
     cfg = os.path.join(a.runs, "run_config.json")
@@ -434,7 +613,7 @@ def test_a_gate_before_the_open_refuses_without_reading_a_record(tmp_path, monke
 
 
 def test_a_failed_squeeze_gate_writes_the_stop_file_and_exits_3_before_any_reading(tmp_path, monkeypatch):
-    a = _fixture(tmp_path, bad_hold=True)
+    a = _fixture(tmp_path, monkeypatch, bad_hold=True)
     monkeypatch.setenv("WANDB_MODE", "disabled")
     with pytest.raises(SystemExit) as e:
         hs.summary_cmd(a)
@@ -451,3 +630,66 @@ def test_a_mass_that_is_not_the_cases_files_or_a_monitor_case_outside_it_stops_t
     recs, mon, cases = _set()
     mon[("handal__hammer_9", 0)] = dict(mon[(recs[0]["object"], 0)], object="handal__hammer_9")
     assert any("monitor pass" in p and "not in the cases file" in p for p in hs.post_gates(recs, mon, cases)["problems"])
+
+
+# ------------------------------------------------------------------ the gates before the summary (no label is read)
+
+def test_the_gates_reader_keeps_no_label_or_outcome_field(tmp_path):
+    rec = _case(rows={"across_com@70N": {"label": "placed_stable", "damage": "crushed"}}, replay={"labels": ["tipped"]})
+    rec["rows"][0].update(max_z=0.31, drop_z=0.02, loss_phase="hold", final_label="tipped", replan={"label": "x"})
+    rec["sim_truth"] = {"mass": 0.5, "com_obj": [0.0, 0.0, 0.1]}
+    p = tmp_path / "records_test.jsonl"
+    p.write_text(json.dumps(rec) + "\n")
+    out = hs._read_fields(str(p))
+    text = json.dumps(out)
+    for s in ("label", "placed_stable", "tipped", "not_lifted", "crushed", "max_z", "drop_z", "loss_phase", "replan", "replay", "com_obj"):
+        assert s not in text, s
+    r = out[0]["rows"][0]
+    assert (r["qpos_sha"], r["trace_sha"], r["monitor"]["deepest_mm"], r["force"]) == ("q", "t", 1.0, 10.0)
+    assert out[0]["sim_truth"] == {"mass": 0.5} and out[0]["rows"][7]["squeeze"]["close"] == 70.0
+
+
+def test_the_gates_command_reads_no_label_and_reports_the_gates_the_squeeze_and_the_monitors_per_cell(tmp_path, monkeypatch):
+    a = _fixture(tmp_path, monkeypatch)
+    a.out = str(tmp_path / "gates")
+    monkeypatch.setenv("WANDB_MODE", "disabled")
+
+    def no_full_read(p):
+        raise AssertionError("the gates opened a records file with the full reader")
+
+    monkeypatch.setattr(hs, "_read_jsonl", no_full_read)
+    seen, real = [], hs._read_fields
+    monkeypatch.setattr(hs, "_read_fields", lambda p: seen.append(p) or real(p))
+    rep = hs.gates_cmd(a)
+    assert sorted(seen) == sorted(os.path.join(d, f"records_{s}.jsonl") for d in (a.runs, a.monitor) for s in ("test", "validation"))
+    text = open(os.path.join(a.out, "gates.json")).read() + open(os.path.join(a.out, "gates.md")).read()
+    for lab in hs.MOTION + ('"label"',):                           # no label value and no label field
+        assert lab not in text, lab
+    g = rep["gates"]
+    assert g["g0"] == {"compared": 16, "mismatches": 0, "fields": list(hs.HASH_FIELDS)} and g["hash_join"] == {"rows": 128, "mismatches": 0}
+    assert rep["squeeze"]["gate"]["ok"] and rep["squeeze"]["gate"]["n"] == 32 and rep["code"]["code_revision"] == "s" * 40
+    assert set(rep["squeeze"]["late_close"]) == set(hf.LEVELS) and "hold_median" not in json.dumps(rep["squeeze"]["late_close"])
+    cell = rep["cells"]["test"]["across_com@70N"]
+    assert cell["simulated"] == 12 and cell["penetration"] == 0 and cell["close_shift_median_mm"] == 1.0 and cell["close_over_5mm"] == 0
+    assert "lift_end" not in json.dumps(rep["cells"]) and rep["drops"]["test"] == {"cases": 12, "ruling_b": 0, "ruling_4_as_written": 0}
+    assert set(rep["penetration"]) == set(hf.LEVELS) and rep["cpu_h"]["run"] == pytest.approx(0.01)
+    with pytest.raises(SystemExit, match="exists"):
+        hs.gates_cmd(a)
+
+
+def test_a_hash_mismatch_in_the_gates_writes_the_stop_file_and_exits_3(tmp_path, monkeypatch):
+    a = _fixture(tmp_path, monkeypatch)
+    a.out = str(tmp_path / "gates")
+    monkeypatch.setenv("WANDB_MODE", "disabled")
+    mf = os.path.join(a.monitor, "records_test.jsonl")
+    lines = open(mf).read().splitlines()
+    m = json.loads(lines[0])
+    m["rows"][3]["trace_sha"] = "other"
+    lines[0] = json.dumps(m)
+    open(mf, "w").write("\n".join(lines) + "\n")
+    with pytest.raises(SystemExit) as e:
+        hs.gates_cmd(a)
+    assert e.value.code == 3
+    stop = json.load(open(os.path.join(a.out, "STOP.json")))
+    assert stop["gate"] == "records" and stop["hash_join"]["mismatches"] == 1 and "not_lifted" not in json.dumps(stop)
+    assert not os.path.exists(os.path.join(a.out, "gates.json"))
