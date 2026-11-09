@@ -17,14 +17,20 @@ tests target the contacts sim (armsim ee882f9b)."""
 
 import math
 import os
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
 
+from robots.mujoco_lab import curobo_plan as cp
+from robots.mujoco_lab import curve_graspgen as gg
 from robots.mujoco_lab import curve_sixdof_rerun as rr
 from robots.mujoco_lab import sixdof
+from robots.mujoco_lab import sixdof_plan as sp
+from tests.unit_tests.robots.mujoco_lab.test_curve_graspgen import BASE147, _entry, _rec1, lab  # noqa: F401  lab: the fake case
 
 SIM = pytest.mark.skipif(not os.environ.get("RPENT_MUJOCO_SIM_DIR"), reason="sim dir not set")
+GPU = pytest.mark.skipif(not (os.path.exists(sp.CUROBO_PY) and os.path.exists("/dev/nvidia0")), reason="needs cuRobo's venv and a GPU")
 
 
 @SIM
@@ -136,3 +142,77 @@ def test_the_tilted_rows_check_the_path_with_the_hand_boxes_whatever_the_callers
     rows, _ = rr.funnel6(env, np.stack([_at(low, 36.0)]), np.array([0.9]), "box", {"object": "ycb__sugar_box", "idx": 0})
     assert rows[0]["reach"]["box_hit"]["box"] == "palm" and rows[0]["disagree"] is None
     assert env.plan_without_hand_boxes is True
+
+
+# ------------------------------------------------------------------ step 4: the prepass (the funnels at the reset, the free-move plans)
+
+def test_the_goals_are_the_tilted_rows_with_a_candidate_in_their_order():
+    rows = [{"id": "g3", "candidate": {"q": [0.1] * 7}}, {"id": "g1", "candidate": None}, {"id": "g7", "candidate": {"q": [0.2] * 7}}]
+    assert rr.goals6(rows) == [{"row": "g3", "q": [0.1] * 7}, {"row": "g7", "q": [0.2] * 7}]
+    assert rr.goals6([]) == []
+
+
+@SIM
+def test_a_cases_funnels_run_at_its_reset_and_its_request_holds_the_world_the_start_and_the_chosen_configurations():
+    from robots.mujoco_lab.palm_audit import state_sha
+    from tests.unit_tests.robots.mujoco_lab.test_sixdof import _at, _sugar_box
+
+    env, _ = _sugar_box()
+    world, start, sha = sp.world_export(env.sim), [float(x) for x in env.sim.arm.desired()], state_sha(env)
+    top, low = (env.proposals((s,), turn=-math.pi / 2)[0] for s in (0.9, 0.7))
+    G, S, case = np.stack([_at(top, 10.0), _at(top, 36.0), _at(low, 36.0)]), np.array([0.9, 0.8, 0.7]), {"object": "ycb__sugar_box", "idx": 0}
+    out = rr.case_funnel(env, case, G, S, "box")
+    assert [r["id"] for r in out["rows30"]] == ["g0"] and [r["id"] for r in out["rows6"]] == ["g1", "g2"]
+    assert out["counts30"]["vertical"] == 1 and out["counts6"]["level_a"] == 2
+    assert state_sha(env) == sha                                         # the funnels leave the sim as the reset left it
+    req = out["request"]
+    assert req["case"] == ["ycb__sugar_box", 0] and req["start"] == start and cp.canonical(req["world"]) == cp.canonical(world)
+    assert req["goals"] == [{"row": "g1", "q": out["rows6"][0]["candidate"]["q"]}]
+    assert rr.case_funnel(env, case, G[[0, 2]], S[[0, 2]], "box")["request"] is None     # no tilted row passes: nothing to plan
+
+
+def test_the_prepass_of_a_case_checks_its_reset_like_the_pilot_and_runs_the_funnels_once_there(lab, monkeypatch):
+    seen = []
+    monkeypatch.setattr(rr, "case_funnel", lambda env, case, G, S, dest: seen.append((case, len(S), dest, list(lab.resets))) or
+                        {"rows30": [], "counts30": {}, "rows6": [], "counts6": {}, "request": None})
+    rec = rr.prepass_case(SimpleNamespace(env=lab), _rec1(), 3, None, _entry(lab))
+    assert rec["stop"] is None and rec["error"] is None and seen == [({"object": "ycb__sugar_box", "idx": 3}, 4, "bin", [3003])]
+    assert rec["base"] == BASE147 and rec["destination"] == "bin" and rec["hull_sha"] == gg.hulls_sha(lab) and rec["request"] is None
+    assert "cloud" in rr.prepass_case(SimpleNamespace(env=lab), _rec1(), 3, None, _entry(lab, cloud_sha="0" * 64))["stop"]
+    assert "fingerprint" in rr.prepass_case(SimpleNamespace(env=lab), _rec1(fingerprint="other"), 3, None, _entry(lab))["stop"]
+    assert "no grasps" in rr.prepass_case(SimpleNamespace(env=lab), _rec1(), 3, None, None)["stop"]
+    assert "generator" in rr.prepass_case(SimpleNamespace(env=lab), _rec1(), 3, None, dict(_entry(lab), error="boom"))["stop"]
+    assert rr.prepass_case(SimpleNamespace(env=lab), _rec1(status="error"), 3, None, _entry(lab))["dropped"]
+    assert len(seen) == 1                                                # no stopped case reaches the funnels
+
+
+def test_the_plan_step_sends_a_cases_request_to_one_planner_process_and_records_its_answer_or_its_failure():
+    calls = []
+    rec = {"object": "o", "idx": 0, "stop": None, "request": {"case": ["o", 0], "goals": [{"row": "g1", "q": [0.0] * 7}]}}
+    out = rr.plan_prepass(rec, "/cache", plan=lambda req, cache: calls.append((req, cache)) or {"goals": 1, "planned": 1, "cached": 0})
+    assert calls == [(rec["request"], "/cache")] and out["plan"] == {"goals": 1, "planned": 1, "cached": 0} and out["plan_error"] is None
+
+    def boom(req, cache):
+        raise RuntimeError("cuRobo exited 1 on o_0 (log x)")
+
+    assert rr.plan_prepass(rec, "/cache", plan=boom)["plan_error"] == "RuntimeError: cuRobo exited 1 on o_0 (log x)"
+    assert rr.plan_prepass(dict(rec, request=None), "/cache", plan=boom) == dict(rec, request=None, plan=None, plan_error=None)
+    assert rr.plan_prepass(dict(rec, stop="x"), "/cache", plan=boom) == dict(rec, stop="x", plan=None, plan_error=None)
+    assert rr.plan_prepass(dict(rec, dropped=True), "/cache", plan=boom) == dict(rec, dropped=True, plan=None, plan_error=None)
+
+
+@SIM
+@GPU
+def test_the_prepass_plans_the_chosen_configuration_and_the_cache_serves_it_after_the_reset(tmp_path):
+    from tests.unit_tests.robots.mujoco_lab.test_sixdof import _at, _sugar_box
+
+    env, _ = _sugar_box()
+    top = env.proposals((0.9,), turn=-math.pi / 2)[0]
+    out = rr.case_funnel(env, {"object": "ycb__sugar_box", "idx": 0}, np.stack([_at(top, 36.0)]), np.array([0.9]), "box")
+    rec = rr.plan_prepass({"stop": None, "request": out["request"]}, str(tmp_path))
+    assert rec["plan"] == {"goals": 1, "planned": 1, "cached": 0} and rec["plan_error"] is None
+    env.reset("ycb__sugar_box", seed=0)                                  # the execute pass: its own reset, the same world and start
+    goal = out["rows6"][0]["candidate"]["q"]
+    free = sp.free_from_cache(str(tmp_path), sp.world_export(env.sim), [float(x) for x in env.sim.arm.desired()], goal,
+                              env.s["scene"].CTRL_HZ)
+    assert len(free) > 10 and np.abs(np.asarray(free[-1]) - goal).max() < 1e-3

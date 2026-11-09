@@ -156,3 +156,91 @@ def funnel30(env: Any, grasps: Any, conf: Any, destination: str) -> tuple[list[d
                  kept_all=bool(r["feasible"]) and r["dup_of"] is None, kept_all_b=bool(r["feasible_b"]) and r["dup_of_b"] is None)
     counts["clearance_fail"] = sum(r["clearance"] is not None for r in rows)
     return rows, counts
+
+
+# ------------------------------------------------------------------ the prepass: the funnels at the case's reset, the free-move plans
+
+def goals6(rows6: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The free-move goals of the tilted rows that pass the funnel (a candidate), in the rows' order: [{"row", "q"}]."""
+    return [{"row": r["id"], "q": r["candidate"]["q"]} for r in rows6 if r["candidate"] is not None]
+
+
+def case_funnel(env: Any, case: dict[str, Any], grasps: Any, conf: Any, destination: str) -> dict[str, Any]:
+    """One case's funnels at its reset (the object at rest, the arm at its start): funnel30's and funnel6's rows and
+    counts, and the free-move request of the tilted rows that pass (sixdof_plan.request with world_export's world and
+    the arm's desired joints as the start, both read before the funnels, and goals6), None when no tilted row passes.
+    The execute pass reads the same world and start after its own reset of the case."""
+    from robots.mujoco_lab import sixdof_plan as sp
+
+    world, start = sp.world_export(env.sim), [float(x) for x in env.sim.arm.desired()]
+    rows30, counts30 = funnel30(env, grasps, conf, destination)
+    rows6, counts6 = funnel6(env, grasps, conf, destination, case)
+    goals = goals6(rows6)
+    return {"rows30": rows30, "counts30": counts30, "rows6": rows6, "counts6": counts6,
+            "request": sp.request((case["object"], int(case["idx"])), world, start, goals) if goals else None}
+
+
+def prepass_case(prims: Any, rec1: dict[str, Any], seed: int, world: Any, entry: dict[str, Any] | None) -> dict[str, Any]:
+    """One case's prepass on the lab side, with the pilot's case checks (curve_graspgen.graspgen_case): Stage 2's skip
+    rules; the case's draw and its reset at its own seed (curve_graspgen._setup; Stage 1's fingerprint); the cloud of
+    the hulls there must be the one the generator saw; commit_std's base (base_gate); then case_funnel at that reset. A
+    failed check is the case's stop, before the funnels. The record holds what the execute pass needs (the
+    destination, the base, the hulls' hash, both funnels' rows, the request) and the pilot's case fields. An exception
+    is the case's error (the case drops)."""
+    from robots.mujoco_lab import com_gap
+    from robots.mujoco_lab import curve_graspgen as gg
+    from robots.mujoco_lab.curve import stage2_skip
+    from robots.mujoco_lab.curve_poseset import KEEP, KIND_OF, UPRIGHT_DEG, _err, balance_fraction, base_gate, commit_std_base, tilt_deg
+
+    o, idx = rec1["object"], int(rec1["idx"])
+    rec: dict[str, Any] = dict({k: rec1.get(k) for k in KEEP}, kind=KIND_OF.get(o, "other"), hammer="hammer" in o, rows30=[],
+                               counts30=None, rows6=[], counts6=None, request=None, n_grasps=None, base=None, destination=None,
+                               hull_sha=None, skipped=stage2_skip(rec1), dropped=False, stop=None, error=None)
+    if rec["skipped"]:
+        return dict(rec, dropped=True)
+    if entry is None:
+        return dict(rec, stop="no grasps for this case")
+    if entry.get("error"):
+        return dict(rec, stop=f"the generator failed on this case: {entry['error']}")
+    env = prims.env
+    st = gg._setup(prims, rec1, seed, world)
+    if st["stop"]:
+        return dict(rec, stop=st["stop"])
+    try:
+        st["reset_at"](0)()
+        if com_gap.fingerprint(env) != rec1["fingerprint"]:
+            return dict(rec, stop="the reset's fingerprint differs from Stage 1's")
+        sha = gg._sha_bytes(gg.surface_cloud(env._hull_vertex_list(), seed=gg.cloud_seed(o, idx)))
+        if sha != entry["cloud_sha256"]:
+            return dict(rec, stop="the cloud at this reset is not the cloud the generator saw")
+        t = env.truth()
+        tilt = tilt_deg(env.sim.obj_mat(), env.props["axis"])
+        rec.update(tilt_deg=tilt, upright=tilt > UPRIGHT_DEG, length=float(env.props["length"]), cloud_sha256=sha,
+                   com_f=balance_fraction(env.props, t["com_obj"]), sim_truth={k: t.get(k) for k in ("mass", "com_s", "com_obj", "fill")})
+        base = commit_std_base(env, o, st["destination"])
+        why = base_gate(rec1, base)
+        if why:
+            return dict(rec, stop=why)
+        rec.update(base=base, destination=st["destination"], hull_sha=gg.hulls_sha(env), n_grasps=int(len(entry["conf"])))
+        rec.update(case_funnel(env, {"object": o, "idx": idx}, entry["grasps"], entry["conf"], st["destination"]))
+    except Exception as exc:  # noqa: BLE001  a case that raises outside the planner is dropped, as in the pilot
+        return dict(rec, error=_err(exc), dropped=True)
+    return rec
+
+
+def plan_prepass(rec: dict[str, Any], cache: str, plan: Any = None) -> dict[str, Any]:
+    """The free-move plans of one prepass record: its request, when the case neither stopped nor dropped, to one cuRobo
+    process (``plan``, default sixdof_plan.plan_case: the uncached goals planned and cached, failures included).
+    ``plan``: the process's summary {"goals", "planned", "cached"}, else None; ``plan_error``: its failure (the case's
+    goals stay unplanned, so the execute pass counts them as cache misses, G3)."""
+    from robots.mujoco_lab import sixdof_plan as sp
+    from robots.mujoco_lab.curve_poseset import _err
+
+    out = dict(rec, plan=None, plan_error=None)
+    if rec.get("stop") or rec.get("dropped") or rec.get("request") is None:
+        return out
+    try:
+        out["plan"] = (plan or sp.plan_case)(rec["request"], cache)
+    except Exception as exc:  # noqa: BLE001  a planner process that fails is this case's record, not the run's end
+        out["plan_error"] = _err(exc)
+    return out
